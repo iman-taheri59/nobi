@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>تشخیص فایل ربات نوبیتکس</title>
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css">
+<link rel="stylesheet" href="assets/css/base.css">
+</head>
+<body class="min-h-screen flex items-center justify-center p-6">
+  <div class="max-w-2xl w-full bg-white/5 border border-white/10 rounded-2xl p-6 space-y-4">
+    <h1 class="font-extrabold text-xl text-emerald-300">تشخیص نسخه‌ی سرو‌شده</h1>
+    <p class="text-sm text-zinc-400 leading-7">این صفحه فقط برای تأیید این است که میزبان/مرورگر شما واقعاً کدام فایل را سرو می‌کند.</p>
+    <div class="grid grid-cols-2 gap-3 text-xs">
+      <div class="rounded-lg bg-white/5 p-3"><span class="text-zinc-500">فایل کنونی:</span><div class="num font-extrabold text-emerald-300 text-lg">version-check.html</div></div>
+      <div class="rounded-lg bg-white/5 p-3"><span class="text-zinc-500">زمان ساخت:</span><div class="num font-extrabold text-emerald-300 text-lg">14 Feb 2026 · v1.7</div></div>
+    </div>
+    <div class="rounded-lg bg-amber-400/10 border border-amber-300/30 p-3 text-[12px] leading-6">
+      <b class="text-amber-300">اگر این صفحه را می‌بینید:</b> میزبان شما فایل‌های درست را سرو می‌کند. حالا <span class="num">index.html</span> را باز کنید؛ باید نشان <b>v1.7 · b2026</b> بنفش را بالای هدر (کنار لوگو) ببینید و در منوی کناری ۷ آیتم با آخرین دو آیتم «گزارش عملکرد» و «میز معاملات دستی» حس شود.
+    </div>
+    <div class="rounded-lg bg-red-400/10 border border-red-300/30 p-3 text-[12px] leading-6">
+      <b class="text-red-300">اگر این صفحه را هم نمی‌بینید:</b> میزبان شما به پوشه دیگری اشاره می‌کند یا فایل قدیمی از مسیر متفاوتی سرو می‌شود. آدرس پیش‌نمایش را دقیق بفرستید تا مسیر را اصلاح کنم.
+    </div>
+    <div class="pt-2 text-[11px] text-zinc-500 num" id="urlz"></div>
+  </div>
+  <script>document.getElementById('urlz').textContent = 'URL: ' + location.href;</script>
+</body>
+</html>

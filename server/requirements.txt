@@ -1,0 +1,18 @@
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.4
+pydantic-settings==2.7.1
+httpx==0.28.1
+tenacity==9.0.0
+pandas==2.2.3
+numpy==2.2.1
+pyarrow>=18.0.0
+python-dotenv==1.0.1
+websockets==14.2  # future: Centrifugo streaming wiring
+# Later phases (Auth signing for real trading) — pinned but only loaded when needed:
+# cryptography==44.0.0       # Ed25519 signing
+# redis==5.2.1
+# sqlalchemy==2.0.36
+# asyncpg==0.30.0
+# vectorbt==0.27.2
+# pandas-ta==0.3.14b0

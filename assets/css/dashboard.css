@@ -1,0 +1,111 @@
+/* ===========================================================
+ * dashboard.css — sidebar, header, layout, live-status, charts
+ * Specific to the trader dashboard (index.html)
+ * =========================================================== */
+
+/* ---------- Sidebar responsive rules ---------- */
+@media (max-width: 1023px) {
+  html[dir="rtl"] #sidebar {
+    right: 0;
+    left: auto;
+    border-left: 1px solid rgba(255, 255, 255, 0.1);
+    transform: translateX(100%);
+  }
+  html[dir="ltr"] #sidebar {
+    left: 0;
+    right: auto;
+    border-right: 1px solid rgba(255, 255, 255, 0.1);
+    transform: translateX(-100%);
+  }
+  #sidebar.side-open { transform: translateX(0) !important; }
+}
+@media (min-width: 1024px) {
+  #sidebar { transform: none !important; }
+}
+
+/* ---------- Mobile language switch ---------- */
+#mLangFa,
+#mLangEn {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.03);
+}
+#mLangFa:not(.text-emerald-300):not(.active) { color: #71717a; }
+#mLangEn:not(.text-emerald-300):not(.active) { color: #71717a; }
+
+/* ---------- Live badge (bottom right/left) ---------- */
+.live-badge {
+  position: fixed;
+  bottom: 14px;
+  right: 14px;
+  z-index: 80;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(9, 9, 11, 0.85);
+  backdrop-filter: blur(10px);
+  font-size: 11px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+}
+html[dir="ltr"] .live-badge { right: auto; left: 14px; }
+
+.live-badge .dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 9999px;
+  display: inline-block;
+}
+
+/* ---------- Mini horizontal bar inside live rows ---------- */
+.nbx-mini-hbar {
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  overflow: hidden;
+}
+.nbx-mini-hbar > i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #34d399, #38bdf8);
+}
+
+/* ---------- Spin loader for buttons ---------- */
+.animate-spin { animation: spin 1s linear infinite; }
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* ---------- Timeframe chips under candle chart ---------- */
+#candleChips { scrollbar-width: none; }
+#candleChips::-webkit-scrollbar { display: none; }
+#candleChips .tfSel { transition: all 0.2s ease; }
+@media (hover: hover) {
+  #candleChips .tfSel:hover { background: rgba(255, 255, 255, 0.08); }
+}
+
+/* ---------- Status popup (API health) ---------- */
+#apiStatusPop { min-width: 240px; }
+
+/* ---------- Meta rows for info cards ---------- */
+.meta-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: #a1a1aa;
+  padding: 5px 0;
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.05);
+}
+
+/* ---------- Responsive pagination/signals ---------- */
+@media (max-width: 639px) {
+  .signals-row { grid-template-columns: 1fr; }
+  .glass + .glass { margin-top: 0; }
+}
+
+/* ---------- Order book color coherence ---------- */
+.ob-ask { background: rgba(248, 113, 113, 0.06); border-right: 2px solid rgba(248, 113, 113, 0.4); }
+.ob-bid { background: rgba(52, 211, 153, 0.06); border-right: 2px solid rgba(52, 211, 153, 0.4); }

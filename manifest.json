@@ -1,0 +1,11 @@
+{
+  "name": "اتاق فرمان — ربات معامله‌گر نوبیتکس",
+  "short_name": "Nobitex Bot",
+  "description": "داشبورد و پیش‌نمایش ربات معامله‌گر خودکار و دستی نوبیتکس (موبایل و وب)",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#09090b",
+  "theme_color": "#09090b",
+  "dir": "rtl",
+  "lang": "fa-IR"
+}
