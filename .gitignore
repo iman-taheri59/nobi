@@ -1,0 +1,16 @@
+# Python & Virtualenvs
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environment & Secrets (ADR-0009)
+.env
+*.env.local
+
+# Runtime Cache & Reports
+server/candle_cache/
+server/backtest_reports/
+server/paper_state.json
+paper_state.json
