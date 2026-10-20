@@ -1,13 +1,14 @@
 {
   "name": "nobi-dashboard-styles",
   "private": true,
-  "description": "Builds assets/css/tailwind.css locally. The dashboard must not depend on a CDN for layout: without it every utility class disappears and the page collapses.",
+  "description": "Builds assets/css/tailwind.css locally and provides the jsdom used by scripts/ui_smoke_test.js. The dashboard must not depend on a CDN for layout: without it every utility class disappears and the page collapses.",
   "scripts": {
     "css": "tailwindcss -i assets/css/tailwind.src.css -o assets/css/tailwind.css --minify && node -e \"require('fs').utimesSync('assets/css/tailwind.css', new Date(), new Date())\"",
     "css:watch": "tailwindcss -i assets/css/tailwind.src.css -o assets/css/tailwind.css --watch"
   },
   "devDependencies": {
     "@tailwindcss/cli": "^4.3.3",
-    "tailwindcss": "^4.3.3"
+    "tailwindcss": "^4.3.3",
+    "jsdom": "^26.0.0"
   }
 }

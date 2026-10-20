@@ -1,14 +1,25 @@
 // UI smoke test for the Performance page against a live local backend.
 //
-//   cd /tmp && npm install jsdom
-//   cd /home/user/nobi && python3 scripts/ui_smoke_prep.py && cd /tmp && node /home/user/nobi/scripts/ui_smoke_test.js
+//   npm install                 # once: tailwind + jsdom
+//   python3 scripts/ui_smoke_prep.py
+//   node scripts/ui_smoke_test.js
 //
 // It boots index.html offscreen, waits for the journal fetch to settle, then
 // asserts the MSI card, the seven KPI cells and the absence of JS errors.
 const fs = require('fs');
-const { JSDOM, VirtualConsole } = require('/tmp/node_modules/jsdom');
+const path = require('path');
 
-const html = fs.readFileSync('/tmp/page.html', 'utf8');
+// jsdom is a devDependency now; the /tmp fallback keeps older checkouts and the
+// sandbox working, where the install lived outside the repo.
+let JSDOM, VirtualConsole;
+try {
+  ({ JSDOM, VirtualConsole } = require('jsdom'));
+} catch (e) {
+  ({ JSDOM, VirtualConsole } = require('/tmp/node_modules/jsdom'));
+}
+
+const pagePath = process.argv[2] || '/tmp/page.html';
+const html = fs.readFileSync(pagePath, 'utf8');
 const errors = [];
 const vc = new VirtualConsole();
 vc.on('jsdomError', (e) => errors.push('jsdomError: ' + (e.message || e)));
