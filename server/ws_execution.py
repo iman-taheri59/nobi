@@ -32,6 +32,7 @@ from typing import Any
 
 import httpx
 
+from nobitex_client import resolve_ua
 from units import market_symbol, price_scale, scale_stat_row
 
 log = logging.getLogger("market-stream")
@@ -198,7 +199,7 @@ class StreamExecutor:
             self._client = httpx.AsyncClient(
                 base_url=os.getenv("NBX_BASE_URL", "https://apiv2.nobitex.ir").rstrip("/"),
                 timeout=8,
-                headers={"User-Agent": "TraderBot/1.0"},
+                headers={"User-Agent": resolve_ua()},
             )
         return self._client
 
@@ -314,7 +315,10 @@ class StreamExecutor:
         backoff = 1.0
         while self._subs or self.want_stats:
             try:
-                async with websockets.connect(WS_URL, ping_interval=20, ping_timeout=20) as ws:
+                async with websockets.connect(
+                    WS_URL, ping_interval=20, ping_timeout=20,
+                    additional_headers={"User-Agent": resolve_ua()},
+                ) as ws:
                     # Anonymous connection: the protocol still wants a
                     # `connect` frame. `name` is not a field the server reads.
                     await ws.send(json.dumps({"id": 1, "connect": {}}))

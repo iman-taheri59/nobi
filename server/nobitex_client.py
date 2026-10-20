@@ -29,6 +29,31 @@ from units import scale_orderbook, scale_stats, scale_udf
 
 log = logging.getLogger("nbx-client")
 
+#: The one identity every request carries. Nobitex asks for `TraderBot/XXXXX`
+#: where XXXXX is a unique *name* — not a URL (it rots: repos get renamed or
+#: made private, and then the header is a dead claim in someone else's log)
+#: and not a version number (nothing in this repo could keep it honest).
+DEFAULT_UA = "TraderBot/nobi"
+_UA_PREFIX = "TraderBot/"
+_UA_MAX = 150
+
+
+def resolve_ua(raw: str | None = None) -> str:
+    """`TraderBot/` + a name, or the default when what was given is unusable.
+
+    Read at call time, not at import, so a running process can be named and a
+    test can rename it without reloading modules.
+    """
+    ua = (raw or os.getenv("NBX_UA") or DEFAULT_UA).strip()
+    if ua.lower().startswith(_UA_PREFIX.lower()):
+        ua = _UA_PREFIX + ua.split("/", 1)[1]
+    else:
+        ua = _UA_PREFIX + ua
+    if not ua.isascii() or len(ua) <= len(_UA_PREFIX) or len(ua) > _UA_MAX:
+        log.warning("NBX_UA=%r is not a usable header value; using %s", raw, DEFAULT_UA)
+        return DEFAULT_UA
+    return ua
+
 
 class ClientError(Exception):
     """Typed error chain for the adapter."""
@@ -98,7 +123,6 @@ class NobitexClient:
         data = await client.get_market_stats()
     """
     BASE_URL = "https://apiv2.nobitex.ir"
-    UA = "TraderBot/1.0 (+https://github.com/your-repo)"
 
     #: There used to be a hard-coded `SYMBOLS` tuple here. Nothing read it —
     #: the market list comes from `/market/stats` — and it had already drifted
@@ -123,6 +147,7 @@ class NobitexClient:
         self._closed = False
         self._circuit_open_until: float = 0.0
         self.degraded_mode: bool = False
+        self.ua = resolve_ua()
 
     async def __aenter__(self) -> NobitexClient:
         await self.connect()
@@ -140,7 +165,7 @@ class NobitexClient:
             self._client = httpx.AsyncClient(
                 base_url=self.base_url,
                 timeout=httpx.Timeout(self.timeout, read=self.timeout * 1.5),
-                headers={"User-Agent": self.UA},
+                headers={"User-Agent": self.ua},
                 limits=httpx.Limits(max_keepalive_connections=20, max_connections=40),
             )
 
@@ -154,7 +179,7 @@ class NobitexClient:
     # Compatibility: this endpoint requires a READ-ONLY token or API key pair
     # only for private data; public endpoints stay unauthenticated.
     def _public_headers(self) -> dict:
-        return {"User-Agent": self.UA}
+        return {"User-Agent": self.ua}
 
     def _emit_stats(self, ok: bool, latency_ms: float) -> None:
         self.stats.total += 1
