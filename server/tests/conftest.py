@@ -14,3 +14,28 @@ from pathlib import Path
 SERVER = Path(__file__).resolve().parents[1]
 if str(SERVER) not in sys.path:
     sys.path.insert(0, str(SERVER))
+
+
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _no_leaked_kill_switch():
+    """Fail the test that arms the kill switch and walks away.
+
+    The paper account and the risk engine are process globals. A test that
+    halts them without resuming makes every later test read "halted" and
+    blame the wrong code — the failure surfaces far from its cause.
+    """
+    yield
+    try:
+        import main
+    except Exception:      # module not imported yet: nothing to check
+        return
+    if getattr(main.risk, "halted", False):
+        main.risk.halted = False
+        try:
+            main.paper_trading.PAPER_BROKER.halted = False
+        except Exception:
+            pass
+        pytest.fail("test left the risk kill switch armed; resume it in the test")

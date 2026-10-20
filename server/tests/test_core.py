@@ -375,7 +375,12 @@ def test_mutations_are_loopback_only_without_a_token(monkeypatch):
     monkeypatch.setattr(security, "API_TOKEN", "")
     c = _client()
     # TestClient reports host "testclient", which counts as loopback.
-    r = c.post("/api/paper/halt")
+    #
+    # The target used to be /api/paper/halt, which left the global kill switch
+    # armed for every later test in the session — a silent cross-test leak that
+    # only showed up as "some other test says the account is halted". Any
+    # guarded mutation exercises the same guard; pick one with no residue.
+    r = c.post("/api/errors/clear")
     assert r.status_code in (200, 500)  # handler may fail on missing broker, not on auth
 
 
@@ -384,7 +389,10 @@ def test_remote_mutation_is_rejected_without_a_token(monkeypatch):
 
     monkeypatch.setattr(security, "API_TOKEN", "")
     c = _client()
-    r = c.post("/api/paper/halt", headers={"x-forwarded-for": "8.8.8.8"},
+    # Same reasoning as the test above: exercise the guard on a mutation that
+    # leaves no residue. The handler is expected to reject this request; the
+    # point is that the guard runs first.
+    r = c.post("/api/errors/clear", headers={"x-forwarded-for": "8.8.8.8"},
                # spoof the peer address the app sees
                )
     # TestClient always reports 127.0.0.1/testclient; exercise the guard directly.
@@ -731,7 +739,12 @@ def test_max_risk_pct_caps_a_misconfigured_sizing():
 def test_audit_endpoint_records_control_actions():
     c = _client()
     c.post("/api/paper/halt")
-    body = c.get("/api/audit?limit=10").json()
+    try:
+        body = c.get("/api/audit?limit=10").json()
+    finally:
+        # This test needs a real control action, so it halts. Leaving it armed
+        # poisoned every later test in the session.
+        c.post("/api/paper/resume")
     assert body["counts"].get("paper.halt") == 1
     event = body["events"][0]
     assert event["action"] == "paper.halt"
@@ -1741,3 +1754,126 @@ def test_implausible_premium_is_treated_as_missing_data():
     assert main._premium_pct(rows) == 0.0
     rows[2]["last"] = 40.0          # -60 % implied premium: a data error
     assert main._premium_pct(rows) is None
+
+
+# --------------------------------------------------------------------------- #
+# What-if (A2): the preview must agree with the executor
+# --------------------------------------------------------------------------- #
+def _pf(**kw):
+    import risk_engine
+    base = dict(equity=100_000.0, cash=100_000.0, open_heat=0.0, open_positions=0,
+                concurrent_limit=5, max_heat_pct=6.0, min_cash_pct=10.0,
+                max_single_asset_pct=25.0, risk_pct_cap=0.75, halted=False,
+                notional_usd=10_000.0, fee_usd=20.0, risk_usd=750.0)
+    base.update(kw)
+    return risk_engine.preflight(**base)
+
+
+def test_whatif_projects_heat_cash_and_worst_case():
+    r = _pf(open_heat=1.5, open_positions=2)
+    s = r.summary()
+    assert s["heat_before"] == 1.5
+    assert s["heat_after"] == 2.25          # +0.75 % risk
+    assert s["heat_headroom_pct"] == 3.75   # 6.0 - 2.25
+    assert s["cash_after"] == 89_980.0
+    assert s["slots_left"] == 2
+    # Worst case is the stop distance *plus* the fee, not the stop alone.
+    assert s["loss_at_stop_usd"] == 770.0
+    assert not s["blocked"]
+
+
+def test_whatif_blocks_on_the_same_gates_as_the_broker():
+    assert _pf(open_heat=5.5).summary()["blocked_by"] == "heat-cap"
+    assert _pf(open_positions=5).summary()["blocked_by"] == "concurrent-cap"
+    assert _pf(halted=True).summary()["blocked_by"] == "halted"
+    assert _pf(risk_usd=900.0).summary()["blocked_by"] == "risk-cap"
+    # An empty account is its own gate, not a generic "not enough funds".
+    assert _pf(cash=0.0).summary()["blocked_by"] == "cash-present"
+    # 25 % of equity is the ceiling for one position
+    assert _pf(notional_usd=26_000.0).summary()["blocked_by"] == "single-asset-cap"
+
+
+def test_preflight_allows_the_broker_s_five_percent_slack():
+    """place_limit accepts risk_pct * 1.05; the preview must not be stricter."""
+    assert not _pf(risk_usd=780.0).summary()["blocked"]        # 0.78 % vs 0.75*1.05
+    assert _pf(risk_usd=800.0).summary()["blocked_by"] == "risk-cap"
+
+
+def test_a_rejected_order_reports_heat_it_would_have_added():
+    s = _pf(open_heat=5.9).summary()
+    assert s["blocked_by"] == "heat-cap"
+    assert s["heat_after"] == 6.65, "the panel must show the overshoot it refused"
+    assert s["heat_headroom_pct"] == 0.0
+
+
+def test_whatif_route_reports_a_real_projection():
+    """End-to-end through the route, with the signal cache primed."""
+    from fastapi.testclient import TestClient
+    import main
+
+    sym = "BTCIRT"
+    main._cached["signals_by_tf"].setdefault("15m", {})[sym] = {
+        "symbol": sym, "lastClose": 4_000_000_000.0,
+        "risk": {"atr": 40_000_000.0},
+    }
+    main._cached["universe"] = [{"symbol": "USDTIRT", "last": 100_000.0}]
+
+    c = TestClient(main.app)
+    r = c.post("/api/risk/whatif", json={"symbol": sym, "side": "buy", "tf": "15m"})
+    assert r.status_code == 200, r.text
+    d = r.json()
+    assert d["ok"] is True, d
+    p = d["projection"]
+    assert {"heat_before", "heat_after", "loss_at_stop_usd", "gates"} <= set(p)
+    assert len(p["gates"]) == 8
+    # The suggested size must itself pass the gates it was sized against.
+    if d["sized_by"] == "risk-engine" and not p["blocked"]:
+        assert p["risk_pct"] <= 0.75 * 1.05 + 1e-9
+    # And the stop really is two ATR away.
+    assert abs(d["stop"] - (d["entry"] - 2 * 40_000_000.0)) < 1e-6
+
+
+def test_whatif_refuses_to_guess_a_price():
+    from fastapi.testclient import TestClient
+    import main
+
+    c = TestClient(main.app)
+    r = c.post("/api/risk/whatif", json={"symbol": "NOPRICEIRT"})
+    d = r.json()
+    assert d["ok"] is False and "unavailable" in str(d).lower()
+
+
+def test_whatif_does_not_move_the_account():
+    """A projection that reserves heat is a silent trade."""
+    from fastapi.testclient import TestClient
+    import main
+
+    sym = "ETHIRT"
+    main._cached["signals_by_tf"].setdefault("15m", {})[sym] = {
+        "symbol": sym, "lastClose": 3e11, "risk": {"atr": 3e9},
+    }
+    main._cached["universe"] = [{"symbol": "USDTIRT", "last": 100_000.0}]
+    from paper_trading import get_broker
+    br = get_broker(main.EQUITY, main.client, main.risk)
+    heat_before = main.risk.open_heat
+    cash_before = br.cash
+    open_before = len(br.positions)
+    TestClient(main.app).post("/api/risk/whatif", json={"symbol": sym})
+    assert main.risk.open_heat == heat_before
+    assert br.cash == cash_before
+    assert len(br.positions) == open_before
+
+
+def test_whatif_names_the_kill_switch_instead_of_blaming_sizing():
+    from fastapi.testclient import TestClient
+    import main
+
+    main._cached["signals_by_tf"].setdefault("15m", {})["SOLIRT"] = {
+        "symbol": "SOLIRT", "lastClose": 1e10, "risk": {"atr": 1e8}}
+    main.risk.halted = True
+    try:
+        d = TestClient(main.app).post("/api/risk/whatif", json={"symbol": "SOLIRT"}).json()
+    finally:
+        main.risk.halted = False
+    assert d["ok"] is False
+    assert d["blocked_by"] == "halted", d

@@ -35,11 +35,11 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from nobitex_client import ClientError, NobitexClient, UpstreamUnavailable
-from ta_engine import candles_to_df, ta_score, ta_score_series
+from ta_engine import RISK_K, candles_to_df, ta_score, ta_score_series
 from fa_engine import FA_ENGINE, FAResult
-from risk_engine import RiskEngine, RiskConfig
+from risk_engine import RiskEngine, RiskConfig, preflight
 import paper_trading
-from paper_trading import get_broker, PaperBroker
+from paper_trading import FEE_PCT as PAPER_FEE_PCT, get_broker, PaperBroker
 from backtest import EventBacktester, WalkForwardRunner, run_and_save, grid_search, DEFAULT_GRID
 from ws_execution import STREAM_EXECUTOR, streams_start
 from security import API_TOKEN, auth_mode, cors_origins, require_client
@@ -1422,6 +1422,104 @@ async def risk_plan(symbol: str, side: str = "buy", tf: str = Query("15m", patte
         "fx_rate": fx,
         "equity_quote": round(equity_quote, 2),
         "healthHeat": risk.open_heat,
+        **provenance(),
+    }
+
+
+@app.post("/api/risk/whatif")
+async def risk_whatif(payload: dict, request: Request):
+    """Project one candidate order onto the account, without placing it.
+
+    Answers the question A2 was written for: *if I take this, what happens to
+    heat, cash and the caps?* Every gate comes from `risk_engine.preflight`,
+    the same function `PaperBroker.place_limit` uses, so the projection cannot
+    promise something the broker would reject.
+
+    Nothing here mutates state. If a price or ATR is unavailable the answer is
+    `unavailable` — a projection built on a filled-in number would be worse
+    than no projection at all.
+    """
+    body = payload or {}
+    sym = (body.get("symbol") or "").upper()
+    if not sym:
+        return {"ok": False, "error": "symbol required"}
+    side = "buy" if str(body.get("side") or "buy").lower() in ("buy", "long") else "sell"
+    tf = body.get("tf") if body.get("tf") in ("15m", "1h", "4h", "D") else "15m"
+
+    snap = _signal_lookup(sym, tf)
+    entry = float(body.get("entry") or 0.0) or float((snap or {}).get("lastClose") or 0.0)
+    if entry <= 0:
+        return {**upstream_error("whatif", f"no price for {sym}"),
+                "symbol": sym, "ok": False}
+
+    atr = float(((snap or {}).get("risk") or {}).get("atr") or 0.0)
+    stop = float(body.get("stop") or 0.0)
+    if stop <= 0:
+        if atr <= 0:
+            return {**upstream_error("whatif", f"no ATR for {sym} on {tf}"),
+                    "symbol": sym, "ok": False}
+        stop = entry - RISK_K * atr if side == "buy" else entry + RISK_K * atr
+    if abs(entry - stop) <= 0:
+        return {**upstream_error("whatif", "entry equals stop; risk is zero"),
+                "symbol": sym, "ok": False}
+
+    br = get_broker(EQUITY, client, risk)
+    fx = await _fx_rate(sym) or 1.0
+    equity_quote = br.equity * fx
+
+    # Size: caller's, else what the risk engine would put on this trade.
+    size_quote = float(body.get("size_quote") or 0.0)
+    sized_by = "caller"
+    if size_quote <= 0:
+        plan = risk.evaluate(sym, side, entry, abs(entry - stop) / RISK_K, tf,
+                             equity_quote=equity_quote, preview=True)
+        if plan.blocked:
+            # Name the actual gate. Reporting "sizing" for an armed kill switch
+            # sends the reader looking at ATR and position maths.
+            why = "halted" if "kill-switch-armed" in plan.warnings else "sizing"
+            return {"ok": False, "symbol": sym, "side": side, "blocked": True,
+                    "blocked_by": why, "detail": plan.warnings,
+                    "message": ("the kill switch is armed"
+                                if why == "halted"
+                                else "the risk engine would not size this trade"),
+                    **provenance()}
+        size_quote = plan.size_quote
+        sized_by = "risk-engine"
+    qty = size_quote / entry
+    notional_quote = qty * entry
+    fee_quote = notional_quote * PAPER_FEE_PCT
+
+    notional_usd = notional_quote / fx
+    fee_usd = fee_quote / fx
+    risk_usd = abs(entry - stop) * qty / fx
+
+    open_positions = len([p for p in br.positions.values() if p.state != "CLOSED"])
+    pf = preflight(
+        equity=br.equity, cash=br.cash,
+        open_heat=getattr(risk, "open_heat", 0.0),
+        open_positions=open_positions,
+        concurrent_limit=br.concurrent_limit,
+        max_heat_pct=risk.cfg.max_heat_pct,
+        min_cash_pct=risk.cfg.min_cash_pct,
+        max_single_asset_pct=risk.cfg.max_single_asset_pct,
+        risk_pct_cap=risk.cfg.risk_pct,
+        halted=bool(br.halted or risk.halted),
+        notional_usd=notional_usd, fee_usd=fee_usd, risk_usd=risk_usd,
+    )
+    out = pf.summary()
+    audit("risk.whatif", actor="ui", detail={"symbol": sym, "side": side,
+                                             "blocked_by": out["blocked_by"]}, request=request)
+    return {
+        "ok": True,
+        "symbol": sym, "side": side, "tf": tf,
+        "entry": round(entry, 8), "stop": round(stop, 8),
+        "stop_pct": round(abs(entry - stop) / entry * 100, 3),
+        "size_quote": round(notional_quote, 2),
+        "qty": qty,
+        "quote": "IRT" if sym.endswith("IRT") else "USDT",
+        "sized_by": sized_by,
+        "atr_source": "signal" if atr > 0 else "none",
+        "projection": out,
         **provenance(),
     }
 

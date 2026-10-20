@@ -618,6 +618,24 @@
             <div class="rounded-lg bg-white/[.03] border border-white/5 p-2.5"><div class="text-zinc-500 text-[10px]">R:TP</div><div class="num font-bold" id="pRR">—</div></div>
             <div class="rounded-lg bg-white/[.03] border border-white/5 p-2.5"><div class="text-zinc-500 text-[10px]" data-i18n="dk.riskPct"></div><div class="num font-bold" id="pRiskPct">—</div></div>
           </div>
+          <!-- what-if (A2): the account after this trade, computed by the
+               same gate function the broker uses -->
+          <div id="whatifBox" class="mt-2.5 rounded-lg border border-white/10 bg-white/[.02] p-2.5">
+            <div class="flex items-center justify-between text-[10px] text-zinc-500">
+              <span data-i18n="dk.whatif">اگر این معامله را بگذارم</span>
+              <span id="whatifSrc" class="num"></span>
+            </div>
+            <div class="mt-2 flex items-center gap-2">
+              <span class="text-[10px] text-zinc-500 w-14 shrink-0" data-i18n="dk.heat">حرارت</span>
+              <div class="bar-wrap flex-1"><div class="bar-fill" id="whatifHeatBar" style="width:0%"></div></div>
+              <span class="num text-[11px] font-bold w-20 text-end" id="whatifHeat">—</span>
+            </div>
+            <div class="mt-2 grid grid-cols-2 gap-2 text-[10px]">
+              <div><span class="text-zinc-500" data-i18n="dk.worstCase">بدترین حالت (استاپ)</span><div class="num font-bold" id="whatifWorst">—</div></div>
+              <div><span class="text-zinc-500" data-i18n="dk.slots">جای خالی پوزیشن</span><div class="num font-bold" id="whatifSlots">—</div></div>
+            </div>
+            <div id="whatifGate" class="mt-2 text-[10px] leading-5"></div>
+          </div>
           <div id="capWarn" class="mt-2.5 text-[10px] leading-5 rounded-lg p-2.5 border"></div>
           <button id="mSubmit" class="hold-btn mt-3 w-full py-3 rounded-xl border border-sky-400/40 bg-sky-500/10 font-bold text-sm text-sky-200">
             <span class="fill" style="background:linear-gradient(90deg,rgba(56,189,248,.3),rgba(56,189,248,.6))"></span>
@@ -1245,6 +1263,9 @@ const T = {
     'dk.stop':'قیمت استاپ',
     'dk.ticket':'بلیت سفارش','dk.symbol':'نماد',
     'dk.submit':'برای ثبت، نگه دارید','dk.ticketNote':'سفارش دستی نیز از دروازه‌های ریسک و clientOrderId عبور می‌کند (ADR-0013).',
+    'dk.whatif':'اگر این معامله را بگذارم','dk.heat':'حرارت','dk.worstCase':'بدترین حالت (استاپ)','dk.slots':'جای خالی پوزیشن',
+    'dk.whatifServer':'از سرور','dk.whatifNoServer':'سرور در دسترس نیست — پیش‌نمایش سبد محاسبه نشد',
+    'dk.whatifBlocked':'مسدود می‌شود: ','dk.whatifOk':'همهٔ دروازه‌ها باز است',
     'dk.tApproved':'سفارش تأیید و ارسال شد','dk.tApprovedM':'پلن اجرا شد؛ در لاگ حسابرسی با برچسب نیمه‌خودکار ثبت شد.',
     'dk.tRejected':'سیگنال رد شد','dk.tRejectedM':'رد انسانی در گزارش عملکرد (ADR-0012) برچسب‌گذاری شد.',
     'dk.tManual':'سفارش دستی ثبت شد','dk.tManualM':'سفارش با clientOrderId به ماشین‌حالت اجرا سپرده شد.',
@@ -1429,6 +1450,9 @@ const T = {
     'dk.queue':'Approval queue','dk.queueSub':'Proposals auto-expire when their TTL elapses','ob.unavailable':'Order book unavailable','dk.price':'Entry price','dk.amount':'Size','dk.notional':'Notional','dk.riskAmt':'Risk amount','dk.riskPct':'Risk/equity','dk.audit':'Audit trail','dk.actor':'Actor','dk.action':'Action','dk.detail':'Details',
     'dk.approve':'Approve & send','dk.reject':'Reject','dk.expired':'Expired','dk.edit':'Edit',
     'dk.ok':'Within limits — risk caps satisfied','dk.warn1':'Per-trade risk exceeds the 0.75% cap','dk.warn2':'Single-asset exposure would exceed the 25% cap','dk.warn3':'R:TP ratio below 1.5 — questionable payoff',
+    'dk.whatif':'If I take this trade','dk.heat':'Heat','dk.worstCase':'Worst case (stop)','dk.slots':'Position slots left',
+    'dk.whatifServer':'from server','dk.whatifNoServer':'Server unreachable — portfolio projection not computed',
+    'dk.whatifBlocked':'Would be blocked: ','dk.whatifOk':'All gates open',
     'dk.stop':'Stop price',
     'dk.ticket':'Order ticket','dk.symbol':'Symbol',
     'dk.submit':'Hold to place order','dk.ticketNote':'Manual orders also pass the risk gates and receive a clientOrderId (ADR-0013).',
@@ -3951,6 +3975,74 @@ function fxOf(sym){
   const prem = (window.NBX && NBX.core && NBX.core.engine && NBX.core.engine.premium) || 0;
   return (sym && sym.endsWith('IRT') && prem > 0) ? prem : 1;
 }
+let whatifTimer = null, whatifSeq = 0;
+function scheduleWhatIf(){
+  clearTimeout(whatifTimer);
+  const seq = ++whatifSeq;
+  whatifTimer = setTimeout(()=>refreshWhatIf(seq), 350);
+}
+/* Ask the server for the account projection. Every gate shown here comes from
+ * `risk_engine.preflight`, the function the broker itself runs, so this panel
+ * cannot promise a trade the broker would reject. */
+async function refreshWhatIf(seq){
+  const {sym,side,price,amount,stop} = manual;
+  const box = byId('whatifBox'), src = byId('whatifSrc'), gate = byId('whatifGate');
+  if(!box) return;
+  if(!price || !amount){
+    ['whatifHeat','whatifWorst','whatifSlots'].forEach(k=>{ const e=byId(k); if(e) e.textContent='—'; });
+    byId('whatifHeatBar').style.width = '0%';
+    gate.className = 'mt-2 text-[10px] leading-5 text-zinc-500';
+    gate.textContent = t('dk.ticketNote');
+    if(src) src.textContent = '';
+    return;
+  }
+  const api = window.NBX && NBX.core && NBX.core.api;
+  if(!api || !api.postWhatIf){
+    gate.className = 'mt-2 text-[10px] leading-5 text-red-300';
+    gate.textContent = t('dk.whatifNoServer');
+    return;
+  }
+  try {
+    const r = await api.postWhatIf({ symbol:sym, side, entry:price, stop:stop||null,
+                                     size_quote:price*amount });
+    if(seq !== whatifSeq) return;          // a newer keystroke already asked
+    if(!r || r.ok === false){
+      gate.className = 'mt-2 text-[10px] leading-5 text-red-300';
+      gate.textContent = t('dk.whatifNoServer');
+      if(src) src.textContent = '';
+      return;
+    }
+    const p = r.projection || {};
+    if(byId('whatifSrc')) byId('whatifSrc').textContent = t('dk.whatifServer');
+    const after = Number(p.heat_after), max = Number(p.max_heat) || 6;
+    byId('whatifHeat').textContent = `${PC(after,2,false)} / ${PC(max,0,false)}`;
+    const bar = byId('whatifHeatBar');
+    // A bar that rounds to 0 % is indistinguishable from "no risk at all".
+    // Keep a sliver of fill whenever the trade risks anything.
+    const pctW = Math.min(100, after/max*100);
+    // `animateBars()` resets every .bar-fill to its data-w when a tab is shown,
+    // so the value has to live there too — otherwise switching tabs and back
+    // silently emptied this bar while the number beside it stayed correct.
+    const shown = after > 0 ? Math.max(2, pctW) : 0;
+    bar.dataset.w = shown.toFixed(1);
+    bar.style.width = shown.toFixed(1)+'%';
+    bar.style.background = after > max ? 'linear-gradient(90deg,#f87171,#ef4444)'
+                          : after > max*0.75 ? 'linear-gradient(90deg,#fbbf24,#f59e0b)'
+                          : 'linear-gradient(90deg,#34d399,#10b981)';
+    byId('whatifWorst').textContent = `${PC(p.loss_at_stop_pct_of_equity,2,false)} (${fmtNum(p.loss_at_stop_usd)} ${LANG==='fa'?'دلار':'USD'})`;
+    byId('whatifSlots').textContent = fmtNum(p.slots_left,0) + ' / ' + fmtNum(p.max_concurrent,0);
+    if(p.blocked){
+      gate.className = 'mt-2 text-[10px] leading-5 text-red-300';
+      gate.textContent = t('dk.whatifBlocked') + (p.blocked_by || '?');
+    } else {
+      gate.className = 'mt-2 text-[10px] leading-5 text-emerald-300';
+      gate.textContent = t('dk.whatifOk');
+    }
+  } catch(e){
+    gate.className = 'mt-2 text-[10px] leading-5 text-red-300';
+    gate.textContent = t('dk.whatifNoServer');
+  }
+}
 function updateTicket(){
   const {sym,side,price,amount,stop,tp} = manual;
   const w0 = byId('capWarn');
@@ -3959,6 +4051,7 @@ function updateTicket(){
     if(w0){ w0.setAttribute('data-unavailable','1'); w0.className='mt-2.5 text-[10px] leading-5 rounded-lg p-2.5 border border-red-400/30 bg-red-400/[.07] text-red-300';
       w0.innerHTML = `<div class="flex gap-1.5">${icon('plug-zap','w-3.5 h-3.5 shrink-0 mt-0.5')}<span>${LANG==='fa'?'سرور نوبیتکس در دسترس نیست — قیمتی برای این بلیت دریافت نشد؛ عدد جای‌گزین نمی‌شود.':'Nobitex unreachable — no price was received for this ticket; nothing is substituted.'}</span></div>`; }
     refreshIcons();
+    scheduleWhatIf();
     return;
   }
   if(w0) w0.removeAttribute('data-unavailable');   // recovered: drop the stale marker
@@ -3983,6 +4076,7 @@ function updateTicket(){
     w.innerHTML = warns.map(([k])=>`<div class="flex gap-1.5">${icon('triangle-alert','w-3.5 h-3.5 shrink-0 mt-0.5')}${t(k)}</div>`).join(''); }
   else { w.className='mt-2.5 text-[10px] leading-5 rounded-lg p-2.5 border border-emerald-400/30 bg-emerald-400/[.07] text-emerald-300';
     w.innerHTML = `<div class="flex gap-1.5">${icon('badge-check','w-3.5 h-3.5 shrink-0 mt-0.5')}${t('dk.ok')}</div>`; }
+  scheduleWhatIf();
   refreshIcons();
 }
 function submitManual(){

@@ -29,10 +29,17 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 ROOT = Path(__file__).resolve().parents[1]
-BASE_PX = {"BTCIRT": 88_400_000_000.0, "ETHIRT": 310_000_000_000.0,
-           "TONIRT": 780_000.0, "SOLIRT": 148.0, "XRPIRT": 62_000.0,
-           "ADAIRT": 41_000.0, "DOGEIRT": 9_200.0, "TRXIRT": 21_500.0,
-           "USDTIRT": 1_012_000.0}
+#: One coherent price table. The USDT legs are the anchor and every IRT price
+#: is derived from them at a single toman rate, because a fixture whose
+#: BTCIRT/USDTIRT ratio implies a 76 % premium (or an ETH worth $3 m) wastes
+#: the reader's time on numbers that could never come from one exchange.
+USD_IRT = 101_200.0
+BASE_USDT = {"BTC": 88_400.0, "ETH": 3_100.0, "TON": 7.8, "SOL": 148.0,
+             "XRP": 0.62, "ADA": 0.41, "DOGE": 0.092, "TRX": 0.215}
+
+#: Kept for callers that name an IRT pair directly.
+BASE_PX = {f"{k}IRT": v * USD_IRT for k, v in BASE_USDT.items()}
+BASE_PX["USDTIRT"] = USD_IRT
 TF_SEC = {"15m": 900, "1h": 3600, "4h": 14400, "D": 86400}
 
 
@@ -43,8 +50,15 @@ def price(sym: str) -> float:
 
 
 def base_price(sym: str) -> float:
+    sym = sym.upper()
     if sym in BASE_PX:
         return BASE_PX[sym]
+    if sym.endswith("USDT") and sym[:-4] in BASE_USDT:
+        return BASE_USDT[sym[:-4]]
+    if sym.endswith("IRT") and sym[:-3] in BASE_USDT:
+        return BASE_USDT[sym[:-3]] * USD_IRT
+    # Unknown symbol: a stable, obviously-fake price is better than a random
+    # one, but the caller should not be reading this in the first place.
     seed = sum(ord(c) for c in sym)
     return 500.0 + seed * 37.0
 

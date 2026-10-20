@@ -36,6 +36,134 @@ class RiskConfig:
     max_risk_pct: float = 2.0          # hard ceiling
 
 
+@dataclass
+class Gate:
+    """One admission rule, with the numbers that decided it."""
+    id: str
+    ok: bool
+    value: float | None = None
+    limit: float | None = None
+    detail: str = ""
+
+
+@dataclass
+class Preflight:
+    """What would happen to the account if this order were placed.
+
+    Pure data: no I/O, no state change. The paper broker runs it to decide
+    whether to accept an order, and `/api/risk/whatif` runs it to *show* the
+    same decision before it is placed. One implementation, so the preview
+    cannot disagree with the executor — a preview that lies is worse than no
+    preview, because it is believed.
+    """
+    equity: float
+    notional_usd: float
+    fee_usd: float
+    risk_usd: float
+    risk_pct: float
+    heat_before: float
+    heat_after: float
+    max_heat: float
+    open_positions: int
+    max_concurrent: int
+    cash_before: float
+    cash_after: float
+    min_cash: float
+    loss_at_stop_usd: float
+    gates: list[Gate] = field(default_factory=list)
+
+    @property
+    def blocked(self) -> bool:
+        return any(not g.ok for g in self.gates)
+
+    def first_block(self) -> Gate | None:
+        return next((g for g in self.gates if not g.ok), None)
+
+    def summary(self) -> dict:
+        return {
+            "equity": round(self.equity, 2),
+            "notional_usd": round(self.notional_usd, 2),
+            "fee_usd": round(self.fee_usd, 2),
+            "risk_usd": round(self.risk_usd, 2),
+            "risk_pct": round(self.risk_pct, 3),
+            "heat_before": round(self.heat_before, 3),
+            "heat_after": round(self.heat_after, 3),
+            "max_heat": self.max_heat,
+            "heat_headroom_pct": round(max(0.0, self.max_heat - self.heat_after), 3),
+            "open_positions": self.open_positions,
+            "max_concurrent": self.max_concurrent,
+            "slots_left": max(0, self.max_concurrent - self.open_positions - 1),
+            "cash_before": round(self.cash_before, 2),
+            "cash_after": round(self.cash_after, 2),
+            "min_cash": round(self.min_cash, 2),
+            "loss_at_stop_usd": round(self.loss_at_stop_usd, 2),
+            "loss_at_stop_pct_of_equity": round(
+                self.loss_at_stop_usd / self.equity * 100 if self.equity else 0.0, 3),
+            "blocked": self.blocked,
+            "blocked_by": (self.first_block().id if self.first_block() else None),
+            "gates": [{"id": g.id, "ok": g.ok, "value": None if g.value is None else round(g.value, 3),
+                       "limit": None if g.limit is None else round(g.limit, 3),
+                       "detail": g.detail} for g in self.gates],
+        }
+
+
+def preflight(*, equity: float, cash: float, open_heat: float, open_positions: int,
+              concurrent_limit: int, max_heat_pct: float, min_cash_pct: float,
+              max_single_asset_pct: float, risk_pct_cap: float,
+              halted: bool, notional_usd: float, fee_usd: float,
+              risk_usd: float) -> Preflight:
+    """Evaluate every admission gate for one candidate order.
+
+    Mirrors the checks in `PaperBroker.place_limit` exactly — same order, same
+    thresholds, same arithmetic. If they ever diverge, the what-if panel starts
+    promising trades the broker will reject.
+    """
+    equity = max(float(equity or 0.0), 1e-9)
+    risk_pct = float(risk_usd) / equity * 100
+    heat_before = float(open_heat or 0.0)
+    # A rejected order must not move heat; report the projected value anyway and
+    # let the gate list explain why it would not happen.
+    heat_after = heat_before + risk_pct
+    min_cash = float(min_cash_pct) / 100 * equity
+    cash_after = float(cash) - (notional_usd + fee_usd)
+
+    gates = [
+        Gate("halted", not halted, None, None,
+             "kill switch is armed" if halted else ""),
+        Gate("concurrent-cap", open_positions < concurrent_limit,
+             float(open_positions), float(concurrent_limit),
+             f"{open_positions} of {concurrent_limit} slots in use"),
+        Gate("cash-present", float(cash) > 0, float(cash), 0.0,
+             "paper account is empty" if float(cash) <= 0 else ""),
+        Gate("single-asset-cap", notional_usd <= max_single_asset_pct / 100 * equity,
+             notional_usd / equity * 100, float(max_single_asset_pct),
+             f"notional {notional_usd / equity * 100:.2f}% of equity"),
+        # The broker allows 5 % slack over the configured per-trade risk; the
+        # preview has to allow the same or it will block trades that fill.
+        Gate("risk-cap", risk_pct <= float(risk_pct_cap) * 1.05,
+             risk_pct, float(risk_pct_cap),
+             f"this order risks {risk_pct:.2f}% of equity"),
+        Gate("heat-cap", heat_after <= float(max_heat_pct), heat_after, float(max_heat_pct),
+             f"heat {heat_before:.2f}% + {risk_pct:.2f}% = {heat_after:.2f}%"),
+        Gate("min-cash", cash_after >= min_cash, cash_after, min_cash,
+             f"cash after the order ${cash_after:,.2f}, floor ${min_cash:,.2f}"),
+        Gate("funds", cash_after >= 0, cash_after, 0.0,
+             f"needs ${notional_usd + fee_usd:,.2f}, available ${cash:,.2f}"),
+    ]
+    return Preflight(
+        equity=equity, notional_usd=notional_usd, fee_usd=fee_usd,
+        risk_usd=risk_usd, risk_pct=risk_pct,
+        heat_before=heat_before, heat_after=heat_after,
+        max_heat=float(max_heat_pct), open_positions=int(open_positions),
+        max_concurrent=int(concurrent_limit), cash_before=float(cash),
+        cash_after=cash_after, min_cash=min_cash,
+        # Losing the full stop distance plus the entry fee is the real worst
+        # case; quoting only the stop distance understates it.
+        loss_at_stop_usd=float(risk_usd) + float(fee_usd),
+        gates=gates,
+    )
+
+
 class RiskEngine:
     def __init__(self, cfg: RiskConfig):
         self.cfg = cfg

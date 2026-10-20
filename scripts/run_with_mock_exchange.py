@@ -40,6 +40,11 @@ UNIVERSE = ("BTCIRT", "ETHIRT", "SOLIRT", "XRPIRT", "ADAIRT", "DOGEIRT",
             "BTCUSDT", "USDTIRT")
 
 
+#: Derived price per symbol, so the candle series can be put on the same scale
+#: as the market board. Filled by the stats read, which always runs first.
+_PRICES: dict[str, float] = {}
+
+
 def _wire_exchange(base: str) -> None:
     """Feed the app's client from the exchange fixture, without HTTP to itself.
 
@@ -65,11 +70,20 @@ def _wire_exchange(base: str) -> None:
                 }
         if not out:
             raise RuntimeError("exchange fixture returned no candles")
-        # The fixture prices each symbol independently, which makes the implied
-        # premium meaningless. Re-derive the USDT leg from the other two so the
-        # premium panel shows something plausible instead of -76 %.
-        if {"BTCIRT", "BTCUSDT", "USDTIRT"} <= set(out):
-            out["USDTIRT"]["latest"] = out["BTCIRT"]["latest"] / out["BTCUSDT"]["latest"] * 1.012
+        # The fixture prices each symbol independently, so an IRT pair and its
+        # USDT twin end up on unrelated scales — which makes the implied premium
+        # and every USD conversion meaningless. Anchor the whole board to one
+        # plausible toman rate instead: USDTIRT ≈ 100,000 IRT, then rebuild each
+        # IRT price from its USDT twin.
+        # The fixture's table is already coherent; read its toman rate rather
+        # than imposing one here, so the two files cannot disagree.
+        usd_irt = out.get("USDTIRT", {}).get("latest") or 101_200.0
+        for sym, row in out.items():
+            if sym.endswith("IRT") and sym != "USDTIRT":
+                twin = out.get(sym.replace("IRT", "USDT"))
+                if twin:
+                    row["latest"] = twin["latest"] * usd_irt
+        _PRICES.update({sym: row["latest"] for sym, row in out.items()})
         return {"status": "ok", "stats": out}
 
     async def get_udf_history(symbol: str, resolution: str, from_ts: int, to_ts: int) -> dict:
@@ -83,6 +97,13 @@ def _wire_exchange(base: str) -> None:
             now = (int(time.time()) // 60) * 60
             shift = now - rows[-1]["t"]
             rows = [{**x, "t": x["t"] + shift} for x in rows]
+            # Put the series on the market board's scale, otherwise the chart
+            # quotes a different price than the ticker next to it.
+            target = _PRICES.get(symbol.upper())
+            if target and rows[-1]["c"] > 0:
+                k = target / rows[-1]["c"]
+                rows = [{**x, "o": x["o"] * k, "h": x["h"] * k,
+                         "l": x["l"] * k, "c": x["c"] * k} for x in rows]
         return {"s": "ok", "t": [int(x["t"] / 1000) for x in rows],
                 "o": [x["o"] for x in rows], "h": [x["h"] for x in rows],
                 "l": [x["l"] for x in rows], "c": [x["c"] for x in rows],

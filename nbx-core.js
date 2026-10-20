@@ -914,6 +914,21 @@
       };
     }
 
+    async postWhatIf(body) {
+      // The server owns the risk rules; the ticket must ask it rather than
+      // repeat the caps in JavaScript (they drifted once already: 0.75 / 25
+      // were hard-coded in the page).
+      if (this.standaloneMobile) return null;
+      const res = await fetch(cfg.pythonApi + '/risk/whatif', {
+        method: 'POST',
+        headers: this._authHeaders(),
+        body: JSON.stringify(body || {}),
+      });
+      const r = await res.json();
+      if (!res.ok) throw new NBXError('DATA', (r && r.detail) || 'whatif failed');
+      return r;
+    }
+
     async getBackendRiskPlan(symbol, side) {
       if (!this.standaloneMobile) {
         try {

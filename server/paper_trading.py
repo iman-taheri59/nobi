@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Any
 
 from nobitex_client import NobitexClient
-from risk_engine import RiskEngine, RiskPlan
+from risk_engine import Preflight, RiskEngine, RiskPlan, preflight
 
 log = logging.getLogger("paper-trading")
 
@@ -88,6 +88,8 @@ class PaperBroker:
         self.concurrent_limit = 5
         self.usdt_irt = 0.0          # cached FX rate for IRT-quoted pairs
         self.halted = False
+        #: The gate breakdown from the last order attempt, for the what-if panel.
+        self.last_preflight: Preflight | None = None
         self.last_error: str | None = None
         self.load()
 
@@ -216,37 +218,33 @@ class PaperBroker:
             return None
 
         # Per-trade risk + portfolio heat + cash buffer gates (ADR-0008).
+        # Evaluated by the shared `preflight`, which /api/risk/whatif also calls:
+        # a preview that used its own copy of these rules would eventually
+        # promise trades this function rejects.
         stop_px = stop or fill_price * (0.96 if side == "buy" else 1.04)
         risk_amount = abs(fill_price - stop_px) * filled_qty
         risk_usd = risk_amount / rate
         risk_pct = risk_usd / max(self.equity, 1e-9) * 100
-        max_risk = getattr(self.risk.cfg, "risk_pct", 0.75) * 1.05
-        if risk_pct > max_risk:
-            self.last_error = (
-                f"risk-cap: this order risks {risk_pct:.2f}% of equity, cap is {max_risk:.2f}%"
-            )
-            self.orders.append(OrderEvent(time.time(), "reject", symbol, side, qty, fill_price, {"reason": "risk-cap"}))
-            return None
-        max_heat = getattr(self.risk.cfg, "max_heat_pct", 6.0)
-        if getattr(self.risk, "open_heat", 0.0) + risk_pct > max_heat:
-            self.last_error = (
-                f"heat-cap: open heat {self.risk.open_heat:.2f}% + {risk_pct:.2f}% > {max_heat:.2f}%"
-            )
-            self.orders.append(OrderEvent(time.time(), "reject", symbol, side, qty, fill_price, {"reason": "heat-cap"}))
-            return None
-        min_cash = getattr(self.risk.cfg, "min_cash_pct", 10.0) / 100 * self.equity
-        if self.cash - total_cost < min_cash:
-            self.last_error = (
-                f"min-cash: trade would leave ${self.cash - total_cost:,.2f}, floor is ${min_cash:,.2f}"
-            )
-            self.orders.append(OrderEvent(time.time(), "reject", symbol, side, qty, fill_price, {"reason": "min-cash"}))
-            return None
-
-        if total_cost > self.cash:
-            self.last_error = (
-                f"insufficient-funds: need ${total_cost:,.2f}, available ${self.cash:,.2f}"
-            )
-            self.orders.append(OrderEvent(time.time(), "reject", symbol, side, qty, fill_price, {"reason": "insufficient-funds"}))
+        self.last_preflight = preflight(
+            equity=self.equity, cash=self.cash,
+            open_heat=getattr(self.risk, "open_heat", 0.0),
+            open_positions=len([p for p in self.positions.values() if p.state != "CLOSED"]),
+            concurrent_limit=self.concurrent_limit,
+            max_heat_pct=getattr(self.risk.cfg, "max_heat_pct", 6.0),
+            min_cash_pct=getattr(self.risk.cfg, "min_cash_pct", 10.0),
+            max_single_asset_pct=getattr(self.risk.cfg, "max_single_asset_pct", 25.0),
+            risk_pct_cap=getattr(self.risk.cfg, "risk_pct", 0.75),
+            halted=bool(self.halted or getattr(self.risk, "halted", False)),
+            notional_usd=notional_usd, fee_usd=fee_usd, risk_usd=risk_usd,
+        )
+        # single-asset-cap is enforced above, before the fee is known; the rest
+        # are decided here.
+        skip = {"halted", "concurrent-cap", "cash-present", "single-asset-cap"}
+        block = next((g for g in self.last_preflight.gates if not g.ok and g.id not in skip), None)
+        if block is not None:
+            self.last_error = f"{block.id}: {block.detail}"
+            self.orders.append(OrderEvent(time.time(), "reject", symbol, side, qty, fill_price,
+                                          {"reason": block.id}))
             return None
 
         # take position
