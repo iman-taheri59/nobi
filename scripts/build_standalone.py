@@ -46,7 +46,10 @@ def check_css_freshness() -> None:
         raise SystemExit("assets/css/tailwind.css is missing — run: npm run css")
     sources = [ROOT / "index.html", ROOT / "nbx-app.js"]
     newest = max(p.stat().st_mtime for p in sources if p.exists())
-    if css.stat().st_mtime < newest:
+    # One second of tolerance: a fresh checkout (or a restored workspace) can
+    # stamp every file with the same second, and a sub-second difference is not
+    # evidence that a class was added without rebuilding the CSS.
+    if css.stat().st_mtime + 1.0 < newest:
         raise SystemExit(
             "assets/css/tailwind.css is older than the markup it styles.\n"
             "Classes added since the last build are missing from the CSS.\n"
