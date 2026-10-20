@@ -246,6 +246,20 @@
         </div>
       </div>
 
+      <!-- A6: what the market did — breadth, dispersion, concentration.
+           There is no index here because there is no cap table to build one
+           from; the numbers are computed from the exchange's own tickers. -->
+      <div class="glass p-4 sm:p-5">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+          <div class="font-bold text-[13px] sm:text-sm flex items-center gap-2">
+            <i data-lucide="gauge" class="w-4 h-4 text-teal-300"></i>
+            <span data-i18n="mk.hdr"></span>
+          </div>
+          <span id="mkSrc" class="text-[10px] text-zinc-500 num"></span>
+        </div>
+        <div id="mkBody" class="mt-1"></div>
+      </div>
+
       <div class="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4">
         <div class="glass p-4 sm:p-5 lg:col-span-2">
           <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
@@ -494,6 +508,27 @@
           <span id="stageNow" class="chip text-[10px]" data-unavailable="1">—</span>
           <span id="stageWhy" class="text-[10px] text-zinc-500 leading-5"></span>
         </div>
+      </div>
+
+      <!-- A7: performance against the market, not against zero -->
+      <div class="glass p-4 sm:p-5">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+          <div class="font-bold text-[13px] sm:text-sm flex items-center gap-2">
+            <i data-lucide="target" class="w-4 h-4 text-cyan-300"></i>
+            <span data-i18n="bm.hdr"></span>
+          </div>
+          <div class="flex items-center gap-2">
+            <label class="text-[10px] text-zinc-500" for="bmBench" data-i18n="bm.bench"></label>
+            <select id="bmBench" class="text-[10px] sm:text-[11px] bg-white/5 text-zinc-300 border border-white/10 rounded-lg px-2 py-1">
+              <option value="BTCIRT">BTC/IRT</option>
+              <option value="ETHIRT">ETH/IRT</option>
+              <option value="USDTIRT">USDT/IRT</option>
+            </select>
+            <button id="bmRun" class="px-2.5 py-1 rounded-lg border border-cyan-400/40 bg-cyan-500/10 text-[10px] font-bold text-cyan-200" data-i18n="bm.run"></button>
+          </div>
+        </div>
+        <div class="text-[10px] sm:text-[11px] text-zinc-500 leading-5" data-i18n="bm.sub"></div>
+        <div id="bmBody" class="mt-3"></div>
       </div>
 
       <!-- KPI row -->
@@ -1285,6 +1320,17 @@ const T = {
     'dk.whatif':'اگر این معامله را بگذارم','dk.heat':'حرارت','dk.worstCase':'بدترین حالت (استاپ)','dk.slots':'جای خالی پوزیشن',
     'dk.whatifServer':'از سرور','dk.whatifNoServer':'سرور در دسترس نیست — پیش‌نمایش سبد محاسبه نشد',
     'dk.whatifBlocked':'مسدود می‌شود: ','dk.whatifOk':'همهٔ دروازه‌ها باز است',
+    'mk.hdr':'وضعیت بازار','mk.up':'بالا','mk.down':'پایین','mk.flat':'بی‌تغییر','mk.breadth':'گستردگی (۲۴س)',
+    'mk.sub':'سهم نمادهای مثبت، تغییر میانگین با وزن گردش دلاری، پراکندگی، و تمرکز گردش. «شاخص» نیست: میانگین وزنی تغییرِ نمادهای پوشش‌داده‌شده است.',
+    'mk.median':'میانهٔ تغییر','mk.weighted':'میانگین وزنی گردش','mk.disp':'پراکندگی','mk.conc':'سهم ۳ نماد اول','mk.turnover':'گردش ۲۴س (دلار)',
+    'mk.leaders':'پیشتازان','mk.laggards':'عقب‌مانده‌ها','mk.prem':'پرمیوم USDTIRT','mk.mix':'ترکیب سیگنال','mk.avgComp':'میانگین کامپوزیت',
+    'mk.noServer':'سرور پاسخ نداد — عددی نمایش داده نمی‌شود.','mk.empty':'گزارش بازار در دسترس نیست.',
+    'mk.allDown':'همه منفی','mk.allUp':'همه مثبت',
+    'bm.hdr':'عملکرد نسبت به بازار','bm.bench':'معیار','bm.run':'محاسبه','bm.working':'در حال محاسبه…',
+    'bm.sub':'بازده مطلق گمراه می‌کند: ۱۲٪ در بازاری که ۳۰٪ رشد کرده، باخت است. بتا و آلفا از کندل‌های مشترک محاسبه می‌شوند؛ این آمار گذشته است، نه پیش‌بینی.',
+    'bm.col.beta':'بتا','bm.col.alpha':'آلفا (سالانه)','bm.col.rel':'نسبت به معیار','bm.col.te':'خطای ردیابی','bm.col.ir':'نسبت اطلاعات','bm.col.cap':'ضبط صعود/نزول',
+    'bm.summary':'میانگین تابلویی','bm.beating':'نمادِ جلوتر از معیار','bm.noServer':'سرور پاسخ نداد — عددی نمایش داده نمی‌شود.','bm.empty':'داده‌ای برای مقایسه نیست.',
+    'bm.note':'آلفا = (میانگین بازده نماد − بتا × میانگین بازده معیار) × تعداد دوره در سال','bm.n':'دوره',
     'al.hdr':'سبد پیشنهادی (با همبستگی)','al.run':'محاسبه','al.working':'در حال محاسبه…',
     'al.sub':'حرارت سبد بین کاندیداهای LONG تقسیم می‌شود، با احتساب همبستگی بازده‌ها. هر ردیف همان دروازه‌هایی را می‌گذراند که بروکر بعداً اجرا می‌کند؛ تا وقتی «استفاده» را نزنید هیچ سفارشی ثبت نمی‌شود.',
     'al.risk':'ریسک','al.notional':'نامینال','al.stop':'فاصلهٔ استاپ','al.corr':'بیشترین همبستگی','al.why':'محدودکننده','al.use':'استفاده',
@@ -1479,6 +1525,17 @@ const T = {
     'dk.whatif':'If I take this trade','dk.heat':'Heat','dk.worstCase':'Worst case (stop)','dk.slots':'Position slots left',
     'dk.whatifServer':'from server','dk.whatifNoServer':'Server unreachable — portfolio projection not computed',
     'dk.whatifBlocked':'Would be blocked: ','dk.whatifOk':'All gates open',
+    'mk.hdr':'Market state','mk.up':'up','mk.down':'down','mk.flat':'flat','mk.breadth':'Breadth (24h)',
+    'mk.sub':'Share of symbols up, turnover-weighted average change, dispersion, and turnover concentration. Not an index: it is the weighted average move of the tracked symbols.',
+    'mk.median':'Median change','mk.weighted':'Turnover-weighted','mk.disp':'Dispersion','mk.conc':'Top-3 share','mk.turnover':'24h turnover (USD)',
+    'mk.leaders':'Leaders','mk.laggards':'Laggards','mk.prem':'USDTIRT premium','mk.mix':'Signal mix','mk.avgComp':'Avg composite',
+    'mk.noServer':'The server did not answer — no numbers are shown.','mk.empty':'The market report is unavailable.',
+    'mk.allDown':'all negative','mk.allUp':'all positive',
+    'bm.hdr':'Performance vs the market','bm.bench':'Benchmark','bm.run':'Compute','bm.working':'Computing…',
+    'bm.sub':'Absolute return misleads: 12 % in a market that made 30 % is a loss. Beta and alpha are computed on the bars both series share; this describes the past, it does not forecast.',
+    'bm.col.beta':'Beta','bm.col.alpha':'Alpha (annual)','bm.col.rel':'vs benchmark','bm.col.te':'Tracking err.','bm.col.ir':'Info ratio','bm.col.cap':'Up/down capture',
+    'bm.summary':'Board average','bm.beating':'ahead of the benchmark','bm.noServer':'The server did not answer — no numbers are shown.','bm.empty':'Nothing to compare yet.',
+    'bm.note':'alpha = (mean asset return − beta × mean benchmark return) × periods per year','bm.n':'bars',
     'al.hdr':'Suggested book (correlation-aware)','al.run':'Compute','al.working':'Computing…',
     'al.sub':'The heat budget is split across the board\'s LONG candidates with return correlation priced in. Each row passes the same gates the broker runs; nothing is placed until you press Use.',
     'al.risk':'Risk','al.notional':'Notional','al.stop':'Stop distance','al.corr':'Max corr.','al.why':'Bound by','al.use':'Use',
@@ -1683,8 +1740,10 @@ document.querySelectorAll('.navbtn').forEach(btn=>{
     closeSide();
     animateBars(pg);
     if(btn.dataset.tab==='backtest' && !inited.bt){ inited.bt=true; requestAnimationFrame(()=>setTimeout(drawBt,30)); }
-    if(btn.dataset.tab==='performance' && !inited.perf){ inited.perf=true; requestAnimationFrame(()=>setTimeout(async()=>{ await loadPerf(); drawCal(); },30)); }
+    if(btn.dataset.tab==='performance' && !inited.perf){ inited.perf=true; requestAnimationFrame(()=>setTimeout(async()=>{ await loadPerf(); drawCal(); loadBenchmark(); },30)); }
+    if(btn.dataset.tab==='performance' && inited.perf){ requestAnimationFrame(()=>setTimeout(()=>{ if(!bmState) loadBenchmark(); },30)); }
     if(btn.dataset.tab==='desk'){ requestAnimationFrame(()=>setTimeout(()=>{ runBookAlloc(false); },60)); }
+    if(btn.dataset.tab==='overview'){ requestAnimationFrame(()=>setTimeout(()=>{ loadMarketOverview(); },60)); }
     if(btn.dataset.tab==='risk'){ requestAnimationFrame(()=>setTimeout(()=>{ loadAudit(); },30)); }
     if(btn.dataset.tab==='settings'){ requestAnimationFrame(()=>setTimeout(()=>{ loadSettings(); },30)); }
     if(btn.dataset.tab==='errors'){
@@ -2065,6 +2124,10 @@ window.addEventListener('nbx:scan', ()=>{ try{ drawBt(); }catch(e){} });
 window.addEventListener('nbx:scan', ()=>{
   try{ if (typeof renderPositions === 'function') renderPositions(); }catch(e){}
   try{ if (typeof renderAlloc === 'function') renderAlloc(); }catch(e){}
+  // The market card lives on the first tab, which is shown before any scan has
+  // answered — without this it stays empty until the user navigates away.
+  try{ if (typeof loadMarketOverview === 'function') loadMarketOverview(); }catch(e){}
+  try{ if (typeof loadBenchmark === 'function' && bmState == null) loadBenchmark(); }catch(e){}
   try{ if (typeof renderNews === 'function') renderNews(); }catch(e){}
   try{ if (typeof renderOrders === 'function') renderOrders(); }catch(e){}
 });
@@ -3998,6 +4061,8 @@ function fillTicketFromLive(){
 }
 window.fillTicketFromLive = fillTicketFromLive;
 function initTicket(){
+  const bmRun = byId('bmRun'); if(bmRun) bmRun.onclick = ()=>loadBenchmark();
+  const bmSel = byId('bmBench'); if(bmSel) bmSel.onchange = ()=>loadBenchmark();
   const run = byId('allocRun'); if(run) run.onclick = ()=>runBookAlloc(true);
   byId('mSym').innerHTML = ticketSymbols().map(s=>`<option value="${s}">${s}</option>`).join('');
   byId('mSym').value = manual.sym;
@@ -4087,6 +4152,136 @@ async function refreshWhatIf(seq){
     gate.textContent = t('dk.whatifNoServer');
   }
 }
+/* ---- A6: breadth, dispersion, concentration ---- */
+let mkState = null;
+function mkMsg(msg, kind){
+  const b = byId('mkBody'); if(!b) return;
+  b.innerHTML = `<div class="rounded-lg p-2.5 text-[11px] leading-5 border ${
+    kind === 'err' ? 'border-red-400/30 bg-red-400/[.07] text-red-300'
+                   : 'border-white/10 bg-white/[.02] text-zinc-500'}">${msg}</div>`;
+}
+async function loadMarketOverview(){
+  const api = window.NBX && NBX.core && NBX.core.api;
+  if(!api || !api.getMarketOverview){ mkMsg(t('mk.noServer'), 'err'); return; }
+  try{ mkState = await api.getMarketOverview('15m'); }
+  catch(e){ mkState = null; mkMsg(t('mk.noServer'), 'err'); return; }
+  renderMarketOverview();
+}
+function renderMarketOverview(){
+  const d = mkState;
+  if(!d || d.ok !== true){
+    mkMsg((d && (d.reason || d.message || d.error)) || t('mk.empty'), 'err');
+    byId('mkSrc').textContent = '';
+    return;
+  }
+  const b = d.breadth || {}, c = d.change || {}, tn = d.turnover || {};
+  const sig = d.signals || {};
+  byId('mkSrc').textContent = d.as_of ? new Date(d.as_of).toLocaleTimeString('fa-IR') : '';
+  const upW = b.pct_up == null ? 0 : b.pct_up;
+  const chip = (x) => `<span class="chip num text-[10px] ${x>0?'text-emerald-300':x<0?'text-red-300':'text-zinc-400'}">${PC(x,2)}</span>`;
+  const mini = (rows) => (rows||[]).map(r=>`<div class="flex items-center justify-between gap-2">
+      <span class="num text-[11px] font-bold">${r.symbol}</span>
+      <span class="num text-[11px] ${r.change24 > 0 ? 'text-emerald-300' : r.change24 < 0 ? 'text-red-300' : 'text-zinc-400'}">${PC(r.change24,2)}</span></div>`).join('');
+  byId('mkBody').innerHTML = `
+    <div class="text-[10px] sm:text-[11px] text-zinc-500 leading-5 mb-3">${t('mk.sub')}</div>
+    <div class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-2.5 text-[11px]">
+      <div class="rounded-lg bg-white/[.03] border border-white/5 p-2.5">
+        <div class="text-zinc-500 text-[10px] mb-1">${t('mk.breadth')}</div>
+        <div class="num font-bold">${fmtNum(b.up,0)} / ${fmtNum(b.up+b.down+b.flat,0)}</div>
+        <div class="bar-wrap mt-1.5"><div class="bar-fill" id="mkBreadthBar" style="width:${upW}%" data-w="${upW}"></div></div>
+      </div>
+      <div class="rounded-lg bg-white/[.03] border border-white/5 p-2.5">
+        <div class="text-zinc-500 text-[10px] mb-1">${t('mk.median')}</div>
+        <div class="num font-bold">${PC(c.median_24h,2)}</div></div>
+      <div class="rounded-lg bg-white/[.03] border border-white/5 p-2.5">
+        <div class="text-zinc-500 text-[10px] mb-1">${t('mk.weighted')}</div>
+        <div class="num font-bold">${PC(c.vol_weighted_24h,2)}</div></div>
+      <div class="rounded-lg bg-white/[.03] border border-white/5 p-2.5">
+        <div class="text-zinc-500 text-[10px] mb-1">${t('mk.disp')}</div>
+        <div class="num font-bold">${fmtNum(c.dispersion_24h,2)}</div></div>
+      <div class="rounded-lg bg-white/[.03] border border-white/5 p-2.5">
+        <div class="text-zinc-500 text-[10px] mb-1">${t('mk.conc')}</div>
+        <div class="num font-bold">${PC(tn.top3_share_pct,1,false)}</div></div>
+      <div class="rounded-lg bg-white/[.03] border border-white/5 p-2.5">
+        <div class="text-zinc-500 text-[10px] mb-1">${t('mk.prem')}</div>
+        <div class="num font-bold">${d.premium_pct == null ? '—' : PC(d.premium_pct,2)}</div>
+        <div class="text-[10px] text-zinc-500 num mt-0.5">${d.fx && d.fx.last != null ? fmtNum(d.fx.last) : '—'}</div></div>
+    </div>
+    <div class="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3 text-[11px]">
+      <div><div class="text-[10px] text-zinc-500 mb-1.5">${t('mk.leaders')}${d.all_down ? ` · <span class="text-red-300">${t('mk.allDown')}</span>` : ''}</div>${mini(d.leaders) || '<span class="text-zinc-600">—</span>'}</div>
+      <div><div class="text-[10px] text-zinc-500 mb-1.5">${t('mk.laggards')}${d.all_up ? ` · <span class="text-emerald-300">${t('mk.allUp')}</span>` : ''}</div>${mini(d.laggards) || '<span class="text-zinc-600">—</span>'}</div>
+      <div>
+        <div class="text-[10px] text-zinc-500 mb-1.5">${t('mk.mix')}${sig.avg_composite != null ? ` · ${t('mk.avgComp')} ${fmtNum(sig.avg_composite,1)}` : ''}</div>
+        ${Object.entries(sig.directions || {}).map(([k,v])=>`<div class="flex items-center justify-between gap-2">
+            <span class="text-[11px]">${k}</span><span class="num text-[11px] font-bold">${fmtNum(v,0)}</span></div>`).join('') || '<span class="text-zinc-600">—</span>'}
+      </div>
+    </div>
+    <div class="mt-2.5 text-[10px] text-zinc-600 leading-5">${d.note || ''}</div>`;
+  const bar = byId('mkBreadthBar');
+  if(bar) bar.style.background = upW >= 55 ? 'linear-gradient(90deg,#34d399,#10b981)'
+                        : upW <= 45 ? 'linear-gradient(90deg,#f87171,#ef4444)'
+                        : 'linear-gradient(90deg,#fbbf24,#f59e0b)';
+  refreshIcons();
+}
+
+/* ---- A7: is the board beating the market it trades in? ---- */
+let bmState = null;
+function bmMsg(msg, kind){
+  const b = byId('bmBody'); if(!b) return;
+  b.innerHTML = `<div class="rounded-lg p-2.5 text-[11px] leading-5 border ${
+    kind === 'err' ? 'border-red-400/30 bg-red-400/[.07] text-red-300'
+                   : 'border-white/10 bg-white/[.02] text-zinc-500'}">${msg}</div>`;
+}
+async function loadBenchmark(){
+  const api = window.NBX && NBX.core && NBX.core.api;
+  if(!api || !api.postBenchmark){ bmMsg(t('bm.noServer'), 'err'); return; }
+  bmMsg(t('bm.working'), '');
+  try{
+    bmState = await api.postBenchmark({ tf:'1h', bench: (byId('bmBench')||{}).value || 'BTCIRT', lookback:240 });
+  }catch(e){ bmState = null; bmMsg(t('bm.noServer'), 'err'); return; }
+  renderBenchmark();
+}
+function renderBenchmark(){
+  const d = bmState, body = byId('bmBody');
+  if(!d || d.ok !== true){
+    bmMsg((d && (d.message || d.error)) || t('bm.noServer'), 'err'); return;
+  }
+  const rows = d.rows || [];
+  if(!rows.length){ bmMsg(d.error || t('bm.empty'), 'err'); return; }
+  const s = d.summary || {};
+  const num = (v, dec) => v == null ? '—' : fmtNum(v, dec);
+  const tr = rows.map(r=>{
+    const cap = (r.up_capture_pct == null && r.down_capture_pct == null) ? '—'
+      : `${fmtNum(r.up_capture_pct,0)}% / ${fmtNum(r.down_capture_pct,0)}%`;
+    const col = r.alpha_annual_pct > 0 ? 'text-emerald-300' : 'text-red-300';
+    return `<tr>
+      <td class="num font-bold">${r.symbol}</td>
+      <td class="num">${num(r.beta, 2)}</td>
+      <td class="num ${col}">${PC(r.alpha_annual_pct, 1)}</td>
+      <td class="num ${r.relative_return_pct >= 0 ? 'text-emerald-300' : 'text-red-300'}">${PC(r.relative_return_pct, 1)}</td>
+      <td class="num">${PC(r.tracking_error_pct, 1, false)}</td>
+      <td class="num">${num(r.info_ratio, 2)}</td>
+      <td class="num">${cap}</td>
+      <td class="num text-[10px] text-zinc-500">${fmtNum(r.n, 0)}</td>
+    </tr>`;
+  }).join('');
+  const dropped = d.dropped || [];
+  body.innerHTML = `
+    <div class="table-scroll"><table class="w-full min-w-[720px] text-[11px]">
+      <thead><tr><th>${t('col.symbol')}</th><th>${t('bm.col.beta')}</th><th>${t('bm.col.alpha')}</th>
+        <th>${t('bm.col.rel')}</th><th>${t('bm.col.te')}</th><th>${t('bm.col.ir')}</th>
+        <th>${t('bm.col.cap')}</th><th>${t('bm.n')}</th></tr></thead>
+      <tbody>${tr}</tbody></table></div>
+    <div class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-zinc-500">
+      <span>${t('bm.summary')} · ${d.bench}: <b class="num text-zinc-300">β ${num(s.beta,2)}</b></span>
+      <span>α: <b class="num ${s.alpha_annual_pct>0?'text-emerald-300':'text-red-300'}">${PC(s.alpha_annual_pct,1)}</b></span>
+      <span>${fmtNum(s.beating_benchmark,0)} / ${fmtNum(s.symbols,0)} ${t('bm.beating')}</span>
+      <span class="text-zinc-600">${t('bm.note')}</span>
+    </div>
+    ${dropped.length ? `<div class="mt-1.5 text-[10px] text-amber-300/90">${dropped.map(x=>`${x.symbol} (${x.reason})`).join(' · ')}</div>` : ''}`;
+  refreshIcons();
+}
+
 /* ---- A3: correlation-aware allocation of the heat budget ---- */
 let bookAllocState = null, bookAllocRan = false;
 function bookMsg(msg, kind){

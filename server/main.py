@@ -40,6 +40,8 @@ from fa_engine import FA_ENGINE, FAResult
 from risk_engine import RiskEngine, RiskConfig, preflight
 from portfolio import (Candidate, Limits, allocate as allocate_portfolio,
                        aligned_closes, log_returns)
+from benchmark import MIN_OBS as BENCH_MIN_OBS, PERIODS_PER_YEAR, relative as relative_to, summarise as summarise_relative
+from market_overview import overview as market_overview
 import paper_trading
 from paper_trading import FEE_PCT as PAPER_FEE_PCT, get_broker, PaperBroker
 from backtest import EventBacktester, WalkForwardRunner, run_and_save, grid_search, DEFAULT_GRID
@@ -1654,6 +1656,161 @@ async def portfolio_allocate(payload: dict, request: Request):
           detail={"tf": tf, "n": len(res.get("allocations", [])),
                   "invested_usd": res["totals"]["invested_usd"]}, request=request)
     return res
+
+
+@app.post("/api/benchmark/relative")
+async def benchmark_relative(payload: dict, request: Request):
+    """Return, beta, alpha and capture for each symbol against a benchmark.
+
+    Absolute return flatters a desk in a bull market and punishes it in a bear
+    one; neither answers "did the signal pick better than the market". This is
+    descriptive statistics over the candles both series share — not a forecast,
+    and not a portfolio number (weights live in the allocator).
+
+    Read-only. A symbol without enough overlap is dropped with the reason
+    instead of being given a beta from twelve bars.
+    """
+    body = payload or {}
+    tf = body.get("tf") if body.get("tf") in ("15m", "1h", "4h", "D") else "1h"
+    bench = str(body.get("bench") or "BTCIRT").upper()
+    try:
+        lookback = max(60, min(int(body.get("lookback") or 240), 400))
+    except (TypeError, ValueError):
+        return {"ok": False, "error": "lookback must be an integer"}
+
+    board = _cached.get("signals_by_tf", {}).get(tf) or _cached.get("signals") or {}
+    explicit = body.get("symbols")
+    if explicit is not None and not isinstance(explicit, list):
+        return {"ok": False, "error": "symbols must be a list"}
+    # Two exclusions, both about not comparing things that are the same thing:
+    #   * USDT/IRT is a currency pair, not an asset — "alpha vs BTC" for a
+    #     stablecoin is noise dressed as performance;
+    #   * BTC/USDT against a BTC/IRT benchmark measures the toman/BTC basis, not
+    #     BTC's performance.
+    # Either stays available when the caller names it explicitly.
+    def _base(sym: str) -> str:
+        for q in ("IRT", "USDT"):
+            if sym.endswith(q):
+                return sym[: -len(q)]
+        return sym
+
+    STABLE = {"USDTIRT"}
+
+    def _default_ok(sym: str) -> bool:
+        return sym != bench and sym not in STABLE and _base(sym) != _base(bench)
+
+    symbols = ([str(x).upper() for x in explicit][:12] if explicit
+               else [sym for sym in (board or {}) if _default_ok(sym)][:12])
+    symbols = [sym for sym in symbols if sym != bench]
+    if not symbols:
+        return {"ok": False, "error": "no symbol to measure",
+                "message": "run a scan first; an empty board has nothing to compare"}
+
+    series: dict[str, list[tuple[int, float]]] = {}
+    dropped: list[dict] = []
+    sources: set[str] = set()
+    for sym in [bench] + symbols:
+        try:
+            rows, src = await client.get_candles_ex(sym, tf, lookback)
+        except UpstreamUnavailable as e:
+            dropped.append({"symbol": sym, "reason": f"no candles: {e}"})
+            continue
+        clean = [(int(r["t"]), float(r["c"])) for r in rows
+                 if r.get("c") is not None and float(r["c"]) > 0]
+        if len(clean) < BENCH_MIN_OBS + 1:
+            dropped.append({"symbol": sym, "reason": f"fewer than {BENCH_MIN_OBS} usable bars"})
+            continue
+        series[sym] = clean
+        sources.add(src)
+
+    if bench not in series:
+        return {"ok": False, "bench": bench,
+                "error": f"no usable candles for the benchmark {bench}",
+                "dropped": dropped, **provenance()}
+
+    _stamps, closes = aligned_closes(series)
+    try:
+        bench_returns = log_returns(closes[bench])
+    except (KeyError, ValueError):
+        return {"ok": False, "bench": bench, "error": "the benchmark series is unusable",
+                "dropped": dropped, **provenance()}
+
+    ppy = PERIODS_PER_YEAR[tf]
+    out_rows: list[dict] = []
+    for sym in symbols:
+        if sym not in closes:
+            continue
+        try:
+            asset_returns = log_returns(closes[sym])
+        except ValueError:
+            dropped.append({"symbol": sym, "reason": "non-positive close in the series"})
+            continue
+        stat = relative_to(asset_returns, bench_returns, ppy)
+        if stat is None:
+            dropped.append({"symbol": sym, "reason": f"fewer than {BENCH_MIN_OBS} shared bars"})
+            continue
+        snap = (board or {}).get(sym) or {}
+        out_rows.append({
+            "symbol": sym,
+            **{k: (round(v, 4) if isinstance(v, float) else v) for k, v in stat.items()},
+            "direction": snap.get("direction"),
+            "composite": snap.get("composite"),
+        })
+
+    if not out_rows:
+        return {"ok": False, "bench": bench, "rows": [], "dropped": dropped,
+                "error": "no symbol had enough overlapping history",
+                "min_obs": BENCH_MIN_OBS, **provenance()}
+
+    out_rows.sort(key=lambda r: -(r.get("alpha_annual_pct") or 0))
+    return {
+        "ok": True,
+        "bench": bench,
+        "tf": tf,
+        "lookback": lookback,
+        "periods_per_year": ppy,
+        "min_obs": BENCH_MIN_OBS,
+        "rows": out_rows,
+        "summary": summarise_relative(out_rows),
+        "dropped": dropped,
+        "candles_from": sorted(sources),
+        "note": "descriptive statistics over past bars, not a forecast",
+        **provenance(),
+    }
+
+
+@app.get("/api/market/overview")
+async def market_overview_route(tf: str = Query("15m", pattern="^(15m|1h|4h|D)$")):
+    """Breadth, dispersion, concentration and the signal mix in one shot.
+
+    Computed from the tickers the scan already holds. Volumes are converted to
+    USD first: a toman volume and a dollar volume are not addable, and the IRT
+    numbers are ~100,000× larger, so an unconverted sum is wrong by exactly the
+    exchange rate.
+    """
+    rows = list(_cached.get("universe") or [])
+    if not rows:
+        return {**upstream_error("market-overview", "the universe has not loaded"),
+                "ok": False, "universe_size": 0, "reason": "no exchange tickers yet"}
+
+    usdt_irt = next((float(r["last"]) for r in rows
+                     if r.get("symbol") == "USDTIRT" and r.get("last")), 0.0)
+    if usdt_irt <= 0:
+        return {**upstream_error("market-overview", "no USDTIRT rate to convert turnover"),
+                "ok": False, "universe_size": len(rows),
+                "reason": "turnover cannot be mixed without a toman rate"}
+
+    enriched = []
+    for r in rows:
+        sym = str(r.get("symbol") or "")
+        fx = 1.0 if sym.endswith("USDT") else usdt_irt
+        enriched.append({**r, "fx_usd": fx})
+
+    signals = _cached.get("signals_by_tf", {}).get(tf) or _cached.get("signals") or {}
+    out = market_overview(enriched, signals=signals,
+                          premium_pct=_cached.get("premium_pct"))
+    out.update({"tf": tf, "as_of": datetime.now(timezone.utc).isoformat(), **provenance()})
+    return out
 
 
 @app.get("/api/risk/state")

@@ -55,34 +55,59 @@ def _wire_exchange(base: str) -> None:
     import main
 
     async def get_market_stats() -> dict:
-        out = {}
+        """Serve the fixture's own tickers, not a re-derivation of them.
+
+        This used to rebuild every row from two candles and invent
+        ``valueDst = 1e10 * (n - i)``, which is a turnover figure with no unit:
+        a USDT pair then claimed ten billion dollars a day. The fixture now
+        publishes a coherent table (prices, 24 h turnover in the pair's quote
+        currency, 24 h change), so take it and only fix prices if the fixture
+        contradicts itself.
+        """
         async with httpx.AsyncClient(timeout=10) as c:
-            for i, sym in enumerate(UNIVERSE):
-                r = await c.get(f"{base}/api/candles/{sym}", params={"tf": "1h", "count": 2})
-                rows = (r.json() or {}).get("rows") or []
-                if not rows:
+            u = await c.get(f"{base}/api/universe")
+            uni = (u.json() or {}) if u.status_code == 200 else {}
+            rows = uni.get("symbols") or []
+
+        out: dict[str, dict] = {}
+        if rows:
+            usd_irt = next((float(r["last"]) for r in rows
+                            if r.get("symbol") == "USDTIRT" and r.get("last")), 0.0)
+            for r in rows:
+                sym = str(r.get("symbol") or "")
+                if not sym or not r.get("last"):
                     continue
-                last, prev = rows[-1]["c"], rows[0]["c"]
                 out[sym] = {
-                    "latest": last,
-                    "valueDst": 1e10 * (len(UNIVERSE) - i),
-                    "dayChange": ((last / prev) - 1) * 100 if prev else 0,
+                    "latest": float(r["last"]),
+                    "valueDst": float(r.get("vol24") or 0.0),
+                    "dayChange": float(r.get("change24") or 0.0),
                 }
+        else:
+            # No fixture table: fall back to candles, but never invent a volume.
+            async with httpx.AsyncClient(timeout=10) as c:
+                for sym in UNIVERSE:
+                    r = await c.get(f"{base}/api/candles/{sym}",
+                                    params={"tf": "1h", "count": 25})
+                    rows_c = (r.json() or {}).get("rows") or []
+                    if not rows_c:
+                        continue
+                    last, prev = rows_c[-1]["c"], rows_c[0]["c"]
+                    out[sym] = {"latest": last, "valueDst": 0.0,
+                                "dayChange": ((last / prev) - 1) * 100 if prev else 0.0}
+            usd_irt = 0.0
+
         if not out:
-            raise RuntimeError("exchange fixture returned no candles")
-        # The fixture prices each symbol independently, so an IRT pair and its
-        # USDT twin end up on unrelated scales — which makes the implied premium
-        # and every USD conversion meaningless. Anchor the whole board to one
-        # plausible toman rate instead: USDTIRT ≈ 100,000 IRT, then rebuild each
-        # IRT price from its USDT twin.
-        # The fixture's table is already coherent; read its toman rate rather
-        # than imposing one here, so the two files cannot disagree.
-        usd_irt = out.get("USDTIRT", {}).get("latest") or 101_200.0
-        for sym, row in out.items():
-            if sym.endswith("IRT") and sym != "USDTIRT":
-                twin = out.get(sym.replace("IRT", "USDT"))
-                if twin:
-                    row["latest"] = twin["latest"] * usd_irt
+            raise RuntimeError("exchange fixture returned no tickers")
+
+        # The fixture's table is coherent; rebuild an IRT price from its USDT
+        # twin only when the fixture disagrees with itself, so the two files
+        # cannot drift apart silently.
+        if usd_irt > 0:
+            for sym, row in out.items():
+                if sym.endswith("IRT") and sym != "USDTIRT":
+                    twin = out.get(sym.replace("IRT", "USDT"))
+                    if twin:
+                        row["latest"] = twin["latest"] * usd_irt
         _PRICES.update({sym: row["latest"] for sym, row in out.items()})
         return {"status": "ok", "stats": out}
 

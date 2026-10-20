@@ -90,18 +90,47 @@ def candles(sym: str, tf: str, n: int) -> list[dict]:
     return out
 
 
-SYMBOLS = list(BASE_PX)
+#: Every listing the fixture serves candles for, including the USDT twins —
+#: without them the implied USDTIRT premium has only one leg and reads as
+#: "unknown" even though the fixture is perfectly coherent.
+SYMBOLS = list(BASE_PX) + [f"{k}USDT" for k in BASE_USDT]
+
+#: 24 h turnover in *dollars*, per listing. The previous fixture emitted
+#: ``1e12 / (i + 3)`` in whatever the pair's quote currency happened to be, so a
+#: USDT pair claimed $300 bn of daily volume and one pair held 99.99 % of the
+#: board's turnover. Turnover is a dollar quantity; convert it to the quote.
+TURNOVER_USD = {"BTCIRT": 42_000_000.0, "ETHIRT": 26_000_000.0, "SOLIRT": 9_500_000.0,
+                "XRPIRT": 7_200_000.0, "DOGEIRT": 5_400_000.0, "ADAIRT": 4_100_000.0,
+                "BTCUSDT": 8_000_000.0, "USDTIRT": 61_000_000.0}
+
+#: 24 h change in per cent. Different phase per symbol so breadth is not
+#: uniformly 0 % or 100 % — a fixture where every ticker moves together teaches
+#: the wrong thing about a breadth panel.
+CHANGE_24H = {"BTCIRT": 1.9, "ETHIRT": -2.4, "SOLIRT": 3.1, "XRPIRT": -0.8,
+              "DOGEIRT": 5.2, "ADAIRT": -3.6, "BTCUSDT": 1.85, "USDTIRT": 0.05,
+              "TONIRT": -1.2, "TRXIRT": 0.6}
+
+
+def _change_24h(sym: str):
+    """A pair's 24 h change; a USDT twin inherits its IRT listing's move."""
+    if sym in CHANGE_24H:
+        return CHANGE_24H[sym]
+    return CHANGE_24H.get(sym.replace("USDT", "IRT"), 0.0)
 
 
 def universe() -> dict:
     rows = []
     for i, s in enumerate(SYMBOLS):
         px = price(s)
-        rows.append({"symbol": s, "last": round(px, 6), "vol24": 1e12 / (i + 3),
-                     "change24": round(math.sin(i) * 2.4, 2), "rank": i + 1})
+        # quote per USD: 101,200 IRT for a toman pair, 1 for a dollar pair
+        per_usd = USD_IRT if s.endswith("IRT") else 1.0
+        turnover = TURNOVER_USD.get(s, 1_000_000.0)
+        rows.append({"symbol": s, "last": round(px, 6),
+                     "vol24": round(turnover * per_usd, 2),
+                     "change24": _change_24h(s), "rank": i + 1})
     return {"ok": True, "count": len(rows), "symbols": rows,
-            "source": "mock", "premium_usdtirt": 1_012_000,
-            "premium_pct": 1.9, "as_of": datetime.now(timezone.utc).isoformat()}
+            "source": "mock", "premium_pct": 0.0,
+            "as_of": datetime.now(timezone.utc).isoformat()}
 
 
 def signals(tf: str) -> dict:

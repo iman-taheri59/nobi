@@ -943,6 +943,32 @@
       return r;
     }
 
+    async getMarketOverview(tf) {
+      // A6: breadth/dispersion are computed server-side — the page only prints
+      // them. Turnover has to be converted to USD before any of it means
+      // anything, and that conversion lives next to the exchange client.
+      if (this.standaloneMobile) return null;
+      const res = await fetch(cfg.pythonApi + '/market/overview?tf=' + encodeURIComponent(tf || '15m'),
+                             { headers: this._authHeaders() });
+      const r = await res.json();
+      if (!res.ok) throw new NBXError('DATA', (r && r.detail) || 'market overview failed');
+      return r;
+    }
+
+    async postBenchmark(body) {
+      // A7: beta/alpha are computed server-side from the candle cache; the
+      // page must not re-derive them from its own price samples.
+      if (this.standaloneMobile) return null;
+      const res = await fetch(cfg.pythonApi + '/benchmark/relative', {
+        method: 'POST',
+        headers: this._authHeaders(),
+        body: JSON.stringify(body || {}),
+      });
+      const r = await res.json();
+      if (!res.ok) throw new NBXError('DATA', (r && r.detail) || 'benchmark failed');
+      return r;
+    }
+
     async getBackendRiskPlan(symbol, side) {
       if (!this.standaloneMobile) {
         try {
