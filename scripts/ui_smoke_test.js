@@ -7,6 +7,8 @@
 // It boots index.html offscreen, waits for the journal fetch to settle, then
 // asserts the MSI card, the seven KPI cells and the absence of JS errors.
 const fs = require('fs');
+const os = require('os');
+const path = require('path');
 
 // jsdom is a devDependency now; the /tmp fallback keeps older checkouts and the
 // sandbox working, where the install lived outside the repo.
@@ -17,7 +19,9 @@ try {
   ({ JSDOM, VirtualConsole } = require('/tmp/node_modules/jsdom'));
 }
 
-const pagePath = process.argv[2] || '/tmp/page.html';
+// Same default as ui_smoke_prep.py, on every platform.
+const pagePath = process.argv[2] || process.env.NBX_SMOKE_PAGE
+  || path.join(os.tmpdir(), 'page.html');
 const html = fs.readFileSync(pagePath, 'utf8');
 const errors = [];
 const vc = new VirtualConsole();

@@ -4,16 +4,24 @@
 jsdom has no resource loader, so the page must be self-contained: drop the
 CDN <script> tags and inline the two local bundles.
 
+The output lands in the system temp dir (override with NBX_SMOKE_PAGE);
+`ui_smoke_test.js` reads the same place.
+
     python3 scripts/ui_smoke_prep.py
-    cd /tmp && node /home/user/nobi/scripts/ui_smoke_test.js
+    node scripts/ui_smoke_test.js
 """
 from __future__ import annotations
 
+import os
 import re
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-OUT = Path("/tmp/page.html")
+# `Path("/tmp/...")` is not "/tmp" on Windows: it resolves against the current
+# drive (F:\tmp\page.html) and the directory usually does not exist. The
+# system temp dir is the same directory for python and node on every platform.
+OUT = Path(os.getenv("NBX_SMOKE_PAGE") or Path(tempfile.gettempdir()) / "page.html")
 LOCAL = ("nbx-core.js", "nbx-app.js")
 
 
