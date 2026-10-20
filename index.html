@@ -5062,6 +5062,21 @@ function confirmPanic(){
   })();
 }
 
+/* A new scan means the old candidates were computed on a candle that has
+ * since closed. Rebuild the queue only while the desk is on screen; every
+ * rebuild spends one /api/risk/plan call per candidate, so this is not
+ * something to run in the background. Debounced: scans can arrive in bursts. */
+let queueRefreshTimer = null;
+if (window.NBX && NBX.core && NBX.core.engine && typeof NBX.core.engine.subscribe === 'function') {
+  NBX.core.engine.subscribe((type) => {
+    if (type !== 'signals') return;
+    const pg = byId('page-desk');
+    if (!pg || pg.classList.contains('hidden')) return;
+    clearTimeout(queueRefreshTimer);
+    queueRefreshTimer = setTimeout(() => { refreshQueue(); }, 1500);
+  });
+}
+
 /* ============ TTL countdown ============ */
 setInterval(()=>{
   let expired=false;
