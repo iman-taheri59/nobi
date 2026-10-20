@@ -4556,7 +4556,7 @@ function renderQueue(){
         <div class="rounded-lg bg-white/[.02] border border-white/5 p-2"><div class="text-zinc-500 text-[10px]">${t('dk.price')}</div><div class="num font-bold">${fmtNum(q.entry, q.entry<1000?2:0)}</div></div>
         <div class="rounded-lg bg-white/[.02] border border-white/5 p-2"><div class="text-zinc-500 text-[10px]">${t('col.stop')}</div><div class="num font-bold text-red-300">${fmtNum(q.stop, q.stop<1000?2:0)}</div></div>
         <div class="rounded-lg bg-white/[.02] border border-white/5 p-2"><div class="text-zinc-500 text-[10px]">${t('col.tp1')}</div><div class="num font-bold text-emerald-300">${fmtNum(q.tp1, q.tp1<1000?2:0)}</div></div>
-        <div class="rounded-lg bg-white/[.02] border border-white/5 p-2"><div class="text-zinc-500 text-[10px]">${t('dk.riskPct')}</div><div class="num font-bold ${q.risk>0.75?'text-red-300':'text-emerald-300'}">${PC(q.risk,2)}</div></div>
+        <div class="rounded-lg bg-white/[.02] border border-white/5 p-2"><div class="text-zinc-500 text-[10px]">${t('dk.riskPct')}</div><div class="num font-bold ${q.risk>0.75?'text-red-300':'text-emerald-300'}">${PC(q.risk,2,false)}</div></div>
       </div>
       <div class="flex flex-wrap items-center gap-2">
         <span class="text-[10px] text-zinc-500 num">${t('dk.amount')}: ${fmtNum(q.sizeQ)} · R:TP <span class="text-${col}-300 font-bold">${fmtNum(rr,2)}</span></span>
@@ -4583,7 +4583,7 @@ function resolveQ(id, approve){
     queue = queue.filter(x=>x.id!==id);
     audit.unshift({ t:new Date().toLocaleTimeString('fa-IR'), a:'human',
       act:{fa:'رد سیگنال',en:'Signal rejected'}, sym:q.sym,
-      d:{fa:`امتیاز ${fmtNum(q.score)} · ریسک ${PC(q.risk,2)}`,en:`score ${fmtNum(q.score)} · risk ${PC(q.risk,2)}`} });
+      d:{fa:`امتیاز ${fmtNum(q.score)} · ریسک ${PC(q.risk,2,false)}`,en:`score ${fmtNum(q.score)} · risk ${PC(q.risk,2,false)}`} });
     renderQueue(); renderAudit();
     toast(t('dk.tRejected'), t('dk.tRejectedM'), 'warn');
     return;
