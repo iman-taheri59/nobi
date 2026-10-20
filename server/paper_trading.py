@@ -24,6 +24,7 @@ from typing import Any, Callable
 
 from nobitex_client import NobitexClient
 from risk_engine import Preflight, RiskEngine, RiskPlan, preflight
+from money import NoRate, Rate
 from units import min_notional_usd, round_price, truncate_amount
 
 log = logging.getLogger("paper-trading")
@@ -32,6 +33,11 @@ STATE_FILE = Path(os.getenv("NBX_PAPER_STATE", "paper_state.json"))
 
 # Paper maker/taker assumptions (Nobitex mid-tier retail default):
 FEE_PCT = 0.002  # 0.2% round-trip equivalent per leg
+
+#: How long a USDT/IRT rate stays usable. Short enough that a moving market
+#: cannot price an order off yesterday, long enough that marking every open
+#: position does not turn into a rate request per tick.
+RATE_TTL_S = max(5.0, float(os.getenv("NBX_RATE_TTL_S", "300")))
 # Conservative fill model: marketable limit → fill at next level + half spread
 SLIP_BPS = 6
 
@@ -107,7 +113,13 @@ class PaperBroker:
         self.orders: list[OrderEvent] = []
         self.equity_curve: list[tuple[float, float]] = [(time.time(), equity)]
         self.concurrent_limit = 5
-        self.usdt_irt = 0.0          # cached FX rate for IRT-quoted pairs
+        #: Latest USDT/IRT rate in Toman, and when it was read. The rate used to
+        #: be cached forever: `if not self.usdt_irt` meant "fetch once, keep for
+        #: the life of the process", so a server up for a week valued new orders
+        #: at last week's price. It now expires (NBX_RATE_TTL_S) and the age is
+        #: reported.
+        self.usdt_irt = 0.0
+        self.usdt_irt_at = 0.0
         self.halted = False
         #: The gate breakdown from the last order attempt, for the what-if panel.
         self.last_preflight: Preflight | None = None
@@ -141,15 +153,21 @@ class PaperBroker:
         }, ensure_ascii=False, indent=1))
 
     # --------- market helpers ----------
-    @staticmethod
-    def _pos_rate(pos: Position) -> float:
-        """Quote units per USD for this position (USDTIRT for IRT pairs, 1 for USDT).
+    def _pos_rate(self, pos: Position) -> float:
+        """Quote units per USD used to value this position **now**.
 
-        Uses the rate recorded at entry when it exists — marking an IRT position
-        with a *missing* rate must never fall back to 1.0, which silently treats
-        Toman as dollars and multiplies equity by ~100,000. Older state files
-        predate `quote_usd`, so they are reconstructed from `size_quote/size_usd`.
+        It used to be the rate recorded at entry, permanently. That is only
+        correct if the account bought Tomans and held them; the account holds
+        USDT. With a locked rate, a Toman that halves doubles the reported USD
+        value of an untouched BTC/IRT position — a 100 % gain nobody earned —
+        and every subsequent order looks proportionally safer than it is.
+
+        The live rate is preferred; the entry rate remains as a fallback for a
+        position opened before a rate was ever read, and as the last resort 1.0
+        is *not* used: that would treat Toman as dollars (×100,000).
         """
+        if self.usdt_irt > 0:
+            return self.usdt_irt
         if pos.quote_usd > 0:
             return pos.quote_usd
         if pos.size_quote and pos.size_usd:
@@ -177,11 +195,14 @@ class PaperBroker:
             return float(s)
         raise ValueError(f"no price for {symbol}")
 
-    async def _quote_rate(self, symbol: str) -> float:
-        """USD value of one unit of the pair's quote currency."""
-        if not symbol.upper().endswith("IRT"):
-            return 1.0
-        if not self.usdt_irt:
+    async def _fx(self, *, force: bool = False) -> Rate | None:
+        """The USDT/IRT rate, re-read when older than ``RATE_TTL_S``.
+
+        Returns ``None`` when the exchange cannot answer and there is no
+        previous value. Callers must treat ``None`` as "no rate", never as 1.0.
+        """
+        fresh = self.usdt_irt > 0 and (time.time() - self.usdt_irt_at) < RATE_TTL_S
+        if not fresh or force:
             try:
                 stats = await self.client.get_market_stats()
                 # Stats are keyed by the tradable symbol (`USDTIRT`), which is
@@ -190,9 +211,27 @@ class PaperBroker:
                 px = float(row.get("latest") or row.get("last") or 0)
                 if px > 0:
                     self.usdt_irt = px
+                    self.usdt_irt_at = time.time()
             except Exception as e:  # noqa: BLE001 - handled by the caller
                 log.warning("fx rate unavailable: %s", e)
-        return self.usdt_irt
+        if self.usdt_irt <= 0:
+            return None
+        try:
+            return Rate(toman_per_usdt=self.usdt_irt, as_of=self.usdt_irt_at,
+                        source="usdt-irt", max_age_s=RATE_TTL_S)
+        except NoRate:
+            return None
+
+    async def _quote_rate(self, symbol: str) -> float:
+        """Quote units per USD: 1.0 for a USDT pair, the USDT/IRT rate otherwise.
+
+        Returns 0.0 when an IRT pair has no rate. ``place_limit`` turns that into
+        the named `no-fx-rate` rejection; nothing downstream may substitute 1.0.
+        """
+        if not symbol.upper().endswith("IRT"):
+            return 1.0
+        rate = await self._fx()
+        return rate.toman_per_usdt if rate else 0.0
 
     async def _execution_price(self, symbol: str, side: str, qty: float) -> tuple[float, float]:
         """Return (avg_price, fill_quantity) walking the orderbook."""

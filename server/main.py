@@ -41,6 +41,7 @@ from risk_engine import RiskEngine, RiskConfig, preflight
 from portfolio import (Candidate, Limits, allocate as allocate_portfolio,
                        aligned_closes, log_returns)
 from benchmark import MIN_OBS as BENCH_MIN_OBS, PERIODS_PER_YEAR, relative as relative_to, summarise as summarise_relative
+from money import Rate, from_api, usd
 from units import apply_options, market_symbol, min_notional_usd, truncate_amount, round_price
 from market_overview import overview as market_overview
 import paper_trading
@@ -522,19 +523,42 @@ def _premium_pct(rows: list[dict]) -> float | None:
         return None
 
 
-async def _fx_rate(symbol: str) -> float:
-    """USD value of one quote unit: 1.0 for USDT pairs, USDTIRT for IRT pairs."""
-    if not symbol.upper().endswith("IRT"):
-        return 1.0
+async def _fx(symbol: str = "BTCIRT") -> Rate | None:
+    """The rate every money conversion on this request must use.
+
+    Deliberately the **broker's** rate, not a second lookup: the preview
+    (`/api/risk/whatif`, `/api/risk/plan`) and the order (`broker.place_limit`)
+    used to read the rate from two different places — one fresh, one cached
+    forever — so a moving market could produce a preview that promised a fill
+    the broker then refused. One source removes the possibility.
+
+    Returns ``None`` when no rate is available. Callers must refuse; they may
+    not substitute 1.0 or fall back to the untouched amount.
+    """
+    if not (symbol or "").upper().endswith("IRT"):
+        return Rate(toman_per_usdt=1.0, as_of=time.time(), source="usdt-quote",
+                    max_age_s=86_400.0)
+    broker = get_broker(EQUITY, client, risk)
+    rate = await broker._fx()
+    if rate is not None:
+        return rate
+    # Broker has never seen a rate (fresh process, exchange unreachable at the
+    # first attempt). The universe row is a last chance, with the same unit.
     row = next((r for r in _cached["universe"] if r["symbol"] == "USDTIRT"), None)
     px = float(row["last"]) if row and row.get("last") else 0.0
     if px <= 0:
-        try:
-            stats = await client.get_market_stats()
-            px = float((stats.get("stats") or {}).get("USDTIRT", {}).get("latest") or 0)
-        except Exception:  # noqa: BLE001 - FX is best effort here
-            px = 0.0
-    return px or 0.0
+        return None
+    return Rate(toman_per_usdt=px, as_of=time.time(), source="universe", max_age_s=120.0)
+
+
+async def _fx_rate(symbol: str) -> float:
+    """Toman per USD for this symbol, or 0.0 when there is no rate.
+
+    Kept for callers that only need the number; the named refusal lives in the
+    routes that must not proceed (`_fx` returning ``None``).
+    """
+    rate = await _fx(symbol)
+    return rate.toman_per_usdt if rate else 0.0
 
 
 async def _probe_upstream() -> None:
@@ -1522,9 +1546,19 @@ async def risk_plan(symbol: str, side: str = "buy", tf: str = Query("15m", patte
         s = _signal_lookup(symbol, tf)
     if not s:
         return {"error": "symbol not loaded"}
-    fx = await _fx_rate(symbol)
+    rate = await _fx(symbol)
+    if rate is None:
+        # `equity_quote = eq * fx if fx else eq` used to answer this by leaving
+        # the amount untouched: 100,000 USD of equity read as 100,000 Toman,
+        # i.e. ~10,000 USD, and every plan came back ~10× too small with no
+        # indication that anything was missing.
+        return {**upstream_error("risk-plan", "no USDT/IRT rate to size an IRT trade"),
+                "symbol": symbol.upper(), "side": side, "ok": False,
+                "error": "no-fx-rate",
+                "message": ("a Toman order cannot be sized against a dollar balance "
+                            "without the USDT/IRT rate")}
     eq, _start = _live_equity()
-    equity_quote = eq * fx if fx else eq
+    equity_quote = usd(eq).to_irt(rate).amount
     # Preview: report the plan without reserving heat (a concurrent order must
     # not observe a phantom reservation).
     plan = risk.evaluate(symbol.upper(), side, s["lastClose"], s["risk"]["atr"], tf,
@@ -1534,7 +1568,8 @@ async def risk_plan(symbol: str, side: str = "buy", tf: str = Query("15m", patte
         "side": side,
         **plan.__dict__,
         "quote": "IRT" if symbol.upper().endswith("IRT") else "USDT",
-        "fx_rate": fx,
+        "fx_rate": rate.toman_per_usdt,
+        "fx": rate.to_dict(),
         "equity_quote": round(equity_quote, 2),
         "healthHeat": risk.open_heat,
         **provenance(),
@@ -1579,8 +1614,17 @@ async def risk_whatif(payload: dict, request: Request):
                 "symbol": sym, "ok": False}
 
     br = get_broker(EQUITY, client, risk)
-    fx = await _fx_rate(sym) or 1.0
-    equity_quote = br.equity * fx
+    rate = await _fx(sym)
+    if rate is None:
+        # `or 1.0` here read a 300,000-Toman minimum as 300,000 USD, so the
+        # single-asset gate vetoed orders that were perfectly sound.
+        return {"ok": False, "symbol": sym, "side": side, "blocked": True,
+                "blocked_by": "no-fx-rate", "error": "no-fx-rate",
+                "message": ("no USDT/IRT rate: a Toman order cannot be valued "
+                            "against a dollar balance"),
+                **provenance()}
+    fx = rate.toman_per_usdt
+    equity_quote = usd(br.equity).to_irt(rate).amount
 
     # Size: caller's, else what the risk engine would put on this trade.
     size_quote = float(body.get("size_quote") or 0.0)
@@ -1751,7 +1795,14 @@ async def portfolio_allocate(payload: dict, request: Request):
     # on an IRT ticket is off by the exchange rate, which is how an allocator
     # becomes a way to lose money politely.
     for row in res.get("allocations", []):
-        fx = await _fx_rate(row["symbol"]) or 1.0
+        rate = await _fx(row["symbol"])
+        if rate is None:
+            row["quote"] = None
+            row["notional_quote"] = None
+            row["qty"] = None
+            row["error"] = "no-fx-rate"
+            continue
+        fx = rate.toman_per_usdt
         row["fx"] = round(fx, 4)
         row["quote"] = "IRT" if row["symbol"].endswith("IRT") else "USDT"
         row["notional_quote"] = round(row["notional_usd"] * fx, 2)
@@ -1951,6 +2002,7 @@ def _live_equity() -> tuple[float, float]:
 @app.get("/api/risk/state")
 async def risk_state():
     eq, start = _live_equity()
+    rate = await _fx("BTCIRT")
     return {
         # The same number the preflight compares against, not the constant it
         # started from.
@@ -1958,6 +2010,11 @@ async def risk_state():
         "start_equity": start,
         "equity_source": "paper-broker" if eq != risk.cfg.equity else "config",
         "equity_quote": "USD",
+        # The conversion, done once on the server: the page used to read the
+        # premium out of a different object and fall back to 1, which made its
+        # own risk percentage wrong by ~100,000×.
+        "equity_irt": round(usd(eq).to_irt(rate).amount, 2) if rate else None,
+        "fx": rate.to_dict() if rate else None,
         "openHeat": risk.open_heat,
         "dailyPnl": risk.daily_pnl,
         "halted": risk.halted,
@@ -2022,10 +2079,27 @@ def _position_payload(pos) -> dict:
     if last is None:
         last = float(pos.entry_price)
     pnl_pct = round((last / pos.entry_price - 1) * 100, 2) if pos.entry_price else 0.0
-    fx = next((float(r["last"]) for r in _cached["universe"] if r["symbol"] == "USDTIRT" and r.get("last")), 0.0)
     value_quote = pos.filled_qty * last
-    value_usd = value_quote / fx if (pos.symbol.endswith("IRT") and fx) else value_quote
-    return {**pos.__dict__, "last_price": last, "pnl_pct": pnl_pct, "value_usd": round(value_usd, 2)}
+    # Same rate object the account is marked with, so the position row and the
+    # equity KPI cannot disagree about what a position is worth.
+    rate = get_broker(EQUITY, client, risk).usdt_irt
+    if pos.symbol.endswith("IRT"):
+        if rate > 0:
+            value_usd = from_api(value_quote, pos.symbol).to_usd(
+                Rate(toman_per_usdt=rate, as_of=time.time(), source="paper-broker",
+                     max_age_s=paper_trading.RATE_TTL_S)).amount
+            fx_used = rate
+        else:
+            # No rate: report the quote-currency value and say the USD figure is
+            # unknown, rather than dividing by a missing number.
+            value_usd = None
+            fx_used = None
+    else:
+        value_usd = value_quote
+        fx_used = 1.0
+    return {**pos.__dict__, "last_price": last, "pnl_pct": pnl_pct,
+            "value_usd": None if value_usd is None else round(value_usd, 2),
+            "value_quote": round(value_quote, 2), "fx": fx_used}
 
 
 def _order_rows(broker, limit: int = 100) -> list[dict]:
