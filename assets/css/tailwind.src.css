@@ -13,6 +13,9 @@
 
 @import "tailwindcss";
 
+/* Note: the extractor reads raw text, so `table { border-collapse: collapse }`
+ * in index.html emits a `.collapse` utility that nothing uses. It is harmless
+ * output of the extractor, not a class anyone wrote; do not hunt for it. */
 @source "../../index.html";
 @source "../../nbx-app.js";
 @source "../../nbx-core.js";
