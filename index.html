@@ -1689,6 +1689,7 @@ function applyStaticI18n(){
    * on every page load, which is indistinguishable from a running account. */
   byId('holdLabel').textContent = t('pn.hold');
   renderDynamic();
+  loadOrders();          // the Orders tab starts from the sibling, not from a guess
   resizeCharts();
 }
 const byId = id => document.getElementById(id);
@@ -1750,8 +1751,11 @@ document.querySelectorAll('.navbtn').forEach(btn=>{
     if(btn.dataset.tab==='backtest' && !inited.bt){ inited.bt=true; requestAnimationFrame(()=>setTimeout(drawBt,30)); }
     if(btn.dataset.tab==='performance' && !inited.perf){ inited.perf=true; requestAnimationFrame(()=>setTimeout(async()=>{ await loadPerf(); drawCal(); loadBenchmark(); },30)); }
     if(btn.dataset.tab==='performance' && inited.perf){ requestAnimationFrame(()=>setTimeout(()=>{ if(!bmState) loadBenchmark(); },30)); }
-    if(btn.dataset.tab==='desk'){ requestAnimationFrame(()=>setTimeout(()=>{ runBookAlloc(false); },60)); }
+    if(btn.dataset.tab==='desk'){ requestAnimationFrame(()=>setTimeout(()=>{ runBookAlloc(false); refreshQueue(); },60)); }
     if(btn.dataset.tab==='overview'){ requestAnimationFrame(()=>setTimeout(()=>{ loadMarketOverview(); },60)); }
+    // The order log is read when the page is shown: a stale table is better
+    // than none, but the first look after a trade must be current.
+    if(btn.dataset.tab==='orders'){ requestAnimationFrame(()=>setTimeout(()=>{ loadOrders(); },30)); }
     if(btn.dataset.tab==='risk'){ requestAnimationFrame(()=>setTimeout(()=>{ loadAudit(); },30)); }
     if(btn.dataset.tab==='settings'){ requestAnimationFrame(()=>setTimeout(()=>{ loadSettings(); },30)); }
     if(btn.dataset.tab==='errors'){
@@ -2221,8 +2225,11 @@ const faAssets=[
 ];
 const news=[
 ];
-const orders=[
-];
+/*: Rows come from `GET /api/paper/orders`. `null` = the server did not answer,
+ * `[]` = it answered and the desk has placed nothing. Those are different
+ * sentences on screen, and telling them apart is the whole point of ADR-0014. */
+let orders = null;          // null = not loaded (or failed), [] = empty
+let ordersAsked = false;    // distinguishes "not asked yet" from "no answer"
 const caps=[
 ];
 const kills=[
@@ -2557,6 +2564,7 @@ function renderAlloc(){
             : `cash buffer ${PC(cashPct,1)} of equity — below the 10% floor (ADR-0008)`);
   }
 }
+window.loadOrders = loadOrders;
 window.renderAlloc = renderAlloc;
 
 // Two different sentences hide behind an empty table and only one of them is
@@ -2575,29 +2583,69 @@ function emptyRow(cols, why, opts){
   return `<tr><td colspan="${cols}" data-empty-note="1" class="text-center text-[11px] leading-5 text-zinc-500 py-3">
     <span class="block font-bold text-zinc-400">${LANG==='fa'?'چیزی برای نمایش نیست':'Nothing to show'}</span><span>${why || ''}</span></td></tr>`;
 }
+function orderStateChip(state){
+  const map = { OPEN:['emerald','در جریان'], PARTIAL:['amber','بخشی'],
+                FILLED:['sky','پر شده'], SUBMITTED:['indigo','ارسال'],
+                CLOSED:['zinc','بسته'], REJECTED:['red','رد شد'] };
+  const [c, fa] = map[state] || ['zinc', state];
+  return `<span class="chip text-${c}-300"><span class="dot bg-${c}-400"></span>${LANG==='fa'?fa:state}</span>`;
+}
 function renderOrders(){
-  const fmtPx = o => LANG==='fa'
-    ? (o.priceEn.includes('.') ? fmtNum(+o.priceEn, 2) : fmtNum(+o.priceEn))
-    : o.priceEn;
-  if (!orders.length) {
-    byId('ordBody').innerHTML = emptyRow(10, LANG==='fa'
-      ? 'سفارشی برای نمایش نیست؛ دفتر سفارش زنده از سرور نوبیتکس خوانده می‌شود.'
-      : 'no orders to show; the live book is read from the Nobitex server.');
+  const body = byId('ordBody');
+  if (!body) return;
+  if (!ordersAsked) {
+    body.innerHTML = `<tr><td colspan="10" class="text-center text-[11px] text-zinc-500 py-3">${
+      LANG==='fa'?'در حال خواندن فهرست سفارش‌ها…':'reading the order list…'}</td></tr>`;
     return;
   }
-  byId('ordBody').innerHTML = orders.map(o=>`
-    <tr>
-      <td class="num text-zinc-500 text-[10px]">${o.id}</td>
-      <td class="font-bold">${o.sym}</td>
+  if (orders === null) {
+    // The server did not answer. That is not "no orders".
+    body.innerHTML = emptyRow(10, LANG==='fa'
+      ? 'فهرست سفارش‌ها از سرور خوانده می‌شود و سرور پاسخ نداد.'
+      : 'the order list is read from the server and the server did not answer.',
+      { down: true });
+    return;
+  }
+  if (!orders.length) {
+    body.innerHTML = emptyRow(10, LANG==='fa'
+      ? 'هنوز سفارشی ثبت نشده؛ هر سفارش کاغذی با شناسه، قیمت پرشدگی و دلیل بسته‌شدن این‌جا می‌آید.'
+      : 'nothing placed yet; every paper order lands here with its id, fill price and exit reason.');
+    return;
+  }
+  const px = v => v >= 1000 ? fmtNum(v) : fmtNum(v, 2);
+  body.innerHTML = orders.map(o=>{
+    const when = o.opened_at_iso
+      ? new Date(o.opened_at_iso).toLocaleString(LANG==='fa'?'fa-IR':'en-US',
+          { month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' })
+      : '—';
+    // Slippage is printed only where it was measured; a "0.0" nobody measured
+    // is the same lie as a fabricated price.
+    const slip = (o.slip_bps === null || o.slip_bps === undefined) ? '—'
+      : (o.slip_bps >= 0 ? '+' : '') + fmtNum(o.slip_bps, 1) + 'bp';
+    const id = o.clientOrderId
+      ? `<span title="${o.clientOrderId}">${o.clientOrderId.slice(-8)}</span>`
+      : '—';
+    return `<tr>
+      <td class="num text-zinc-500 text-[10px]">${id}</td>
+      <td class="font-bold">${o.symbol}</td>
       <td class="${o.side==='buy'?'text-emerald-300':'text-red-300'}">${o.side==='buy'?t('sg.long'):(LANG==='fa'?'فروش':'Sell')}</td>
-      <td class="text-zinc-400">${L(o.type)}</td>
-      <td class="num">${fmtPx(o)}</td>
-      <td class="num">${LANG==='fa'?fmtNum(o.amt):o.amt}</td>
-      <td class="num">${o.fill}</td>
-      <td class="num text-zinc-400">${o.slip}</td>
-      <td><span class="chip text-${o.c}-300"><span class="dot bg-${o.c}-400"></span>${o.st}</span></td>
-      <td class="num text-zinc-500">${L(o.t)}</td>
-    </tr>`).join('');
+      <td class="text-zinc-400">${o.type==='market'?(LANG==='fa'?'مارکت':'Market'):(LANG==='fa'?'لیمیت':'Limit')}</td>
+      <td class="num">${px(o.price)}</td>
+      <td class="num">${fmtNum(o.amount, 6)}</td>
+      <td class="num">${fmtNum(o.filled, 6)}</td>
+      <td class="num text-zinc-400">${slip}</td>
+      <td>${orderStateChip(o.state)}${o.reason?`<div class="text-[10px] text-red-300/80 mt-0.5">${o.reason}</div>`:''}</td>
+      <td class="num text-zinc-500">${when}</td>
+    </tr>`;
+  }).join('');
+}
+async function loadOrders(){
+  const api = window.NBX && NBX.core && NBX.core.api;
+  if (!api || !api.getPaperOrders) { orders = null; ordersAsked = true; renderOrders(); return; }
+  const r = await api.getPaperOrders(100);
+  orders = (r && Array.isArray(r.rows)) ? r.rows : null;
+  ordersAsked = true;
+  renderOrders();
 }
 function renderCaps(){
   if (!caps.length) {
@@ -3964,8 +4012,18 @@ function ticketSymbols(){
 }
 const symMode = { BTCIRT:'manual', ETHIRT:'auto', SOLIRT:'semi', ADAIRT:'auto', DOGEIRT:'semi' };
 
-let queue = [
-];
+/*: Approval queue. It used to be a hard-coded empty array that nothing ever
+ * filled, while the page said "the robot plans, you approve" — so the buttons
+ * under it could never be pressed. The rows now come from the engine's own
+ * signals (`live.ranked`) and are priced by `POST /api/risk/plan`, the route
+ * that sizes trades. Approving places a real paper order through the same
+ * endpoint and the same ten gates as the manual ticket.
+ *
+ * `queueState.asked` separates "not fetched yet" from "fetched, none" and
+ * "the backend did not answer" — three different sentences (ADR-0014). */
+let queue = [];
+let queueState = { asked: false, error: null, skipped: 0 };
+const queueDismissed = new Set();
 let audit = [
 ];
 let EQUITY = 100000;  // synced from /api/risk/state at runtime
@@ -3992,6 +4050,64 @@ function setExecMode(m){
   renderExecSeg(); renderAudit();
   toast(t('dk.tMode'), t('dk.tModeM'), 'warn');
 }
+function tfSec(tf){ return ({'15m':900,'1h':3600,'4h':14400,'D':86400})[tf] || 900; }
+
+/* Build the queue from what the engine actually produced. A candidate is a
+ * LONG signal on a symbol whose mode needs a human (semi/auto); manual symbols
+ * stay in the ticket, and a symbol already dismissed this session stays out. */
+async function refreshQueue(){
+  const api = window.NBX && NBX.core && NBX.core.api;
+  const tf = (window.live && live.timeframe) || '15m';
+  const rows = (window.live && live.ranked) || [];
+  queueState = { asked: true, error: null, skipped: 0 };
+  if (!api || !api.getBackendRiskPlan) {
+    queueState.error = 'no-backend';
+    queue = []; renderQueue(); return;
+  }
+  if (!rows.length) {
+    queueState.error = 'no-signals';
+    queue = []; renderQueue(); return;
+  }
+  const eng = (window.NBX && NBX.core && NBX.core.engine) || {};
+  const picked = rows
+    .filter(s => s && s.direction === 'LONG' && !queueDismissed.has(s.symbol))
+    .filter(s => { const m = symMode[s.symbol] || execMode; return m !== 'manual'; })
+    .slice(0, 5);
+  const out = [];
+  for (const s of picked) {
+    let plan = null;
+    try { plan = await api.getBackendRiskPlan(s.symbol, 'buy'); } catch (e) { plan = null; }
+    // A candidate without a plan is not shown: its size, stop and tp would be
+    // numbers this page made up, and the ticket would place them.
+    if (!plan || plan.blocked || !plan.size_quote || !plan.entry) { queueState.skipped += 1; continue; }
+    const candles = eng.candles ? (eng.candles[s.symbol + ':' + tf] || eng.candles[s.symbol]) : null;
+    const lastT = candles && candles.length ? +candles[candles.length - 1].t : 0;
+    // TTL is the time left in the candle the signal was computed on — a real
+    // clock, not a random countdown.
+    const ttl = lastT ? Math.max(0, Math.round(lastT + tfSec(tf) - Date.now() / 1000)) : null;
+    out.push({
+      id: s.symbol + ':' + (lastT || 0),
+      sym: s.symbol, dir: 'long',
+      score: +(s.composite ?? s.score ?? 0),
+      rank: rows.indexOf(s) + 1,
+      ts: lastT ? new Date(lastT * 1000).toLocaleTimeString(LANG === 'fa' ? 'fa-IR' : 'en-US',
+            { hour: '2-digit', minute: '2-digit' }) : '—',
+      entry: +plan.entry, stop: +plan.stop, tp1: +plan.tp1, tp2: +plan.tp2,
+      // The plan's own risk is the server's number, in the quote currency of
+      // the pair; converting it here keeps the % comparable with the 0.75 cap.
+      risk: +(plan.risk_pct ?? 0),
+      sizeQ: +plan.size_quote,
+      // null = the series carries no usable close time: the cell prints an
+      // em-dash. A zero here would be a countdown this page invented, and the
+      // one-second timer would then expire a proposal it never timed.
+      ttl: ttl === null ? null : ttl,
+      state: 'pending',
+    });
+  }
+  queue = out;
+  renderQueue();
+}
+
 function renderQueue(){
   const pend = queue.filter(q=>q.state!=='expired');
   byId('qCount').textContent = fmtNum(pend.length);
@@ -3999,7 +4115,31 @@ function renderQueue(){
   badge.textContent = fmtNum(pend.length);
   badge.classList.toggle('hidden', pend.length===0);
 
-  byId('queueList').innerHTML = pend.length ? pend.map(q=>{
+  if (!queueState.asked) {
+    byId('queueList').innerHTML = `<div class="text-center py-8 text-xs text-zinc-500">${
+      LANG==='fa'?'در حال خواندن سیگنال‌ها…':'reading signals…'}</div>`;
+    return;
+  }
+  if (queueState.error === 'no-backend') {
+    byId('queueList').innerHTML = `<div data-unavailable="1" class="rounded-xl border border-red-400/30 bg-red-400/[.07] p-3.5 text-[11px] leading-5 text-red-200/90">
+      <span class="block font-bold">${LANG==='fa'?'سرور در دسترس نیست':'Server unreachable'}</span>
+      ${LANG==='fa'?'صف تأیید از پلن سرور ساخته می‌شود؛ بدون پاسخ سرور هیچ کاندیدایی نمایش داده نمی‌شود.'
+                   :'the queue is built from server plans; with no server reply no candidate is shown.'}</div>`;
+    return;
+  }
+  if (queueState.error === 'no-signals') {
+    byId('queueList').innerHTML = `<div data-empty-note="1" class="text-center py-8 text-xs text-zinc-500">${
+      LANG==='fa'?'سیگنالی برای این تایم‌فریم نیست؛ صف از اسکن تازه پر می‌شود.'
+                 :'no signal on this timeframe; the queue fills on the next scan.'}</div>`;
+    return;
+  }
+  if (!pend.length) {
+    byId('queueList').innerHTML = `<div data-empty-note="1" class="text-center py-8 text-xs text-zinc-500">${
+      LANG==='fa'?`هیچ کاندیدایی نیست${queueState.skipped?` (${fmtNum(queueState.skipped)} نماد پلن قابل‌اجرا نداشت)`:''}.`
+                 :`no candidate right now${queueState.skipped?` (${queueState.skipped} symbol(s) had no placeable plan)`:''}.`}</div>`;
+    return;
+  }
+  byId('queueList').innerHTML = pend.map(q=>{
     const rr = Math.abs((q.tp1-q.entry)/(q.entry-q.stop));
     const col = rr>=2?'emerald':rr>=1.5?'amber':'red';
     return `<div class="rounded-xl bg-white/[.03] border border-white/5 p-3.5">
@@ -4011,7 +4151,7 @@ function renderQueue(){
         </div>
         <span class="text-[10px] text-zinc-500 num">${t('perf.rank')} ${fmtNum(q.rank)} · ${q.ts}</span>
         ${modeChip(symMode[q.sym]||execMode)}
-        <span class="ms-auto chip num ${q.ttl<60?'text-red-300':'text-zinc-400'}">${icon('timer','w-3 h-3')} ${fmtNum(Math.max(0,q.ttl))}${LANG==='fa'?'ث':'s'}</span>
+        <span class="ms-auto chip num ${q.ttl!=null && q.ttl<60?'text-red-300':'text-zinc-400'}">${icon('timer','w-3 h-3')} ${q.ttl==null?'—':fmtNum(Math.max(0,q.ttl))+(LANG==='fa'?'ث':'s')}</span>
       </div>
       <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] mb-3">
         <div class="rounded-lg bg-white/[.02] border border-white/5 p-2"><div class="text-zinc-500 text-[10px]">${t('dk.price')}</div><div class="num font-bold">${fmtNum(q.entry, q.entry<1000?2:0)}</div></div>
@@ -4027,7 +4167,7 @@ function renderQueue(){
         </div>
       </div>
     </div>`;
-  }).join('') : `<div class="text-center py-8 text-xs text-zinc-500">${icon('inbox','w-8 h-8 mx-auto mb-2 opacity-40')}<div>${t('dk.queue')} — 0</div></div>`;
+  }).join('');
 
   document.querySelectorAll('.qApp').forEach(b=> b.onclick = ()=> resolveQ(b.dataset.approve, true));
   document.querySelectorAll('.qRej').forEach(b=> b.onclick = ()=> resolveQ(b.dataset.reject, false));
@@ -4035,16 +4175,50 @@ function renderQueue(){
 }
 function resolveQ(id, approve){
   const q = queue.find(x=>x.id===id); if(!q) return;
-  const rr = Math.abs((q.tp1-q.entry)/(q.entry-q.stop));
-  if(approve && q.risk>0.75){ toast(t('dk.warn1'), t('dk.warn1')+' — '+t('dk.ok')+': '+PC(0.75,2), 'err'); return; }
-  if(approve && rr<1.5){ toast(t('dk.warn3'), t('dk.warn3'), 'warn'); return; }
-  q.state = approve?'approved':'rejected';
-  queue = queue.filter(x=>x.id!==id);
-  audit.unshift({ t:new Date().toLocaleTimeString('fa-IR'), a:'human',
-    act: approve?{fa:'تأیید و ارسال',en:'Approved & sent'}:{fa:'رد سیگنال',en:'Signal rejected'},
-    sym:q.sym, d:{fa:`امتیاز ${fmtNum(q.score)} · ریسک ${PC(q.risk,2)}`,en:`score ${fmtNum(q.score)} · risk ${PC(q.risk,2)}`} });
-  renderQueue(); renderAudit();
-  toast(approve?t('dk.tApproved'):t('dk.tRejected'), approve?t('dk.tApprovedM'):t('dk.tRejectedM'), approve?'ok':'warn');
+  // No local risk / R:TP veto here. Both rules live in `risk_engine.preflight`
+  // on the server; a second copy in the browser refuses first, silently, with a
+  // sentence that names no gate. Approve sends the order; the server answers
+  // with the gate it refused, if it refuses.
+  if (!approve) {
+    queueDismissed.add(q.sym);
+    queue = queue.filter(x=>x.id!==id);
+    audit.unshift({ t:new Date().toLocaleTimeString('fa-IR'), a:'human',
+      act:{fa:'رد سیگنال',en:'Signal rejected'}, sym:q.sym,
+      d:{fa:`امتیاز ${fmtNum(q.score)} · ریسک ${PC(q.risk,2)}`,en:`score ${fmtNum(q.score)} · risk ${PC(q.risk,2)}`} });
+    renderQueue(); renderAudit();
+    toast(t('dk.tRejected'), t('dk.tRejectedM'), 'warn');
+    return;
+  }
+  const api = window.NBX && NBX.core && NBX.core.api;
+  if (!api || !api.postPaperOrder) {
+    toast(LANG==='fa'?'سرور در دسترس نیست':'Server unreachable',
+          LANG==='fa'?'سفارش ثبت نشد؛ چیزی جای‌گزین نمی‌شود.':'The order was not placed; nothing is substituted.', 'err');
+    return;
+  }
+  (async () => {
+    let r = null;
+    try {
+      r = await api.postPaperOrder({
+        symbol: q.sym, side: 'buy', size_quote: q.sizeQ,
+        stop: q.stop, tp1: q.tp1, tp2: q.tp2, source: 'QUEUE',
+      });
+    } catch (e) { r = null; }
+    if (!r || !r.ok) {
+      // The server names the gate — print that, not a generic failure.
+      toast(LANG==='fa'?'سفارش ثبت نشد':'Order not placed',
+            (r && (r.error || r.message)) || (LANG==='fa'?'سرور پاسخ نداد.':'the server did not answer.'), 'err');
+      return;
+    }
+    queueDismissed.add(q.sym);
+    queue = queue.filter(x=>x.id!==id);
+    audit.unshift({ t:new Date().toLocaleTimeString('fa-IR'), a:'human',
+      act:{fa:'تأیید و ارسال',en:'Approved & sent'}, sym:q.sym,
+      d:{fa:`امتیاز ${fmtNum(q.score)} · ارزش ${fmtNum(q.sizeQ)}`,en:`score ${fmtNum(q.score)} · notional ${fmtNum(q.sizeQ)}`} });
+    renderQueue(); renderAudit();
+    toast(t('dk.tApproved'), t('dk.tApprovedM'), 'ok');
+    if (updatePaperPositions) updatePaperPositions();
+    loadOrders();
+  })();
 }
 
 /* ---- Manual ticket ---- */
@@ -4448,6 +4622,7 @@ function submitManual(){
     renderAudit();
     toast(t('dk.tManual'), t('dk.tManualM'), 'ok');
     if (updatePaperPositions) updatePaperPositions();
+    loadOrders();                       // the order the user just placed
   })();
 }
 function renderAudit(){
@@ -4890,7 +5065,7 @@ function confirmPanic(){
 /* ============ TTL countdown ============ */
 setInterval(()=>{
   let expired=false;
-  queue.forEach(q=>{ if(q.state!=='expired'){ q.ttl--; if(q.ttl<=0){ q.state='expired'; expired=true; } } });
+  queue.forEach(q=>{ if(q.state!=='expired' && q.ttl!=null){ q.ttl--; if(q.ttl<=0){ q.state='expired'; expired=true; } } });
   if(expired){ audit.unshift({t:new Date().toLocaleTimeString('fa-IR'), a:'sys', act:{fa:'انقضای پیشنهاد',en:'Proposal expired'}, sym:'—', d:{fa:'TTL تمام شد؛ از صف حذف شد',en:'TTL elapsed; removed from queue'}});
     renderAudit(); toast(t('dk.tExpired'), t('dk.tExpiredM'), 'warn'); }
   const pend=queue.filter(q=>q.state!=='expired');

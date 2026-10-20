@@ -565,6 +565,24 @@
       return this.equity;
     },
 
+    /*: The offline bundle has no event stream to read, so it derives the same
+     * shape from its own positions. Same fields, so the table renders one way;
+     * anything it cannot know (`fee`, slippage) stays null instead of 0. */
+    orderRows() {
+      return this.positions.map((p) => ({
+        clientOrderId: p.client_order_id || null,
+        symbol: p.symbol, side: p.side,
+        type: p.execution || 'limit',
+        price: p.entry_price, amount: p.qty, filled: p.filled_qty,
+        filled_pct: p.qty ? +((p.filled_qty / p.qty) * 100).toFixed(1) : 0,
+        fee: null, slip_bps: null, pnl_usd: p.realized_pnl || 0,
+        state: p.state, reason: null, source: 'browser',
+        opened_at: p.opened_at,
+        opened_at_iso: new Date(p.opened_at * 1000).toISOString(),
+        closed_at_iso: null, close_reason: null,
+      }));
+    },
+
     getMetrics() {
       const open = this._open();
       const pnls = this.closed.map((p) => p.realized_pnl || 0);
@@ -1337,6 +1355,23 @@
         return await res.json();
       } catch (e) {
         return { halted: false, error: String(e) };
+      }
+    }
+
+    /* The order log. `null` means "the server did not answer" — distinct from
+       `[]`, which means "it answered and the desk has placed nothing". The
+       Orders page needs that distinction to avoid blaming the exchange for an
+       empty table (ADR-0014). */
+    async getPaperOrders(limit) {
+      if (this.standaloneMobile) {
+        return { ok: true, rows: NBX.Paper.orderRows(), counts: null, offline: true };
+      }
+      try {
+        const r = await this.get(cfg.pythonApi + '/paper/orders?limit=' + (limit || 100), 1);
+        if (r && Array.isArray(r.rows)) return r;
+        return null;
+      } catch (e) {
+        return null;
       }
     }
 

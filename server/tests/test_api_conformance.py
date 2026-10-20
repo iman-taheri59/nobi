@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
+from pathlib import Path
 
 import pytest
 
@@ -428,3 +430,126 @@ def test_every_paper_order_carries_a_documented_client_order_id(tmp_path, monkey
     assert pos.client_order_id and len(pos.client_order_id) <= 32
     submit = [e for e in b.orders if e.kind == "submit"][-1]
     assert submit.extra["clientOrderId"] == pos.client_order_id
+
+
+# --------------------------------------------------------------------------- #
+# The order log: the table must have a real source
+# --------------------------------------------------------------------------- #
+def _client():
+    from fastapi.testclient import TestClient
+    import main
+    return TestClient(main.app)
+
+
+def test_orders_route_reports_a_real_order_with_its_id(tmp_path, monkeypatch):
+    """`/api/paper/orders` is the only source the Orders tab has. It must carry
+    the clientOrderId, the fill, and the slippage that was actually measured."""
+    import main
+
+    b = _broker(tmp_path, monkeypatch)
+    monkeypatch.setattr(main, "get_broker", lambda *a, **k: b)
+    monkeypatch.setattr(main, "client", b.client)
+    # A limit order names its price, so there is no mid to measure against:
+    # the column must stay null rather than print a zero nobody observed.
+    pos = run(b.place_limit("BTCUSDT", "buy", 0.001, price=73_040, stop=70_000))
+    assert pos is not None, b.last_error
+    pos_mkt = run(b.place_limit("BTCUSDT", "buy", 0.001, price=None, stop=70_000))
+    assert pos_mkt is not None, b.last_error
+
+    r = _client().get("/api/paper/orders")
+    assert r.status_code == 200, r.text
+    d = r.json()
+    assert d["ok"] is True and d["source"] == "paper-broker"
+    by_id = {row["clientOrderId"]: row for row in d["rows"]}
+    row = by_id[pos.client_order_id]
+    assert row["state"] == pos.state
+    assert row["filled"] == pytest.approx(pos.filled_qty)
+    assert row["type"] == "limit" and row["slip_bps"] is None
+
+    # A market order walked the book, so the mid was recorded and slippage is real.
+    mkt = by_id[pos_mkt.client_order_id]
+    assert mkt["type"] == "market"
+    assert mkt["slip_bps"] is not None and mkt["slip_bps"] > 0
+
+
+def test_orders_route_keeps_a_rejected_order_as_a_row(tmp_path, monkeypatch):
+    """A refusal is an order too. The table says which gate refused it instead
+    of showing nothing."""
+    import main
+
+    b = _broker(tmp_path, monkeypatch)
+    monkeypatch.setattr(main, "get_broker", lambda *a, **k: b)
+    pos = run(b.place_limit("BTCUSDT", "buy", 0.0001, price=73_040, stop=70_000))
+    assert pos is None
+    d = _client().get("/api/paper/orders").json()
+    assert d["counts"]["rejected"] == 1
+    row = d["rows"][0]
+    assert row["state"] == "REJECTED"
+    assert row["reason"] == "min-notional"
+
+
+def test_orders_route_is_empty_but_valid_on_a_fresh_account(tmp_path, monkeypatch):
+    import main
+
+    b = _broker(tmp_path, monkeypatch)
+    monkeypatch.setattr(main, "get_broker", lambda *a, **k: b)
+    d = _client().get("/api/paper/orders").json()
+    assert d["ok"] is True and d["rows"] == []
+    assert d["counts"] == {"total": 0, "open": 0, "closed": 0, "rejected": 0}
+
+
+def test_legacy_events_without_client_ids_do_not_split_in_two(tmp_path, monkeypatch):
+    """State files written before `clientOrderId` exist in the wild. A `submit`
+    and its `fill` must still be one row, or every old order appears twice."""
+    import main
+    from paper_trading import OrderEvent
+
+    b = _broker(tmp_path, monkeypatch)
+    b.orders.append(OrderEvent(1000.0, "submit", "BTCUSDT", "buy", 0.001, 73_000, {"source": "SEMI"}))
+    b.orders.append(OrderEvent(1000.5, "fill", "BTCUSDT", "buy", 0.001, 73_010, {"fee": 1.0}))
+    monkeypatch.setattr(main, "get_broker", lambda *a, **k: b)
+    d = _client().get("/api/paper/orders").json()
+    assert len(d["rows"]) == 1
+    row = d["rows"][0]
+    assert row["state"] == "FILLED"
+    assert row["events"] == ["submit", "fill"]
+
+
+def test_two_orders_on_one_market_in_the_same_millisecond_both_exist(tmp_path, monkeypatch):
+    """Position ids were `pp-<ms>-<symbol>`. Two fills in one millisecond — an
+    approved queue item and a manual ticket, say — produced the same key, so the
+    second position overwrote the first: both priced into cash, one recorded."""
+    b = _broker(tmp_path, monkeypatch)
+    a = run(b.place_limit("BTCUSDT", "buy", 0.001, price=73_040, stop=70_000))
+    c = run(b.place_limit("BTCUSDT", "buy", 0.001, price=73_040, stop=70_000))
+    assert a is not None and c is not None
+    assert a.id != c.id
+    assert len([p for p in b.positions.values() if p.state != "CLOSED"]) == 2
+    # And the ledger knows about both, not just the last one.
+    assert b.cash == pytest.approx(100_000 - 2 * a.size_usd * (1 + 0.002), abs=0.02)
+
+
+def test_fixture_candles_keep_epoch_seconds(tmp_path, monkeypatch):
+    """The fixture adapter used to divide candle timestamps by 1000.
+
+    The chart's x-axis, the "age of last candle" label and the approval queue's
+    TTL all read `t` as epoch seconds, so the whole demo ran on candles dated
+    January 1970 while every price still looked right. Pin the unit at the
+    boundary: what goes in as seconds comes out as seconds.
+    """
+    import importlib.util
+
+    repo = Path(__file__).resolve().parents[2]
+    spec = importlib.util.spec_from_file_location(
+        "nobi_run_with_mock_exchange", repo / "scripts" / "run_with_mock_exchange.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    now = int(time.time()) // 900 * 900
+    rows = [{"t": now - 900, "o": 1.0, "h": 1.1, "l": 0.9, "c": 1.05, "v": 7.0},
+            {"t": now, "o": 1.0, "h": 1.1, "l": 0.9, "c": 1.05, "v": 7.0}]
+    udf = mod.to_udf(rows)
+    assert udf["t"] == [now - 900, now]
+    # Within one candle of the wall clock: catches a /1000 or *1000 rescale.
+    assert abs(udf["t"][-1] - time.time()) < 900
+    assert udf["c"] == [1.05, 1.05]

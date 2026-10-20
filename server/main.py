@@ -1932,6 +1932,124 @@ def _position_payload(pos) -> dict:
     return {**pos.__dict__, "last_price": last, "pnl_pct": pnl_pct, "value_usd": round(value_usd, 2)}
 
 
+def _order_rows(broker, limit: int = 100) -> list[dict]:
+    """One row per order attempt, built from the broker's own event stream.
+
+    The Orders page used to render a hard-coded empty array and describe itself
+    as "the live order book read from the Nobitex server" — a source that never
+    existed. The events below are what the broker actually recorded: a `submit`
+    opens a row, a `fill` prices it, `tp1`/`close` finish it, and a `reject`
+    is a row of its own (an order that was refused, with the gate named).
+
+    Nothing here is derived from a price we did not see. Slippage stays `None`
+    unless a mid price was measured at submit.
+    """
+    pos_by_coid = {p.client_order_id: p for p in broker.positions.values()
+                   if getattr(p, "client_order_id", "")}
+    rows: dict[str, dict] = {}
+    #: Events written before `clientOrderId` existed have nothing to pair on, so
+    #: a `fill` looks for the oldest `submit` still waiting on the same
+    #: symbol+side. Without this, every legacy order showed up twice: once as
+    #: "submitted" and once as a fill with no head.
+    dangling: dict[tuple[str, str], list[str]] = {}
+    for ev in broker.orders:
+        coid = ev.extra.get("clientOrderId") or ""
+        if ev.kind == "reject":
+            key = f"rej-{ev.ts:.6f}-{ev.symbol}"
+        elif coid:
+            key = coid
+        elif ev.kind == "submit":
+            key = f"ev-{ev.ts:.6f}-{ev.symbol}"
+            dangling.setdefault((ev.symbol, ev.side), []).append(key)
+        else:
+            waiting = dangling.get((ev.symbol, ev.side))
+            key = waiting.pop(0) if waiting else f"ev-{ev.ts:.6f}-{ev.symbol}"
+        row = rows.get(key)
+        if row is None:
+            row = rows[key] = {
+                "clientOrderId": coid or None,
+                "symbol": ev.symbol, "side": ev.side,
+                "type": ev.extra.get("execution") or "limit",
+                "price": float(ev.price or 0.0),
+                "amount": float(ev.qty or 0.0),
+                "filled": 0.0, "fee": 0.0, "pnl_usd": 0.0,
+                "slip_bps": None,
+                "state": "SUBMITTED", "reason": None, "source": ev.extra.get("source"),
+                "opened_at": ev.ts, "closed_at": None, "close_reason": None,
+                "events": [],
+            }
+        row["events"].append(ev.kind)
+        if ev.kind == "submit":
+            row["price"] = float(ev.price or 0.0)
+            row["amount"] = float(ev.qty or 0.0)
+            row["state"] = "SUBMITTED"
+            row["mid"] = float(ev.extra.get("mid") or 0.0)
+        elif ev.kind == "fill":
+            row["filled"] = float(ev.qty or 0.0)
+            row["fee"] = float(ev.extra.get("fee") or 0.0)
+            row["state"] = "FILLED"
+            # Slippage is measured only when a mid was recorded at submit;
+            # otherwise it stays unknown, because a number nobody measured is a
+            # lie with a decimal point.
+            mid = float(row.get("mid") or 0.0)
+            if mid > 0 and ev.price:
+                row["slip_bps"] = round((float(ev.price) - mid) / mid * 10_000, 2)
+        elif ev.kind == "tp1":
+            row["filled"] = max(0.0, row["filled"] - float(ev.qty or 0.0))
+            row["pnl_usd"] += float(ev.extra.get("pnl") or 0.0)
+            row["state"] = "PARTIAL"
+        elif ev.kind == "close":
+            row["filled"] = 0.0
+            row["pnl_usd"] += float(ev.extra.get("pnl") or 0.0)
+            row["state"] = "CLOSED"
+            row["closed_at"] = ev.ts
+            row["close_reason"] = ev.extra.get("reason")
+        elif ev.kind == "reject":
+            row["state"] = "REJECTED"
+            row["reason"] = ev.extra.get("reason")
+
+    # The position is the authority on what is still open: an event stream that
+    # says FILLED after the position was closed by a stop would be wrong.
+    for row in rows.values():
+        pos = pos_by_coid.get(row["clientOrderId"] or "")
+        if pos is None and not row["clientOrderId"] and row["state"] in ("FILLED", "PARTIAL"):
+            # Legacy row: the newest position on that market is its owner.
+            pos = next((p for p in broker.positions.values()
+                        if p.symbol == row["symbol"] and getattr(p, "client_order_id", "") == ""),
+                       None)
+        if pos is not None:
+            row["state"] = pos.state
+            row["filled"] = float(pos.filled_qty)
+            row["price"] = float(pos.entry_price)
+            row["pnl_usd"] = round(float(pos.realized_pnl), 4)
+            row["closed_at"] = pos.closed_at
+            row["close_reason"] = pos.close_reason
+            row["execution"] = pos.execution
+        row["pnl_usd"] = round(row["pnl_usd"], 4)
+    out = sorted(rows.values(), key=lambda r: r["opened_at"], reverse=True)
+    for r in out[:limit]:
+        r["opened_at_iso"] = datetime.fromtimestamp(r["opened_at"], timezone.utc).isoformat()
+        r["closed_at_iso"] = (datetime.fromtimestamp(r["closed_at"], timezone.utc).isoformat()
+                              if r["closed_at"] else None)
+        r["filled_pct"] = round(r["filled"] / r["amount"] * 100, 1) if r["amount"] else 0.0
+    return out[:limit]
+
+
+@app.get("/api/paper/orders")
+async def paper_orders(limit: int = Query(100, ge=1, le=500)):
+    """The order log the Orders page renders: what was asked, what filled."""
+    broker = get_broker(EQUITY, client, risk)
+    rows = _order_rows(broker, limit)
+    counts = {
+        "total": len(rows),
+        "open": sum(1 for r in rows if r["state"] in ("OPEN", "PARTIAL", "FILLED", "SUBMITTED")),
+        "closed": sum(1 for r in rows if r["state"] == "CLOSED"),
+        "rejected": sum(1 for r in rows if r["state"] == "REJECTED"),
+    }
+    return {"ok": True, "rows": rows, "counts": counts,
+            "source": "paper-broker", "as_of": datetime.now(timezone.utc).isoformat()}
+
+
 @app.get("/api/paper/positions")
 async def paper_positions():
     broker = get_broker(EQUITY, client, risk)

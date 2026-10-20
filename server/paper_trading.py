@@ -67,6 +67,13 @@ class Position:
     #: at most 32 characters). The ticket has always claimed orders "receive a
     #: clientOrderId"; nothing produced one.
     client_order_id: str = ""
+    #: ``market`` when the fill walked the book, ``limit`` when the caller
+    #: named the price. The orders table prints it, and slippage only means
+    #: something for the first kind.
+    execution: str = "limit"
+    #: Mid price at submit, when it was measured. Zero means "not measured",
+    #: which the table shows as "—" rather than a made-up slippage figure.
+    mid_at_submit: float = 0.0
     #: Quote units per USD at entry (1.0 for USDT pairs, USDTIRT for IRT pairs).
     #: Without it, marking a persisted position after a restart divided Toman by
     #: 1.0 and inflated equity by the FX rate.
@@ -207,8 +214,11 @@ class PaperBroker:
             return None
 
         # walk the book to estimate fill price (model slippage via SLIP_BPS)
+        mid_at_submit = 0.0
+        execution = "market" if price is None else "limit"
         if price is None:
             mid = await self._mid_price(symbol)
+            mid_at_submit = float(mid)
             px, filled_qty = await self._execution_price(symbol, side, qty)
             if not px:
                 self.last_error = "no-depth: orderbook has no liquidity"
@@ -287,10 +297,15 @@ class PaperBroker:
             return None
 
         # take position
-        pid = f"pp-{int(time.time() * 1000)}-{symbol}"
+        # The id needs a unique tail: two orders on one symbol inside the same
+        # millisecond used to produce the same `pp-…` key, and the second
+        # position silently replaced the first in `self.positions` — the cash
+        # for both was gone, one position was not.
+        tail = uuid.uuid4().hex[:8]
+        pid = f"pp-{int(time.time() * 1000)}-{symbol}-{tail}"
         # 27 characters: "nobi-" + epoch millis + 8 hex. The exchange documents a
         # 32-character limit and deduplicates on it.
-        coid = f"nobi-{int(time.time() * 1000)}-{uuid.uuid4().hex[:8]}"[:32]
+        coid = f"nobi-{int(time.time() * 1000)}-{tail}"[:32]
         pos = Position(
             id=pid, symbol=symbol, side=side, entry_price=fill_price,
             qty=filled_qty, size_quote=notional,
@@ -309,13 +324,17 @@ class PaperBroker:
             quote="IRT" if symbol.upper().endswith("IRT") else "USDT",
             quote_usd=rate,
             client_order_id=coid,
+            execution=execution,
+            mid_at_submit=mid_at_submit,
         )
         self.positions[pid] = pos
         self.risk.open_heat = round(getattr(self.risk, "open_heat", 0.0) + risk_pct, 4)
         self.cash -= total_cost
         self.orders.append(OrderEvent(time.time(), "submit", symbol, side, filled_qty, fill_price,
-                                      {"source": source, "clientOrderId": coid}))
-        self.orders.append(OrderEvent(time.time(), "fill", symbol, side, filled_qty, fill_price, {"source": source, "fee": fee}))
+                                      {"source": source, "clientOrderId": coid,
+                                       "execution": execution, "mid": mid_at_submit}))
+        self.orders.append(OrderEvent(time.time(), "fill", symbol, side, filled_qty, fill_price,
+                                      {"source": source, "fee": fee, "clientOrderId": coid}))
         self._mark_equity_minute()
         self.save()
         return pos
@@ -326,7 +345,9 @@ class PaperBroker:
             return
         spx, sold_qty = await self._execution_price(pos.symbol, "sell" if pos.side == "buy" else "buy", pos.filled_qty)
         if not spx or sold_qty <= 0:
-            self.orders.append(OrderEvent(time.time(), "reject", pos.symbol, pos.side, pos.filled_qty, 0, {"reason": "revert-failed"}))
+            self.orders.append(OrderEvent(time.time(), "reject", pos.symbol, pos.side, pos.filled_qty, 0,
+                                          {"reason": "revert-failed",
+                                           "clientOrderId": pos.client_order_id}))
             return
         notional_out = spx * sold_qty
         rate = self._pos_rate(pos)
@@ -345,7 +366,9 @@ class PaperBroker:
         pos.state = "CLOSED"
         pos.close_reason = reason
         self._mark_equity_minute()
-        self.orders.append(OrderEvent(time.time(), "close", pos.symbol, pos.side, sold_qty, spx, {"reason": reason, "pnl": pnl_net, "fee": fee_out, "risk": pos.risk_usd}))
+        self.orders.append(OrderEvent(time.time(), "close", pos.symbol, pos.side, sold_qty, spx,
+                                      {"reason": reason, "pnl": pnl_net, "fee": fee_out,
+                                       "risk": pos.risk_usd, "clientOrderId": pos.client_order_id}))
         self.save()
 
     async def evaluate_positions(self):
@@ -383,7 +406,10 @@ class PaperBroker:
                 pos.size_usd -= cost_basis_tp1
                 pos.realized_pnl += pnl_tp1
                 pos.state = "PARTIAL"
-                self.orders.append(OrderEvent(time.time(), "tp1", pos.symbol, pos.side, exit_qty, mid, {"pnl_pct": diff, "pnl": pnl_tp1, "fee": fee_tp1, "risk": pos.risk_usd}))
+                self.orders.append(OrderEvent(time.time(), "tp1", pos.symbol, pos.side, exit_qty, mid,
+                                              {"pnl_pct": diff, "pnl": pnl_tp1, "fee": fee_tp1,
+                                               "risk": pos.risk_usd,
+                                               "clientOrderId": pos.client_order_id}))
             # trailing stop post-tp1
             if pos.tp1_filled:
                 if pos.side == "buy":

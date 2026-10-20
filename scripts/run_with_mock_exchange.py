@@ -46,6 +46,20 @@ UNIVERSE = ("BTCIRT", "ETHIRT", "SOLIRT", "XRPIRT", "ADAIRT", "DOGEIRT",
 _PRICES: dict[str, float] = {}
 
 
+def to_udf(rows: list[dict]) -> dict:
+    """Fixture rows -> the UDF payload the exchange documents.
+
+    `t` is epoch **seconds** on both sides. An earlier version divided it by
+    1000, which put every candle in January 1970: the chart's axis, the
+    \"last candle\" age and the approval queue's TTL were all off by a factor of
+    1000 while every number on screen still looked plausible.
+    """
+    return {"s": "ok", "t": [int(x["t"]) for x in rows],
+            "o": [x["o"] for x in rows], "h": [x["h"] for x in rows],
+            "l": [x["l"] for x in rows], "c": [x["c"] for x in rows],
+            "v": [x["v"] for x in rows]}
+
+
 def _wire_exchange(base: str) -> None:
     """Feed the app's client from the exchange fixture, without HTTP to itself.
 
@@ -148,10 +162,7 @@ def _wire_exchange(base: str) -> None:
                 k = target / rows[-1]["c"]
                 rows = [{**x, "o": x["o"] * k, "h": x["h"] * k,
                          "l": x["l"] * k, "c": x["c"] * k} for x in rows]
-        return {"s": "ok", "t": [int(x["t"] / 1000) for x in rows],
-                "o": [x["o"] for x in rows], "h": [x["h"] for x in rows],
-                "l": [x["l"] for x in rows], "c": [x["c"] for x in rows],
-                "v": [x["v"] for x in rows]}
+        return to_udf(rows)
 
     async def get_orderbook(symbol: str) -> dict:
         async with httpx.AsyncClient(timeout=10) as c:

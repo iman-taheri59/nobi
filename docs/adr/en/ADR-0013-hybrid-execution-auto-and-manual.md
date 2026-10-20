@@ -75,3 +75,21 @@ PendingTrade {
   `api.telegram.org`.
 - **The lesson that produced ADR-0014:** after a recovery the ticket kept its
   "unavailable" marker — it had a number on screen while claiming an outage.
+
+## Second amendment — where the queue comes from (2026-10-20)
+
+Until this date the approval queue was a hard-coded empty array in `index.html`:
+the page promised "the robot plans, you approve" while no candidate ever reached
+it, so the approve/reject buttons could not be pressed to any effect. Now:
+
+- **Source:** the engine's own ranking (`live.ranked`) — LONG only, symbols whose
+  mode is not `manual`, at most the top five.
+- **Price and size:** `POST /api/risk/plan`, the route that also sizes the manual
+  ticket. A candidate whose plan is not placeable is not shown, and the count is
+  stated in words; no number is substituted.
+- **TTL:** the close of the candle the signal was computed on (`t + tf − now`).
+  When the series carries no usable clock the cell is an em-dash, not a zero.
+- **Approve:** `POST /api/paper/order` with `source=QUEUE`. The gates run on the
+  server only; the local R:R veto (which refused earlier, in the browser, naming
+  no gate) was removed.
+- **Reject:** removes the symbol from this session's queue and sends nothing.
