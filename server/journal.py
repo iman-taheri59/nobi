@@ -252,6 +252,13 @@ def make_row(snapshot: dict, bar_ts: int, *, rank: int | None = None,
         "diagnostics": snapshot.get("diagnostics") or {},
         "composite_basis": snapshot.get("composite_basis"),
         "fa_fresh": snapshot.get("fa_fresh"),
+        # Why the stored verdict differs from the raw TA verdict. Without this
+        # a journal row would say NEUTRAL and look like it contradicted itself.
+        "direction_raw": snapshot.get("direction_raw"),
+        "vetoes": list(((snapshot.get("fa") or {}).get("vetoes")) or []),
+        "veto_cap": snapshot.get("veto_cap"),
+        "veto_severe": snapshot.get("veto_severe"),
+        "uncapped_composite": snapshot.get("uncapped_composite"),
     }
     return JournalRow(
         ts=int(bar_ts),

@@ -93,7 +93,11 @@ class FAResult:
     macro: float = 50.0
     vetoes: list[str] = field(default_factory=list)
     evidence: dict[str, Any] = field(default_factory=dict)
+    #: True only when the numbers were fetched from a provider during this call.
     fresh: bool = False
+    #: True when the answer came from the cache. A cached live read is still a
+    #: live read — it must not be described as a static profile.
+    cached: bool = False
 
 
 class FAEngine:
@@ -164,7 +168,11 @@ class FAEngine:
     # ---------- scorers ----------
     async def score(self, symbol: str, usdt_premium_dev: float = 0, nobil_depth_score: int = 50) -> FAResult:
         base = norm_base(symbol)
-        cache_key = symbol.upper()
+        # The premium veto fires on a threshold crossing, so the cache key has to
+        # carry which side of it we are on. Without this a cached "clean" score
+        # would survive a premium spike for ten minutes.
+        prem_bucket = 1 if usdt_premium_dev > 0.04 else (-1 if usdt_premium_dev < -0.04 else 0)
+        cache_key = f"{symbol.upper()}|p{prem_bucket}"
         if cache_key in FA_CACHE and (time.time() - FA_CACHE[cache_key][0]) < CACHE_TTL_S:
             _, cached_res = FA_CACHE[cache_key]
             return FAResult(
@@ -177,6 +185,7 @@ class FAEngine:
                 vetoes=list(cached_res.vetoes),
                 evidence=dict(cached_res.evidence),
                 fresh=False,
+                cached=True,
             )
 
         ev: dict[str, Any] = {}

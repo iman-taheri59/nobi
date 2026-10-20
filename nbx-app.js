@@ -829,9 +829,19 @@
             i < 3 ? 'text-emerald-300' : 'text-zinc-500'
           }">${faNum(i + 1)}</div>
           <div class="min-w-0"><div class="font-bold text-[13px] sm:text-sm">${symLabel}</div>
-            <span class="chip ${dir}"><span class="dot ${
+            <span class="chip ${dir}"${
+          s.direction_raw && s.direction_raw !== s.direction
+            ? ` title="${LANG === 'fa'
+                ? `${s.direction_raw} بود؛ وتوی فاندامنتال (${(s.fa && s.fa.vetoes || []).join('، ')}) سقف ${faNum(+s.veto_cap)} گذاشت`
+                : `was ${s.direction_raw}; a fundamental veto (${(s.fa && s.fa.vetoes || []).join(', ')}) capped it at ${+s.veto_cap}`}"`
+            : ''
+        }><span class="dot ${
           s.direction === 'LONG' ? 'bg-emerald-400' : s.direction === 'EXIT' ? 'bg-red-400' : 'bg-zinc-400'
-        }"></span> ${s.direction}</span>
+        }"></span> ${s.direction}</span>${
+          s.direction_raw && s.direction_raw !== s.direction
+            ? `<span class="chip text-[9px] text-amber-300 border-amber-300/30 ms-1">${LANG === 'fa' ? 'وتو' : 'veto'}</span>`
+            : ''
+        }
           </div>
           <span class="text-[10px] text-zinc-500 ms-auto md:hidden">${s.regime || ''}</span>
         </div>
@@ -950,6 +960,26 @@
     }
     const avgFA = usable.length ? usable.reduce((a, x) => a + x.score, 0) / usable.length : null;
     if ($('faAvg')) $('faAvg').textContent = avgFA !== null ? faNum(Math.round(avgFA)) : '—';
+    // A score assembled from a hard-coded profile is not a live reading. It is
+    // still the best number available, so it is shown — labelled, not hidden
+    // and not passed off as live (ADR-0014). Only `fallback` counts: a cached
+    // live read is stale-by-minutes, not invented.
+    const isStatic = (x) => x.source === 'fallback' || (x.profile || (x.evidence || {}).profile) === 'fallback';
+    const fb = usable.filter(isStatic);
+    const sub = $('faAvgSub');
+    if (sub) {
+      if (!usable.length) {
+        sub.textContent = '';
+      } else if (fb.length) {
+        sub.textContent = LANG === 'fa'
+          ? `${faNum(fb.length)} از ${faNum(usable.length)} نماد از پروفایل ثابت (بدون تماس زندهٔ ارائه‌دهنده)`
+          : `${faNum(fb.length)} of ${faNum(usable.length)} symbols from a static profile (no live provider call)`;
+        sub.className = 'text-[10px] text-amber-300/90 leading-5 mt-0.5';
+      } else {
+        sub.textContent = LANG === 'fa' ? 'همه از ارائه‌دهندهٔ زنده' : 'all from a live provider';
+        sub.className = 'text-[10px] text-zinc-500 leading-5 mt-0.5';
+      }
+    }
     const vetoCt = fa.filter((x) => x.vetoes && x.vetoes.length).length;
     if ($('faVetoes')) $('faVetoes').textContent = fa.length ? faNum(vetoCt) : '—';
     if ($('faPrem')) {
@@ -975,17 +1005,22 @@
                 : 'fundamentals unavailable — the analysis server did not answer'}</span>
             </div>`;
           }
+          const isFallback = f && (f.source === 'fallback' ||
+            f.profile === 'fallback' || (f.evidence || {}).profile === 'fallback');
           const extra =
             f && f.evidence && f.evidence.tvl
               ? 'TVL ' + (f.evidence.tvl / 1e9).toFixed(1) + 'B'
               : x.direction + ' · ADX ' + faNum(+((x.diagnostics?.adx || 24).toFixed(0)));
+          const fallbackChip = isFallback
+            ? `<span class="chip text-[9px] text-amber-300 border-amber-300/30 ms-1">${LANG === 'fa' ? 'پروفایل ثابت' : 'static profile'}</span>`
+            : '';
           return `
         <div class="flex items-center gap-2.5 sm:gap-3">
           <span class="w-10 sm:w-14 font-bold text-[13px] sm:text-sm shrink-0">${x.symbol.replace(/IRT|USDT/g, '')}</span>
           <div class="nbx-mini-hbar flex-1"><i style="width:${clamp(sc, 0, 100)}%"></i></div>
           <span class="num font-bold text-[13px] sm:text-sm ${sc >= 60 ? 'text-sky-300' : sc >= 45 ? 'text-amber-300' : 'text-red-300'}">${faNum(
             +sc.toFixed(0)
-          )}</span>
+          )}${fallbackChip}</span>
           <span class="text-[10px] text-zinc-500 w-32 lg:w-48 hidden md:block truncate">${extra}</span>
         </div>`;
         })

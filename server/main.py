@@ -336,6 +336,40 @@ def norm(s: str) -> str:
 #: page and the engine cannot disagree.
 TA_W, FA_W, LIQ_W = 0.55, 0.25, 0.20
 
+#: Ceilings applied when the fundamental engine raises vetoes. Both sit below
+#: `ta_engine.LONG_SCORE_MIN` (68) so a flagged symbol cannot be promoted.
+VETO_CAP = 67.0
+VETO_CAP_SEVERE = 45.0
+
+
+#: A veto is a hard flag from the fundamental engine. Until now nothing read
+#: them: `/api/signals` reported their count and the score behaved as if every
+#: symbol were clean, so the panel could show "2 vetoes" beside a LONG.
+#:
+#: The rule below is deliberately blunt and visible rather than clever: a
+#: vetoed symbol is capped below the LONG threshold, and it is demoted to
+#: NEUTRAL at most. Severe flags (a broken market, not just an expensive one)
+#: cap lower still. The applied caps are returned so the UI can say *why*.
+SEVERE_VETOES = {"thin-tvl", "extreme-fear", "unlock-7d>5%"}
+
+
+def apply_vetoes(composite: float, direction: str, vetoes: list[str]) -> tuple[float, str, dict]:
+    """Cap a vetoed symbol below promotion and explain the cap."""
+    if not vetoes:
+        return composite, direction, {}
+    severe = sorted(v for v in vetoes if v in SEVERE_VETOES)
+    cap = VETO_CAP_SEVERE if severe else VETO_CAP
+    # Below LONG_SCORE_MIN by construction: a veto that still allowed LONG
+    # would be decoration.
+    capped = round(min(composite, cap), 1)
+    new_dir = "EXIT" if severe else ("NEUTRAL" if direction == "LONG" else direction)
+    return capped, new_dir, {
+        "veto_cap": cap,
+        "veto_severe": severe,
+        "uncapped_composite": round(composite, 1),
+        "uncapped_direction": direction,
+    }
+
 
 def composite_score(ta: float, liq: float, fa: float | None) -> tuple[float, str]:
     """Composite of TA + liquidity (+ fundamentals when they are available).
@@ -347,6 +381,15 @@ def composite_score(ta: float, liq: float, fa: float | None) -> tuple[float, str
         w = TA_W + LIQ_W
         return round((TA_W * ta + LIQ_W * liq) / w, 1), "ta+liq"
     return round(TA_W * ta + FA_W * fa + LIQ_W * liq, 1), "ta+fa+liq"
+
+
+def _short_proc_error(exc: Exception) -> str:
+    """The one line worth logging from a failed subprocess call."""
+    err = getattr(exc, "stderr", None) or b""
+    if isinstance(err, bytes):
+        err = err.decode("utf-8", "replace")
+    lines = [ln.strip() for ln in str(err).splitlines() if ln.strip()]
+    return lines[-1][:300] if lines else str(exc)[:300]
 
 
 #: Sent to the dashboard whenever a number cannot be fetched. The UI renders it
@@ -589,8 +632,11 @@ async def rescan(tf: str = "15m", top: int = 40):
     async def enrich(sym: str, snap: dict):
         async with fa_sem:
             try:
+                # The premium is measured once per universe load; passing a
+                # constant 0 here made the documented premium veto unreachable.
+                prem_dev = (_cached.get("premium_pct") or 0.0) / 100.0
                 fa: FAResult = await FA_ENGINE.score(
-                    sym, usdt_premium_dev=0, nobil_depth_score=snap["liquidity_score"]
+                    sym, usdt_premium_dev=prem_dev, nobil_depth_score=snap["liquidity_score"]
                 )
                 snap["fa"] = {
                     "score": fa.score,
@@ -601,9 +647,18 @@ async def rescan(tf: str = "15m", top: int = 40):
                 }
                 snap["fa_score"] = fa.score
                 snap["fa_fresh"] = fa.fresh
-                snap["composite"], snap["composite_basis"] = _composite(
+                raw_composite, basis = _composite(
                     snap["score"], snap["liquidity_score"], fa.score
                 )
+                # Vetoes are not decoration: they cap the score and the verdict,
+                # and the caps travel with the row so the UI can explain them.
+                capped, new_dir, veto_meta = apply_vetoes(
+                    raw_composite, snap.get("direction") or "NEUTRAL", list(fa.vetoes or [])
+                )
+                snap["composite"], snap["composite_basis"] = capped, basis
+                snap["direction_raw"] = snap.get("direction")
+                snap["direction"] = new_dir
+                snap.update(veto_meta)
                 scored.append(sym)
                 if fa.fresh:
                     live.append(sym)
@@ -1310,14 +1365,32 @@ async def journal_backfill(request: Request,
 
 @app.get("/api/fa/{symbol}")
 async def fa(symbol: str):
+    """Fundamentals for one symbol.
+
+    `source` here describes the *fundamental* providers, not the exchange. It
+    used to be `provenance()`, which reports Nobitex reachability — so this
+    endpoint answered `source: "unavailable"` while `fresh: true` and
+    `profile: live`, which reads as a contradiction to any API consumer.
+    """
     s = _cached["signals"].get(symbol.upper())
     liq = s["liquidity_score"] if s else 50
-    res = await FA_ENGINE.score(symbol.upper(), usdt_premium_dev=0, nobil_depth_score=liq)
+    prem_dev = (_cached.get("premium_pct") or 0.0) / 100.0
+    res = await FA_ENGINE.score(symbol.upper(), usdt_premium_dev=prem_dev, nobil_depth_score=liq)
+    # Three states, not two: fetched now, served from the cache, or built from a
+    # hard-coded profile. `fresh` alone cannot tell cache from fallback.
+    profile = (res.evidence or {}).get("profile")
+    if profile == "fallback":
+        source = "fallback"
+    elif res.cached:
+        source = "cached"
+    else:
+        source = "live"
     return {
         "symbol": symbol.upper(),
         **res.__dict__,
         "ts": datetime.now(timezone.utc).isoformat(),
-        **provenance(),
+        "source": source,
+        "profile": profile,
     }
 
 
@@ -1748,20 +1821,35 @@ def _self_contained_page() -> Path:
     if os.getenv("NBX_SERVE_INLINE", "1") == "0":
         return REPO_ROOT / "index.html"
 
-    sources = [REPO_ROOT / "index.html", REPO_ROOT / "nbx-core.js",
-               REPO_ROOT / "nbx-app.js", *sorted((REPO_ROOT / "assets" / "css").glob("*.css"))]
-    newest = max((p.stat().st_mtime for p in sources if p.exists()), default=0)
+    markup = [REPO_ROOT / "index.html", REPO_ROOT / "nbx-core.js", REPO_ROOT / "nbx-app.js"]
+    css = sorted((REPO_ROOT / "assets" / "css").glob("*.css"))
+    newest = max((p.stat().st_mtime for p in [*markup, *css] if p.exists()), default=0)
     stale = (not standalone.exists()) or standalone.stat().st_mtime < newest
     if stale:
+        import subprocess
+
+        # build_standalone.py refuses to inline a stylesheet older than the
+        # markup (classes added since the last CSS build would be missing).
+        # Rebuild the CSS first when the toolchain is present; otherwise the
+        # page would keep serving yesterday's bundle with no explanation.
+        if css and any(p.stat().st_mtime > max(c.stat().st_mtime for c in css)
+                       for p in markup if p.exists()):
+            tailwind = REPO_ROOT / "node_modules" / ".bin" / "tailwindcss"
+            if tailwind.exists():
+                try:
+                    subprocess.run(["npm", "run", "css"], cwd=str(REPO_ROOT),
+                                   check=True, capture_output=True, timeout=60)
+                except Exception as exc:  # noqa: BLE001 - report, then try the build
+                    log.warning("css build failed: %s", _short_proc_error(exc))
         try:
-            import subprocess
             subprocess.run([os.sys.executable, str(REPO_ROOT / "scripts" / "build_standalone.py")],
                            cwd=str(REPO_ROOT), check=True, capture_output=True, timeout=30)
         except Exception as exc:                       # never fail the request
             # A stale-but-complete page beats a fresh-but-empty one: index.html
             # outside the server's file tree would arrive with no CSS or JS at
-            # all. Prefer the last good build.
-            log.warning("standalone build failed (%s); serving the previous build", exc)
+            # all. Prefer the last good build — and say why, not just "exit 1".
+            log.warning("standalone build failed (%s); serving the previous build",
+                        _short_proc_error(exc))
             return standalone if standalone.exists() else REPO_ROOT / "index.html"
     return standalone if standalone.exists() else REPO_ROOT / "index.html"
 

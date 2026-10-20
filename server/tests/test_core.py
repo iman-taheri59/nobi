@@ -1589,3 +1589,144 @@ def test_orderbook_route_treats_an_empty_book_as_unavailable(monkeypatch):
     monkeypatch.setattr(main.client, "get_orderbook", empty)
     out = asyncio.run(main.orderbook("BTCIRT", 8))
     assert out["ok"] is False and out["unavailable"] is True
+
+
+# --------------------------------------------------------------------------- #
+# Fundamental vetoes have to change the outcome, not just decorate it
+# --------------------------------------------------------------------------- #
+def test_veto_caps_a_long_below_the_promotion_threshold():
+    import main
+    from ta_engine import LONG_SCORE_MIN
+
+    score, direction, meta = main.apply_vetoes(91.0, "LONG", ["premium-stretched"])
+    assert score < LONG_SCORE_MIN, "a capped score must not still qualify as LONG"
+    assert direction == "NEUTRAL"
+    assert meta["uncapped_composite"] == 91.0
+    assert meta["uncapped_direction"] == "LONG"
+    assert meta["veto_cap"] == main.VETO_CAP
+
+
+def test_severe_veto_goes_further_than_a_mild_one():
+    import main
+
+    mild, d_mild, _ = main.apply_vetoes(90.0, "LONG", ["premium-stretched"])
+    severe, d_severe, meta = main.apply_vetoes(90.0, "LONG", ["thin-tvl"])
+    assert severe < mild
+    assert d_severe == "EXIT" and d_mild == "NEUTRAL"
+    assert meta["veto_severe"] == ["thin-tvl"]
+
+
+def test_no_vetoes_leaves_the_score_alone():
+    import main
+
+    assert main.apply_vetoes(72.5, "LONG", []) == (72.5, "LONG", {})
+
+
+def test_veto_never_raises_a_score():
+    """Capping is a ceiling: a weak symbol must not be pushed up to it."""
+    import main
+
+    score, direction, _ = main.apply_vetoes(12.0, "EXIT", ["thin-tvl"])
+    assert score == 12.0 and direction == "EXIT"
+
+
+def test_fa_route_reports_the_fundamental_source_not_the_exchange():
+    """`source` on /api/fa used to be Nobitex provenance, so a live CoinGecko
+    read came back as source=unavailable while profile=live."""
+    import asyncio
+    import main
+    from fa_engine import FAResult
+
+    async def fake_score(symbol, **kw):
+        return FAResult(score=70.0, market=70, tokenomics=70, onchain=70,
+                        sentiment=70, macro=70, vetoes=[], evidence={"profile": "live"},
+                        fresh=True)
+
+    async def fake_fallback(symbol, **kw):
+        return FAResult(score=64.0, market=60, tokenomics=60, onchain=60,
+                        sentiment=60, macro=60, vetoes=[], evidence={"profile": "fallback"},
+                        fresh=False)
+
+    main.FA_ENGINE.score = fake_score
+    live = asyncio.run(main.fa("BTC"))
+    assert live["source"] == "live" and live["profile"] == "live"
+
+    main.FA_ENGINE.score = fake_fallback
+    fb = asyncio.run(main.fa("BTC"))
+    assert fb["source"] == "fallback", "a hard-coded profile must never be labelled live"
+
+    async def fake_cached(symbol, **kw):
+        return FAResult(score=71.0, market=70, tokenomics=70, onchain=70,
+                        sentiment=70, macro=70, vetoes=[], evidence={"profile": "live"},
+                        fresh=False, cached=True)
+
+    main.FA_ENGINE.score = fake_cached
+    cached = asyncio.run(main.fa("BTC"))
+    assert cached["source"] == "cached", "a cached live read is not a static profile"
+    assert cached["profile"] == "live"
+
+
+def test_journal_row_keeps_the_veto_explanation():
+    """A row that stores NEUTRAL must also store why it is not LONG."""
+    import journal
+
+    snap = {
+        "symbol": "BTCIRT", "tf": "15m", "direction": "NEUTRAL", "direction_raw": "LONG",
+        "score": 80.0, "composite": 67.0, "lastClose": 100.0,
+        "risk": {"atr": 2.0}, "fa_score": 60.0, "liquidity_score": 55.0,
+        "fa": {"vetoes": ["premium-stretched"]},
+        "veto_cap": 67.0, "veto_severe": [], "uncapped_composite": 80.0,
+    }
+    row = journal.make_row(snap, bar_ts=1_700_000_000)
+    assert row is not None
+    assert row.direction == "NEUTRAL"
+    assert row.features["direction_raw"] == "LONG"
+    assert row.features["vetoes"] == ["premium-stretched"]
+    assert row.features["veto_cap"] == 67.0
+    assert row.features["uncapped_composite"] == 80.0
+
+
+def test_premium_veto_can_actually_fire():
+    """Passing a literal 0 made `premium-stretched` unreachable in production.
+
+    This drives FAEngine.score through an injected provider so the rule is
+    exercised, not just present.
+    """
+    import asyncio
+    import fa_engine
+
+    eng = fa_engine.FAEngine()
+
+    async def overview(_cg_id):
+        return {"market_data": {"market_cap": {"usd": 1e12}, "fully_diluted_valuation": {"usd": 1e12},
+                                "total_volume": {"usd": 1e11}, "total_supply": 1, "max_supply": 1},
+                "genesis_date": "2009-01-03"}
+
+    async def llama():
+        return [{"name": "bitcoin", "symbol": "BTC", "tvl": 5e9}]
+
+    async def fng():
+        return {"fg_value": 55}
+
+    eng._cg_overview = overview
+    eng._llama_protocols = llama
+    eng._listen_prices = fng
+    fa_engine.FA_CACHE.clear()
+
+    calm = asyncio.run(eng.score("BTC", usdt_premium_dev=0.01))
+    hot = asyncio.run(eng.score("BTC", usdt_premium_dev=0.09))
+    assert "premium-stretched" not in calm.vetoes
+    assert "premium-stretched" in hot.vetoes
+    assert hot.macro < calm.macro, "a stretched premium must lower the macro score"
+
+
+def test_failed_build_reports_the_reason_not_just_the_exit_code():
+    """The runtime rebuild used to log "exit status 1" and nothing else."""
+    import subprocess
+    import main
+
+    exc = subprocess.CalledProcessError(1, ["python", "build.py"],
+                                        stderr=b"assets/css/tailwind.css is older than the markup it styles.\nRun: npm run css\n")
+    msg = main._short_proc_error(exc)
+    assert "npm run css" in msg
+    assert msg.startswith("Run:")
