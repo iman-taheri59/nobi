@@ -30,7 +30,7 @@ from typing import Any, Callable
 
 import httpx
 
-from units import price_scale
+from units import market_symbol, price_scale, scale_stat_row
 
 log = logging.getLogger("market-stream")
 
@@ -40,6 +40,22 @@ POLL_S = max(1.0, float(os.getenv("NBX_STREAM_POLL_S", "5")))
 #: This used to default to `market:`, a prefix the exchange never publishes, so
 #: an opted-in WebSocket could connect and then receive nothing forever.
 WS_CHANNEL_PREFIX = os.getenv("NBX_WS_CHANNEL_PREFIX", "public:orderbook-")
+
+#: One channel carries every market's 24h statistics (docs §websocket, "کانال
+#: وضعیت تمامی بازارها"). Subscribing to it once beats N per-symbol channels and
+#: is what keeps the *closed* flag and the last price current between REST polls.
+WS_STATS_CHANNEL = "public:market-stats-all"
+WS_STATS_PREFIX = "public:market-stats-"
+WS_CANDLE_PREFIX = "public:candle-"
+
+#: `15m` → `15`: the candle channel takes the resolution, not the app's label
+#: (docs list 1/5/15/30/60/180/240/360/720/D/2D/3D).
+TF_RESOLUTION = {"1m": "1", "5m": "5", "15m": "15", "30m": "30",
+                 "1h": "60", "3h": "180", "4h": "240", "6h": "360",
+                 "12h": "720", "D": "D", "2D": "2D", "3D": "3D"}
+TF_SECONDS = {"1m": 60, "5m": 300, "15m": 900, "30m": 1800, "1h": 3600,
+              "3h": 10800, "4h": 14400, "6h": 21600, "12h": 43200,
+              "D": 86400, "2D": 172800, "3D": 259200}
 
 
 @dataclass
@@ -60,6 +76,23 @@ class HotBook:
         return self.mid > 0 and (time.time() - self.last_update) < 15.0
 
 
+@dataclass
+class MarketStat:
+    """One row of `public:market-stats-*`, already in the app's Toman scale."""
+    latest: float = 0.0
+    mark: float = 0.0
+    day_change: float = 0.0
+    best_bid: float = 0.0
+    best_ask: float = 0.0
+    volume_dst: float = 0.0
+    closed: bool = False
+    updated: float = 0.0
+
+    @property
+    def fresh(self) -> bool:
+        return self.updated > 0 and (time.time() - self.updated) < 120.0
+
+
 class StreamExecutor:
     """Maintains a hot price per subscribed symbol and fires callbacks."""
 
@@ -71,13 +104,42 @@ class StreamExecutor:
         self._ws_task: asyncio.Task | None = None
         self._ws_connected = False
         self.nbx_client: Any = None
-        self.on_tick: list[Callable[[str, float], Any]] = []
+        #: (symbol, callback) pairs. The symbol is part of the registration on
+        #: purpose: `streams_start` registers one callback per open position, and
+        #: a flat list delivered every price to every position — a BTCIRT tick
+        #: overwrote the `last_price` of an ETHIRT position, which marked a
+        #: 0.3 ETH holding at 8.97 billion and multiplied equity by ~6 orders of
+        #: magnitude. A callback registered with `None` still sees every tick.
+        self.on_tick: list[tuple[str | None, Callable[[str, float], Any]]] = []
         self.enabled = True
         self.ticks = 0
         self.consecutive_errors = 0
         self.last_error: str | None = None
         self.last_tick_at: float | None = None
         self.ws_messages = 0
+        #: Market-wide statistics from `public:market-stats-all`, keyed by the
+        #: app's symbol (`BTCIRT`), not the channel's (`btc-irt`).
+        self.markets: dict[str, MarketStat] = {}
+        self.on_market: list[Callable[[str, MarketStat], Any]] = []
+        self.stats_frames = 0
+        self.last_stats_at: float | None = None
+        #: Last candle seen per (symbol, timeframe). Used to make a REST series
+        #: end where the market is, instead of where the last poll left it.
+        self.candles: dict[tuple[str, str], dict] = {}
+        self.candle_frames = 0
+        #: Subscribe to the market-wide channels even with no position open.
+        self.want_stats = False
+        self.pongs = 0
+        self.pong_echoes = 0
+        self._last_pong_at = 0.0
+        #: The live socket and the channels already asked for on it. A position
+        #: opened after the handshake used to be invisible to the feed: the
+        #: `subscribe` frames were only ever sent at connect time, so the new
+        #: symbol was "subscribed" in memory and never on the wire.
+        self._ws_conn = None
+        self._sent_channels: set[str] = set()
+        self._next_sub_id = 2
+        self.candle_tf = os.getenv("NBX_WS_CANDLE_TF", "15m")
 
     # ------------------------------------------------------------------ #
     # transport
@@ -99,7 +161,32 @@ class StreamExecutor:
             "consecutive_errors": self.consecutive_errors,
             "last_error": self.last_error,
             "last_tick_at": self.last_tick_at,
+            # A socket that connects and then subscribes to nothing is not a
+            # feed. `channels` is what was actually sent on the wire, not what
+            # the code would like to send: with no socket configured the two
+            # lists differ, and printing the wish-list looked like a feed.
+            "channels": sorted(self._sent_channels) if self._ws_connected else [],
+            "channels_wanted": self.ws_channels(),
+            "stats_frames": self.stats_frames,
+            "last_stats_at": self.last_stats_at,
+            "markets": len(self.markets),
+            "candle_frames": self.candle_frames,
+            "candles": len(self.candles),
+            "pongs": self.pongs,
+            "pong_echoes": self.pong_echoes,
         }
+
+    def ws_channels(self) -> list[str]:
+        """Channel names the socket asked for (stats first, then candles/books)."""
+        out = []
+        if self.want_stats:
+            out.append(WS_STATS_CHANNEL)
+        for sym in sorted(self._subs):
+            res = TF_RESOLUTION.get(self.candle_tf)
+            if res:
+                out.append(f"{WS_CANDLE_PREFIX}{sym}-{res}")
+            out.append(f"{WS_CHANNEL_PREFIX}{sym}")
+        return out
 
     async def _ensure_client(self) -> httpx.AsyncClient:
         if self._client is None:
@@ -115,8 +202,8 @@ class StreamExecutor:
     # ------------------------------------------------------------------ #
     async def subscribe(self, symbol: str, on_tick: Callable[[str, float], Any] | None = None) -> None:
         symbol = symbol.upper()
-        if on_tick and on_tick not in self.on_tick:
-            self.on_tick.append(on_tick)
+        if on_tick and (symbol, on_tick) not in self.on_tick:
+            self.on_tick.append((symbol, on_tick))
         if symbol in self._subs:
             return
         self._subs.add(symbol)
@@ -124,6 +211,18 @@ class StreamExecutor:
         log.info("stream subscribe %s (transport=%s)", symbol, self.transport)
         if not self._tasks.get(symbol):
             self._tasks[symbol] = asyncio.create_task(self._poll_loop(symbol))
+        self.ensure_ws()
+        if self._ws_conn is not None:
+            asyncio.create_task(self._send_missing_subs())
+
+    def ensure_ws(self) -> None:
+        """Open the socket when it is configured and not already running.
+
+        Called by `subscribe()` and by the lifespan startup, because the
+        market-wide statistics channel is worth having even with no position
+        open — that is the channel that keeps `isClosed` and the last price
+        current for the whole board.
+        """
         if WS_URL and not self._ws_task:
             self._ws_task = asyncio.create_task(self._ws_loop())
 
@@ -202,7 +301,7 @@ class StreamExecutor:
             return
 
         backoff = 1.0
-        while self._subs:
+        while self._subs or self.want_stats:
             try:
                 async with websockets.connect(WS_URL, ping_interval=20, ping_timeout=20) as ws:
                     # Anonymous connection: the protocol still wants a
@@ -212,26 +311,87 @@ class StreamExecutor:
                     if "connect" not in hello:
                         raise RuntimeError(f"unexpected handshake: {hello}")
                     self._ws_connected = True
+                    self._ws_conn = ws
+                    self._sent_channels = set()
                     self.last_error = None
                     backoff = 1.0
-                    subs = sorted(self._subs)
-                    for i, sym in enumerate(subs, start=2):
-                        await ws.send(json.dumps({
-                            "id": i,
-                            "subscribe": {"channel": f"{WS_CHANNEL_PREFIX}{sym}"},
-                        }))
+                    subs = self.ws_channels()
+                    for channel in subs:
+                        await self._send_subscribe(ws, channel)
                     log.info("WS connected (%s), %d subscriptions", WS_URL, len(subs))
                     async for raw in ws:
+                        # Centrifugo's application-level keep-alive is an empty
+                        # object, not a protocol ping: the docs are explicit
+                        # that the client must answer `{}` within 25 s or be
+                        # disconnected. `websockets`' own ping is a different
+                        # layer, so a socket that ignored this died and
+                        # reconnected every 25 seconds, forever.
+                        if isinstance(raw, bytes):
+                            raw = raw.decode("utf-8", "ignore")
+                        if await self._handle_keepalive(ws, raw):
+                            continue
                         self._on_ws_message(raw)
             except asyncio.CancelledError:
                 raise
             except Exception as e:  # noqa: BLE001 - reconnect forever
                 self._ws_connected = False
+                self._ws_conn = None
                 self.last_error = f"ws: {type(e).__name__}: {e}"
                 log.warning("WS error (%s), reconnecting in %.0fs", self.last_error, backoff)
                 await asyncio.sleep(backoff)
                 backoff = min(backoff * 2, 60.0)
         self._ws_connected = False
+        self._ws_conn = None
+
+    @staticmethod
+    def _decode(data):
+        """`pub.data` is a JSON string in the raw protocol and a dict via an SDK."""
+        if isinstance(data, (str, bytes)):
+            try:
+                return json.loads(data)
+            except Exception:
+                return None
+        return data
+
+    async def _handle_keepalive(self, ws, raw: str) -> bool:
+        """Answer Centrifugo's application-level ping with the same empty object.
+
+        Returns True when the frame was a keep-alive and has been handled. The
+        answer is rate-limited to one per second: a peer that echoes the pong
+        back would otherwise ping-pong forever, which is exactly what happened
+        the first time this was wired against a stand-in server.
+        """
+        if not isinstance(raw, str) or raw.strip() != "{}":
+            return False
+        now = time.time()
+        if now - self._last_pong_at >= 1.0:
+            self._last_pong_at = now
+            await ws.send("{}")
+            self.pongs += 1
+        else:
+            self.pong_echoes += 1
+        return True
+
+    async def _send_subscribe(self, ws, channel: str) -> None:
+        await ws.send(json.dumps({"id": self._next_sub_id,
+                                  "subscribe": {"channel": channel}}))
+        self._next_sub_id += 1
+        self._sent_channels.add(channel)
+
+    async def _send_missing_subs(self) -> None:
+        """Subscribe channels that appeared after the handshake."""
+        ws = self._ws_conn
+        if ws is None:
+            return
+        for channel in self.ws_channels():
+            if channel in self._sent_channels:
+                continue
+            try:
+                await self._send_subscribe(ws, channel)
+                log.info("WS subscribed late: %s", channel)
+            except Exception as e:  # noqa: BLE001 - reconnect will resend
+                log.debug("late subscribe failed (%s): %s", channel, e)
+                return
 
     def _on_ws_message(self, raw: str | bytes) -> None:
         try:
@@ -242,17 +402,122 @@ class StreamExecutor:
         if not push:
             return
         channel = str(push.get("channel") or "")
-        symbol = channel.split(WS_CHANNEL_PREFIX, 1)[-1].upper()
-        data = (push.get("pub") or {}).get("data")
-        # Centrifugo publishes `data` as a JSON *string* when the SDK is not in
-        # use (docs §websocket); the old parser required a dict and dropped
-        # every real frame on the floor.
-        if isinstance(data, (str, bytes)):
+        data = self._decode((push.get("pub") or {}).get("data"))
+        if not isinstance(data, dict):
+            return
+        if channel.startswith(WS_STATS_PREFIX):
+            self._on_stats_frame(channel, data)
+        elif channel.startswith(WS_CANDLE_PREFIX):
+            self._on_candle_frame(channel, data)
+        elif channel.startswith(WS_CHANNEL_PREFIX):
+            self._on_orderbook_frame(channel, data)
+
+    # ------------------------------------------------------------------ #
+    # market-wide statistics: `public:market-stats-all`
+    # ------------------------------------------------------------------ #
+    def _on_stats_frame(self, channel: str, data: dict) -> None:
+        """One channel, two shapes: all markets keyed by `btc-irt`, or one row."""
+        if channel == WS_STATS_CHANNEL:
+            rows = {k: v for k, v in data.items() if isinstance(v, dict)}
+        else:
+            sym = market_symbol(channel.split(WS_STATS_PREFIX, 1)[-1])
+            rows = {sym: data} if sym else {}
+        now = time.time()
+        touched = False
+        for key, row in rows.items():
+            sym = market_symbol(key)
+            if not sym:
+                continue                       # deprecated `global` block
+            # Same conversion as the REST route (`scale_stats`): Rial → Toman
+            # for `-rls`/`-irt` markets. A private copy of this rule would have
+            # quoted the whole board ten times too high.
+            r = scale_stat_row(sym, row)
+            st = self.markets.get(sym) or MarketStat()
             try:
-                data = json.loads(data)
-            except Exception:
-                return
-        if not symbol or not isinstance(data, dict):
+                if r.get("latest") is not None:
+                    st.latest = float(r["latest"])
+                if r.get("mark") is not None:
+                    st.mark = float(r["mark"])
+                if r.get("dayChange") is not None:
+                    st.day_change = float(r["dayChange"])
+                if r.get("bestBuy") is not None:
+                    st.best_bid = float(r["bestBuy"])
+                if r.get("bestSell") is not None:
+                    st.best_ask = float(r["bestSell"])
+                if r.get("volumeDst") is not None:
+                    st.volume_dst = float(r["volumeDst"])
+            except (TypeError, ValueError):
+                continue
+            if "isClosed" in r:
+                st.closed = bool(r["isClosed"])
+            st.updated = now
+            self.markets[sym] = st
+            touched = True
+            for fn in list(self.on_market):
+                try:
+                    fn(sym, st)
+                except Exception:  # noqa: BLE001 - a bad callback must not stop the feed
+                    pass
+        if touched:
+            self.stats_frames += 1
+            self.last_stats_at = now
+            self.ws_messages += 1
+
+    # ------------------------------------------------------------------ #
+    # candles: `public:candle-{SYMBOL}-{resolution}`
+    # ------------------------------------------------------------------ #
+    def _on_candle_frame(self, channel: str, data: dict) -> None:
+        tail = channel.split(WS_CANDLE_PREFIX, 1)[-1]
+        sym, _, res = tail.rpartition("-")
+        if not sym or not res:
+            return
+        tf = next((k for k, v in TF_RESOLUTION.items() if v == res.upper()), None)
+        if tf is None:
+            return
+        try:
+            row = {"t": int(data["t"]), "o": float(data["o"]), "h": float(data["h"]),
+                   "l": float(data["l"]), "c": float(data["c"]), "v": float(data.get("v") or 0)}
+        except (KeyError, TypeError, ValueError):
+            return
+        # A Rial market's candle is quoted in Rial (docs example: BTCIRT opens at
+        # 6,240,000,001), while `/api/candles` already returns Toman. Without
+        # this the socket's candle is ten times the series it lands on.
+        k = price_scale() if sym.upper().endswith("IRT") else 1.0
+        row.update({f: row[f] * k for f in ("o", "h", "l", "c")})
+        if row["t"] <= 0 or row["c"] <= 0:
+            return
+        self.candles[(sym.upper(), tf)] = {**row, "_at": time.time()}
+        self.candle_frames += 1
+        self.ws_messages += 1
+
+    def merge_last_candle(self, symbol: str, tf: str, rows: list[dict]) -> list[dict]:
+        """Let a series end on the candle the socket just published.
+
+        Used only to *refresh* a REST series: the socket frame replaces the last
+        row when it is the same candle, appends when it is a newer one, and is
+        ignored when it is older than what REST already returned. A frame older
+        than two candles is treated as stale and ignored entirely.
+        """
+        c = self.candles.get((symbol.upper(), tf))
+        if not c or not rows:
+            return rows
+        ttl = TF_SECONDS.get(tf, 900) * 2
+        if time.time() - c.get("_at", 0) > ttl:
+            return rows
+        row = {k: c[k] for k in ("t", "o", "h", "l", "c", "v")}
+        last_t = int(rows[-1].get("t") or 0)
+        if row["t"] < last_t:
+            return rows
+        if row["t"] == last_t:
+            return [*rows[:-1], {**rows[-1], **{k: row[k] for k in ("o", "h", "l", "c", "v")}}]
+        return [*rows, row]
+
+    # ------------------------------------------------------------------ #
+    # order book: `public:orderbook-{SYMBOL}`
+    # ------------------------------------------------------------------ #
+    def _on_orderbook_frame(self, channel: str, data: dict) -> None:
+        symbol = channel.split(WS_CHANNEL_PREFIX, 1)[-1].upper()
+        if not symbol:
             return
         book = self.books.setdefault(symbol, HotBook())
         # The documented payload is a full L2 snapshot: arrays of
@@ -294,7 +559,9 @@ class StreamExecutor:
     def _emit(self, symbol: str, mid: float) -> None:
         self.ticks += 1
         self.last_tick_at = time.time()
-        for fn in list(self.on_tick):
+        for want, fn in list(self.on_tick):
+            if want is not None and want != symbol:
+                continue                      # another market's tick
             try:
                 result = fn(symbol, mid)
                 if asyncio.iscoroutine(result):
@@ -310,8 +577,15 @@ STREAM_EXECUTOR = StreamExecutor()
 
 
 async def streams_start(broker, client) -> None:
-    """Subscribe every open position so its `last_price` tracks the market."""
+    """Subscribe every open position so its `last_price` tracks the market.
+
+    Also turns on the market-wide statistics channel: it is one subscription
+    that covers every market, and it is the only thing that notices a market
+    closing between two REST polls.
+    """
     STREAM_EXECUTOR.nbx_client = client
+    STREAM_EXECUTOR.want_stats = True
+    STREAM_EXECUTOR.ensure_ws()
     for pos in (getattr(broker, "positions", {}) or {}).values():
         if getattr(pos, "state", "OPEN") == "CLOSED":
             continue

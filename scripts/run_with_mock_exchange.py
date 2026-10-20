@@ -151,8 +151,12 @@ def _wire_exchange(base: str) -> None:
         rows = (r.json() or {}).get("rows") or []
         if rows:
             # The engine asks for a window ending now; the fixture's series may
-            # end earlier. Shift it forward so it lands inside that window.
-            now = (int(time.time()) // 60) * 60
+            # end earlier. Shift it forward so it lands inside that window — and
+            # land it on the timeframe's own boundary: a 15-minute series whose
+            # candles sit one minute apart cannot be merged with a live candle,
+            # and its axis is a lie even before that.
+            step = {"15": 900, "60": 3600, "240": 14400, "D": 86400}.get(resolution, 900)
+            now = int(time.time()) // step * step
             shift = now - rows[-1]["t"]
             rows = [{**x, "t": x["t"] + shift} for x in rows]
             # Put the series on the market board's scale, otherwise the chart

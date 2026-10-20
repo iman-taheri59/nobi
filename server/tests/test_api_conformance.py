@@ -353,7 +353,7 @@ def _stream():
 
     s = StreamExecutor()
     got = []
-    s.on_tick.append(lambda sym, px: got.append((sym, px)))
+    s.on_tick.append((None, lambda sym, px: got.append((sym, px))))
     return s, got
 
 
@@ -553,3 +553,343 @@ def test_fixture_candles_keep_epoch_seconds(tmp_path, monkeypatch):
     # Within one candle of the wall clock: catches a /1000 or *1000 rescale.
     assert abs(udf["t"][-1] - time.time()) < 900
     assert udf["c"] == [1.05, 1.05]
+
+
+# --------------------------------------------------------------------------- #
+# WebSocket: the keep-alive, the market-wide channels, and the merge rules
+# --------------------------------------------------------------------------- #
+class _FakeWS:
+    def __init__(self):
+        self.sent = []
+
+    async def send(self, payload):
+        self.sent.append(payload)
+
+
+def test_ws_answers_the_centrifugo_keepalive_once_per_second():
+    """Docs §websocket: the server sends `{}` and expects `{}` back within 25 s.
+    `websockets`' protocol ping is a different layer; a client that only replies
+    to that one is dropped every 25 seconds, forever."""
+    s, _ = _stream()
+    ws = _FakeWS()
+    handled = run(s._handle_keepalive(ws, "{}"))
+    assert handled is True
+    assert ws.sent == ["{}"]
+    assert s.pongs == 1
+    # A peer that echoes the pong back must not start a loop.
+    run(s._handle_keepalive(ws, "{}"))
+    assert ws.sent == ["{}"] and s.pong_echoes == 1
+    assert run(s._handle_keepalive(ws, '{"push": {}}')) is False
+
+
+def test_ws_market_stats_channel_is_scaled_like_the_rest_route():
+    """One Rial→Toman rule, not two. A private copy on the socket path quoted
+    every Rial market ten times too high — and the board looked plausible."""
+    s, _ = _stream()
+    seen = []
+    s.on_market.append(lambda sym, st: seen.append((sym, st.latest, st.closed)))
+    payload = json.dumps({
+        "btc-irt": {"latest": "35077909990", "dayChange": "-5.12", "isClosed": False},
+        "usdt-irt": {"latest": "1008050", "isClosed": True},
+        "btc-usdt": {"latest": "73000", "isClosed": False},
+    })
+    s._on_ws_message(json.dumps({"push": {"channel": "public:market-stats-all",
+                                          "pub": {"data": payload}}}))
+    by_sym = {sym: (px, closed) for sym, px, closed in seen}
+    assert by_sym["BTCIRT"][0] == pytest.approx(3_507_790_999.0)   # Toman
+    assert by_sym["USDTIRT"][0] == pytest.approx(100_805.0)        # Toman
+    assert by_sym["BTCUSDT"][0] == pytest.approx(73_000.0)         # dollars stay
+    assert s.markets["USDTIRT"].closed is True
+    assert s.stats_frames == 1 and s.ws_messages == 1
+
+
+def test_ws_candle_replaces_the_last_row_of_a_rest_series():
+    """The candle channel is Rial-quoted; `/api/candles` already returns Toman."""
+    s, _ = _stream()
+    frame = {"push": {"channel": "public:candle-BTCIRT-15",
+                      "pub": {"data": json.dumps({"t": 1792488600, "o": 89_700_000_000,
+                                                  "h": 89_750_000_000, "l": 89_600_000_000,
+                                                  "c": 89_720_000_000, "v": 1.25})}}}
+    s._on_ws_message(json.dumps(frame))
+    rows = [{"t": 1792487700, "o": 1, "h": 1, "l": 1, "c": 1, "v": 1},
+            {"t": 1792488600, "o": 8.95e9, "h": 8.95e9, "l": 8.95e9, "c": 8.95e9, "v": 9}]
+    merged = s.merge_last_candle("BTCIRT", "15m", rows)
+    assert len(merged) == 2                      # same candle: replaced, not appended
+    assert merged[-1]["c"] == pytest.approx(8.972e9, rel=1e-6)
+    # A newer candle appends.
+    nxt = {"push": {"channel": "public:candle-BTCIRT-15",
+                    "pub": {"data": json.dumps({"t": 1792489500, "o": 1, "h": 1, "l": 1,
+                                                "c": 9_000_000_000, "v": 1})}}}
+    s._on_ws_message(json.dumps(nxt))
+    assert len(s.merge_last_candle("BTCIRT", "15m", merged)) == 3
+    # An older frame never rewrites history.
+    old = {"push": {"channel": "public:candle-BTCIRT-15",
+                    "pub": {"data": json.dumps({"t": 1792486800, "o": 1, "h": 1, "l": 1,
+                                                "c": 1, "v": 1})}}}
+    s._on_ws_message(json.dumps(old))
+    assert s.merge_last_candle("BTCIRT", "15m", rows) == rows
+
+
+def test_ws_channels_cover_stats_candles_and_the_book():
+    s, _ = _stream()
+    s.want_stats = True
+    s.candle_tf = "15m"
+    s._subs.add("BTCIRT")
+    st = s.status()
+    # Nothing has been sent on a socket that is not connected.
+    assert st["channels"] == []
+    wanted = st["channels_wanted"]
+    assert "public:market-stats-all" in wanted
+    assert "public:candle-BTCIRT-15" in wanted
+    assert "public:orderbook-BTCIRT" in wanted
+
+
+def test_late_subscription_reaches_the_socket():
+    """A position opened after the handshake used to be "subscribed" in memory
+    and never on the wire: the frames were only sent at connect time."""
+    s, _ = _stream()
+    s.want_stats = False
+    ws = _FakeWS()
+    s._ws_conn = ws
+    s._subs.add("ETHIRT")
+    run(s._send_missing_subs())
+    assert len(ws.sent) == 2
+    channels = [json.loads(x)["subscribe"]["channel"] for x in ws.sent]
+    assert "public:orderbook-ETHIRT" in channels
+    assert "public:candle-ETHIRT-15" in channels
+    run(s._send_missing_subs())          # idempotent: nothing sent twice
+    assert len(ws.sent) == 2
+
+
+def test_stream_stats_update_the_cached_board_and_the_closed_gate(monkeypatch):
+    """The `market-closed` gate must see a market that closes between polls."""
+    import main
+    from ws_execution import MarketStat
+
+    monkeypatch.setattr(main, "_cached", {**main._cached,
+                                          "universe": [{"symbol": "BTCIRT", "last": 1.0,
+                                                        "change24": 0.0, "closed": False}]})
+    monkeypatch.setattr(main, "_CACHE_CLOSED", set())
+    st = MarketStat(latest=3_507_790_999.0, day_change=-5.12, closed=True, updated=1.0)
+    main._apply_stream_stat("BTCIRT", st)
+    row = main._cached["universe"][0]
+    assert row["last"] == pytest.approx(3_507_790_999.0)
+    assert row["closed"] is True and row["live"] == "ws"
+    assert "BTCIRT" in main._CACHE_CLOSED
+    st.closed = False
+    main._apply_stream_stat("BTCIRT", st)
+    assert "BTCIRT" not in main._CACHE_CLOSED
+
+
+def test_risk_state_reports_the_account_the_gates_use(tmp_path, monkeypatch):
+    """`/api/risk/state` used to print `risk.cfg.equity` — the starting constant —
+    while every gate compared against `broker.equity`. After a few trades the
+    page and the account disagreed, and `/api/risk/plan` sized new orders from
+    money that was no longer there."""
+    import main
+
+    b = _broker(tmp_path, monkeypatch)
+    run(b.place_limit("BTCUSDT", "buy", 0.001, price=73_040, stop=70_000))
+    monkeypatch.setattr(main, "get_broker", lambda *a, **k: b)
+    d = _client().get("/api/risk/state").json()
+    assert d["equity"] == pytest.approx(b.equity)
+    assert d["start_equity"] == pytest.approx(100_000.0)
+    assert d["equity"] != pytest.approx(100_000.0)      # fees moved it
+    assert d["equity_source"] == "paper-broker"
+
+# --------------------------------------------------------------------------- #
+# Execution mode: auto / semi / manual
+# --------------------------------------------------------------------------- #
+def test_exec_mode_is_server_state_and_survives_a_round_trip(tmp_path, monkeypatch):
+    """The mode used to be a browser string: «خودکار» changed a chip and a toast
+    and nothing read it, while a hard-coded `symMode` table overrode the human's
+    per-symbol choice. It now lives on the server, and this test reads it back
+    through the same route the page calls."""
+    import main
+    from exec_mode import ModeStore
+
+    store = ModeStore()
+    monkeypatch.setattr(main, "EXEC_MODE", store)
+    monkeypatch.setattr(main, "_EXEC_LOADED", [True])
+    monkeypatch.setattr(main, "_exec_mode_save", lambda: None)
+
+    r = _client().post("/api/exec/mode", json={"symbol": "ETHIRT", "mode": "auto"}).json()
+    assert r["ok"] is True
+    assert r["symbols"] == {"ETHIRT": "auto"}
+    assert r["executor"] == "paper" and r["sends_to_exchange"] is False
+
+    d = _client().get("/api/exec/mode").json()
+    assert d["default"] == "semi"
+    assert d["symbols"]["ETHIRT"] == "auto"
+    assert d["auto"]["enabled"] is True
+
+    # Clearing an override is explicit; an unknown mode is refused by name.
+    r = _client().post("/api/exec/mode", json={"symbol": "ETHIRT", "mode": ""}).json()
+    assert r["symbols"] == {}
+    bad = _client().post("/api/exec/mode", json={"mode": "yolo"}).json()
+    assert bad["ok"] is False and "auto" in bad["error"]
+
+
+def _auto_fixture(tmp_path, monkeypatch, *, halted=False):
+    """A broker with one LONG signal cached and a deterministic ATR."""
+    import main
+
+    b = _broker(tmp_path, monkeypatch, price=73_040.0)
+    b.halted = halted
+    snap = {"symbol": "BTCUSDT", "direction": "LONG", "lastClose": 73_040.0,
+            "risk": {"atr": 0.02 * 73_040.0}, "composite": 81.0}
+    monkeypatch.setattr(main, "_cached", {**main._cached,
+                                          "signals": {"BTCUSDT": snap},
+                                          "signals_by_tf": {"15m": {"BTCUSDT": snap}},
+                                          "universe": []})
+    monkeypatch.setattr(main, "get_broker", lambda *a, **k: b)
+    monkeypatch.setattr(main, "_AUTO_LAST", {})
+    monkeypatch.setattr(main, "_AUTO_STATE", {"last_tick_at": None, "placed": 0,
+                                             "skipped": 0, "rejected": 0,
+                                             "last_error": None, "last_symbol": None,
+                                             "last_action": None})
+
+    def fake_audit(*a, **k):
+        return 12
+
+    monkeypatch.setattr(main, "audit", fake_audit)
+    return main, b
+
+
+def test_auto_mode_places_a_real_paper_order_and_semi_places_nothing(tmp_path, monkeypatch):
+    """`auto` has to end in an order row, not in a chip. `semi` has to end in
+    none — the queue is the only way in."""
+    import asyncio
+
+    main, b = _auto_fixture(tmp_path, monkeypatch)
+    main.EXEC_MODE.default = "semi"
+    main.EXEC_MODE.symbols = {}
+    res = asyncio.run(main.auto_tick("15m"))
+    assert res["placed"] == 0
+    assert not b.positions
+
+    main.EXEC_MODE.symbols = {"BTCUSDT": "auto"}
+    res = asyncio.run(main.auto_tick("15m"))
+    assert res["placed"] == 1, res
+    pos = next(iter(b.positions.values()))
+    assert pos.symbol == "BTCUSDT" and pos.state == "OPEN"
+    assert any(e.extra.get("source") == "AUTO" and e.kind == "submit" for e in b.orders)
+    assert main._AUTO_STATE["placed"] == 1 and main._AUTO_STATE["last_action"] == "placed"
+
+
+def test_auto_mode_does_not_stack_or_repeat_on_the_next_tick(tmp_path, monkeypatch):
+    """A second pass must not open a second position on the same market, and a
+    refused plan must not be retried on every tick: the cooldown is the reason
+    the audit does not fill with the same sentence."""
+    import asyncio
+
+    main, b = _auto_fixture(tmp_path, monkeypatch)
+    main.EXEC_MODE.symbols = {"BTCUSDT": "auto"}
+    first = asyncio.run(main.auto_tick("15m"))
+    assert first["placed"] == 1
+    main._AUTO_LAST.clear()                     # ignore the cooldown: position guard must hold
+    second = asyncio.run(main.auto_tick("15m"))
+    assert second["placed"] == 0 and second["skipped"] == 1
+    assert len([p for p in b.positions.values() if p.state == "OPEN"]) == 1
+
+
+def test_auto_mode_surfaces_the_gates_refusal_instead_of_a_position(tmp_path, monkeypatch):
+    """With the kill switch armed the executor must place nothing and say which
+    gate refused, the same way an approved queue row does."""
+    import asyncio
+
+    main, b = _auto_fixture(tmp_path, monkeypatch, halted=True)
+    main.EXEC_MODE.symbols = {"BTCUSDT": "auto"}
+    res = asyncio.run(main.auto_tick("15m"))
+    assert res["placed"] == 0 and res["rejected"]
+    assert "halted" in res["rejected"][0]["reason"]
+    assert not b.positions
+    assert b.last_error and b.last_error.startswith("halted")
+
+
+def test_auto_default_covers_the_scanned_symbols_only(tmp_path, monkeypatch):
+    """`auto` as a portfolio default must not invent symbols: it acts on the
+    symbols the last scan actually scored, nothing else."""
+    import asyncio
+
+    main, b = _auto_fixture(tmp_path, monkeypatch)
+    main.EXEC_MODE.default = "auto"
+    main.EXEC_MODE.symbols = {}
+    res = asyncio.run(main.auto_tick("15m"))
+    assert res["considered"] == 1 and res["placed"] == 1
+    assert set(b.positions) and all(p.symbol == "BTCUSDT" for p in b.positions.values())
+    main.EXEC_MODE.default = "semi"
+
+
+def test_positions_are_marked_from_the_socket_not_a_poll(tmp_path, monkeypatch):
+    """Marking an open position asked REST for a book on every tick even while
+    the socket had just delivered one; the log looked like the WebSocket was
+    dead because the same symbol appeared in an HTTP request every few seconds.
+    A fresh socket mid is now the first source, and REST is the fallback."""
+    import paper_trading
+
+    b = _broker(tmp_path, monkeypatch)
+    calls = {"n": 0}
+
+    async def counting(symbol):
+        calls["n"] += 1
+        return {"bids": [["73000", "1"]], "asks": [["74000", "1"]], "lastTradePrice": "73500"}
+
+    b.client.get_orderbook = counting            # type: ignore[method-assign]
+    monkeypatch.setattr(paper_trading, "hot_mid_hook", lambda s: 73_500.0)
+    assert run(b._mid_price("BTCUSDT")) == pytest.approx(73_500.0)
+    assert calls["n"] == 0
+
+    monkeypatch.setattr(paper_trading, "hot_mid_hook", lambda s: None)   # stale socket
+    assert run(b._mid_price("BTCUSDT")) == pytest.approx(73_500.0)
+    assert calls["n"] == 1
+
+
+def test_a_partially_filled_market_order_is_not_reported_as_full(tmp_path, monkeypatch):
+    """The orders page computed `filled_pct = filled / amount`, and on a market
+    order `amount` *was* the fill — so a 5-of-20 fill printed 100 %. The broker
+    now records what was requested, and the row compares against that."""
+    import main
+    import paper_trading
+    from paper_trading import PaperBroker
+    from risk_engine import RiskConfig, RiskEngine
+
+    class ThinBook:
+        usdt_irt = 1.0
+
+        async def get_orderbook(self, symbol):
+            # Two levels, but only five units in total: a twenty-unit order
+            # cannot fill.
+            return {"bids": [["999", "5"]], "asks": [["1000", "5"]],
+                    "lastTradePrice": "1000"}
+
+        async def get_market_stats(self):
+            return {"stats": {}}
+
+    monkeypatch.setattr(paper_trading, "STATE_FILE", tmp_path / "paper.json")
+    monkeypatch.setattr(paper_trading, "market_closed_hook", None)
+    monkeypatch.setattr(paper_trading, "hot_mid_hook", None)
+    b = PaperBroker(100_000, ThinBook(), RiskEngine(RiskConfig(equity=100_000)))
+    pos = run(b.place_limit("BTCUSDT", "buy", 20))
+    assert pos is not None, b.last_error
+    assert pos.filled_qty == pytest.approx(5.0)
+    assert pos.requested_qty == pytest.approx(20.0)
+    rows = main._order_rows(b)
+    assert rows[0]["filled"] == pytest.approx(5.0)
+    assert rows[0]["filled_pct"] == pytest.approx(25.0)
+
+
+def test_a_tick_does_not_move_another_positions_price():
+    """`on_tick` used to be a flat list: every registered callback received
+    every symbol's price. `streams_start` registers one callback per open
+    position, so a BTCIRT tick rewrote an ETHIRT position's `last_price` with
+    8.97e9 — and `_mark_equity_minute` divided that by the ETH rate, turning a
+    100k account into 5.3 billion."""
+    s, got = _stream()
+    eth_seen = []
+    s.on_tick.append(("ETHIRT", lambda sym, px: eth_seen.append(px)))
+    s._emit("BTCIRT", 8_970_000_000.0)
+    assert got == [("BTCIRT", 8_970_000_000.0)]      # the global listener still sees all
+    assert eth_seen == []                             # the ETH callback does not
+    s._emit("ETHIRT", 315_000_000.0)
+    assert eth_seen == [315_000_000.0]

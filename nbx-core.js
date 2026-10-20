@@ -1419,6 +1419,29 @@
       return { enabled: false, subscriptions: [], books: {}, standalone: true };
     }
 
+    async getExecMode() {
+      // Who pulls the trigger is server state, not a local variable: the
+      // executor reads the same object this returns.
+      if (this.standaloneMobile) return null;
+      const r = await this.get(cfg.pythonApi + '/exec/mode', 1);
+      return r || null;
+    }
+
+    async postExecMode(body) {
+      // Changing it has consequences the executor acts on, so it is a POST and
+      // the server answers with the state that is now in force — the page
+      // renders that answer instead of assuming the change landed.
+      if (this.standaloneMobile) return { ok: false, standalone: true, error: 'no-server' };
+      const res = await fetch(cfg.pythonApi + '/exec/mode', {
+        method: 'POST',
+        headers: this._authHeaders(),
+        body: JSON.stringify(body || {}),
+      });
+      const r = await res.json();
+      if (!res.ok) throw new NBXError('DATA', (r && r.detail) || 'exec mode failed');
+      return r;
+    }
+
     async getJournalSummary(opts) {
       const o = opts || {};
       const qs = new URLSearchParams();

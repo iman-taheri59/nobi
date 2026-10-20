@@ -8,8 +8,16 @@ setup belongs in one place that pytest always loads.
 
 from __future__ import annotations
 
+import os
 import sys
+import tempfile
 from pathlib import Path
+
+# The suite must not read (or write) the paper account of whoever ran the
+# dashboard last. A single demo order used to leave `paper_state.json` with an
+# equity of 5.3 billion and the portfolio test then failed three files away.
+os.environ.setdefault("NBX_PAPER_STATE",
+                      str(Path(tempfile.mkdtemp(prefix="nbx-test-")) / "paper.json"))
 
 SERVER = Path(__file__).resolve().parents[1]
 if str(SERVER) not in sys.path:

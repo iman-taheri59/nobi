@@ -47,6 +47,7 @@ import paper_trading
 from paper_trading import FEE_PCT as PAPER_FEE_PCT, get_broker, PaperBroker
 from backtest import EventBacktester, WalkForwardRunner, run_and_save, grid_search, DEFAULT_GRID
 from ws_execution import STREAM_EXECUTOR, streams_start
+from exec_mode import EXEC_MODE, InvalidMode
 from security import API_TOKEN, auth_mode, cors_origins, require_client
 import journal as signal_journal
 import errorlog
@@ -273,6 +274,17 @@ async def lifespan(_app: FastAPI):
                                  message=f"background task '{name}' crashed")
         return asyncio.create_task(runner())
 
+    # Market-wide socket channels are worth having even with no position open:
+    # `public:market-stats-all` keeps the board and the closed-market gate
+    # current. Live callbacks are registered here, before the socket starts.
+    STREAM_EXECUTOR.on_market.append(_apply_stream_stat)
+    STREAM_EXECUTOR.want_stats = True
+    STREAM_EXECUTOR.ensure_ws()
+    # Positions are marked from a fresh socket book when there is one; the REST
+    # poll stays as the fallback. Without this, every open position asked the
+    # exchange for a book on every tick while the socket had just delivered it.
+    paper_trading.hot_mid_hook = lambda sym: _hot_mid(sym)
+
     tasks = [
         _supervise("universe", load_universe()),
         _supervise("rescan", rescan("15m")),
@@ -281,6 +293,16 @@ async def lifespan(_app: FastAPI):
         # The exchange publishes its own minimums and tick sizes at /v2/options;
         # reading them once beats shipping a copy that can silently go stale.
         _supervise("options", _load_options()),
+        # `auto` mode is a server-side executor, not a chip in the page: the
+        # loop reads the same mode the UI writes and places paper orders
+        # through the same ten gates as an approved queue row.
+        _supervise("auto-exec", _auto_loop()),
+        # `public:market-stats-all` keeps the board and the closed-market gate
+        # current, and it is worth having with no position open. The socket used
+        # to be started only from `tick_once`, which returns early when nothing
+        # is open — so the channel that exists for an empty account was never
+        # subscribed.
+        _supervise("market-stream", streams_start(get_broker(EQUITY, client, risk), client)),
     ]
     try:
         yield
@@ -323,6 +345,49 @@ UPSTREAM_TTL_S = int(os.getenv("NBX_UPSTREAM_TTL_S", "20"))
 #: Read by `paper_trading.market_closed_hook`; kept as its own object so the
 #: hook stays valid across the `_cached` resets below.
 _CACHE_CLOSED: set = set()
+
+
+def _hot_mid(symbol: str) -> float | None:
+    """The socket's mid for `symbol`, or None when it is not live/fresh."""
+    if STREAM_EXECUTOR.transport != "ws":
+        return None
+    book = STREAM_EXECUTOR.books.get(symbol.upper())
+    if book is None or not book.fresh:
+        return None
+    return book.mid or None
+
+
+def _apply_stream_stat(symbol: str, st) -> None:
+    """Fold one `public:market-stats-all` row into the cached board.
+
+    Two effects, both real: the price on the board/ticket follows the socket
+    instead of waiting for the next REST poll, and the `market-closed` gate sees
+    a market that closed *between* polls. A paper fill in a market that has just
+    closed is a fill that could not have happened.
+    """
+    try:
+        rows = _cached.get("universe") or []
+        for r in rows:
+            if r.get("symbol") != symbol:
+                continue
+            if st.latest > 0:
+                r["last"] = st.latest
+            r["change24"] = st.day_change
+            r["closed"] = bool(st.closed)
+            # Provenance travels with the row: the page can say where the price
+            # came from instead of implying the REST snapshot is still current.
+            r["live"] = "ws"
+            r["live_at"] = st.updated
+            if symbol == "USDTIRT":
+                _cached["premium"] = st.latest
+                _cached["premium_pct"] = _premium_pct(rows)
+        if st.closed:
+            _CACHE_CLOSED.add(symbol)
+        else:
+            _CACHE_CLOSED.discard(symbol)
+        _cached["closed_markets"] = sorted(_CACHE_CLOSED)
+    except Exception as e:  # noqa: BLE001 - a stats frame must never break the app
+        log.debug("stream stats apply failed for %s: %s", symbol, e)
 
 _cached: dict = {
     "universe": [],
@@ -808,13 +873,18 @@ async def candles(symbol: str, tf: str = Query("15m", pattern="^(15m|1h|4h|D)$")
     except UpstreamUnavailable as e:
         return {**upstream_error("candles", str(e)),
                 "symbol": symbol.upper(), "tf": tf, "count": 0, "rows": [], "rows_expected": 0}
+    # The series ends where the last REST poll left it; the socket publishes the
+    # same candle every ~10 s. Refreshing only the last row keeps the chart (and
+    # the scan that reads this series) on the market's clock, not the poll's.
+    merged = STREAM_EXECUTOR.merge_last_candle(symbol, tf, rows)
     return {
         "ok": True,
         "symbol": symbol.upper(),
         "tf": tf,
-        "count": len(rows),
-        "rows": rows,
+        "count": len(merged),
+        "rows": merged,
         "source": src,
+        "last_candle": "ws" if merged is not rows else "rest",
         "as_of": datetime.now(timezone.utc).isoformat(),
     }
 
@@ -1453,7 +1523,8 @@ async def risk_plan(symbol: str, side: str = "buy", tf: str = Query("15m", patte
     if not s:
         return {"error": "symbol not loaded"}
     fx = await _fx_rate(symbol)
-    equity_quote = risk.cfg.equity * fx if fx else risk.cfg.equity
+    eq, _start = _live_equity()
+    equity_quote = eq * fx if fx else eq
     # Preview: report the plan without reserving heat (a concurrent order must
     # not observe a phantom reservation).
     plan = risk.evaluate(symbol.upper(), side, s["lastClose"], s["risk"]["atr"], tf,
@@ -1857,10 +1928,35 @@ async def market_overview_route(tf: str = Query("15m", pattern="^(15m|1h|4h|D)$"
     return out
 
 
+def _live_equity() -> tuple[float, float]:
+    """(current, starting) equity of the account the gates actually use.
+
+    Sizing a plan from `risk.cfg.equity` — a constant — while every gate runs
+    against `broker.equity` meant the two numbers drifted apart with every
+    trade: after seven of them the risk page said 100,000 and the account said
+    99,976.71, and a plan was sized for money that was no longer there.
+    """
+    try:
+        # The same accessor the order routes use, so a broker injected for a test
+        # (or created on first boot) is the one whose money is reported.
+        br = get_broker(risk.cfg.equity, client, risk)
+        eq = float(getattr(br, "equity", 0) or 0) if br is not None else 0.0
+        if eq > 0:
+            return eq, float(getattr(br, "start_equity", eq) or eq)
+    except Exception:  # noqa: BLE001 - no broker yet (first boot, tests)
+        pass
+    return float(risk.cfg.equity), float(risk.cfg.equity)
+
+
 @app.get("/api/risk/state")
 async def risk_state():
+    eq, start = _live_equity()
     return {
-        "equity": risk.cfg.equity,
+        # The same number the preflight compares against, not the constant it
+        # started from.
+        "equity": eq,
+        "start_equity": start,
+        "equity_source": "paper-broker" if eq != risk.cfg.equity else "config",
         "equity_quote": "USD",
         "openHeat": risk.open_heat,
         "dailyPnl": risk.daily_pnl,
@@ -1972,7 +2068,7 @@ def _order_rows(broker, limit: int = 100) -> list[dict]:
                 "type": ev.extra.get("execution") or "limit",
                 "price": float(ev.price or 0.0),
                 "amount": float(ev.qty or 0.0),
-                "filled": 0.0, "fee": 0.0, "pnl_usd": 0.0,
+                "filled": 0.0, "requested": 0.0, "fee": 0.0, "pnl_usd": 0.0,
                 "slip_bps": None,
                 "state": "SUBMITTED", "reason": None, "source": ev.extra.get("source"),
                 "opened_at": ev.ts, "closed_at": None, "close_reason": None,
@@ -1982,6 +2078,9 @@ def _order_rows(broker, limit: int = 100) -> list[dict]:
         if ev.kind == "submit":
             row["price"] = float(ev.price or 0.0)
             row["amount"] = float(ev.qty or 0.0)
+            # `qty` on a submit is what the book could take, not what was asked
+            # for; the difference is the part of the order that never filled.
+            row["requested"] = float(ev.extra.get("requested") or ev.qty or 0.0)
             row["state"] = "SUBMITTED"
             row["mid"] = float(ev.extra.get("mid") or 0.0)
         elif ev.kind == "fill":
@@ -2026,12 +2125,15 @@ def _order_rows(broker, limit: int = 100) -> list[dict]:
             row["close_reason"] = pos.close_reason
             row["execution"] = pos.execution
         row["pnl_usd"] = round(row["pnl_usd"], 4)
+        if pos is not None and getattr(pos, "requested_qty", 0):
+            row["requested"] = float(pos.requested_qty)
     out = sorted(rows.values(), key=lambda r: r["opened_at"], reverse=True)
     for r in out[:limit]:
         r["opened_at_iso"] = datetime.fromtimestamp(r["opened_at"], timezone.utc).isoformat()
         r["closed_at_iso"] = (datetime.fromtimestamp(r["closed_at"], timezone.utc).isoformat()
                               if r["closed_at"] else None)
-        r["filled_pct"] = round(r["filled"] / r["amount"] * 100, 1) if r["amount"] else 0.0
+        denom = r.get("requested") or r["amount"]
+        r["filled_pct"] = round(min(100.0, r["filled"] / denom * 100), 1) if denom else 0.0
     return out[:limit]
 
 
@@ -2073,6 +2175,16 @@ async def ws_status():
     st = STREAM_EXECUTOR.status()
     return {
         **st,
+        "market_stats": {
+            sym: {
+                "latest": st.latest,
+                "day_change": st.day_change,
+                "closed": st.closed,
+                "age_s": round(max(0.0, time.time() - st.updated), 1) if st.updated else None,
+                "fresh": st.fresh,
+            }
+            for sym, st in STREAM_EXECUTOR.markets.items()
+        },
         "books": {
             sym: {
                 "best_bid": b.best_bid,
@@ -2136,6 +2248,199 @@ async def paper_resume(request: Request):
     audit_id = audit("paper.resume", detail={"was_halted": was}, request=request)
     tg = await notify.send(f"✅ Nobi: kill switch cleared (was halted={was})\naudit #{audit_id}")
     return {"halted": False, "resumed": was, "audit_id": audit_id, "telegram": tg}
+
+
+# ---------------- Execution mode: auto / semi / manual ----------------
+#: The mode is server state (`exec_mode.EXEC_MODE`), persisted in the journal's
+#: KV table. The page reads it back and the executor reads the same object; a
+#: chip that only changed a browser variable was a control with no effect, and
+#: a hard-coded per-symbol table made the promised per-symbol choice impossible.
+_EXEC_LOADED = [False]
+
+
+def _exec_mode_load() -> None:
+    if _EXEC_LOADED[0]:
+        return
+    _EXEC_LOADED[0] = True
+    if os.getenv("NBX_JOURNAL", "1") == "0":
+        return
+    try:
+        conn = signal_journal.connect()
+        try:
+            EXEC_MODE.load(signal_journal.get_meta(conn, "exec_mode", None))
+        finally:
+            conn.close()
+    except Exception as e:  # noqa: BLE001 - defaults are a safe fallback
+        log.warning("exec mode load failed: %s", e)
+
+
+def _exec_mode_save() -> None:
+    if os.getenv("NBX_JOURNAL", "1") == "0":
+        return
+    try:
+        conn = signal_journal.connect()
+        try:
+            signal_journal.set_meta(conn, "exec_mode", EXEC_MODE.to_json())
+        finally:
+            conn.close()
+    except Exception as e:  # noqa: BLE001 - the in-memory value is still right
+        log.warning("exec mode save failed: %s", e)
+
+
+AUTO_INTERVAL_S = max(5.0, float(os.getenv("NBX_AUTO_INTERVAL_S", "60")))
+#: After any attempt (placed or refused) a symbol is left alone for this long.
+#: Without it a rejected plan is retried every tick, filling the audit with the
+#: same sentence and the log with the same warning.
+AUTO_COOLDOWN_S = max(0.0, float(os.getenv("NBX_AUTO_COOLDOWN_S", "1800")))
+_AUTO_LAST: dict[str, float] = {}
+_AUTO_STATE = {
+    "last_tick_at": None, "placed": 0, "skipped": 0, "rejected": 0,
+    "last_error": None, "last_symbol": None, "last_action": None,
+}
+
+
+async def auto_tick(tf: str = "15m") -> dict:
+    """One pass of `auto`: size, gate and place one paper order per symbol.
+
+    Everything here is the path an approved queue row takes — `risk.evaluate`
+    for the sizing, `broker.place_limit` for the ten gates — because an
+    "automatic" mode with its own private rules would be a second broker with
+    weaker checks. `source="AUTO"` is written into the order events, so the
+    orders page says who pulled the trigger.
+    """
+    _exec_mode_load()
+    broker = get_broker(EQUITY, client, risk)
+    now = time.time()
+    if EXEC_MODE.is_auto_default():
+        pool = _cached.get("signals_by_tf", {}).get(tf) or _cached.get("signals") or {}
+        targets = list(pool.keys())
+    else:
+        targets = EXEC_MODE.auto_symbols()
+    out = {"considered": 0, "placed": 0, "skipped": 0, "rejected": []}
+    for sym in sorted(set(targets)):
+        snap = _signal_lookup(sym, tf)
+        if not snap:
+            continue
+        out["considered"] += 1
+        if (snap.get("direction") or "").upper() != "LONG":
+            out["skipped"] += 1
+            continue
+        if any(p.symbol == sym and getattr(p, "state", "OPEN") != "CLOSED"
+               for p in broker.positions.values()):
+            out["skipped"] += 1                       # one position per market
+            continue
+        if now - _AUTO_LAST.get(sym, 0.0) < AUTO_COOLDOWN_S:
+            out["skipped"] += 1
+            continue
+        entry = float(snap.get("lastClose") or 0.0)
+        atr = float((snap.get("risk") or {}).get("atr") or 0.0)
+        eq, _start = _live_equity()
+        fx = await _fx_rate(sym)
+        equity_quote = eq * fx if fx else eq
+        plan = risk.evaluate(sym, "buy", entry, atr, tf, equity_quote=equity_quote,
+                             preview=True)
+        _AUTO_LAST[sym] = now
+        if plan.blocked or not plan.size_quote or not plan.entry:
+            reason = ",".join(plan.warnings or []) or "no-size"
+            out["skipped"] += 1
+            out["rejected"].append({"symbol": sym, "reason": reason})
+            audit("paper.order.auto", actor="auto", result="blocked",
+                  detail={"symbol": sym, "reason": reason})
+            continue
+        qty = plan.size_quote / plan.entry
+        pos = await broker.place_limit(sym, "buy", qty, plan.entry, plan.stop,
+                                       plan.tp1, plan.tp2, source="AUTO")
+        if pos is None:
+            out["rejected"].append({"symbol": sym, "reason": broker.last_error or "rejected"})
+            audit("paper.order.auto", actor="auto", result="rejected",
+                  detail={"symbol": sym, "reason": broker.last_error or "rejected"})
+        else:
+            out["placed"] += 1
+            audit("paper.order.auto", actor="auto", result="ok",
+                  detail={"symbol": sym, "qty": round(qty, 8), "entry": plan.entry,
+                          "stop": plan.stop, "size_quote": plan.size_quote})
+    _AUTO_STATE.update({
+        "last_tick_at": now,
+        "placed": _AUTO_STATE["placed"] + out["placed"],
+        "skipped": _AUTO_STATE["skipped"] + out["skipped"],
+        "rejected": _AUTO_STATE["rejected"] + len(out["rejected"]),
+        "last_error": (out["rejected"][-1]["reason"] if out["rejected"] else None),
+        "last_symbol": (out["rejected"][-1]["symbol"] if out["rejected"] else None),
+        "last_action": ("placed" if out["placed"] else ("rejected" if out["rejected"] else "idle")),
+    })
+    return out
+
+
+async def _auto_loop() -> None:
+    """Watch the mode; run a pass when `auto` is on and the interval elapsed.
+
+    The loop is always alive so that switching a symbol to `auto` takes effect
+    without a restart, but it does nothing at all while every symbol is
+    semi/manual.
+    """
+    _exec_mode_load()
+    while True:
+        try:
+            active = EXEC_MODE.is_auto_default() or bool(EXEC_MODE.auto_symbols())
+            last = _AUTO_STATE.get("last_tick_at") or 0.0
+            if active and time.time() - last >= AUTO_INTERVAL_S:
+                res = await auto_tick()
+                if res["placed"] or res["rejected"]:
+                    log.info("auto: placed %d, rejected %d", res["placed"], len(res["rejected"]))
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:  # noqa: BLE001 - one bad pass must not kill the loop
+            log.warning("auto tick failed: %s", e)
+            errorlog.capture(source="task.auto-exec", exc=e,
+                             message="automatic execution tick failed")
+        await asyncio.sleep(min(15.0, AUTO_INTERVAL_S))
+
+
+def _exec_mode_payload() -> dict:
+    """The mode *and* what the executor has done with it, in one shape.
+
+    Both the GET and the POST answer this payload: after a change the page must
+    be able to show the executor's counters without a second request — and the
+    counters must be the ones the loop is writing, not a placeholder.
+    """
+    return {
+        **EXEC_MODE.snapshot(),
+        "auto": {
+            "enabled": EXEC_MODE.is_auto_default() or bool(EXEC_MODE.auto_symbols()),
+            "interval_s": AUTO_INTERVAL_S,
+            "cooldown_s": AUTO_COOLDOWN_S,
+            **_AUTO_STATE,
+        },
+    }
+
+
+@app.get("/api/exec/mode")
+async def exec_mode_get():
+    """What the executor will do, read from the object it acts on."""
+    _exec_mode_load()
+    return {"ok": True, **_exec_mode_payload(), **provenance()}
+
+
+@app.post("/api/exec/mode", dependencies=[Depends(require_client)])
+async def exec_mode_set(payload: dict, request: Request):
+    """Change the mode. This is a control with consequences, so it is audited."""
+    body = payload or {}
+    _exec_mode_load()
+    try:
+        if body.get("symbol"):
+            sym = str(body["symbol"]).upper()
+            mode = EXEC_MODE.set_symbol(sym, body.get("mode"))
+            action, detail = "exec.mode.symbol", {"symbol": sym, "mode": mode or "inherit"}
+        elif body.get("mode"):
+            mode = EXEC_MODE.set_default(str(body["mode"]))
+            action, detail = "exec.mode.default", {"default": mode}
+        else:
+            return {"ok": False, "error": "mode or symbol required"}
+    except InvalidMode as e:
+        return {"ok": False, "error": str(e)}
+    _exec_mode_save()
+    audit(action, detail=detail, request=request)
+    return {"ok": True, **_exec_mode_payload(), **provenance()}
 
 
 # ---------------- Walk-Forward Backtest (ADR-0009) ----------------

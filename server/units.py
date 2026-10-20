@@ -80,6 +80,37 @@ def to_toman(value, unit: str | None = None) -> float:
     return v * price_scale(unit)
 
 
+#: Fields of one `/market/stats` row that follow the quote currency.
+_STAT_PRICE_FIELDS = ("latest", "bestSell", "bestBuy", "dayLow", "dayHigh",
+                      "dayOpen", "dayClose", "mark", "volumeSrc", "volumeDst",
+                      "valueDst", "dayChange")
+#: ... of which these do not: a percentage and a coin-denominated volume.
+_STAT_UNSCALED = ("dayChange", "volumeSrc")
+
+
+def scale_stat_row(symbol: str, row: dict, unit: str | None = None) -> dict:
+    """One stats row, Rial → Toman when the market is Rial-quoted.
+
+    The REST route (`/market/stats`) and the WebSocket channel
+    (`public:market-stats-all`) carry the same numbers in the same unit, so
+    both must go through this function. A second scaling rule written for the
+    socket would have quoted every Rial market ten times too high.
+    """
+    r = dict(row or {})
+    k = price_scale(unit) if is_rial_market(symbol) else 1.0
+    for f in _STAT_PRICE_FIELDS:
+        if r.get(f) is None:
+            continue
+        try:
+            v = float(r[f])
+        except (TypeError, ValueError):
+            continue
+        r[f] = v if f in _STAT_UNSCALED else v * k
+    if "isClosed" in r:
+        r["isClosed"] = bool(r["isClosed"])
+    return r
+
+
 def scale_stats(body: dict, unit: str | None = None) -> dict:
     """Convert a ``/market/stats`` payload to Toman in place-ish (new dict).
 
@@ -93,23 +124,7 @@ def scale_stats(body: dict, unit: str | None = None) -> dict:
         sym = market_symbol(key)
         if sym is None:
             continue                      # deprecated `global` block
-        r = dict(row or {})
-        k = price_scale(unit) if is_rial_market(sym) else 1.0
-        for f in ("latest", "bestSell", "bestBuy", "dayLow", "dayHigh",
-                  "dayOpen", "dayClose", "mark", "volumeSrc", "volumeDst",
-                  "valueDst", "dayChange"):
-            if r.get(f) is None:
-                continue
-            try:
-                v = float(r[f])
-            except (TypeError, ValueError):
-                continue
-            # `dayChange` is a percentage and `volumeSrc` is denominated in the
-            # coin: neither follows the quote currency, so neither is scaled.
-            r[f] = v if f in ("dayChange", "volumeSrc") else v * k
-        if "isClosed" in r:
-            r["isClosed"] = bool(r["isClosed"])
-        stats[sym] = r
+        stats[sym] = scale_stat_row(sym, row, unit)
     out["stats"] = stats
     return out
 

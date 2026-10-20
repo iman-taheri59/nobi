@@ -36,6 +36,11 @@
     source: null,
     upstream: null,
     risk: null,
+    //: `/api/ws/status`: the transport actually in use and what arrived on it.
+    wsTransport: null,
+    wsChannels: [],
+    wsStats: 0,
+    wsCandle: 0,
   };
   window.live = live;
 
@@ -114,14 +119,18 @@
       OFFLINE: ['#f87171', LANG === 'fa' ? 'آفلاین — بدون داده' : 'Offline — no data'],
     };
     const [color, text] = map[m] || map.MOBILE;
-    const wsK = live.wsMid ? Object.keys(live.wsMid).length : 0;
+    // `st.books` is filled by REST polling too, so counting books and calling
+    // it "WS" claimed a socket that was not there. The chip now reads the
+    // transport field the server actually reports.
+    const onWs = live.wsTransport === 'ws';
+    const wsCh = Array.isArray(live.wsChannels) ? live.wsChannels.length : 0;
     el.innerHTML = `
       <span class="dot" style="background:${color};box-shadow:0 0 0 4px ${color}22"></span>
       <button id="liveBadgeBtn" style="font-family:inherit;color:inherit;background:none;border:none;cursor:pointer;display:flex;align-items:center;gap:8px">
         <span class="num">${text}</span>
         <span style="color:#a1a1aa">·</span>
         <span class="num">${live.latency !== null && live.latency !== undefined ? Math.round(live.latency) + 'ms' : '—'}</span>
-        ${wsK ? `<span style="color:#a1a1aa">·</span><span class="num" style="color:#818cf8">WS x${wsK}</span>` : ''}
+        ${onWs && wsCh ? `<span style="color:#a1a1aa">·</span><span class="num" style="color:#818cf8">WS x${faNum(wsCh)}</span>` : ''}
       </button>
       <div id="apiStatusPop" class="hidden absolute bottom-full mb-2 right-0 glass p-3 text-xs space-y-1.5"></div>
     `;
@@ -136,6 +145,13 @@
           [LANG === 'fa' ? 'نمادهای فعال' : 'Active Symbols', live.ranked.length ? faNum(live.ranked.length) : '—'],
           [LANG === 'fa' ? 'تایم‌فریم' : 'Timeframe', live.timeframe],
           [LANG === 'fa' ? 'آخرین اسکن' : 'Last Scan', live.lastScanAt ? faNum(Math.round((Date.now() - live.lastScanAt) / 1000)) + (LANG === 'fa' ? ' ثانیه پیش' : 's ago') : '—'],
+          // Where the prices actually come from: a push channel or a poll.
+          [LANG === 'fa' ? 'مسیر قیمت' : 'Price path',
+            onWs ? (LANG === 'fa' ? 'وب‌سوکت' : 'WebSocket')
+                 : (LANG === 'fa' ? 'REST — دوره‌ای' : 'REST — polled')],
+          [LANG === 'fa' ? 'کانال‌های وب‌سوکت' : 'WS channels', onWs ? faNum(wsCh) : '—'],
+          [LANG === 'fa' ? 'پیام آمار بازار' : 'Market-stat frames', onWs ? faNum(live.wsStats || 0) : '—'],
+          [LANG === 'fa' ? 'کندل وب‌سوکت' : 'WS candles', onWs ? faNum(live.wsCandle || 0) : '—'],
         ]
           .map(([k, v]) => `<div style="display:flex;justify-content:space-between;gap:12px"><span style="color:#a1a1aa">${k}:</span><span class="num">${v}</span></div>`)
           .join('');
@@ -1049,8 +1065,17 @@
       const api = NBX.core.api;
       const backend = await api.checkBackend();
       if (backend && backend.backend) {
-        const upstreamOk = !!(backend.upstream && backend.upstream.ok);
-        setLiveMode(upstreamOk ? 'ONLINE' : 'DEGRADED', backend.upstream?.latency_ms ?? backend.stats?.last_latency_ms ?? null);
+        // `upstream.ok` is three-valued: true, false, and null on the first call
+        // of a fresh process (the probe is fired in the background and answered
+        // with "unknown"). Reading null as false painted a red "the exchange is
+        // unreachable" badge over a board that was feeding live prices, and it
+        // stayed red until the next scheduled scan.
+        const upOk = backend.upstream ? backend.upstream.ok : null;
+        setLiveMode(upOk === false ? 'DEGRADED' : 'ONLINE',
+                    backend.upstream?.latency_ms ?? backend.stats?.last_latency_ms ?? null);
+        if (upOk === null) {
+          setTimeout(() => { if (live.mode !== 'OFFLINE') scanNow(false); }, 2500);
+        }
         live.upstream = backend.upstream || null;
         live.backendVersion = backend.version || null;
         live.authMode = (backend.auth && backend.auth.mode) || null;
@@ -1087,7 +1112,7 @@
         prefetchSparkCandles((sig.scored || []).slice(0, 12).map((s) => s.symbol), live.timeframe);
         await updateFaPreview();
         if (force && typeof toast === 'function') {
-          if (upstreamOk) {
+          if (upOk !== false) {
             toast(inFa('t.connected'), inFa('t.connectedM') + ' (FastAPI)', 'ok');
           } else {
             toast(
@@ -1160,17 +1185,32 @@
     const sec = scanInterval();
     if (sec > 0) live.interval = setInterval(() => scanNow(false), sec * 1000);
     return sec;
-    const wsPoll = async () => {
-      if (!NBX.core || !NBX.core.api || typeof NBX.core.api.getWsStatus !== 'function') return;
-      try {
-        const st = await NBX.core.api.getWsStatus();
-        if (st && st.enabled) {
-          live.wsMid = st.books;
-        }
-      } catch (e) {}
-    };
-    setInterval(wsPoll, 4 * 1000);
+  }
+
+  /* The price feed's transport, read from the server every few seconds.
+     This block used to sit *after* the `return` in `schedule()`: it was
+     unreachable, so the page never learned whether the socket was up and the
+     status chip had nothing to read. Dead code that looks like a feature is
+     worse than a missing feature — it answers questions it never asked. */
+  let wsPollTimer = null;
+  async function wsPoll() {
+    if (!NBX.core || !NBX.core.api || typeof NBX.core.api.getWsStatus !== 'function') return;
+    try {
+      const st = await NBX.core.api.getWsStatus();
+      if (st && st.enabled) {
+        live.wsMid = st.books;
+        live.wsTransport = st.transport || 'rest-poll';
+        live.wsChannels = st.channels || [];
+        live.wsStats = st.stats_frames || 0;
+        live.wsCandle = st.candle_frames || 0;
+        renderLiveBadge();
+      }
+    } catch (e) {}
+  }
+  function startWsPolling() {
+    if (wsPollTimer) return;
     wsPoll();
+    wsPollTimer = setInterval(wsPoll, 5 * 1000);
   }
 
   function bindApiHealth() {
@@ -1189,6 +1229,7 @@
       bindApiHealth();
       await scanNow(true);
       schedule();
+      startWsPolling();
     } catch (e) {
       setLiveMode('MOBILE', null);
       renderLiveBadge();

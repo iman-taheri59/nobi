@@ -55,6 +55,10 @@ class Position:
     max_favorable: float = 0.0
     max_adverse: float = 0.0
     filled_qty: float = 0.0
+    #: What the caller asked for, before the book capped the fill. Without it a
+    #: market order that could only take 19 of 23,000 units reported
+    #: `filled_pct: 100` — the row compared the fill with itself.
+    requested_qty: float = 0.0
     tp1_filled: bool = False
     sl_filled: bool = False
     last_price: float = 0.0
@@ -153,6 +157,18 @@ class PaperBroker:
         return 1.0
 
     async def _mid_price(self, symbol: str) -> float:
+        # A fresh WebSocket book is the same price a REST poll would return, one
+        # request earlier. Marking every open position used to hit REST on every
+        # tick even while the socket was delivering — the log looked like the
+        # socket had failed. A stale book (or no socket) falls through to REST,
+        # so the fallback is the exception, not the rule.
+        if hot_mid_hook is not None:
+            try:
+                live_px = hot_mid_hook(symbol)
+            except Exception:  # noqa: BLE001 - a bad hook must not stop a mark
+                live_px = None
+            if live_px and live_px > 0:
+                return float(live_px)
         ob = await self.client.get_orderbook(symbol)
         if ob and ob.get("asks") and ob.get("bids"):
             a = float(ob["asks"][0][0]); b = float(ob["bids"][0][0])
@@ -315,6 +331,7 @@ class PaperBroker:
             stop_pct=abs(fill_price - stop_px) / fill_price * 100,
             opened_at=time.time(), state="OPEN",
             filled_qty=filled_qty,
+            requested_qty=float(qty),
             max_favorable=0.0, max_adverse=0.0,
             last_price=fill_price,
             risk_amount=risk_amount,
@@ -332,7 +349,8 @@ class PaperBroker:
         self.cash -= total_cost
         self.orders.append(OrderEvent(time.time(), "submit", symbol, side, filled_qty, fill_price,
                                       {"source": source, "clientOrderId": coid,
-                                       "execution": execution, "mid": mid_at_submit}))
+                                       "execution": execution, "mid": mid_at_submit,
+                                       "requested": float(qty)}))
         self.orders.append(OrderEvent(time.time(), "fill", symbol, side, filled_qty, fill_price,
                                       {"source": source, "fee": fee, "clientOrderId": coid}))
         self._mark_equity_minute()
@@ -475,6 +493,11 @@ PAPER_BROKER: PaperBroker | None = None
 #: Set by `main` to the exchange's `isClosed` view of each market. A paper fill
 #: in a market the exchange has closed is a fill that could not have happened.
 market_closed_hook: Callable[[str], bool] | None = None
+
+#: Set by `main` to the stream executor's *fresh* mid (``None`` when the book
+#: is older than the freshness window). Marking positions from the live socket
+#: avoids a REST poll per position per tick.
+hot_mid_hook: Callable[[str], float | None] | None = None
 def get_broker(equity: float, client: NobitexClient, risk: RiskEngine) -> PaperBroker:
     global PAPER_BROKER
     fez = None

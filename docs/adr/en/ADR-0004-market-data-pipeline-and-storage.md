@@ -61,3 +61,24 @@ Accurate, gap-free historical candles drive both TA signals and backtests. Nobit
   only apologise.
 - **Not implemented:** the 180-day snapshot archive. The route serves the current book
   only; nothing is persisted, so historical depth analysis is not possible.
+
+## Second amendment — WebSocket (2026-10-20)
+
+Until now only `public:orderbook-*` was consumed, and only for symbols with an open
+position. Now:
+
+| Channel | Consumer | Real effect |
+|---|---|---|
+| `public:market-stats-all` | `_apply_stream_stat` in `main.py` | the board's price and `dayChange` refresh between REST polls; the `market-closed` gate sees a market that closed *between* polls |
+| `public:candle-{SYM}-{tf}` | `StreamExecutor.merge_last_candle` | `GET /api/candles` ends the series on the socket's last candle (`last_candle: "ws"`), so the chart and the scan run on the market's clock, not the poll's |
+| `public:orderbook-{SYM}` | `HotBook` → position mids | unchanged, but a late subscription now actually reaches the wire |
+
+Rules followed on the way:
+
+- **keep-alive:** Centrifugo sends `{}` and expects `{}` back; the `websockets`
+  protocol ping is a different layer. Answered at most once per second.
+- **one unit rule:** Rial markets send both stats and candles in Rial; both go
+  through `scale_stat_row`/`price_scale`, not through a second copy of the rule.
+- **REST first, always:** as the documentation recommends; the socket only refreshes.
+- **no socket means zero, not a wish:** `channels` in `/api/ws/status` lists only
+  what really went on the wire; the wish-list is `channels_wanted`.

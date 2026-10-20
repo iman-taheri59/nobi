@@ -1308,6 +1308,12 @@ const T = {
     'dk.modeHdr':'حالت اجرای معاملات','dk.modeSub':'برای هر نماد می‌توان حالت مستقل تعیین کرد؛ برچسب نماد بر حالت سراسری اولویت دارد.',
     'dk.auto':'خودکار','dk.semi':'نیمه‌خودکار','dk.manual':'دستی','dk.blocked':'مسدود',
     'dk.autoD':'سیگنال‌های بالای آستانه به‌طور خودکار اجرا می‌شوند؛ انسان فقط پایش می‌کند.',
+    'dk.autoPaper':'اجرای خودکار روی حساب کاغذی و با همان ده دروازهٔ ریسک است؛ هیچ سفارشی به نوبیتکس فرستاده نمی‌شود.',
+    'dk.autoLast':'آخرین پاس خودکار','dk.autoPlaced':'سفارش کاغذی ثبت‌شده','dk.autoWaiting':'در انتظار نخستین پاس خودکار…',
+    'dk.modeNoServer':'سرور در دسترس نیست؛ حالت اجرا از حافظهٔ صفحه ساخته نمی‌شود.',
+    'dk.queueAutoNote':'نمادهای خودکار را سرور ثبت می‌کند و در صف نمی‌آیند.',
+    'dk.edit':'ویرایش','dk.resetRow':'بازگردانی پلن','dk.editHint':'عددها را تغییر دهید؛ سرور همان لحظه ریسک را دوباره حساب می‌کند.',
+    'dk.editServer':'ریسک از پیش‌نمایش سرور (whatif) — همان دروازه‌های سفارش','dk.rowBlocked':'سرور این ترکیب را رد می‌کند','dk.tEdited':'ویرایش ردیف','dk.tEditedM':'عددهای ویرایش‌شده همان‌هایی هستند که فرستاده می‌شوند.',
     'dk.semiD':'ربات پلن می‌سازد، اجرا فقط با تأیید شما در صف پایین انجام می‌شود.',
     'dk.manualD':'هیچ سفارشی خودکار صادر نمی‌شود؛ فقط سفارش‌های دستی فرم پایین.',
     'dk.blockedD':'نمادهای دارای وتو یا مسدودسازی، در هیچ حالتی اجرا نمی‌شوند.',
@@ -1521,6 +1527,12 @@ const T = {
     'or.hdr':'Order Lifecycle',
     'ov.sub.loc':'IRT', 'ov.pnl.loc':'IRT',
     'dk.autoD':'Signals above threshold execute automatically; humans only monitor.',
+    'dk.autoPaper':'Automatic execution runs on the paper account, through the same ten risk gates; no order is sent to Nobitex.',
+    'dk.autoLast':'last auto pass','dk.autoPlaced':'paper orders placed','dk.autoWaiting':'waiting for the first automatic pass…',
+    'dk.modeNoServer':'Server unreachable; the execution mode is not invented in the page.',
+    'dk.queueAutoNote':'Auto symbols are executed by the server and do not appear in the queue.',
+    'dk.edit':'Edit','dk.resetRow':'Reset to plan','dk.editHint':'Change a number; the server re-computes the risk on the spot.',
+    'dk.editServer':'Risk from the server preview (whatif) — the same gates the order hits','dk.rowBlocked':'the server refuses this combination','dk.tEdited':'Row edited','dk.tEditedM':'The edited numbers are the ones sent.',
     'dk.semiD':'The bot builds the plan; execution happens only after your approval in the queue below.',
     'dk.manualD':'No orders are placed automatically; only manual orders from the form below.',
     'dk.blockedD':'Symbols with a veto or block are never executed in any mode.',
@@ -1751,7 +1763,7 @@ document.querySelectorAll('.navbtn').forEach(btn=>{
     if(btn.dataset.tab==='backtest' && !inited.bt){ inited.bt=true; requestAnimationFrame(()=>setTimeout(drawBt,30)); }
     if(btn.dataset.tab==='performance' && !inited.perf){ inited.perf=true; requestAnimationFrame(()=>setTimeout(async()=>{ await loadPerf(); drawCal(); loadBenchmark(); },30)); }
     if(btn.dataset.tab==='performance' && inited.perf){ requestAnimationFrame(()=>setTimeout(()=>{ if(!bmState) loadBenchmark(); },30)); }
-    if(btn.dataset.tab==='desk'){ requestAnimationFrame(()=>setTimeout(()=>{ runBookAlloc(false); refreshQueue(); },60)); }
+    if(btn.dataset.tab==='desk'){ requestAnimationFrame(()=>setTimeout(()=>{ runBookAlloc(false); loadExecMode(); refreshQueue(); },60)); }
     if(btn.dataset.tab==='overview'){ requestAnimationFrame(()=>setTimeout(()=>{ loadMarketOverview(); },60)); }
     // The order log is read when the page is shown: a stale table is better
     // than none, but the first look after a trade must be current.
@@ -2452,7 +2464,7 @@ function renderSignals(){
       <div class="flex-1 min-w-0">
         <div class="flex items-center gap-2 mb-2">
           <span class="text-[10px] text-zinc-500">${t('sg.mode')}</span>
-          <button data-cycle="${s.sym}" class="cycMode transition hover:opacity-80">${modeChip(symMode[s.sym]||'semi')}</button>
+          <button data-cycle="${s.sym}" class="cycMode transition hover:opacity-80">${modeChip(modeOf(s.sym))}</button>
           <span class="ms-auto text-[10px] text-zinc-500 num">${t('perf.rank')} ${fmtNum(i+1)}</span>
         </div>
         <div class="flex items-center gap-2 sm:gap-3 mb-1.5">
@@ -2473,13 +2485,12 @@ function renderSignals(){
     </div>`;
   }).join('');
   document.querySelectorAll('.cycMode').forEach(b=> b.onclick = ()=>{
-    const sym=b.dataset.cycle, order=['auto','semi','manual','blocked'];
-    symMode[sym] = order[(order.indexOf(symMode[sym]||'semi')+1)%order.length];
-    audit.unshift({ t:new Date().toLocaleTimeString('fa-IR'), a:'human',
-      act:{fa:'تغییر حالت نماد',en:'Symbol mode change'}, sym,
-      d:{fa:'حالت جدید: '+t('dk.'+symMode[sym]),en:'New mode: '+t('dk.'+symMode[sym])} });
-    renderSignals(); renderAudit();
-    toast(t('dk.tMode'), `${sym}: ${t('dk.'+symMode[sym])}`, 'info');
+    // Same control, same state as the queue select: the value is written on the
+    // server. `blocked` is not a mode a human can pick — it is what a gate says,
+    // and offering it here was a fourth chip that did nothing.
+    const sym=b.dataset.cycle;
+    const next = MODES[(MODES.indexOf(modeOf(sym))+1)%MODES.length];
+    setSymbolMode(sym, next).then(()=>renderSignals());
   });
 }
 function renderFaList(){
@@ -3991,6 +4002,7 @@ function renderDynamic(){
   renderOrders(); renderCaps(); renderKills(); renderRuns();
   renderPerf();
   renderExecSeg(); renderQueue(); renderAudit(); updateTicket();
+  loadExecMode();
   refreshIcons();
 }
 
@@ -4010,7 +4022,13 @@ function ticketSymbols(){
   const live = [...new Set(unis.map(u => u && u.symbol).filter(Boolean))];
   return live.length ? live : symbolsFallback;
 }
-const symMode = { BTCIRT:'manual', ETHIRT:'auto', SOLIRT:'semi', ADAIRT:'auto', DOGEIRT:'semi' };
+/* Per-symbol overrides now come from the server (`GET /api/exec/mode`) and are
+ * edited through the select on each queue row. This used to be a hard-coded
+ * table while the hint promised a per-symbol choice: BTCIRT was pinned to
+ * «manual» forever and the portfolio buttons could not change it. */
+let symMode = {};
+let execModeState = { loaded:false, error:null, auto:null };
+function modeOf(sym){ return symMode[sym] || execMode; }
 
 /*: Approval queue. It used to be a hard-coded empty array that nothing ever
  * filled, while the page said "the robot plans, you approve" — so the buttons
@@ -4034,6 +4052,7 @@ function modeChip(m){
   return `<span class="chip text-${c}-300 border-${c}-300/30"><span class="dot bg-${c}-400 ${m==='blocked'?'pulse-red':''}"></span>${t(k)}</span>`;
 }
 function renderExecSeg(){
+  const disabled = execModeState.error === 'no-backend';
   byId('execSeg').innerHTML = MODES.map(m=>`
     <button data-mode="${m}" class="exMode px-3.5 sm:px-4 py-2.5 rounded-xl text-[11px] sm:text-xs font-bold border transition ${execMode===m
       ? 'bg-amber-400/15 text-amber-200 border-amber-300/40'
@@ -4041,14 +4060,76 @@ function renderExecSeg(){
       <span class="flex items-center gap-1.5">${icon(m==='auto'?'zap':m==='semi'?'user-check':'hand', 'w-3.5 h-3.5')} ${t('dk.'+m)}</span>
     </button>`).join('');
   document.querySelectorAll('.exMode').forEach(b=> b.onclick = ()=> setExecMode(b.dataset.mode));
-  byId('execHint').innerHTML = `<span class="inline-flex items-center gap-1.5 text-amber-300">${icon('info','w-3.5 h-3.5')}</span> ${t('dk.'+execMode+'D')} · <span class="text-zinc-500">${t('dk.modeSub')}</span>`;
+  const autoOn = !!execModeState.auto && execModeState.auto.enabled;
+  const line = `${t('dk.'+execMode+'D')} · <span class="text-zinc-500">${t('dk.modeSub')}</span>`;
+  // `auto` runs on the server against the paper broker. Saying so here is the
+  // difference between an honest control and a promise to trade real money.
+  const honest = execMode==='auto'
+    ? `<div class="mt-1 text-emerald-300/90">${t('dk.autoPaper')}</div>
+       <div class="mt-0.5 text-zinc-500">${autoOn && execModeState.auto.last_tick_at
+          ? `${t('dk.autoLast')}: ${new Date(execModeState.auto.last_tick_at*1000).toLocaleTimeString(LANG==='fa'?'fa-IR':'en-US')} · ${t('dk.autoPlaced')} ${fmtNum(execModeState.auto.placed)}`
+          : t('dk.autoWaiting')}</div>`
+    : '';
+  const err = execModeState.error === 'no-backend'
+    ? `<div class="mt-1 text-red-300">${t('dk.modeNoServer')}</div>` : '';
+  byId('execHint').innerHTML = `<span class="inline-flex items-center gap-1.5 text-amber-300">${icon('info','w-3.5 h-3.5')}</span> ${line}${honest}${err}`;
   refreshIcons();
 }
-function setExecMode(m){
-  execMode = m;
-  audit.unshift({ t:new Date().toLocaleTimeString('fa-IR'), a:'human', act:{fa:'تغییر حالت اجرا',en:'Execution mode change'}, sym:'—', d:{fa:'حالت جدید: '+t('dk.'+m),en:'New mode: '+t('dk.'+m)} });
-  renderExecSeg(); renderAudit();
+let execModeTries = 0;
+async function loadExecMode(silent){
+  const api = window.NBX && NBX.core && NBX.core.api;
+  // `renderDynamic()` runs before the API client exists on a cold start; a
+  // one-shot failure would leave the panel saying "server unreachable" beside a
+  // board that is clearly live. Retry a few times instead of believing the
+  // first miss.
+  if(!api || !api.getExecMode){
+    execModeState = {loaded:false, error:'no-backend', auto:null}; renderExecSeg();
+    if(execModeTries++ < 5) setTimeout(loadExecMode, 2000);
+    return;
+  }
+  try{
+    const r = await api.getExecMode();
+    if(!r || r.ok === false){ execModeState = {loaded:true, error:'no-backend', auto:null}; }
+    else {
+      execMode = r.default || execMode;
+      symMode = r.symbols || {};
+      execModeState = { loaded:true, error:null, auto:r.auto || null };
+    }
+  }catch(e){ execModeState = {loaded:false, error:'no-backend', auto:null}; }
+  if(execModeState.error && execModeTries++ < 5){ setTimeout(loadExecMode, 2000); }
+  else if(!execModeState.error){ execModeTries = 0; }
+  renderExecSeg();
+  if(!silent) renderQueue();
+}
+// The executor's counters move on their own; refreshing them does not need a
+// queue rebuild (which would re-ask /api/risk/plan for five symbols).
+setInterval(()=>{ if(execMode==='auto' || Object.values(symMode).includes('auto')) loadExecMode(true); }, 30000);
+async function setExecMode(m){
+  const api = window.NBX && NBX.core && NBX.core.api;
+  if(!api || !api.postExecMode){ toast(t('dk.tMode'), t('dk.modeNoServer'), 'err'); return; }
+  const prev = execMode;
+  try{
+    const r = await api.postExecMode({ mode:m });
+    if(!r || r.ok === false){ toast(t('dk.tMode'), (r && r.error) || t('dk.modeNoServer'), 'err'); execMode = prev; return; }
+    execMode = r.default || m;
+    symMode = r.symbols || {};
+    execModeState = { loaded:true, error:null, auto:r.auto || null };
+  }catch(e){ toast(t('dk.tMode'), t('dk.modeNoServer'), 'err'); execMode = prev; return; }
+  audit.unshift({ t:new Date().toLocaleTimeString('fa-IR'), a:'human', act:{fa:'تغییر حالت اجرا',en:'Execution mode change'}, sym:'—', d:{fa:'حالت جدید: '+t('dk.'+execMode),en:'New mode: '+t('dk.'+execMode)} });
+  renderExecSeg(); renderAudit(); refreshQueue();
   toast(t('dk.tMode'), t('dk.tModeM'), 'warn');
+}
+async function setSymbolMode(sym, m){
+  const api = window.NBX && NBX.core && NBX.core.api;
+  if(!api || !api.postExecMode){ toast(t('dk.tMode'), t('dk.modeNoServer'), 'err'); return; }
+  try{
+    const r = await api.postExecMode({ symbol:sym, mode:m });
+    if(!r || r.ok === false){ toast(t('dk.tMode'), (r && r.error) || t('dk.modeNoServer'), 'err'); return; }
+    symMode = r.symbols || {}; execModeState.auto = r.auto || execModeState.auto;
+    audit.unshift({ t:new Date().toLocaleTimeString('fa-IR'), a:'human', act:{fa:'تغییر حالت نماد',en:'Symbol mode change'}, sym,
+      d:{fa:'حالت جدید: '+t('dk.'+(m||execMode)),en:'New mode: '+t('dk.'+(m||execMode))} });
+  }catch(e){ toast(t('dk.tMode'), t('dk.modeNoServer'), 'err'); return; }
+  renderExecSeg(); renderAudit(); refreshQueue();
 }
 function tfSec(tf){ return ({'15m':900,'1h':3600,'4h':14400,'D':86400})[tf] || 900; }
 
@@ -4071,7 +4152,10 @@ async function refreshQueue(){
   const eng = (window.NBX && NBX.core && NBX.core.engine) || {};
   const picked = rows
     .filter(s => s && s.direction === 'LONG' && !queueDismissed.has(s.symbol))
-    .filter(s => { const m = symMode[s.symbol] || execMode; return m !== 'manual'; })
+    // Only `semi` waits for a human. `auto` symbols are executed by the server
+    // (that is what the mode means), and `manual` symbols belong in the ticket;
+    // listing them here would offer an approval button that changes nothing.
+    .filter(s => modeOf(s.symbol) === 'semi')
     .slice(0, 5);
   const out = [];
   for (const s of picked) {
@@ -4139,10 +4223,13 @@ function renderQueue(){
                  :`no candidate right now${queueState.skipped?` (${queueState.skipped} symbol(s) had no placeable plan)`:''}.`}</div>`;
     return;
   }
-  byId('queueList').innerHTML = pend.map(q=>{
+  const autoSyms = Object.entries(symMode).filter(([,m])=>m==='auto').map(([s])=>s);
+  const autoNote = (autoSyms.length || execMode==='auto') ? `<div class="text-[10px] leading-5 text-emerald-300/80 mb-2">
+      ${t('dk.queueAutoNote')}${autoSyms.length?` (${autoSyms.join('، ')})`:''}</div>` : '';
+  byId('queueList').innerHTML = autoNote + pend.map(q=>{
     const rr = Math.abs((q.tp1-q.entry)/(q.entry-q.stop));
     const col = rr>=2?'emerald':rr>=1.5?'amber':'red';
-    return `<div class="rounded-xl bg-white/[.03] border border-white/5 p-3.5">
+    return `<div class="qRow rounded-xl bg-white/[.03] border border-white/5 p-3.5" data-row="${q.id}">
       <div class="flex flex-wrap items-center gap-2.5 mb-3">
         <div class="flex items-center gap-2.5 min-w-0">
           <span class="chip num ${q.score>=70?'text-emerald-300':'text-amber-300'} border-white/10">${fmtNum(q.score)}</span>
@@ -4150,18 +4237,38 @@ function renderQueue(){
           ${q.dir==='long'?`<span class="chip text-emerald-300">${t('sg.long')}</span>`:`<span class="chip text-red-300">${LANG==='fa'?'فروش':'Sell'}</span>`}
         </div>
         <span class="text-[10px] text-zinc-500 num">${t('perf.rank')} ${fmtNum(q.rank)} · ${q.ts}</span>
-        ${modeChip(symMode[q.sym]||execMode)}
+        <select data-symmode="${q.sym}" class="qMode bg-white/[.04] border border-white/10 rounded-md text-[10px] px-1.5 py-1 text-zinc-300">
+          ${MODES.map(m=>`<option value="${m}" ${modeOf(q.sym)===m?'selected':''}>${t('dk.'+m)}</option>`).join('')}
+        </select>
         <span class="ms-auto chip num ${q.ttl!=null && q.ttl<60?'text-red-300':'text-zinc-400'}">${icon('timer','w-3 h-3')} ${q.ttl==null?'—':fmtNum(Math.max(0,q.ttl))+(LANG==='fa'?'ث':'s')}</span>
       </div>
       <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] mb-3">
         <div class="rounded-lg bg-white/[.02] border border-white/5 p-2"><div class="text-zinc-500 text-[10px]">${t('dk.price')}</div><div class="num font-bold">${fmtNum(q.entry, q.entry<1000?2:0)}</div></div>
         <div class="rounded-lg bg-white/[.02] border border-white/5 p-2"><div class="text-zinc-500 text-[10px]">${t('col.stop')}</div><div class="num font-bold text-red-300">${fmtNum(q.stop, q.stop<1000?2:0)}</div></div>
         <div class="rounded-lg bg-white/[.02] border border-white/5 p-2"><div class="text-zinc-500 text-[10px]">${t('col.tp1')}</div><div class="num font-bold text-emerald-300">${fmtNum(q.tp1, q.tp1<1000?2:0)}</div></div>
-        <div class="rounded-lg bg-white/[.02] border border-white/5 p-2"><div class="text-zinc-500 text-[10px]">${t('dk.riskPct')}</div><div class="num font-bold ${q.risk>0.75?'text-red-300':'text-emerald-300'}">${PC(q.risk,2,false)}</div></div>
+        <div class="rounded-lg bg-white/[.02] border border-white/5 p-2"><div class="text-zinc-500 text-[10px]">${t('dk.riskPct')}</div><div data-qrisk="${q.id}" class="num font-bold ${q.risk>0.75?'text-red-300':'text-emerald-300'}">${PC(q.risk,2,false)}</div></div>
+      </div>
+      <div data-qeditor="${q.id}" class="${q.edit&&q.edit.on?'':'hidden'} mt-2 mb-3 rounded-lg border border-amber-300/20 bg-amber-300/[.03] p-2.5">
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px]">
+          <label class="block"><span class="text-zinc-500">${t('dk.notional')}</span>
+            <input data-id="${q.id}" data-field="sizeQ" class="qIn num w-full mt-1 bg-black/30 border border-white/10 rounded-md px-2 py-1.5" value="${q.edit?q.edit.sizeQ:q.sizeQ}"></label>
+          <label class="block"><span class="text-zinc-500">${t('col.stop')}</span>
+            <input data-id="${q.id}" data-field="stop" class="qIn num w-full mt-1 bg-black/30 border border-white/10 rounded-md px-2 py-1.5" value="${q.edit?q.edit.stop:q.stop}"></label>
+          <label class="block"><span class="text-zinc-500">${t('col.tp1')}</span>
+            <input data-id="${q.id}" data-field="tp1" class="qIn num w-full mt-1 bg-black/30 border border-white/10 rounded-md px-2 py-1.5" value="${q.edit?q.edit.tp1:q.tp1}"></label>
+          <label class="block"><span class="text-zinc-500">${t('col.tp2')}</span>
+            <input data-id="${q.id}" data-field="tp2" class="qIn num w-full mt-1 bg-black/30 border border-white/10 rounded-md px-2 py-1.5" value="${q.edit?q.edit.tp2:q.tp2}"></label>
+        </div>
+        <div class="flex items-center gap-2 mt-1.5">
+          <span class="text-[10px] text-zinc-500">${t('dk.editServer')}</span>
+          <button data-qreset="${q.id}" class="qReset ms-auto text-[10px] text-zinc-400 underline decoration-dotted">${t('dk.resetRow')}</button>
+        </div>
+        <div data-qgate="${q.id}" class="mt-1 text-[10px] leading-5 ${q.edit&&q.edit.blocked?'text-red-300':'text-zinc-500'}">${q.edit&&q.edit.gate?q.edit.gate:t('dk.editHint')}</div>
       </div>
       <div class="flex flex-wrap items-center gap-2">
         <span class="text-[10px] text-zinc-500 num">${t('dk.amount')}: ${fmtNum(q.sizeQ)} · R:TP <span class="text-${col}-300 font-bold">${fmtNum(rr,2)}</span></span>
         <div class="flex gap-2 ms-auto w-full sm:w-auto">
+          <button data-edit="${q.id}" class="qEditBtn flex-1 sm:flex-none px-3 py-2 rounded-xl text-[11px] font-bold bg-white/5 border border-white/10 text-amber-200/90">${t('dk.edit')}</button>
           <button data-reject="${q.id}" class="qRej flex-1 sm:flex-none px-3.5 py-2 rounded-xl text-[11px] font-bold bg-white/5 border border-white/10 text-zinc-300">${t('dk.reject')}</button>
           <button data-approve="${q.id}" class="qApp flex-1 sm:flex-none px-3.5 py-2 rounded-xl text-[11px] font-bold bg-emerald-400/15 border border-emerald-300/40 text-emerald-300">${icon('check','w-3.5 h-3.5')} ${t('dk.approve')}</button>
         </div>
@@ -4171,8 +4278,88 @@ function renderQueue(){
 
   document.querySelectorAll('.qApp').forEach(b=> b.onclick = ()=> resolveQ(b.dataset.approve, true));
   document.querySelectorAll('.qRej').forEach(b=> b.onclick = ()=> resolveQ(b.dataset.reject, false));
+  // The per-symbol mode the hint promises is edited here; it is saved on the
+  // server, so the executor and this table cannot disagree.
+  document.querySelectorAll('.qMode').forEach(sel=> sel.onchange = ()=> setSymbolMode(sel.dataset.symmode, sel.value));
+  document.querySelectorAll('.qEditBtn').forEach(b=> b.onclick = ()=> toggleRowEdit(b.dataset.edit));
+  document.querySelectorAll('.qReset').forEach(b=> b.onclick = ()=> resetRowEdit(b.dataset.qreset));
+  document.querySelectorAll('.qIn').forEach(inp=> inp.oninput = ()=> {
+    const q = queue.find(x=>x.id===inp.dataset.id); if(!q || !q.edit) return;
+    const v = parseFloat(inp.value);
+    q.edit[inp.dataset.field] = Number.isFinite(v) ? v : 0;
+    scheduleRowWhatIf(q);
+  });
   refreshIcons();
 }
+/* --- Editing a queued proposal -------------------------------------------
+ * The size, stop and targets of a row can be changed before approval. Every
+ * edit is re-gated by `POST /api/risk/whatif` — the same `preflight` the broker
+ * runs — and the row prints the server's number, not a local guess. Nothing is
+ * refused here: the order still goes to the broker, which names the gate if it
+ * refuses, so the page never invents a veto the server does not have. */
+function rowEdit(q){
+  if(!q.edit) q.edit = { on:false, sizeQ:q.sizeQ, stop:q.stop, tp1:q.tp1, tp2:q.tp2,
+                         risk:q.risk, gate:null, blocked:false, seq:0, timer:null };
+  return q.edit;
+}
+function toggleRowEdit(id){
+  const q = queue.find(x=>x.id===id); if(!q) return;
+  const e = rowEdit(q);
+  e.on = !e.on;
+  if(!e.on){
+    // closing the editor restores the server's plan: a half-edited row that is
+    // out of sight must not keep the edited numbers.
+    Object.assign(e, {sizeQ:q.sizeQ, stop:q.stop, tp1:q.tp1, tp2:q.tp2, risk:q.risk,
+                      gate:null, blocked:false});
+  }
+  renderQueue();
+  if(e.on) askRowWhatIf(q);
+}
+function resetRowEdit(id){
+  const q = queue.find(x=>x.id===id); if(!q) return;
+  Object.assign(rowEdit(q), {sizeQ:q.sizeQ, stop:q.stop, tp1:q.tp1, tp2:q.tp2,
+                             risk:q.risk, gate:null, blocked:false});
+  renderQueue(); askRowWhatIf(q);
+}
+function scheduleRowWhatIf(q){
+  const e = rowEdit(q);
+  clearTimeout(e.timer);
+  e.timer = setTimeout(()=> askRowWhatIf(q), 350);
+}
+async function askRowWhatIf(q){
+  const e = rowEdit(q);
+  const api = window.NBX && NBX.core && NBX.core.api;
+  const gateEl = document.querySelector(`[data-qgate="${q.id}"]`);
+  const riskEl = document.querySelector(`[data-qrisk="${q.id}"]`);
+  if(!api || !api.postWhatIf){
+    if(gateEl){ gateEl.className = 'mt-1 text-[10px] leading-5 text-red-300'; gateEl.textContent = t('dk.modeNoServer'); }
+    return;
+  }
+  const seq = ++e.seq;
+  let r = null;
+  try{ r = await api.postWhatIf({ symbol:q.sym, side:'buy', entry:q.entry, stop:e.stop || null,
+                                  size_quote:e.sizeQ }); }catch(err){ r = null; }
+  if(seq !== e.seq) return;                       // a newer keystroke already asked
+  if(!r || r.ok === false){
+    if(gateEl){ gateEl.className = 'mt-1 text-[10px] leading-5 text-red-300'; gateEl.textContent = t('dk.whatifNoServer'); }
+    return;
+  }
+  const p = r.projection || {};
+  e.risk = Number(p.loss_at_stop_pct_of_equity) || 0;
+  e.blocked = !!p.blocked;
+  e.gate = p.blocked
+    ? `${t('dk.rowBlocked')}: ${t('gate.' + (p.blocked_by || ''))}`
+    : t('dk.editServer');
+  if(riskEl){
+    riskEl.textContent = PC(e.risk, 2, false);
+    riskEl.className = `num font-bold ${e.risk > 0.75 ? 'text-red-300' : 'text-emerald-300'}`;
+  }
+  if(gateEl){
+    gateEl.className = `mt-1 text-[10px] leading-5 ${p.blocked ? 'text-red-300' : 'text-zinc-500'}`;
+    gateEl.textContent = e.gate;
+  }
+}
+
 function resolveQ(id, approve){
   const q = queue.find(x=>x.id===id); if(!q) return;
   // No local risk / R:TP veto here. Both rules live in `risk_engine.preflight`
@@ -4198,9 +4385,13 @@ function resolveQ(id, approve){
   (async () => {
     let r = null;
     try {
+      // What the row shows is what gets sent: an edited size/stop/tp that the
+      // preview displayed but the order ignored would make the preview a lie.
+      const e = q.edit && q.edit.on ? q.edit : null;
       r = await api.postPaperOrder({
-        symbol: q.sym, side: 'buy', size_quote: q.sizeQ,
-        stop: q.stop, tp1: q.tp1, tp2: q.tp2, source: 'QUEUE',
+        symbol: q.sym, side: 'buy', size_quote: e ? e.sizeQ : q.sizeQ,
+        stop: e ? e.stop : q.stop, tp1: e ? e.tp1 : q.tp1, tp2: e ? e.tp2 : q.tp2,
+        source: 'QUEUE',
       });
     } catch (e) { r = null; }
     if (!r || !r.ok) {
