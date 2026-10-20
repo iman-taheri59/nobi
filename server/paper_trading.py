@@ -119,6 +119,8 @@ class PaperBroker:
         #: reported.
         self.usdt_irt = 0.0
         self.usdt_irt_at = 0.0
+        #: One warning per staleness episode, not one per request.
+        self._stale_rate_logged = False
         self.halted = False
         #: The gate breakdown from the last order attempt, for the what-if panel.
         self.last_preflight: Preflight | None = None
@@ -217,10 +219,27 @@ class PaperBroker:
         if self.usdt_irt <= 0:
             return None
         try:
-            return Rate(toman_per_usdt=self.usdt_irt, as_of=self.usdt_irt_at,
+            rate = Rate(toman_per_usdt=self.usdt_irt, as_of=self.usdt_irt_at,
                         source="usdt-irt", max_age_s=RATE_TTL_S)
         except NoRate:
             return None
+        if rate.is_stale:
+            # A rate that could not be refreshed is not a rate. Returning it let
+            # `/api/risk/whatif` crash with `NoRate: 1935s old` (the caller did
+            # `require_fresh`) while `place_limit` priced the very same order
+            # with it and booked a fill — the preview refused, the broker
+            # accepted, and only one of them was right. `None` makes every
+            # caller take the `no-fx-rate` branch it already has.
+            if not self._stale_rate_logged:
+                log.warning(
+                    "no fresh USDT/IRT rate: the cached one is %.0fs old "
+                    "(limit %.0fs) and the exchange is not answering; "
+                    "IRT-priced orders and previews are refused",
+                    rate.age_s, rate.max_age_s)
+                self._stale_rate_logged = True
+            return None
+        self._stale_rate_logged = False
+        return rate
 
     async def _quote_rate(self, symbol: str) -> float:
         """Quote units per USD: 1.0 for a USDT pair, the USDT/IRT rate otherwise.

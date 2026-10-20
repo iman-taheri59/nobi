@@ -14,6 +14,7 @@ from __future__ import annotations
 import math
 import random
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -287,6 +288,9 @@ def primed_board(monkeypatch):
                       "risk": {"atr": 10_000.0 * (i + 1)}}
     main._cached["signals_by_tf"]["15m"] = board
     main._cached["universe"] = [{"symbol": "USDTIRT", "last": 100_000.0}]
+    # A snapshot carries the time it was taken; without one it is not a rate
+    # (`main._fx` dates its fallback by this, not by "now").
+    main._cached["universe_ts"] = time.time()
     br = get_broker(main.EQUITY, main.client, main.risk)
     br.positions.clear()
     main.risk.open_heat = 0.0

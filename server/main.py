@@ -552,7 +552,12 @@ async def _fx(symbol: str = "BTCIRT") -> Rate | None:
     px = float(row["last"]) if row and row.get("last") else 0.0
     if px <= 0:
         return None
-    return Rate(toman_per_usdt=px, as_of=time.time(), source="universe", max_age_s=120.0)
+    # Dated by when the snapshot was taken, not by when it is read. Stamping
+    # `time.time()` here made a universe loaded an hour ago look like a rate
+    # read a millisecond ago — the same lie as the position row's `as_of=now`.
+    rate = Rate(toman_per_usdt=px, as_of=float(_cached.get("universe_ts") or 0.0),
+                source="universe", max_age_s=float(UNIVERSE_TTL_S) * 2)
+    return None if rate.is_stale else rate
 
 
 async def _fx_rate(symbol: str) -> float:
@@ -2117,9 +2122,15 @@ def _position_payload(pos) -> dict:
         last = float(pos.entry_price)
     pnl_pct = round((last / pos.entry_price - 1) * 100, 2) if pos.entry_price else 0.0
     value_quote = pos.filled_qty * last
-    # Same rate object the account is marked with, so the position row and the
-    # equity KPI cannot disagree about what a position is worth.
-    rate = get_broker(EQUITY, client, risk).usdt_irt
+    # Same rate the account is marked with, so the position row and the equity
+    # KPI cannot disagree about what a position is worth — including about
+    # *when* they read it. This used to wrap the cached number in
+    # `Rate(as_of=time.time())`, which relabelled a 30-minute-old price as a
+    # current one; the dollar figure now disappears with the rate instead.
+    _broker = get_broker(EQUITY, client, risk)
+    rate = _broker.usdt_irt
+    if rate > 0 and (time.time() - float(_broker.usdt_irt_at or 0.0)) > paper_trading.RATE_TTL_S:
+        rate = 0.0
     if pos.symbol.endswith("IRT"):
         if rate > 0:
             # `value_quote` is already Toman: the positions were priced at the
@@ -2127,7 +2138,8 @@ def _position_payload(pos) -> dict:
             # and divide the result by ten again — the same mistake as the
             # original bug, arriving through the helper meant to prevent it.
             value_usd = toman(value_quote).to_usd(
-                Rate(toman_per_usdt=rate, as_of=time.time(), source="paper-broker",
+                Rate(toman_per_usdt=rate, as_of=_broker.usdt_irt_at,
+                     source="paper-broker",
                      max_age_s=paper_trading.RATE_TTL_S)).amount
             fx_used = rate
         else:

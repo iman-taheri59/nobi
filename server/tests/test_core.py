@@ -1830,6 +1830,9 @@ def test_whatif_route_reports_a_real_projection():
         "risk": {"atr": 40_000_000.0},
     }
     main._cached["universe"] = [{"symbol": "USDTIRT", "last": 100_000.0}]
+    # A snapshot carries the time it was taken; without one it is not a rate
+    # (`main._fx` dates its fallback by this, not by "now").
+    main._cached["universe_ts"] = time.time()
 
     c = TestClient(main.app)
     r = c.post("/api/risk/whatif", json={"symbol": sym, "side": "buy", "tf": "15m"})
@@ -1871,6 +1874,9 @@ def test_whatif_does_not_move_the_account():
         "symbol": sym, "lastClose": 3e11, "risk": {"atr": 3e9},
     }
     main._cached["universe"] = [{"symbol": "USDTIRT", "last": 100_000.0}]
+    # A snapshot carries the time it was taken; without one it is not a rate
+    # (`main._fx` dates its fallback by this, not by "now").
+    main._cached["universe_ts"] = time.time()
     from paper_trading import get_broker
     br = get_broker(main.EQUITY, main.client, main.risk)
     heat_before = main.risk.open_heat
