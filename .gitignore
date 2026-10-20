@@ -33,3 +33,9 @@ node_modules/
 .ruff_cache/
 .mypy_cache/
 .pytest_cache/
+
+# Coverage artefacts
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
