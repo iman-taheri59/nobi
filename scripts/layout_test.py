@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import os
 import sys
 
 TABS = ["overview", "signals", "fa", "orders", "performance",
@@ -114,19 +115,52 @@ ERRORS_PROBE = """() => {
 """
 
 
-async def run(url: str) -> int:
+def _launch_args(channel: str | None, executable: str | None) -> dict:
+    """Where the browser comes from.
+
+    `python -m playwright install chromium` downloads one specific revision and
+    fails on networks that block its CDN — and behind some proxies and
+    antivirus scanners. Two ways around it, both wired here:
+
+      --channel msedge|chrome   use the browser already installed on the
+                                machine (Edge ships with Windows)
+      --executable PATH         any Chromium binary you downloaded yourself
+                                (also NBX_CHROME, so a shell variable works)
+    """
+    exe = executable or os.getenv("NBX_CHROME") or ""
+    if exe:
+        if not os.path.isfile(exe):
+            raise SystemExit(f"--executable does not exist: {exe}")
+        return {"executable_path": exe}
+    if channel:
+        return {"channel": channel}
+    return {}
+
+
+async def run(url: str, channel: str | None = None, executable: str | None = None) -> int:
     try:
         from playwright.async_api import async_playwright
     except ImportError:
         print("playwright is not installed:\n"
-              "  pip install playwright && python -m playwright install chromium",
+              "  pip install playwright\n"
+              "  python -m playwright install chromium     # or --channel msedge",
               file=sys.stderr)
         return 2
 
     problems: list[str] = []
 
     async with async_playwright() as p:
-        browser = await p.chromium.launch()
+        try:
+            browser = await p.chromium.launch(**_launch_args(channel, executable))
+        except Exception as exc:
+            # A missing download surfaces as a Playwright traceback that looks
+            # like a test bug. Say what to do instead.
+            print("FAIL\n - could not start a browser: " + str(exc).splitlines()[0])
+            print("   one of these fixes it:\n"
+                  "     python -m playwright install chromium     # download\n"
+                  "     --channel msedge                          # Edge, already on Windows\n"
+                  "     --executable C:\\path\\to\\chrome.exe      # a build you downloaded")
+            return 2
         for width, height in VIEWPORTS:
             page = await browser.new_page(viewport={"width": width, "height": height})
             page_errors: list[str] = []
@@ -258,4 +292,9 @@ async def run(url: str) -> int:
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--url", default="http://127.0.0.1:8000/")
-    sys.exit(asyncio.run(run(ap.parse_args().url)))
+    ap.add_argument("--channel", choices=["chrome", "msedge", "chromium"],
+                    help="use an installed browser instead of Playwright's download")
+    ap.add_argument("--executable",
+                    help="path to chrome.exe / chrome (default: $NBX_CHROME)")
+    a = ap.parse_args()
+    sys.exit(asyncio.run(run(a.url, a.channel, a.executable)))

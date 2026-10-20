@@ -307,6 +307,7 @@ NBX_CORS_ORIGINS=null
 | `nobi.test` → 502 | پروکسی به :8000 نمی‌رسد | اول بدون پروکسی `127.0.0.1:8000` را چک کن؛ بعد `mod_proxy` |
 | سفارش کاغذی از گوشی/لن رد می‌شود | `loopback-only` است | از همان ماشین باز کن، یا `NBX_API_TOKEN` بگذار و هدر بفرست |
 | `database is locked` | دو نمونهٔ سرور روی یک `journal.db` | یکی را ببند، یا `NBX_JOURNAL_DB` جدا بده |
+| `playwright install chromium` دانلود نمی‌شود | CDN مسدود است یا آنتی‌ویروس فایل را می‌بلعد | از مرورگر نصب‌شده استفاده کن: `python scripts\layout_test.py --channel msedge` (بخش ۳٫۳ `docs/testing.md`) |
 
 ---
 

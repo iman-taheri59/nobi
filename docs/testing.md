@@ -114,6 +114,50 @@ python scripts/layout_test.py --url http://127.0.0.1:8000
 سه عرض (۳۹۰ / ۷۶۸ / ۱۴۴۰) × ده تب: اسکرول افقی، تبی که باز نمی‌شود، ردیفی که
 نمودارش خالی است. jsdom این‌ها را نمی‌بیند؛ فقط این اسکریپت می‌بیند.
 
+#### اگر `playwright install chromium` دانلود نشد
+
+Playwright یک **نسخهٔ مشخص** از Chromium را از CDN خودش می‌گیرد؛ شبکه‌ای که آن
+دامنه را مسدود کند (یا پروکسی/آنتی‌ویروس شرکتی که فایل اجرایی را می‌بلعد) این
+مرحله را متوقف می‌کند. لازم نیست با آن بجنگید — اسکریپت دو راه دیگر دارد:
+
+```bat
+:: ۱) مرورگری که از قبل نصب است. روی ویندوز، Edge هست.
+python scripts\layout_test.py --url http://127.0.0.1:8000 --channel msedge
+python scripts\layout_test.py --url http://127.0.0.1:8000 --channel chrome
+
+:: ۲) هر باینری Chromium که خودت دانلود کرده‌ای
+python scripts\layout_test.py --url http://127.0.0.1:8000 --executable C:\tools\chrome-win64\chrome.exe
+
+:: یا یک‌بار در همان پنجره:
+set NBX_CHROME=C:\tools\chrome-win64\chrome.exe
+python scripts\layout_test.py --url http://127.0.0.1:8000
+```
+
+`--channel` مرورگر نصب‌شدهٔ سیستم را از مسیر استانداردش برمی‌دارد:
+Edge در `C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe`،
+Chrome در `C:\Program Files\Google\Chrome\Application\chrome.exe`.
+
+**دربارهٔ zip‌ای که خودت دانلود کرده‌ای:** Playwright ساختار پوشه‌ای خاص خودش
+(`chromium-<build>/chrome-win/chrome.exe`) را نمی‌خواهد؛ فقط مسیر یک فایل
+اجرایی را می‌خواهد. پس:
+
+1. zip را باز کن (هر جایی — لازم نیست در پوشهٔ Playwright باشد).
+2. `chrome.exe` را داخلش پیدا کن (معمولاً یک سطح زیر ریشه).
+3. همان مسیر را به `--executable` بده.
+
+اگر نسخهٔ آن بیلد خیلی قدیم یا خیلی تازه باشد، Playwright ممکن است در
+پروتکل CDP به مشکل بخورد؛ در آن حالت `--channel msedge` انتخاب مطمئن‌تری
+است. پیام خطا در این حالت صریح است و هر سه راه را نشان می‌دهد:
+
+```
+FAIL
+ - could not start a browser: ...
+   one of these fixes it:
+     python -m playwright install chromium
+     --channel msedge
+     --executable C:\path\to\chrome.exe
+```
+
 ### ۳٫۴ DOM و کارت MSI
 
 ```bash
