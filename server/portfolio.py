@@ -31,6 +31,7 @@ without a stop or a history is dropped with the reason attached.
 
 from __future__ import annotations
 
+import itertools
 import math
 from dataclasses import dataclass, field
 
@@ -60,7 +61,7 @@ def log_returns(closes: list[float]) -> list[float]:
     """
     if any(c is None or not math.isfinite(c) or c <= 0 for c in closes):
         raise ValueError("non-positive close")
-    return [math.log(b / a) for a, b in zip(closes, closes[1:])]
+    return [math.log(b / a) for a, b in itertools.pairwise(closes)]
 
 
 def aligned_closes(series: dict[str, list[tuple[int, float]]]) -> tuple[list[int], dict[str, list[float]]]:
@@ -96,7 +97,7 @@ def corr_pair(a: list[float], b: list[float]) -> float | None:
     vb = sum(x * x for x in db)
     if va <= 0 or vb <= 0:
         return None
-    cov = sum(x * y for x, y in zip(da, db))
+    cov = sum(x * y for x, y in zip(da, db, strict=True))
     r = cov / math.sqrt(va * vb)
     return max(-1.0, min(1.0, r))
 
@@ -144,7 +145,8 @@ def erc_weights(vols: list[float], corr: list[list[float | None]]) -> list[float
     cov = [[0.0] * n for _ in range(n)]
     for i in range(n):
         for j in range(n):
-            r = 1.0 if i == j else (corr[i][j] if corr[i][j] is not None else 0.0)
+            c = corr[i][j]
+            r = 1.0 if i == j else (c if c is not None else 0.0)
             cov[i][j] = r * vols[i] * vols[j]
     # Inverse-vol is the right starting point: it is already close to the
     # uncorrelated solution, so the iteration has little work to do.
@@ -266,8 +268,8 @@ def allocate(candidates: list[Candidate], returns: dict[str, list[float]], lim: 
             dropped.append({"symbol": c.symbol, "reason": "no heat left (heat-cap)"})
         return _empty(lim, dropped, "the heat budget is already spent")
 
-    risk = {c.symbol: w * budget for c, w in zip(usable, weights)}
-    share = {c.symbol: w for c, w in zip(usable, weights)}
+    risk = {c.symbol: w * budget for c, w in zip(usable, weights, strict=True)}
+    share = {c.symbol: w for c, w in zip(usable, weights, strict=True)}
     bound: dict[str, str] = {c.symbol: "erc-share" for c in usable}
     capped: set[str] = set()
 
@@ -397,8 +399,13 @@ def _max_corr(sym: str, against: list[str], syms: list[str], corr: list[list[flo
     if sym not in syms:
         return None
     i = syms.index(sym)
-    vals = [abs(corr[i][syms.index(o)]) for o in against
-            if o != sym and o in syms and corr[i][syms.index(o)] is not None]
+    vals: list[float] = []
+    for other in against:
+        if other == sym or other not in syms:
+            continue
+        c = corr[i][syms.index(other)]
+        if c is not None:
+            vals.append(abs(c))
     return round(max(vals), 4) if vals else None
 
 

@@ -23,7 +23,7 @@ import json
 import math
 import random
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -130,7 +130,7 @@ def universe() -> dict:
                      "change24": _change_24h(s), "rank": i + 1})
     return {"ok": True, "count": len(rows), "symbols": rows,
             "source": "mock", "premium_pct": 0.0,
-            "as_of": datetime.now(timezone.utc).isoformat()}
+            "as_of": datetime.now(UTC).isoformat()}
 
 
 def signals(tf: str) -> dict:
@@ -148,7 +148,7 @@ def signals(tf: str) -> dict:
             "components": {"trend": 80, "momentum": 74, "volume": 61, "structure": 77},
             "data_source": "mock",
         })
-    return {"ok": True, "ts": datetime.now(timezone.utc).isoformat(), "tf": tf,
+    return {"ok": True, "ts": datetime.now(UTC).isoformat(), "tf": tf,
             "count": len(scored), "age_s": 4.0, "stale": False,
             "refreshing": False, "premium_usdtirt": 1_012_000,
             "premium_pct": 1.9, "scored": scored, "source": "mock",
@@ -177,7 +177,7 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def do_GET(self):                              # noqa: N802
+    def do_GET(self):
         u = urlparse(self.path)
         q = parse_qs(u.query)
         p = u.path
@@ -204,7 +204,7 @@ class Handler(BaseHTTPRequestHandler):
 
         if p == "/api/health":
             return self._send({"ok": True, "backend": "nobi-mock", "version": "2.2.0",
-                               "ts": datetime.now(timezone.utc).isoformat(),
+                               "ts": datetime.now(UTC).isoformat(),
                                "upstream": {"ok": True, "latency_ms": 41, "age_s": 2,
                                             "error": None, "degraded": False},
                                "auth": {"mode": "mock", "token_required": False},
@@ -222,7 +222,7 @@ class Handler(BaseHTTPRequestHandler):
             rows = candles(sym, tf, max(60, min(n, 600)))
             return self._send({"ok": True, "symbol": sym, "tf": tf,
                                "count": len(rows), "rows": rows, "source": "mock",
-                               "as_of": datetime.now(timezone.utc).isoformat()})
+                               "as_of": datetime.now(UTC).isoformat()})
         if p.startswith("/api/fa/"):
             return self._send(fa(p.rsplit("/", 1)[-1].upper()))
         if p.startswith("/api/orderbook/"):
@@ -276,7 +276,7 @@ class Handler(BaseHTTPRequestHandler):
                                "signals": [], "horizons": [], "families": [],
                                "calibration": [], "origins": {}, "data_sources": {},
                                "resolved_sources": {}, "msi": None,
-                               "generated_at": datetime.now(timezone.utc).isoformat()})
+                               "generated_at": datetime.now(UTC).isoformat()})
         if p == "/api/errors":
             return self._send({"errors": [], "n": 0,
                                "counts": {"total": 0, "error": 0, "critical": 0,
@@ -302,7 +302,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._send({"ok": True, "reports": []})
         return self._send({"ok": False, "error": "mock_unknown_route", "path": p}, 404)
 
-    def do_POST(self):                             # noqa: N802
+    def do_POST(self):
         n = int(self.headers.get("Content-Length") or 0)
         if n:
             self.rfile.read(n)

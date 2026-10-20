@@ -15,44 +15,48 @@ Run:
 """
 from __future__ import annotations
 
-import _env  # noqa: F401 — must precede every module that reads os.environ
-              # (notify.TOKEN, security.API_TOKEN, ws_execution.WS_URL are all
-              # read at import time, so a later load would be a silent no-op)
-
+# (notify.TOKEN, security.API_TOKEN, ws_execution.WS_URL are all
+# read at import time, so a later load would be a silent no-op)
 import asyncio
 import json
 import logging
 import os
+import sys
 import time
-from datetime import datetime, timezone
-
-from pathlib import Path
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from nobitex_client import ClientError, NobitexClient, UpstreamUnavailable
-from ta_engine import RISK_K, candles_to_df, ta_score, ta_score_series
-from fa_engine import FA_ENGINE, FAResult
-from risk_engine import RiskEngine, RiskConfig, preflight
-from portfolio import (Candidate, Limits, allocate as allocate_portfolio,
-                       aligned_closes, log_returns)
-from benchmark import MIN_OBS as BENCH_MIN_OBS, PERIODS_PER_YEAR, relative as relative_to, summarise as summarise_relative
-from money import Rate, toman, usd
-from units import apply_options, market_symbol, min_notional_usd, truncate_amount, round_price
-from market_overview import overview as market_overview
-import paper_trading
-from paper_trading import FEE_PCT as PAPER_FEE_PCT, get_broker, PaperBroker
-from backtest import EventBacktester, WalkForwardRunner, run_and_save, grid_search, DEFAULT_GRID
-from ws_execution import STREAM_EXECUTOR, streams_start
-from exec_mode import EXEC_MODE, InvalidMode
-from security import API_TOKEN, auth_mode, cors_origins, require_client
-import journal as signal_journal
+import _env  # noqa: F401 — must precede every module that reads os.environ
 import errorlog
+import journal as signal_journal
 import notify
+import paper_trading
+from backtest import grid_search, run_and_save
+from benchmark import MIN_OBS as BENCH_MIN_OBS
+from benchmark import PERIODS_PER_YEAR
+from benchmark import relative as relative_to
+from benchmark import summarise as summarise_relative
+from exec_mode import EXEC_MODE, InvalidMode
+from fa_engine import FA_ENGINE, FAResult
+from market_overview import overview as market_overview
+from money import Rate, toman, usd
+from nobitex_client import ClientError, NobitexClient, UpstreamUnavailable
+from paper_trading import FEE_PCT as PAPER_FEE_PCT
+from paper_trading import get_broker
+from portfolio import Candidate, Limits, aligned_closes, log_returns
+from portfolio import allocate as allocate_portfolio
+from risk_engine import RiskConfig, RiskEngine, preflight
+from security import API_TOKEN, auth_mode, cors_origins, require_client
+from ta_engine import RISK_K, candles_to_df, ta_score, ta_score_series
+from units import apply_options, market_symbol, min_notional_usd
+from ws_execution import STREAM_EXECUTOR, streams_start
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("nbx-app")
@@ -153,7 +157,7 @@ def audit(action: str, *, actor: str = "api", result: str = "ok",
                                                client=client_ip)
         finally:
             conn.close()
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         log.warning("audit write failed for %s: %s", action, e)
         return None
 
@@ -190,7 +194,7 @@ async def _position_tick_loop() -> None:
             await tick_once()
         except asyncio.CancelledError:
             raise
-        except Exception as e:  # noqa: BLE001 - the scheduler must survive
+        except Exception as e:  # the scheduler must survive
             log.warning("position tick failed: %s", e)
         _ticks[0] += 1
         if _ticks[0] % max(1, int(300 / max(TICK_S, 1))) == 0:
@@ -201,7 +205,7 @@ async def _position_tick_loop() -> None:
                 voided = journal_void()
                 if voided:
                     log.warning("journal: %d prediction(s) VOID (symbol left universe)", voided)
-            except Exception as e:  # noqa: BLE001
+            except Exception as e:
                 log.warning("journal resolve failed: %s", e)
         await asyncio.sleep(TICK_S)
 
@@ -223,7 +227,7 @@ def write_digest_files(*, days: int = 1) -> dict:
     finally:
         conn.close()
     EXPORT_DIR.mkdir(parents=True, exist_ok=True)
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%MZ")
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%MZ")
     csv_path = EXPORT_DIR / f"journal-{stamp}.csv"
     csv_path.write_text(signal_journal.export_csv(rows), encoding="utf-8")
     info["rows"] = len(rows)
@@ -247,7 +251,7 @@ async def _digest_loop() -> None:
                 await notify.send(signal_journal.digest_text(info))
         except asyncio.CancelledError:
             raise
-        except Exception as e:  # noqa: BLE001 - the scheduler must survive
+        except Exception as e:  # the scheduler must survive
             log.warning("digest failed: %s", e)
             _last_digest[0] = time.time()      # back off a full interval
         await asyncio.sleep(min(300, max(30, interval / 10)))
@@ -269,7 +273,7 @@ async def lifespan(_app: FastAPI):
                 await coro
             except asyncio.CancelledError:
                 raise
-            except Exception as exc:                    # noqa: BLE001
+            except Exception as exc:
                 log.exception("background task %s crashed", name)
                 errorlog.capture(source=f"task.{name}", exc=exc,
                                  message=f"background task '{name}' crashed")
@@ -387,7 +391,7 @@ def _apply_stream_stat(symbol: str, st) -> None:
         else:
             _CACHE_CLOSED.discard(symbol)
         _cached["closed_markets"] = sorted(_CACHE_CLOSED)
-    except Exception as e:  # noqa: BLE001 - a stats frame must never break the app
+    except Exception as e:  # a stats frame must never break the app
         log.debug("stream stats apply failed for %s: %s", symbol, e)
 
 _cached: dict = {
@@ -490,7 +494,7 @@ def upstream_error(kind: str, detail: str = "") -> dict:
         "message_en": UPSTREAM_MSG_EN,
         "detail": detail[:300],
         "source": "unavailable",
-        "as_of": datetime.now(timezone.utc).isoformat(),
+        "as_of": datetime.now(UTC).isoformat(),
     }
 
 
@@ -498,7 +502,7 @@ def provenance() -> dict:
     """Where the numbers the API is returning actually came from."""
     return {
         "source": "unavailable" if client.degraded_mode else "live",
-        "as_of": datetime.now(timezone.utc).isoformat(),
+        "as_of": datetime.now(UTC).isoformat(),
     }
 
 
@@ -572,7 +576,7 @@ async def _probe_upstream() -> None:
     try:
         r = await asyncio.wait_for(client.get_orderbook("BTCIRT"), timeout=4)
         ok = bool(r and r.get("status") == "ok") and not client.degraded_mode
-    except Exception as e:  # noqa: BLE001 - health must never raise
+    except Exception as e:  # health must never raise
         err = str(e) or e.__class__.__name__
     finally:
         _upstream.update(
@@ -584,10 +588,22 @@ async def _probe_upstream() -> None:
         )
 
 
+#: Fire-and-forget tasks must be held somewhere: asyncio only keeps a weak
+#: reference, so a task nobody points at can be collected before it runs.
+_BG_TASKS: set[asyncio.Task] = set()
+
+
+def _spawn(coro) -> asyncio.Task:
+    task = asyncio.create_task(coro)
+    _BG_TASKS.add(task)
+    task.add_done_callback(_BG_TASKS.discard)
+    return task
+
+
 def _upstream_snapshot() -> dict:
     age = time.time() - _upstream["ts"] if _upstream["ts"] else None
     if _upstream["ok"] is None or age is None or age > UPSTREAM_TTL_S:
-        asyncio.create_task(_probe_upstream())
+        _spawn(_probe_upstream())
     return {
         "ok": _upstream["ok"],
         "latency_ms": _upstream["latency_ms"],
@@ -615,7 +631,7 @@ async def health():
         "ok": True,
         "backend": "python-fastapi-nobi",
         "version": app.version,
-        "ts": datetime.now(timezone.utc).isoformat(),
+        "ts": datetime.now(UTC).isoformat(),
         "upstream": _upstream_snapshot(),
         "auth": {"mode": auth_mode(), "token_required": bool(API_TOKEN), "cors_origins": _CORS_ORIGINS},
         "provenance": provenance(),
@@ -645,7 +661,7 @@ async def _load_options() -> int:
         if n:
             log.info("options: %d precision/minimum override(s) applied", n)
         return n
-    except Exception as e:  # noqa: BLE001 - defaults stay in force
+    except Exception as e:  # defaults stay in force
         log.warning("options: could not read /v2/options (%s); using documented defaults", e)
         return 0
 
@@ -677,7 +693,7 @@ async def _load_universe_locked():
         try:
             import paper_trading as _pt
             _pt.market_closed_hook = lambda sym: norm(sym) in _CACHE_CLOSED
-        except Exception:  # noqa: BLE001 - the hook is optional
+        except Exception:  # the hook is optional
             pass
         if closed:
             log.info("universe: %d market(s) reporting isClosed: %s", len(closed), ", ".join(closed[:6]))
@@ -701,12 +717,12 @@ async def universe():
         age = time.time() - _cached["universe_ts"] if _cached["universe_ts"] else 0.0
     if not _cached["universe"]:
         return {**upstream_error("universe", _cached.get("universe_error") or ""),
-                "ts": datetime.now(timezone.utc).isoformat(),
+                "ts": datetime.now(UTC).isoformat(),
                 "age_s": round(age or 0.0, 1),
                 "count": 0, "symbols": [], "premium_usdtirt": None, "premium_pct": None}
     return {
         "ok": True,
-        "ts": datetime.now(timezone.utc).isoformat(),
+        "ts": datetime.now(UTC).isoformat(),
         "age_s": round(age or 0.0, 1),
         "premium_usdtirt": _cached["premium"],
         "premium_pct": _cached["premium_pct"],
@@ -801,7 +817,7 @@ async def rescan(tf: str = "15m", top: int = 40):
                 scored.append(sym)
                 if fa.fresh:
                     live.append(sym)
-            except Exception as e:  # noqa: BLE001 - one symbol must not kill the scan
+            except Exception as e:  # one symbol must not kill the scan
                 failed.append(sym)
                 log.warning("FA unavailable for %s: %s", sym, e)
 
@@ -819,14 +835,14 @@ async def rescan(tf: str = "15m", top: int = 40):
     _cached["signals_by_tf"][tf] = out
     _cached["scan_skipped"] = skipped
     _cached["signals_ts"][tf] = time.time()
-    _cached["last_scan"] = datetime.now(timezone.utc).isoformat()
+    _cached["last_scan"] = datetime.now(UTC).isoformat()
     log.info("rescan %s: %d symbols, FA %d/%d", tf, len(out), len(scored), len(out))
     if os.getenv("NBX_JOURNAL", "1") != "0":
         try:
             added = await journal_scan(tf)
             if added:
                 log.info("journal: %d new prediction(s) on %s", added, tf)
-        except Exception as e:  # noqa: BLE001 - journalling must not break scans
+        except Exception as e:  # journalling must not break scans
             log.warning("journal write failed: %s", e)
     return out
 
@@ -834,7 +850,7 @@ async def rescan(tf: str = "15m", top: int = 40):
 async def _bg_rescan(tf: str) -> None:
     try:
         await rescan(tf)
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         log.warning("background rescan %s failed: %s", tf, e)
     finally:
         _cached["refreshing"][tf] = False
@@ -859,7 +875,7 @@ async def signals(tf: str = Query("15m", pattern="^(15m|1h|4h|D)$")):
         stale = False
     elif stale and not _cached["refreshing"].get(tf):
         _cached["refreshing"][tf] = True
-        asyncio.create_task(_bg_rescan(tf))
+        _spawn(_bg_rescan(tf))
 
     tf_signals = _cached["signals_by_tf"].get(tf) or _cached["signals"]
     ranked = sorted(tf_signals.values(), key=lambda x: x["composite"], reverse=True)
@@ -870,13 +886,13 @@ async def signals(tf: str = Query("15m", pattern="^(15m|1h|4h|D)$")):
         why = (f"{len(skipped)}/{len(_cached['universe'])} symbol(s) had no candles"
                if _cached["universe"] else (_cached.get("universe_error") or "no universe"))
         return {**upstream_error("signals", why),
-                "ts": datetime.now(timezone.utc).isoformat(), "tf": tf, "count": 0,
+                "ts": datetime.now(UTC).isoformat(), "tf": tf, "count": 0,
                 "age_s": round(age or 0.0, 1), "stale": stale, "refreshing": False,
                 "scored": [], "premium_usdtirt": _cached["premium"], "premium_pct": _cached["premium_pct"],
                 "fa_coverage": _cached.get("fa_coverage")}
     return {
         "ok": True,
-        "ts": datetime.now(timezone.utc).isoformat(),
+        "ts": datetime.now(UTC).isoformat(),
         "tf": tf,
         "count": len(ranked),
         "age_s": round(age or 0.0, 1),
@@ -909,7 +925,7 @@ async def candles(symbol: str, tf: str = Query("15m", pattern="^(15m|1h|4h|D)$")
         "rows": merged,
         "source": src,
         "last_candle": "ws" if merged is not rows else "rest",
-        "as_of": datetime.now(timezone.utc).isoformat(),
+        "as_of": datetime.now(UTC).isoformat(),
     }
 
 
@@ -955,7 +971,7 @@ async def orderbook(symbol: str, limit: int = Query(8, ge=1, le=50)):
     except (UpstreamUnavailable, ClientError) as e:
         return {**upstream_error("orderbook", str(e)), "symbol": sym,
                 "bids": [], "asks": [], "levels": 0}
-    except asyncio.TimeoutError:
+    except TimeoutError:
         return {**upstream_error("orderbook", "timeout"), "symbol": sym,
                 "bids": [], "asks": [], "levels": 0}
 
@@ -975,8 +991,8 @@ async def orderbook(symbol: str, limit: int = Query(8, ge=1, le=50)):
     # Both are computed here from the levels actually returned, so the panel
     # never shows a statistic that disagrees with the rows above it.
     band = (mid or 0) * 0.01
-    bid_depth = sum(l["p"] * l["q"] for l in bids if abs(l["p"] - mid) <= band)
-    ask_depth = sum(l["p"] * l["q"] for l in asks if abs(l["p"] - mid) <= band)
+    bid_depth = sum(lvl["p"] * lvl["q"] for lvl in bids if abs(lvl["p"] - mid) <= band)
+    ask_depth = sum(lvl["p"] * lvl["q"] for lvl in asks if abs(lvl["p"] - mid) <= band)
     total = bid_depth + ask_depth
     imbalance = ((bid_depth - ask_depth) / total * 100) if total else None
 
@@ -997,6 +1013,22 @@ async def orderbook(symbol: str, limit: int = Query(8, ge=1, le=50)):
         "last_update": raw.get("lastUpdate"),
         **provenance(),
     }
+
+
+#: The timeframes the engine scores. A body may name anything; only these four
+#: have a series behind them, and everything else is answered with the default
+#: rather than with a chart of `undefined`.
+_TFS = ("15m", "1h", "4h", "D")
+
+
+def _tf_or(value: object, default: str) -> str:
+    """A timeframe from a request body, or ``default`` — never an unknown one.
+
+    Three routes used `body.get("tf") if body.get("tf") in (...) else "15m"`
+    inline. Besides being untyped (it let `None` reach `get_candles_ex`), the
+    three copies could drift apart one at a time.
+    """
+    return value if isinstance(value, str) and value in _TFS else default
 
 
 def _signal_lookup(symbol: str, tf: str | None = None):
@@ -1038,7 +1070,7 @@ async def journal_summary(tf: str | None = Query(None, pattern="^(15m|1h|4h|D)$"
         payload["outcomes"] = conn.execute(
             "SELECT COUNT(*) AS n FROM signal_outcomes").fetchone()["n"]
         payload["db"] = str(signal_journal.DB_PATH)
-        payload["generated_at"] = datetime.now(timezone.utc).isoformat()
+        payload["generated_at"] = datetime.now(UTC).isoformat()
         return {**payload, **provenance()}
     finally:
         conn.close()
@@ -1054,7 +1086,7 @@ async def journal_stage():
     """
     try:
         conn = signal_journal.connect()
-    except Exception as e:  # noqa: BLE001 - an unreadable journal is not a 500
+    except Exception as e:  # an unreadable journal is not a 500
         return {"ok": False, "unavailable": True, "error": "journal_unavailable",
                 "detail": str(e)[:200], "stage": None}
     try:
@@ -1117,7 +1149,7 @@ async def journal_msi_baseline(request: Request,
     for u in universe[:symbols]:
         try:
             rows, src = await client.get_candles_ex(u["symbol"], tf, bars)
-        except Exception as e:  # noqa: BLE001 - one symbol must not kill the baseline
+        except Exception as e:  # one symbol must not kill the baseline
             log.warning("baseline: %s unavailable: %s", u["symbol"], e)
             continue
         if not rows:
@@ -1134,7 +1166,7 @@ async def journal_msi_baseline(request: Request,
         "tf": tf,
         "sources": sources,
         "config_hash": signal_journal.CONFIG_HASH,
-        "computed_at": datetime.now(timezone.utc).isoformat(),
+        "computed_at": datetime.now(UTC).isoformat(),
         "source": "backtest",
     }
     conn = signal_journal.connect()
@@ -1180,7 +1212,7 @@ async def journal_signal_detail(signal_id: int,
     candle_source = "unavailable"
     try:
         candles, candle_source = await client.get_candles_ex(row["symbol"], row["timeframe"], 1200)
-    except Exception as e:  # noqa: BLE001 - the detail view must still render
+    except Exception as e:  # the detail view must still render
         log.warning("detail: candles for %s unavailable: %s", row["symbol"], e)
 
     path = signal_journal.signal_path(row, candles, row["timeframe"],
@@ -1233,7 +1265,7 @@ async def journal_export(format: str = Query("csv", pattern="^(csv|json)$"),
     finally:
         conn.close()
 
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%MZ")
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%MZ")
     if format == "json":
         body = json.dumps({
             "generated_at": int(time.time()),
@@ -1532,7 +1564,7 @@ async def fa(symbol: str):
     return {
         "symbol": symbol.upper(),
         **res.__dict__,
-        "ts": datetime.now(timezone.utc).isoformat(),
+        "ts": datetime.now(UTC).isoformat(),
         "source": source,
         "profile": profile,
     }
@@ -1594,7 +1626,7 @@ async def risk_whatif(payload: dict, request: Request):
     if not sym:
         return {"ok": False, "error": "symbol required"}
     side = "buy" if str(body.get("side") or "buy").lower() in ("buy", "long") else "sell"
-    tf = body.get("tf") if body.get("tf") in ("15m", "1h", "4h", "D") else "15m"
+    tf = _tf_or(body.get("tf"), "15m")
 
     snap = _signal_lookup(sym, tf)
     entry = float(body.get("entry") or 0.0) or float((snap or {}).get("lastClose") or 0.0)
@@ -1700,7 +1732,7 @@ async def portfolio_allocate(payload: dict, request: Request):
     Read-only, like the what-if route: no order, no journal row, no heat.
     """
     body = payload or {}
-    tf = body.get("tf") if body.get("tf") in ("15m", "1h", "4h", "D") else "15m"
+    tf = _tf_or(body.get("tf"), "15m")
     try:
         lookback = max(60, min(int(body.get("lookback") or 200), 400))
         limit = max(1, min(int(body.get("limit") or 5), 8))
@@ -1785,8 +1817,8 @@ async def portfolio_allocate(payload: dict, request: Request):
         per_trade_risk_pct=risk.cfg.risk_pct,
         fee_pct=PAPER_FEE_PCT,
         halted=bool(br.halted or risk.halted),
-        shrinkage=float(body.get("shrinkage") if body.get("shrinkage") is not None
-                        else 0.30),
+        shrinkage=(float(body["shrinkage"]) if body.get("shrinkage") is not None
+                   else 0.30),
     )
     res = allocate_portfolio(candidates, returns, lim)
     res["dropped"] = notes + list(res.get("dropped") or [])
@@ -1837,7 +1869,7 @@ async def benchmark_relative(payload: dict, request: Request):
     instead of being given a beta from twelve bars.
     """
     body = payload or {}
-    tf = body.get("tf") if body.get("tf") in ("15m", "1h", "4h", "D") else "1h"
+    tf = _tf_or(body.get("tf"), "1h")
     bench = str(body.get("bench") or "BTCIRT").upper()
     try:
         lookback = max(60, min(int(body.get("lookback") or 240), 400))
@@ -1875,7 +1907,7 @@ async def benchmark_relative(payload: dict, request: Request):
     series: dict[str, list[tuple[int, float]]] = {}
     dropped: list[dict] = []
     sources: set[str] = set()
-    for sym in [bench] + symbols:
+    for sym in [bench, *symbols]:
         try:
             rows, src = await client.get_candles_ex(sym, tf, lookback)
         except UpstreamUnavailable as e:
@@ -1975,7 +2007,7 @@ async def market_overview_route(tf: str = Query("15m", pattern="^(15m|1h|4h|D)$"
     signals = _cached.get("signals_by_tf", {}).get(tf) or _cached.get("signals") or {}
     out = market_overview(enriched, signals=signals,
                           premium_pct=_cached.get("premium_pct"))
-    out.update({"tf": tf, "as_of": datetime.now(timezone.utc).isoformat(), **provenance()})
+    out.update({"tf": tf, "as_of": datetime.now(UTC).isoformat(), **provenance()})
     return out
 
 
@@ -1994,7 +2026,7 @@ def _live_equity() -> tuple[float, float]:
         eq = float(getattr(br, "equity", 0) or 0) if br is not None else 0.0
         if eq > 0:
             return eq, float(getattr(br, "start_equity", eq) or eq)
-    except Exception:  # noqa: BLE001 - no broker yet (first boot, tests)
+    except Exception:  # no broker yet (first boot, tests)
         pass
     return float(risk.cfg.equity), float(risk.cfg.equity)
 
@@ -2036,13 +2068,13 @@ async def paper_order(payload: dict):
     side = (body.get("side") or "buy").lower()
     symbol = (body.get("symbol") or "").upper()
     qty = float(body.get("qty") or 0)
-    size = body.get("size_quote") and float(body["size_quote"]) or None
+    size = (body.get("size_quote") and float(body["size_quote"])) or None
     if not symbol or (not qty and not size):
         return {"error": "symbol and either qty or size_quote required"}
     if not qty and size:
         # Quote-denominated sizing was documented but silently ignored: callers
         # sending only `size_quote` got an error about `qty`.
-        px = body.get("price") and float(body["price"]) or None
+        px = (body.get("price") and float(body["price"])) or None
         if px is None:
             cached = _cached["signals"].get(symbol)
             px = cached["lastClose"] if cached else None
@@ -2057,7 +2089,7 @@ async def paper_order(payload: dict):
             # already enforces the hard guards (halt, concurrency, notional cap).
             log.debug("risk_plan supplied: %s", plan)
         src = (body.get("source") or "SEMI").upper()
-        price = body.get("price") and float(body["price"]) or None
+        price = (body.get("price") and float(body["price"])) or None
         pos = await broker.place_limit(symbol, side, qty, price, body.get("stop") and float(body["stop"]), body.get("tp1") and float(body["tp1"]), body.get("tp2") and float(body["tp2"]), src)
         return {
             "ok": bool(pos),
@@ -2203,12 +2235,12 @@ def _order_rows(broker, limit: int = 100) -> list[dict]:
             row["close_reason"] = pos.close_reason
             row["execution"] = pos.execution
         row["pnl_usd"] = round(row["pnl_usd"], 4)
-        if pos is not None and getattr(pos, "requested_qty", 0):
+        if pos is not None and getattr(pos, "requested_qty", None):
             row["requested"] = float(pos.requested_qty)
     out = sorted(rows.values(), key=lambda r: r["opened_at"], reverse=True)
     for r in out[:limit]:
-        r["opened_at_iso"] = datetime.fromtimestamp(r["opened_at"], timezone.utc).isoformat()
-        r["closed_at_iso"] = (datetime.fromtimestamp(r["closed_at"], timezone.utc).isoformat()
+        r["opened_at_iso"] = datetime.fromtimestamp(r["opened_at"], UTC).isoformat()
+        r["closed_at_iso"] = (datetime.fromtimestamp(r["closed_at"], UTC).isoformat()
                               if r["closed_at"] else None)
         denom = r.get("requested") or r["amount"]
         r["filled_pct"] = round(min(100.0, r["filled"] / denom * 100), 1) if denom else 0.0
@@ -2227,7 +2259,7 @@ async def paper_orders(limit: int = Query(100, ge=1, le=500)):
         "rejected": sum(1 for r in rows if r["state"] == "REJECTED"),
     }
     return {"ok": True, "rows": rows, "counts": counts,
-            "source": "paper-broker", "as_of": datetime.now(timezone.utc).isoformat()}
+            "source": "paper-broker", "as_of": datetime.now(UTC).isoformat()}
 
 
 @app.get("/api/paper/positions")
@@ -2348,7 +2380,7 @@ def _exec_mode_load() -> None:
             EXEC_MODE.load(signal_journal.get_meta(conn, "exec_mode", None))
         finally:
             conn.close()
-    except Exception as e:  # noqa: BLE001 - defaults are a safe fallback
+    except Exception as e:  # defaults are a safe fallback
         log.warning("exec mode load failed: %s", e)
 
 
@@ -2361,7 +2393,7 @@ def _exec_mode_save() -> None:
             signal_journal.set_meta(conn, "exec_mode", EXEC_MODE.to_json())
         finally:
             conn.close()
-    except Exception as e:  # noqa: BLE001 - the in-memory value is still right
+    except Exception as e:  # the in-memory value is still right
         log.warning("exec mode save failed: %s", e)
 
 
@@ -2371,7 +2403,9 @@ AUTO_INTERVAL_S = max(5.0, float(os.getenv("NBX_AUTO_INTERVAL_S", "60")))
 #: same sentence and the log with the same warning.
 AUTO_COOLDOWN_S = max(0.0, float(os.getenv("NBX_AUTO_COOLDOWN_S", "1800")))
 _AUTO_LAST: dict[str, float] = {}
-_AUTO_STATE = {
+# Counters plus the last rejection: the values are mixed types, so the dict is
+# annotated rather than left to be inferred as `dict[str, int | None]`.
+_AUTO_STATE: dict[str, Any] = {
     "last_tick_at": None, "placed": 0, "skipped": 0, "rejected": 0,
     "last_error": None, "last_symbol": None, "last_action": None,
 }
@@ -2394,7 +2428,7 @@ async def auto_tick(tf: str = "15m") -> dict:
         targets = list(pool.keys())
     else:
         targets = EXEC_MODE.auto_symbols()
-    out = {"considered": 0, "placed": 0, "skipped": 0, "rejected": []}
+    out: dict[str, Any] = {"considered": 0, "placed": 0, "skipped": 0, "rejected": []}
     for sym in sorted(set(targets)):
         snap = _signal_lookup(sym, tf)
         if not snap:
@@ -2475,7 +2509,7 @@ async def _auto_loop() -> None:
                     log.info("auto: placed %d, rejected %d", res["placed"], len(res["rejected"]))
         except asyncio.CancelledError:
             raise
-        except Exception as e:  # noqa: BLE001 - one bad pass must not kill the loop
+        except Exception as e:  # one bad pass must not kill the loop
             log.warning("auto tick failed: %s", e)
             errorlog.capture(source="task.auto-exec", exc=e,
                              message="automatic execution tick failed")
@@ -2661,7 +2695,7 @@ async def backtest_grid(payload: dict):
     b = payload or {}
     symbol = (b.get("symbol") or "BTCIRT").upper()
     tf = b.get("tf") or "1h"
-    custom = b.get("grid") and dict(b["grid"]) or None
+    custom = (b.get("grid") and dict(b["grid"])) or None
     try:
         try:
             rows, _src = await client.get_candles_ex(symbol, tf, int(b.get("bars", 600)))
@@ -2785,10 +2819,10 @@ def _self_contained_page() -> Path:
                 try:
                     subprocess.run(["npm", "run", "css"], cwd=str(REPO_ROOT),
                                    check=True, capture_output=True, timeout=60)
-                except Exception as exc:  # noqa: BLE001 - report, then try the build
+                except Exception as exc:  # report, then try the build
                     log.warning("css build failed: %s", _short_proc_error(exc))
         try:
-            subprocess.run([os.sys.executable, str(REPO_ROOT / "scripts" / "build_standalone.py")],
+            subprocess.run([sys.executable, str(REPO_ROOT / "scripts" / "build_standalone.py")],
                            cwd=str(REPO_ROOT), check=True, capture_output=True, timeout=30)
         except Exception as exc:                       # never fail the request
             # A stale-but-complete page beats a fresh-but-empty one: index.html

@@ -88,7 +88,7 @@ async def send(text: str, *, timeout: float = 6.0) -> dict[str, Any]:
         log.warning("telegram send failed (%s): %s", r.status_code, body)
         return {"sent": False, "transport": "telegram",
                 "reason": f"http-{r.status_code}", "error": body}
-    except Exception as e:  # noqa: BLE001 - a notifier must not break the caller
+    except Exception as e:  # a notifier must not break the caller
         # `str(e)` for an httpx transport error can embed the request URL, and
         # that URL contains the bot token. Keep the type and drop the message.
         detail = type(e).__name__

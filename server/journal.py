@@ -27,6 +27,7 @@ a server; fetching candles and scheduling live there.
 
 from __future__ import annotations
 
+import contextlib
 import csv
 import hashlib
 import io
@@ -35,10 +36,11 @@ import math
 import os
 import sqlite3
 import time
-from datetime import datetime, timezone
+from collections.abc import Iterable
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 import pandas as pd
 
@@ -70,7 +72,7 @@ CONFIG_HASH = hashlib.sha1(
 
 def bars_for(tf: str, seconds: int) -> int:
     step = TF_SECONDS.get(tf, 900)
-    return max(1, int(round(seconds / step)))
+    return max(1, round(seconds / step))
 
 
 def connect(path: str | Path | None = None) -> sqlite3.Connection:
@@ -280,7 +282,7 @@ def make_row(snapshot: dict, bar_ts: int, *, rank: int | None = None,
     )
 
 
-def insert_rows(conn: sqlite3.Connection, rows: Iterable[JournalRow]) -> int:
+def insert_rows(conn: sqlite3.Connection, rows: Iterable[JournalRow | None]) -> int:
     """Insert rows, ignoring bars already journalled. Returns the insert count."""
     n = 0
     now = int(time.time())
@@ -526,7 +528,7 @@ def _spearman(xs: list[float], ys: list[float]) -> float | None:
 
     rx, ry = ranks(xs), ranks(ys)
     mx, my = sum(rx) / n, sum(ry) / n
-    num = sum((a - mx) * (b - my) for a, b in zip(rx, ry))
+    num = sum((a - mx) * (b - my) for a, b in zip(rx, ry, strict=True))
     dx = math.sqrt(sum((a - mx) ** 2 for a in rx))
     dy = math.sqrt(sum((b - my) ** 2 for b in ry))
     if dx == 0 or dy == 0:
@@ -625,7 +627,7 @@ def ic_for_window(conn: sqlite3.Connection, start: int, end: int) -> tuple[float
     return out["ic"], len(rows)
 
 
-def backtest_ic(frames: list[tuple[str, "pd.DataFrame"]], horizon_bars: int,
+def backtest_ic(frames: list[tuple[str, pd.DataFrame]], horizon_bars: int,
                 *, min_per_symbol: int = 30) -> dict[str, Any]:
     """IC of the score as a forward-return predictor, per symbol then averaged.
 
@@ -633,7 +635,7 @@ def backtest_ic(frames: list[tuple[str, "pd.DataFrame"]], horizon_bars: int,
     measured ``horizon_bars`` ahead — the reference ADR-0012 compares live
     behaviour against.
     """
-    from ta_engine import ta_score_series   # local import keeps this module light
+    from ta_engine import ta_score_series  # local import keeps this module light
 
     pairs: dict[str, tuple[list[float], list[float]]] = {}
     for sym, df in frames:
@@ -792,6 +794,10 @@ def msi(conn: sqlite3.Connection, *, window_days: int = MSI_WINDOW_DAYS,
     # the market. Say so instead of letting a number look authoritative.
     base_synthetic = bool(base_sources) and all(k == "synthetic" for k in base_sources)
 
+    base_ic: float | None
+    base_n: int
+    base_source: str
+    base_at: Any
     if stored.get("ic") is not None:
         base_ic = float(stored["ic"])
         base_n = int(stored.get("n") or 0)
@@ -819,6 +825,13 @@ def msi(conn: sqlite3.Connection, *, window_days: int = MSI_WINDOW_DAYS,
         status = "degraded"
         message = ("The reference IC is itself non-positive: the score has no "
                    "measured predictive edge, so drift cannot be assessed.")
+    elif ratio is None:
+        # Resolved samples exist but no IC could be computed from them. Saying
+        # "healthy" here would be the same silent zero the rest of the file
+        # refuses to emit.
+        status = "insufficient"
+        message = (f"{realized_n} resolved signals but no realized IC; "
+                   f"integrity cannot be read.")
     elif ratio <= MSI_CORRUPT_RATIO:
         status = "corrupted"
         message = (f"Realized IC {realized_ic:+.3f} is at or below half of the reference "
@@ -870,7 +883,8 @@ def fetch_signals(conn: sqlite3.Connection, *, tf: str | None = None,
                   source: str | None = None, origin: str | None = None,
                   since: int | None = None,
                   limit: int = 200, offset: int = 0) -> list[sqlite3.Row]:
-    where, params = ["1=1"], []
+    where: list[str] = ["1=1"]
+    params: list[Any] = []
     if tf:
         where.append("timeframe=?")
         params.append(tf)
@@ -974,10 +988,11 @@ def summary(conn: sqlite3.Connection, *, tf: str | None = None,
     for r in resolved:
         fam.setdefault(_family(r["features"]), []).append(float(r["r_multiple"] or 0.0))
     total_n = sum(len(v) for v in fam.values()) or 1
-    families = sorted(
-        ({"n": k, "r": round(sum(v) / len(v), 3), "share": round(len(v) / total_n * 100, 1)}
+    fam_rows = sorted(
+        ((k, round(sum(v) / len(v), 3), round(len(v) / total_n * 100, 1))
          for k, v in fam.items()),
-        key=lambda d: -d["share"])
+        key=lambda t: -t[2])
+    families = [{"n": k, "r": r, "share": share} for k, r, share in fam_rows]
 
     calibration = []
     for lo, hi in CALIBRATION_BUCKETS:
@@ -1085,12 +1100,13 @@ def audit_record(conn: sqlite3.Connection, action: str, *, actor: str = "api",
         "INSERT INTO audit_log(ts, action, actor, result, detail, client) VALUES (?,?,?,?,?,?)",
         (int(time.time()), action, actor, result, detail, client))
     conn.commit()
-    return int(cur.lastrowid)
+    return int(cur.lastrowid or 0)
 
 
 def audit_list(conn: sqlite3.Connection, *, limit: int = 50, action: str | None = None,
                since: int | None = None) -> list[dict[str, Any]]:
-    where, params = ["1=1"], []
+    where: list[str] = ["1=1"]
+    params: list[Any] = []
     if action:
         where.append("action=?")
         params.append(action)
@@ -1104,10 +1120,8 @@ def audit_list(conn: sqlite3.Connection, *, limit: int = 50, action: str | None 
     out = []
     for r in rows:
         detail = r["detail"]
-        try:
+        with contextlib.suppress(ValueError, TypeError):
             detail = json.loads(detail) if detail else None
-        except (ValueError, TypeError):
-            pass
         out.append({"id": r["id"], "ts": r["ts"], "action": r["action"],
                     "actor": r["actor"], "result": r["result"],
                     "detail": detail, "client": r["client"]})
@@ -1161,7 +1175,7 @@ def export_rows(conn: sqlite3.Connection, *, tf: str | None = None,
     for r in signals:
         row = {
             "id": r["id"], "ts": r["ts"],
-            "utc": datetime.fromtimestamp(r["ts"], tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
+            "utc": datetime.fromtimestamp(r["ts"], tz=UTC).strftime("%Y-%m-%d %H:%M:%S"),
             "symbol": r["symbol"], "timeframe": r["timeframe"],
             "direction": r["direction"], "composite": r["composite"],
             "ta_score": r["ta_score"], "fa_score": r["fa_score"],

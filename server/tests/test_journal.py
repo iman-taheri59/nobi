@@ -7,14 +7,14 @@ conservative resolution when one bar touches both levels, and no look-ahead.
 
 from __future__ import annotations
 
+import time
+import time as _time
+
 import numpy as np
 import pandas as pd
 import pytest
 
 import journal as J
-
-import time
-import time as _time
 
 #: Fixed epoch so export/audit tests never depend on when they run.
 BASE_TS = int(_time.time()) - 3 * 86400
@@ -233,7 +233,6 @@ def test_status_flips_to_resolved_at_the_primary_horizon(conn):
 # VOID law
 # --------------------------------------------------------------------------- #
 def test_void_freezes_signals_for_symbols_that_left_the_universe(conn):
-    df = frame([100.0] * 40)
     now = 1_800_000_000
     J.insert_rows(conn, [
         J.JournalRow(ts=now - 48 * 3600, symbol="GONE", timeframe="15m", direction="LONG",
@@ -691,7 +690,6 @@ def test_lifecycle_retire_is_terminal_and_unknown_inputs_hold():
 
 
 def test_lifecycle_streak_counts_consecutive_degraded_readings():
-    import time
     from journal import connect, lifecycle, set_meta
 
     conn = connect(":memory:")

@@ -23,10 +23,14 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
 import json
 import time
 
 import websockets
+
+#: Handles for the keepalive tasks: asyncio keeps only a weak reference.
+_keepalive_tasks: set[asyncio.Task] = set()
 
 #: Base quotes in Rial for the Rial markets and in dollars for the USDT pairs —
 #: the same units the exchange publishes, so the client's scaling is exercised.
@@ -133,7 +137,8 @@ async def _serve(ws, _path=None) -> None:
                     while True:
                         await asyncio.sleep(20)
                         await ws.send("{}")
-                asyncio.create_task(keepalive())
+                # Keep the handle: a task nobody references may be collected.
+                _keepalive_tasks.add(asyncio.create_task(keepalive()))
     finally:
         if sender:
             sender.cancel()
@@ -149,10 +154,8 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=8099)
     args = ap.parse_args()
-    try:
+    with contextlib.suppress(KeyboardInterrupt):
         asyncio.run(main_async(args.port))
-    except KeyboardInterrupt:
-        pass
     return 0
 
 

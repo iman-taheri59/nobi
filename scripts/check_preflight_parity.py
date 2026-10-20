@@ -13,8 +13,8 @@ The sweep is deterministic: no random sampling, so a failure is reproducible.
 from __future__ import annotations
 
 import argparse
-import json
 import itertools
+import json
 import shutil
 import subprocess
 import sys
@@ -23,7 +23,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "server"))
 
-from risk_engine import RiskConfig, preflight  # noqa: E402
+from risk_engine import RiskConfig, preflight
 
 DEFAULTS = RiskConfig(equity=100_000.0)
 TOL = 1e-6
@@ -149,7 +149,7 @@ def compare(py: list[dict], js: list[dict], verbose: bool) -> list[str]:
     problems: list[str] = []
     if len(py) != len(js):
         return [f"case count differs: {len(py)} python vs {len(js)} js"]
-    for p, j in zip(py, js):
+    for p, j in zip(py, js, strict=True):
         if p["id"] != j["id"]:
             problems.append(f"{p['id']}: js answered for {j['id']}")
             continue

@@ -124,4 +124,4 @@ class ModeStore:
 
 EXEC_MODE = ModeStore()
 
-__all__ = ["EXEC_MODE", "ModeStore", "MODES", "DEFAULT", "InvalidMode", "normalise"]
+__all__ = ["DEFAULT", "EXEC_MODE", "MODES", "InvalidMode", "ModeStore", "normalise"]

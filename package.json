@@ -4,11 +4,16 @@
   "description": "Builds assets/css/tailwind.css locally and provides the jsdom used by scripts/ui_smoke_test.js. The dashboard must not depend on a CDN for layout: without it every utility class disappears and the page collapses.",
   "scripts": {
     "css": "tailwindcss -i assets/css/tailwind.src.css -o assets/css/tailwind.css --minify && node -e \"require('fs').utimesSync('assets/css/tailwind.css', new Date(), new Date())\"",
-    "css:watch": "tailwindcss -i assets/css/tailwind.src.css -o assets/css/tailwind.css --watch"
+    "css:watch": "tailwindcss -i assets/css/tailwind.src.css -o assets/css/tailwind.css --watch",
+    "lint": "eslint nbx-core.js nbx-app.js \"scripts/**/*.js\" \"scripts/**/*.mjs\" eslint.config.mjs",
+    "lint:dashboard": "node scripts/lint_dashboard.mjs",
+    "test:js": "node scripts/js_broker_test.js",
+    "build": "npm run css && python3 scripts/build_standalone.py"
   },
   "devDependencies": {
     "@tailwindcss/cli": "^4.3.3",
-    "tailwindcss": "^4.3.3",
-    "jsdom": "^26.0.0"
+    "eslint": "^9.39.5",
+    "jsdom": "^26.0.0",
+    "tailwindcss": "^4.3.3"
   }
 }

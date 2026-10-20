@@ -60,7 +60,7 @@ def relative(asset: list[float], bench: list[float], ppy: float) -> dict | None:
     var_b = sum(x * x for x in db) / (n - 1)
     if var_b <= 0:
         return None
-    cov = sum(x * y for x, y in zip(da, db)) / (n - 1)
+    cov = sum(x * y for x, y in zip(da, db, strict=True)) / (n - 1)
     beta = cov / var_b
     alpha_per_bar = ma - beta * mb
     alpha_ann = alpha_per_bar * ppy * 100          # per cent per year
@@ -68,15 +68,15 @@ def relative(asset: list[float], bench: list[float], ppy: float) -> dict | None:
     rs_a, rs_b = _stdev(da), _stdev(db)
     corr = cov / (rs_a * rs_b) if rs_a > 0 and rs_b > 0 else None
 
-    diff = [x - y for x, y in zip(a, b)]
+    diff = [x - y for x, y in zip(a, b, strict=True)]
     te = _stdev(diff) * math.sqrt(ppy) * 100       # per cent per year
     excess = _mean(diff) * ppy * 100
     ir = (excess / te) if te > 1e-12 else None
 
-    up_a = [x for x, y in zip(a, b) if y > 0]
-    up_b = [y for x, y in zip(a, b) if y > 0]
-    dn_a = [x for x, y in zip(a, b) if y < 0]
-    dn_b = [y for x, y in zip(a, b) if y < 0]
+    up_a = [x for x, y in zip(a, b, strict=True) if y > 0]
+    up_b = [y for x, y in zip(a, b, strict=True) if y > 0]
+    dn_a = [x for x, y in zip(a, b, strict=True) if y < 0]
+    dn_b = [y for x, y in zip(a, b, strict=True) if y < 0]
     up_capture = (_mean(up_a) / _mean(up_b) * 100) if up_b and _mean(up_b) != 0 else None
     down_capture = (_mean(dn_a) / _mean(dn_b) * 100) if dn_b and _mean(dn_b) != 0 else None
 

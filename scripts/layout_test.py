@@ -130,10 +130,11 @@ async def run(url: str) -> int:
         for width, height in VIEWPORTS:
             page = await browser.new_page(viewport={"width": width, "height": height})
             page_errors: list[str] = []
-            page.on("pageerror", lambda e: page_errors.append(str(e)[:160]))
+            page.on("pageerror",
+                    lambda e, bucket=page_errors: bucket.append(str(e)[:160]))
             try:
                 await page.goto(url, wait_until="domcontentloaded")
-            except Exception as exc:                        # noqa: BLE001
+            except Exception as exc:
                 # A dead server used to surface as a raw Playwright traceback
                 # that reads like a test bug. Say what happened instead.
                 print(f"FAIL\n - {url} is not serving ({type(exc).__name__})")
@@ -153,7 +154,7 @@ async def run(url: str) -> int:
                             else f'[data-tab="{tab}"]')
                 try:
                     await page.click(selector, timeout=5000)
-                except Exception as exc:                     # noqa: BLE001
+                except Exception as exc:
                     problems.append(f"{width}px: cannot open tab '{tab}' ({type(exc).__name__})")
                     continue
                 await page.wait_for_timeout(700)
@@ -191,12 +192,11 @@ async def run(url: str) -> int:
                         sig = await page.evaluate(SIGNALS_PROBE)
                         if sig["rows"]:
                             break
-                    if sig.get("unavailable"):
-                        # The exchange is unreachable in this environment. The
-                        # page must say so in an error-styled block; a blank
-                        # list would pass a naive "no overflow" check.
-                        if not sig.get("errorBlock"):
-                            problems.append(f"{width}px/signals: no rows and no error message shown")
+                    # The exchange is unreachable in this environment. The page
+                    # must say so in an error-styled block; a blank list would
+                    # pass a naive "no overflow" check.
+                    if sig.get("unavailable") and not sig.get("errorBlock"):
+                        problems.append(f"{width}px/signals: no rows and no error message shown")
                     if sig["rows"] and width >= 1024:
                         # The trend line used to be a 144px sliver in a 1128px
                         # row (12.8%). A chart that small is decoration.

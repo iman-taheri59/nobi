@@ -1,0 +1,11 @@
+# Test and lint tooling. Separate from requirements.txt so that a deployment
+# does not install a linter; CI installs both.
+-r requirements.txt
+
+pytest==9.0.3
+ruff==0.17.1
+mypy==2.4.0
+
+# Only the `ui` CI job needs a browser; it installs this and then runs
+# `playwright install --with-deps chromium`.
+playwright==1.63.0

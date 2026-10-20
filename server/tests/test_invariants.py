@@ -21,7 +21,6 @@ with a nicer error message, so the important ones run code.
 from __future__ import annotations
 
 import ast
-import json
 import re
 import time
 from pathlib import Path
@@ -186,7 +185,7 @@ def test_candle_timestamps_are_epoch_seconds_not_milliseconds():
     path = REPO / "scripts" / "run_with_mock_exchange.py"
     spec = importlib.util.spec_from_file_location("_fixture", path)
     mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)                      # type: ignore[union-attr]
+    spec.loader.exec_module(mod)
 
     now = int(time.time())
     rows = [{"t": now - 900 * i, "o": 1.0, "h": 1.1, "l": 0.9, "c": 1.0, "v": 5.0}
@@ -378,8 +377,9 @@ def test_the_ws_status_publishes_what_was_sent_not_what_was_wanted(monkeypatch):
 def test_empty_is_never_rendered_as_zero(monkeypatch):
     """A panel with no data must say so. A zero is a measurement; "no data" is
     not, and the two looked identical on the page."""
-    import main
     from fastapi.testclient import TestClient
+
+    import main
 
     mp = pytest.MonkeyPatch()
     mp.setattr(main, "_cached", {**main._cached, "universe": []})

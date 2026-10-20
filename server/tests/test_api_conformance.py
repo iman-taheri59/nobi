@@ -437,6 +437,7 @@ def test_every_paper_order_carries_a_documented_client_order_id(tmp_path, monkey
 # --------------------------------------------------------------------------- #
 def _client():
     from fastapi.testclient import TestClient
+
     import main
     return TestClient(main.app)
 
@@ -835,7 +836,7 @@ def test_positions_are_marked_from_the_socket_not_a_poll(tmp_path, monkeypatch):
         calls["n"] += 1
         return {"bids": [["73000", "1"]], "asks": [["74000", "1"]], "lastTradePrice": "73500"}
 
-    b.client.get_orderbook = counting            # type: ignore[method-assign]
+    b.client.get_orderbook = counting
     monkeypatch.setattr(paper_trading, "hot_mid_hook", lambda s: 73_500.0)
     assert run(b._mid_price("BTCUSDT")) == pytest.approx(73_500.0)
     assert calls["n"] == 0

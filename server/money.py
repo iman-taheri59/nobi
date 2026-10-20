@@ -126,7 +126,7 @@ class Rate:
     def is_stale(self) -> bool:
         return self.age_s > float(self.max_age_s)
 
-    def require_fresh(self) -> "Rate":
+    def require_fresh(self) -> Rate:
         """Raise unless the rate is inside its own window.
 
         Callers that must not use an old rate (sizing a live order) call this;
@@ -173,48 +173,48 @@ class Money:
         return f"Money({self.amount:g} {self.unit})"
 
     # -- same-unit arithmetic ----------------------------------------------- #
-    def _check(self, other: "Money") -> "Money":
+    def _check(self, other: Money) -> Money:
         if not isinstance(other, Money):
             raise MoneyError(f"cannot combine Money with {type(other).__name__}")
         if other.unit != self.unit:
             raise UnitMismatch(f"{self.unit} + {other.unit}: convert one side first")
         return other
 
-    def __add__(self, other: "Money") -> "Money":
+    def __add__(self, other: Money) -> Money:
         self._check(other)
         return Money(self.amount + other.amount, self.unit)
 
-    def __sub__(self, other: "Money") -> "Money":
+    def __sub__(self, other: Money) -> Money:
         self._check(other)
         return Money(self.amount - other.amount, self.unit)
 
-    def __neg__(self) -> "Money":
+    def __neg__(self) -> Money:
         return Money(-self.amount, self.unit)
 
-    def __abs__(self) -> "Money":
+    def __abs__(self) -> Money:
         return Money(abs(self.amount), self.unit)
 
-    def __lt__(self, other: "Money") -> bool:
+    def __lt__(self, other: Money) -> bool:
         self._check(other)
         return self.amount < other.amount
 
-    def __le__(self, other: "Money") -> bool:
+    def __le__(self, other: Money) -> bool:
         self._check(other)
         return self.amount <= other.amount
 
-    def __gt__(self, other: "Money") -> bool:
+    def __gt__(self, other: Money) -> bool:
         self._check(other)
         return self.amount > other.amount
 
-    def __ge__(self, other: "Money") -> bool:
+    def __ge__(self, other: Money) -> bool:
         self._check(other)
         return self.amount >= other.amount
 
-    def scaled(self, k: float) -> "Money":
+    def scaled(self, k: float) -> Money:
         """Multiply by a dimensionless factor (a fee rate, a share). """
         return Money(self.amount * float(k), self.unit)
 
-    def pct_of(self, other: "Money") -> float:
+    def pct_of(self, other: Money) -> float:
         """``self`` as a percentage of ``other`` (same unit required)."""
         self._check(other)
         if other.amount == 0:
@@ -222,7 +222,7 @@ class Money:
         return self.amount / other.amount * 100.0
 
     # -- the only conversion ----------------------------------------------- #
-    def _to_irt(self, rate: "Rate | None") -> "Money":
+    def _to_irt(self, rate: Rate | None) -> Money:
         """Pivot: everything converts through Toman, in one place."""
         if self.unit == "IRT":
             return self
@@ -235,8 +235,8 @@ class Money:
             return Money(self.amount * rate.toman_per_usdt, "IRT")
         raise UnknownUnit(self.unit)
 
-    def convert(self, unit: str, rate: "Rate | None" = None, *,
-                require_fresh: bool = True) -> "Money":
+    def convert(self, unit: str, rate: Rate | None = None, *,
+                require_fresh: bool = True) -> Money:
         """Return the same value in another unit.
 
         ``IRR``↔``IRT`` is the fixed 10:1 definition. Anything crossing
@@ -271,10 +271,10 @@ class Money:
             return Money(irt.amount / rate.toman_per_usdt, target)
         raise UnknownUnit(target)
 
-    def to_irt(self, rate: "Rate | None" = None, *, require_fresh: bool = True) -> "Money":
+    def to_irt(self, rate: Rate | None = None, *, require_fresh: bool = True) -> Money:
         return self.convert("IRT", rate=rate, require_fresh=require_fresh)
 
-    def to_usd(self, rate: "Rate | None" = None, *, require_fresh: bool = True) -> "Money":
+    def to_usd(self, rate: Rate | None = None, *, require_fresh: bool = True) -> Money:
         return self.convert("USD", rate=rate, require_fresh=require_fresh)
 
     # -- serialisation ------------------------------------------------------ #
@@ -310,7 +310,18 @@ def from_api(amount: float, symbol: str) -> Money:
 
 
 __all__ = [
-    "ACCOUNT_UNIT", "CURRENCIES", "Money", "MoneyError", "NoRate",
-    "RIAL_PER_TOMAN", "Rate", "UnitMismatch", "UnknownUnit",
-    "from_api", "rial", "toman", "usd", "usdt",
+    "ACCOUNT_UNIT",
+    "CURRENCIES",
+    "RIAL_PER_TOMAN",
+    "Money",
+    "MoneyError",
+    "NoRate",
+    "Rate",
+    "UnitMismatch",
+    "UnknownUnit",
+    "from_api",
+    "rial",
+    "toman",
+    "usd",
+    "usdt",
 ]

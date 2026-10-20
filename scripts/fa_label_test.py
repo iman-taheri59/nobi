@@ -18,6 +18,7 @@ import asyncio
 import json
 import sys
 
+
 def fa_row(symbol: str, source: str) -> dict:
     return {
         "symbol": symbol, "score": 70.0, "market": 70, "tokenomics": 70,

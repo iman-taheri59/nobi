@@ -139,7 +139,6 @@
     btn.onclick = () => {
       pop.classList.toggle('hidden');
       if (!pop.classList.contains('hidden')) {
-        const s = (NBX.core && NBX.core.api.stats) || { total: 0, ok: 0, fail: 0 };
         pop.innerHTML = [
           [LANG === 'fa' ? 'حالت اجرا' : 'Mode', `${m} · ${live.latency !== null && live.latency !== undefined ? Math.round(live.latency) + 'ms' : '—'}`],
           [LANG === 'fa' ? 'نمادهای فعال' : 'Active Symbols', live.ranked.length ? faNum(live.ranked.length) : '—'],

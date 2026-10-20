@@ -22,6 +22,7 @@ pytestmark = pytest.mark.skipif(NODE is None, reason="node is not installed")
 
 
 def _run(*args: str) -> subprocess.CompletedProcess:
+    assert NODE is not None, "module is skipped without node"
     return subprocess.run([NODE, *args], cwd=ROOT, capture_output=True, text=True, timeout=120)
 
 
@@ -45,7 +46,6 @@ def test_both_brokers_name_the_same_gate_for_the_same_order():
     """A refusal that says `min-notional` on the phone and `risk-cap` on the
     server is the same divergence as accepting the order at all."""
     import asyncio
-    import json
 
     import paper_trading
     from paper_trading import PaperBroker

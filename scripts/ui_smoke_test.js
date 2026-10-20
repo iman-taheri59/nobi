@@ -7,7 +7,6 @@
 // It boots index.html offscreen, waits for the journal fetch to settle, then
 // asserts the MSI card, the seven KPI cells and the absence of JS errors.
 const fs = require('fs');
-const path = require('path');
 
 // jsdom is a devDependency now; the /tmp fallback keeps older checkouts and the
 // sandbox working, where the install lived outside the repo.

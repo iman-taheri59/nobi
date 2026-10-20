@@ -23,13 +23,13 @@ import math
 import os
 import time
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
 
-from ta_engine import candles_to_df, ta_score, ta_score_series
+from ta_engine import candles_to_df, ta_score_series
 
 REPORTS = Path(os.getenv("NBX_BT_DIR", str(Path(__file__).parent / "backtest_reports")))
 REPORTS.mkdir(exist_ok=True)
@@ -97,7 +97,8 @@ class BTResult:
     initial_equity: float = 0.0
     final_equity: float = 0.0
     ambiguous_exits: int = 0
-    equity_curve: list = field(default_factory=list)
+    # [[ms, equity], …] — lists, not tuples: this value goes straight to JSON
+    equity_curve: list[list[float]] = field(default_factory=list)
     sample_trades: list = field(default_factory=list)
     params: dict = field(default_factory=dict)
 
@@ -127,7 +128,8 @@ class EventBacktester:
         self.initial_equity = float(cfg.get("initial_equity", 100_000))
         self.equity = self.initial_equity
         self.cash = self.initial_equity
-        self.equity_curve: list[tuple[int, float]] = []
+        # x is epoch **milliseconds** as a float (`_ts_ms` keeps the fraction)
+        self.equity_curve: list[list[float]] = []
         self.positions: list[BTTrade] = []
         self.closed: list[BTTrade] = []
         self.max_open = int(cfg.get("max_concurrent", 5))
@@ -225,8 +227,8 @@ class EventBacktester:
 
             # ---- 2) entries on the close of the signal candle ----
             sig = signals[i] if signals and i < len(signals) else None
-            if sig and sig.get("direction") == "LONG" and sig.get("score", 0) >= self.min_score:
-                if len(self.positions) < self.max_open:
+            if (sig and sig.get("direction") == "LONG" and sig.get("score", 0) >= self.min_score
+                    and len(self.positions) < self.max_open):
                     entry = cl
                     atr_v = float(sig["risk"]["atr"])
                     stop = entry - self.stop_k * atr_v
@@ -261,7 +263,7 @@ class EventBacktester:
             open_val = sum(cl * tr.qty for tr in self.positions)
             current = float(self.cash + open_val)
             self.equity = current
-            self.equity_curve.append((self._ts_ms(row_ts), round(current, 2)))
+            self.equity_curve.append([self._ts_ms(row_ts), round(current, 2)])
 
         # flatten anything still open at the window edge
         for tr in list(self.positions):
@@ -398,7 +400,7 @@ class WalkForwardRunner:
                 bt = EventBacktester(cfg)
                 res = bt.run_symbol(df, symbol, tf, signals=signals, start=tr_a, end=tr_b)
                 score = _objective(res.__dict__, min_train_trades)
-                cand = {"params": params, "score": score, "result": res}
+                cand: dict[str, Any] = {"params": params, "score": score, "result": res}
                 if best is None or cand["score"] > best["score"]:
                     best = cand
             assert best is not None
@@ -642,7 +644,7 @@ def run_and_save(
         tb, eb = _auto_windows(n)
         window_mode = "auto"
 
-    base_cfg = {
+    base_cfg: dict[str, Any] = {
         "initial_equity": float(cfg.get("initial_equity", cfg.get("equity", 50_000))),
         "risk_pct": float(cfg.get("risk_pct", 0.75)),
         "atr_stop_k": float(cfg.get("atr_stop_k", 2.0)),
@@ -727,12 +729,12 @@ def run_and_save(
         "tf": tf,
         "mode": mode,
         "source": source,
-        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "generated_at": datetime.now(UTC).isoformat(),
         "bars": n,
         "window_mode": window_mode,
         "train_bars": tb,
         "eval_bars": eb,
-        "param_grid_size": len(grid) if mode != "single" else 1,
+        "param_grid_size": len(grid) if (grid and mode != "single") else 1,
         "initial_equity": round(base_cfg["initial_equity"], 2),
         "aggregate": agg,
         "aggregate_is": agg_is,
@@ -772,7 +774,7 @@ def grid_search(symbol: str, tf: str, candles_rows: list[dict], grid: dict | Non
     combos = list(itertools.product(*(grid[k] for k in keys)))
     results = []
     for combo in combos:
-        params = dict(zip(keys, combo))
+        params = dict(zip(keys, combo, strict=True))
         cfg = {
             "initial_equity": 50_000,
             "risk_pct": float(params.get("risk_pct", 0.75)),

@@ -1,0 +1,67 @@
+# Lint and type gates. There is no build here — the file exists so that
+# `ruff`, `mypy` and CI read the same configuration instead of each tool
+# inventing its own defaults.
+#
+# Measured before the gate existed: 255 ruff findings and 74 mypy errors, both
+# now zero. The rule set below is a choice, not a completeness claim:
+#
+#   * E501 (line length) is not enforced. 99 lines in server/ are longer than
+#     100 columns and shrinking them would be a whitespace-only commit that
+#     makes `git blame` useless. `line-length` is still set, so a formatter run
+#     later produces 100-column output.
+#   * BLE001 / S110 (blind except, pass) are not enforced. The polling loops in
+#     this project catch `Exception` on purpose: one bad tick must not kill the
+#     socket, and `errorlog` is where the failure is recorded. Those call sites
+#     carry a `# noqa` only where the reason is local.
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["server", "scripts"]
+exclude = [".venv", "node_modules", "assets"]
+
+[tool.ruff.lint]
+select = [
+    "E4", "E7", "E9",   # pycodestyle: real syntax-level problems
+    "F",                # pyflakes: undefined names, unused imports
+    "W",                # pycodestyle warnings: trailing whitespace, ...
+    "I",                # import order — the 47-finding majority
+    "B",                # bugbear: mutable defaults, loop closures
+    "UP",               # pyupgrade: `datetime.timezone.utc`, quoted annotations
+    "SIM", "C4",        # simplify, comprehensions
+    "RUF",              # ruff's own: unused noqa, mutable class defaults
+]
+ignore = [
+    "RUF001", "RUF002", "RUF003",   # ambiguous unicode: the comments are Persian
+    "RUF012",                       # mutable class attributes, see per-file note
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests reach into module internals on purpose and are allowed to be blunt.
+"server/tests/*" = ["B011", "SIM117"]
+"scripts/*" = ["E402"]             # sys.path juggling before imports
+
+[tool.ruff.lint.isort]
+known-first-party = ["main", "journal", "money", "risk_engine", "paper_trading"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.mypy]
+python_version = "3.11"
+files = ["server"]
+ignore_missing_imports = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+warn_unused_configs = true
+# The modules are typed where it matters (money, risk, journal, paper_trading).
+# Untyped function bodies are still skipped by mypy's default; enabling
+# `check_untyped_defs` is the next step, not this one.
+check_untyped_defs = false
+exclude = ["^\\.venv", "node_modules"]
+
+[[tool.mypy.overrides]]
+# pandas / numpy stubs make `df["t"]` resolve to `Series | Any`; the backtest
+# narrows by hand and is tested behaviourally.
+module = ["backtest", "fa_engine", "benchmark"]
+disallow_untyped_defs = false

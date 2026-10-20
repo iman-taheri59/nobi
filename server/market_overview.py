@@ -69,39 +69,55 @@ def overview(rows: list[dict], signals: dict[str, dict] | None = None,
         seen[base] = r
     usable = list(seen.values())
 
-    priced = [r for r in usable if _num(r.get("change24")) is not None]
+    # Narrow once, in a loop, so every statistic below reads a `float` and not
+    # "a float, or maybe nothing". The alternative — `(_num(x) or 0)` at each
+    # use — turns a missing number into a zero, and a zero change still counts
+    # as a flat market.
+    priced: list[dict] = []
+    changes: list[float] = []
+    for r in usable:
+        c = _num(r.get("change24"))
+        if c is None:
+            continue
+        priced.append(r)
+        changes.append(c)
 
     excluded = {
         "no_change": len(usable) - len(priced),
-        "no_volume": sum(1 for r in priced if _num(r.get("vol24")) is None),
-        "no_fx": sum(1 for r in priced if _vol_usd(r) is None),
+        "no_volume": len([r for r in priced if _num(r.get("vol24")) is None]),
+        "no_fx": len([r for r in priced if _vol_usd(r) is None]),
         "same_asset": same_asset,
     }
 
-    changes = [_num(r["change24"]) for r in priced]
     up = [c for c in changes if c > 0]
     down = [c for c in changes if c < 0]
     flat = [c for c in changes if c == 0]
 
-    with_vol = [(r, _num(r.get("vol24")), _vol_usd(r)) for r in priced]
-    with_vol = [(r, v, u) for r, v, u in with_vol if v is not None and u is not None]
-    total_usd = sum(u for _r, _v, u in with_vol)
+    with_vol: list[tuple[float, float, float]] = []
+    for r, c in zip(priced, changes, strict=True):
+        v = _num(r.get("vol24"))
+        u = _vol_usd(r)
+        if v is not None and u is not None:
+            with_vol.append((c, v, u))
+    total_usd = sum(u for _c, _v, u in with_vol)
 
     weighted_change = None
     up_vol_share = None
     if total_usd > 0:
-        weighted_change = sum(_num(r["change24"]) * u for r, _v, u in with_vol) / total_usd
-        up_usd = sum(u for r, _v, u in with_vol if (_num(r["change24"]) or 0) > 0)
+        weighted_change = sum(c * u for c, _v, u in with_vol) / total_usd
+        up_usd = sum(u for c, _v, u in with_vol if c > 0)
         up_vol_share = up_usd / total_usd * 100
 
     ranked = sorted(usable, key=lambda r: -(_vol_usd(r) or 0))
-    top = [{"symbol": r["symbol"],
-            "vol_usd": round(_vol_usd(r), 2) if _vol_usd(r) is not None else None,
-            "change24": _num(r.get("change24"))}
-           for r in ranked[:top_n]]
+    top = []
+    for r in ranked[:top_n]:
+        vol_usd = _vol_usd(r)
+        top.append({"symbol": r["symbol"],
+                    "vol_usd": round(vol_usd, 2) if vol_usd is not None else None,
+                    "change24": _num(r.get("change24"))})
     top3_share = None
     if total_usd > 0:
-        top3_share = sum((_vol_usd(r) or 0) for r in ranked[:3]) / total_usd * 100
+        top3_share = sum((_vol_usd(r) or 0.0) for r in ranked[:3]) / total_usd * 100
 
     by_change = sorted(priced, key=lambda r: -(_num(r.get("change24")) or 0))
     # "Leaders" must not contain a negative mover just because the board is
@@ -111,11 +127,14 @@ def overview(rows: list[dict], signals: dict[str, dict] | None = None,
     losers = [r for r in reversed(by_change) if (_num(r.get("change24")) or 0) < 0]
 
     def _brief(r: dict) -> dict:
+        vol_usd = _vol_usd(r)
         return {"symbol": r["symbol"], "change24": _num(r.get("change24")),
                 "last": _num(r.get("last")),
-                "vol_usd": (round(_vol_usd(r), 2) if _vol_usd(r) is not None else None)}
+                "vol_usd": (round(vol_usd, 2) if vol_usd is not None else None)}
 
     enough = len(priced) >= MIN_ROWS
+    median = _median(changes) if enough else None
+    dispersion = _stdev(changes) if enough else None
     out = {
         "ok": enough,
         "universe_size": len(usable),
@@ -127,10 +146,10 @@ def overview(rows: list[dict], signals: dict[str, dict] | None = None,
             "pct_up_vol_weighted": round(up_vol_share, 2) if up_vol_share is not None else None,
         },
         "change": {
-            "median_24h": round(_median(changes), 3) if enough else None,
+            "median_24h": round(median, 3) if median is not None else None,
             "mean_24h": round(sum(changes) / len(changes), 3) if enough else None,
             "vol_weighted_24h": round(weighted_change, 3) if weighted_change is not None and enough else None,
-            "dispersion_24h": (round(_stdev(changes), 3) if enough and _stdev(changes) is not None else None),
+            "dispersion_24h": (round(dispersion, 3) if dispersion is not None else None),
         },
         "turnover": {
             "total_usd": round(total_usd, 2) if priced else None,

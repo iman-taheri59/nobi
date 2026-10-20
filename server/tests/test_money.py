@@ -29,9 +29,9 @@ def test_a_rial_amount_cannot_be_added_to_a_toman_amount():
     """Both are "money in Iran"; adding them is a 10× error that no compiler
     catches when they are plain floats."""
     with pytest.raises(UnitMismatch):
-        rial(1_000) + toman(1_000)          # type: ignore[operator]
+        rial(1_000) + toman(1_000)
     with pytest.raises(UnitMismatch):
-        usd(1) + toman(1)                   # type: ignore[operator]
+        usd(1) + toman(1)
     assert toman(1_000) + toman(1_000) == toman(2_000)
 
 
@@ -74,7 +74,7 @@ def test_a_stale_rate_is_refused_when_the_caller_asks_for_freshness():
 def test_a_rate_that_is_zero_or_missing_is_not_a_rate():
     for bad in (0, -1, None, "abc"):
         with pytest.raises(NoRate):
-            Rate(toman_per_usdt=bad, as_of=time.time())   # type: ignore[arg-type]
+            Rate(toman_per_usdt=bad, as_of=time.time())
 
 
 def test_usdt_is_usd_by_decision_and_says_so():

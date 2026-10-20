@@ -37,7 +37,7 @@ import re
 import sys
 import urllib.error
 import urllib.request
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 # --------------------------------------------------------------------------- #
@@ -145,7 +145,7 @@ def as_number(text: str) -> float | None:
 
 def http_json(url: str, timeout: float = 30.0) -> dict:
     req = urllib.request.Request(url, headers={"User-Agent": "nobi-probe/1.0"})
-    with urllib.request.urlopen(req, timeout=timeout) as r:      # noqa: S310
+    with urllib.request.urlopen(req, timeout=timeout) as r:
         return json.loads(r.read().decode("utf-8"))
 
 
@@ -213,9 +213,8 @@ def classify(rec: dict, kind: str = "market") -> tuple[str, str]:
     """
     if rec.get("missing"):
         return "MISSING", "element not in the DOM"
-    if not rec.get("visible"):
-        if rec.get("cardDown"):
-            return "EXPLAINED", "hidden behind the card's outage notice"
+    if not rec.get("visible") and rec.get("cardDown"):
+        return "EXPLAINED", "hidden behind the card's outage notice"
     txt = rec.get("txt") or ""
     digits = rec.get("digits", 0)
     # Our own backend / static config: a card may carry an "unavailable" note for
@@ -376,7 +375,7 @@ def preflight(base: str) -> dict:
     def get(path: str) -> dict:
         try:
             return http_json(f"{base}{path}", timeout=60)
-        except Exception as e:                                    # noqa: BLE001
+        except Exception as e:
             return {"ok": False, "error": f"{type(e).__name__}", "detail": str(e)[:120]}
 
     uni = get("/api/universe")
@@ -442,14 +441,14 @@ def run_probe(base: str, wait_s: float, json_path: str | None, md_path: str | No
         for tab in TABS:
             try:
                 pg.click(f'[data-tab="{tab}"]', timeout=5000)
-            except Exception:                                     # noqa: BLE001
+            except Exception:
                 rows.append({"tab": tab, "panel": "(tab)", "kind": "-",
                              "verdict": "MISSING", "ok": False,
                              "detail": "tab button could not be clicked"})
                 continue
             pg.wait_for_timeout(700)
             ids = [pid for pid, _k, _d in PANELS[tab]]
-            for (pid, kind, label), rec in zip(PANELS[tab], pg.evaluate(CLASSIFY_JS, ids)):
+            for (pid, kind, label), rec in zip(PANELS[tab], pg.evaluate(CLASSIFY_JS, ids), strict=True):
                 verdict, detail = classify(rec, kind)
                 ok, why = judge(kind, verdict, live)
                 rows.append({"tab": tab, "panel": pid, "label": label, "kind": kind,
@@ -496,7 +495,7 @@ def run_probe(base: str, wait_s: float, json_path: str | None, md_path: str | No
 
     if json_path:
         Path(json_path).write_text(json.dumps({
-            "base": base, "when": datetime.now(timezone.utc).isoformat(),
+            "base": base, "when": datetime.now(UTC).isoformat(),
             "upstream_live": live, "panels": rows, "cross_checks": cross,
             "js_errors": js_errors,
             "preflight": {k: pf.get(k) for k in ("upstream_live",)},
@@ -530,7 +529,7 @@ def cross_checks(pg, pf: dict) -> list[dict]:
         ok = (ui_price is not None and api_price is not None
               and abs(ui_price - api_price) / max(api_price, 1) < 0.01)
         add("BTCIRT last price", f"{ui_price}", f"{api_price}", ok)
-    except Exception as e:                                        # noqa: BLE001
+    except Exception as e:
         add("BTCIRT last price", "?", "?", False)
         out[-1]["detail"] = str(e)[:80]
 
@@ -544,7 +543,7 @@ def cross_checks(pg, pf: dict) -> list[dict]:
             api_eq = float(rs.get("equity") or 0) or None
         ok = ui_eq is not None and api_eq is not None and abs(ui_eq - api_eq) < 1
         add("paper equity", f"{ui_eq}", f"{api_eq}", ok)
-    except Exception as e:                                        # noqa: BLE001
+    except Exception as e:
         add("paper equity", "?", "?", False)
         out[-1]["detail"] = str(e)[:80]
 
@@ -558,7 +557,7 @@ def cross_checks(pg, pf: dict) -> list[dict]:
         ok = bool(ui_syms) and not extra
         add("signal rows ⊆ API scored", f"{len(ui_syms)} rows",
             f"{len(api_syms)} scored" + (f"; not in API: {extra[:3]}" if extra else ""), ok)
-    except Exception as e:                                        # noqa: BLE001
+    except Exception as e:
         add("signal rows ⊆ API scored", "?", "?", False)
         out[-1]["detail"] = str(e)[:80]
 
@@ -566,7 +565,7 @@ def cross_checks(pg, pf: dict) -> list[dict]:
 
 
 def render_md(base, live, rows, cross, js_errors) -> str:
-    when = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    when = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
     lines = [
         f"# گزارش پروب داده زنده — {when}", "",
         f"آدرس: `{base}` · وضعیت upstream: **{'زنده' if live else 'در دسترس نیست'}**", "",

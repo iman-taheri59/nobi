@@ -18,14 +18,12 @@ Default v1 weights: 0.25/0.25/0.20/0.20/0.10 (ADR-0006 §7).
 """
 from __future__ import annotations
 
-import asyncio
 import logging
 import math
-import os
 import time
-from collections.abc import Awaitable, Callable
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -54,7 +52,7 @@ VETO_CACHE: dict[str, tuple[float, list[str]]] = {}
 _LLAMA_CACHE: dict[str, Any] = {"ts": 0.0, "data": []}
 _FNG_CACHE: dict[str, Any] = {"ts": 0.0, "data": {"fg_value": 50}}
 SHARED_TTL_S = 60
-FA_CACHE: dict[str, tuple[float, "FAResult"]] = {}
+FA_CACHE: dict[str, tuple[float, FAResult]] = {}
 CACHE_TTL_S = 60 * 10  # 10 minutes per symbol for FA lookup
 
 FALLBACK_FA_PROFILES: dict[str, dict[str, Any]] = {
@@ -205,14 +203,21 @@ class FAEngine:
                 vol = md.get("total_volume", {}).get("usd") or 0
                 ts = md.get("total_supply") or 0
                 ms = md.get("max_supply") or 0
-                if mcap >= 5e10: mkt = 85
-                elif mcap >= 1e10: mkt = 74
-                elif mcap >= 1e9: mkt = 62
-                elif mcap >= 1e8: mkt = 50
-                else: mkt = 38
+                if mcap >= 5e10:
+                    mkt = 85
+                elif mcap >= 1e10:
+                    mkt = 74
+                elif mcap >= 1e9:
+                    mkt = 62
+                elif mcap >= 1e8:
+                    mkt = 50
+                else:
+                    mkt = 38
                 vmc = (vol / mcap) if mcap > 0 else 0
-                if vmc > 0.5: mkt = min(mkt - 10, 100)
-                elif vmc > 0.05: mkt += 6
+                if vmc > 0.5:
+                    mkt = min(mkt - 10, 100)
+                elif vmc > 0.05:
+                    mkt += 6
                 if mcap and fdv:
                     ratio = mcap / fdv
                     tok = int(min(100, ratio * 130))
@@ -222,7 +227,7 @@ class FAEngine:
                 gen = (ov.get("genesis_date") or None)
                 if gen:
                     try:
-                        dayms = (datetime.now(timezone.utc) - datetime.fromisoformat(gen).replace(tzinfo=timezone.utc)).days
+                        dayms = (datetime.now(UTC) - datetime.fromisoformat(gen).replace(tzinfo=UTC)).days
                         days_since_genesis = dayms
                         if dayms < 90:
                             vetoes.append(f"new-listing<{dayms}d")
@@ -243,12 +248,17 @@ class FAEngine:
             vol = prof["vol"]
             tvl = prof.get("tvl", 0)
             days_since_genesis = prof.get("days", 1500)
-            if mcap >= 5e10: mkt = 85
-            elif mcap >= 1e10: mkt = 74
-            elif mcap >= 1e9: mkt = 62
-            else: mkt = 50
+            if mcap >= 5e10:
+                mkt = 85
+            elif mcap >= 1e10:
+                mkt = 74
+            elif mcap >= 1e9:
+                mkt = 62
+            else:
+                mkt = 50
             vmc = (vol / mcap) if mcap > 0 else 0
-            if vmc > 0.05: mkt += 6
+            if vmc > 0.05:
+                mkt += 6
             tok = int(min(100, (mcap / fdv) * 95)) if fdv else 70
             if tvl > 0:
                 onc = round(40 + min(55, math.log10(tvl + 1) * 5.2), 1)

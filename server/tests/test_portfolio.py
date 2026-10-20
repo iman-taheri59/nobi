@@ -18,10 +18,15 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-import portfolio  # noqa: E402
-from portfolio import (  # noqa: E402
-    Candidate, Limits, aligned_closes, allocate, corr_matrix, corr_pair,
-    erc_weights, log_returns,
+from portfolio import (
+    Candidate,
+    Limits,
+    aligned_closes,
+    allocate,
+    corr_matrix,
+    corr_pair,
+    erc_weights,
+    log_returns,
 )
 
 
@@ -157,10 +162,10 @@ def test_erc_handles_one_symbol():
 # allocation against account limits
 # --------------------------------------------------------------------------- #
 def _limits(**kw):
-    base = dict(equity=100_000.0, cash=100_000.0, open_heat_pct=0.0,
-                open_positions=0, concurrent_limit=5, max_heat_pct=6.0,
-                min_cash_pct=10.0, max_single_asset_pct=25.0,
-                per_trade_risk_pct=0.75, fee_pct=0.002)
+    base = {"equity": 100_000.0, "cash": 100_000.0, "open_heat_pct": 0.0,
+            "open_positions": 0, "concurrent_limit": 5, "max_heat_pct": 6.0,
+            "min_cash_pct": 10.0, "max_single_asset_pct": 25.0,
+            "per_trade_risk_pct": 0.75, "fee_pct": 0.002}
     base.update(kw)
     return Limits(**base)
 
@@ -290,6 +295,7 @@ def primed_board(monkeypatch):
 
 def test_route_returns_a_placeable_allocation(primed_board):
     from fastapi.testclient import TestClient
+
     import main
 
     d = TestClient(main.app).post("/api/portfolio/allocate",
@@ -314,6 +320,7 @@ def test_route_returns_a_placeable_allocation(primed_board):
 
 def test_route_does_not_move_the_account(primed_board):
     from fastapi.testclient import TestClient
+
     import main
     from paper_trading import get_broker
 
@@ -326,6 +333,7 @@ def test_route_does_not_move_the_account(primed_board):
 
 def test_route_refuses_a_symbol_it_never_scanned(primed_board):
     from fastapi.testclient import TestClient
+
     import main
 
     d = TestClient(main.app).post("/api/portfolio/allocate",
@@ -336,6 +344,7 @@ def test_route_refuses_a_symbol_it_never_scanned(primed_board):
 
 def test_route_names_the_kill_switch(primed_board):
     from fastapi.testclient import TestClient
+
     import main
 
     main.risk.halted = True

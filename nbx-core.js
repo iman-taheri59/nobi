@@ -78,14 +78,6 @@
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const nowMs = () => Date.now();
   const normSymbol = (s) => (s || '').toUpperCase().replace(/\s+/g, '');
-  const normBase = (sym) => {
-    const s = normSymbol(sym);
-    for (const suf of ['USDT', 'IRT', 'USD']) {
-      if (s.endsWith(suf) && s.length > suf.length) return s.slice(0, -suf.length);
-    }
-    return s;
-  };
-
   /* Deterministic PRNG for consistent multi-regime candles across mobile/desktop */
   function hashSeed(str) {
     let h = 2166136261 >>> 0;
@@ -94,22 +86,6 @@
       h = Math.imul(h, 16777619);
     }
     return h >>> 0;
-  }
-  function createRng(seedStr) {
-    let state = hashSeed(seedStr) || 123456789;
-    const nextFloat = () => {
-      state ^= state << 13;
-      state ^= state >>> 17;
-      state ^= state << 5;
-      return ((state >>> 0) % 1000000) / 1000000;
-    };
-    const nextGauss = (mean = 0, std = 1) => {
-      const u1 = Math.max(1e-7, nextFloat());
-      const u2 = nextFloat();
-      const z0 = Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2.0 * Math.PI * u2);
-      return mean + z0 * std;
-    };
-    return { nextFloat, nextGauss, seedInt: state >>> 0 };
   }
 
 

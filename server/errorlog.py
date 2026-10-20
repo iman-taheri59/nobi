@@ -107,7 +107,7 @@ def _prune(conn: sqlite3.Connection) -> None:
 
 
 def capture(level: str = "error", source: str = "app", message: str = "",
-            detail: str | None = None, context: dict | None = None,
+            detail: str | None = None, context: dict | str | None = None,
             client: str | None = None, exc: BaseException | None = None) -> dict:
     """Record one failure. Returns the stored row; never raises."""
     global _seq
@@ -141,7 +141,7 @@ def capture(level: str = "error", source: str = "app", message: str = "",
                 (row["ts"], row["level"], row["source"], row["message"],
                  row["detail"], row["context"], row["client"]),
             )
-            row["id"] = int(cur.lastrowid)
+            row["id"] = int(cur.lastrowid or 0)
             _prune(conn)
             conn.commit()
         finally:
@@ -153,7 +153,8 @@ def capture(level: str = "error", source: str = "app", message: str = "",
 
 def recent(limit: int = 100, level: str | None = None, source: str | None = None,
            since: int | None = None, q: str | None = None) -> list[dict]:
-    where, params = ["1=1"], []
+    where: list[str] = ["1=1"]
+    params: list[Any] = []
     if level and level in LEVELS:
         where.append("level=?")
         params.append(level)
@@ -194,7 +195,9 @@ def recent(limit: int = 100, level: str | None = None, source: str | None = None
 
 
 def counts() -> dict[str, Any]:
-    out = {"error": 0, "critical": 0, "warning": 0, "total": 0, "last_24h": 0,
+    # `sources` is a nested dict and `last_ts` is None until the first row, so
+    # the values are not all ints — annotate instead of letting mypy guess.
+    out: dict[str, Any] = {"error": 0, "critical": 0, "warning": 0, "total": 0, "last_24h": 0,
            "last_ts": None, "sources": {}}
     day_ago = int(time.time()) - 86400
     try:
@@ -254,7 +257,7 @@ class Handler(logging.Handler):
 
     IGNORE = ("nbx-app.errorlog",)   # never recurse into ourselves
 
-    def emit(self, record: logging.LogRecord) -> None:      # noqa: D102
+    def emit(self, record: logging.LogRecord) -> None:
         try:
             if record.name in self.IGNORE:
                 return

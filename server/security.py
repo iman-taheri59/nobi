@@ -113,4 +113,4 @@ async def require_client(request: Request) -> None:
         )
 
 
-__all__ = ["require_client", "cors_origins", "auth_mode", "reset_rate_limits", "API_TOKEN"]
+__all__ = ["API_TOKEN", "auth_mode", "cors_origins", "require_client", "reset_rate_limits"]

@@ -25,7 +25,8 @@ import journal
 import notify
 import risk_engine
 import ta_engine
-from ws_execution import POLL_S as STREAM_POLL_S, STREAM_EXECUTOR, WS_URL
+from ws_execution import POLL_S as STREAM_POLL_S
+from ws_execution import STREAM_EXECUTOR, WS_URL
 
 
 def _mask(value: str) -> str | None:

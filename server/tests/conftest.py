@@ -8,10 +8,13 @@ setup belongs in one place that pytest always loads.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import sys
 import tempfile
 from pathlib import Path
+
+import pytest
 
 # The suite must not read (or write) the paper account of whoever ran the
 # dashboard last. A single demo order used to leave `paper_state.json` with an
@@ -22,9 +25,6 @@ os.environ.setdefault("NBX_PAPER_STATE",
 SERVER = Path(__file__).resolve().parents[1]
 if str(SERVER) not in sys.path:
     sys.path.insert(0, str(SERVER))
-
-
-import pytest
 
 
 @pytest.fixture(autouse=True)
@@ -42,8 +42,6 @@ def _no_leaked_kill_switch():
         return
     if getattr(main.risk, "halted", False):
         main.risk.halted = False
-        try:
+        with contextlib.suppress(Exception):
             main.paper_trading.PAPER_BROKER.halted = False
-        except Exception:
-            pass
         pytest.fail("test left the risk kill switch armed; resume it in the test")

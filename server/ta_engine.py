@@ -13,7 +13,6 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-
 #: Single source of truth for the shape of the score. `ta_score` (one bar) and
 #: `ta_score_series` (vectorised) both read these, and `/api/settings` renders
 #: them straight from here. The JS mirror in `nbx-core.js` must match; a
@@ -108,8 +107,8 @@ def ta_score(df: pd.DataFrame) -> dict[str, Any]:
     e9, e21, e50, e200 = ema(close, 9), ema(close, 21), ema(close, 50), ema(close, 200)
     pdi, ndi, adx = adx_di(df, 14)
     r = rsi(close, 14)
-    _, sg, hist = macd(close)
-    mid, up, low, pctb = bollinger(close, 20, 2)
+    _, _signal_line, hist = macd(close)
+    _mid, _up, _low, pctb = bollinger(close, 20, 2)
     atr_i = atr(df, 14)
 
     i = len(df) - 1
@@ -278,4 +277,4 @@ def ta_score_series(df: pd.DataFrame, start: int = 60) -> list[dict[str, Any] | 
     return out
 
 
-__all__ = ["candles_to_df", "ta_score", "ta_score_series", "ema", "sma", "rsi", "macd", "atr", "bollinger", "adx_di"]
+__all__ = ["adx_di", "atr", "bollinger", "candles_to_df", "ema", "macd", "rsi", "sma", "ta_score", "ta_score_series"]

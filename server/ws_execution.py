@@ -21,12 +21,14 @@ failure is visible in the status payload instead of being swallowed.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import os
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any
 
 import httpx
 
@@ -136,7 +138,10 @@ class StreamExecutor:
         #: opened after the handshake used to be invisible to the feed: the
         #: `subscribe` frames were only ever sent at connect time, so the new
         #: symbol was "subscribed" in memory and never on the wire.
-        self._ws_conn = None
+        self._ws_conn: Any = None
+        #: asyncio holds only a weak reference to a task; without this set a
+        #: fire-and-forget task can be collected mid-flight.
+        self._bg_tasks: set[asyncio.Task] = set()
         self._sent_channels: set[str] = set()
         self._next_sub_id = 2
         self.candle_tf = os.getenv("NBX_WS_CANDLE_TF", "15m")
@@ -213,7 +218,13 @@ class StreamExecutor:
             self._tasks[symbol] = asyncio.create_task(self._poll_loop(symbol))
         self.ensure_ws()
         if self._ws_conn is not None:
-            asyncio.create_task(self._send_missing_subs())
+            self._spawn(self._send_missing_subs())
+
+    def _spawn(self, coro) -> asyncio.Task:
+        task = asyncio.create_task(coro)
+        self._bg_tasks.add(task)
+        task.add_done_callback(self._bg_tasks.discard)
+        return task
 
     def ensure_ws(self) -> None:
         """Open the socket when it is configured and not already running.
@@ -283,7 +294,7 @@ class StreamExecutor:
                     self._emit(symbol, book.mid)
             except asyncio.CancelledError:
                 raise
-            except Exception as e:  # noqa: BLE001 - the loop must survive
+            except Exception as e:  # the loop must survive
                 self.consecutive_errors += 1
                 self.last_error = f"{type(e).__name__}: {e}"
                 log.debug("poll error %s: %s", symbol, e)
@@ -294,8 +305,8 @@ class StreamExecutor:
     # ------------------------------------------------------------------ #
     async def _ws_loop(self) -> None:
         try:
-            import websockets  # type: ignore
-        except Exception as e:  # noqa: BLE001
+            import websockets
+        except Exception as e:
             self.last_error = f"websockets unavailable: {e}"
             log.warning("WS requested but library missing: %s", e)
             return
@@ -333,7 +344,7 @@ class StreamExecutor:
                         self._on_ws_message(raw)
             except asyncio.CancelledError:
                 raise
-            except Exception as e:  # noqa: BLE001 - reconnect forever
+            except Exception as e:  # reconnect forever
                 self._ws_connected = False
                 self._ws_conn = None
                 self.last_error = f"ws: {type(e).__name__}: {e}"
@@ -389,7 +400,7 @@ class StreamExecutor:
             try:
                 await self._send_subscribe(ws, channel)
                 log.info("WS subscribed late: %s", channel)
-            except Exception as e:  # noqa: BLE001 - reconnect will resend
+            except Exception as e:  # reconnect will resend
                 log.debug("late subscribe failed (%s): %s", channel, e)
                 return
 
@@ -454,10 +465,8 @@ class StreamExecutor:
             self.markets[sym] = st
             touched = True
             for fn in list(self.on_market):
-                try:
+                with contextlib.suppress(Exception):
                     fn(sym, st)
-                except Exception:  # noqa: BLE001 - a bad callback must not stop the feed
-                    pass
         if touched:
             self.stats_frames += 1
             self.last_stats_at = now
@@ -565,8 +574,8 @@ class StreamExecutor:
             try:
                 result = fn(symbol, mid)
                 if asyncio.iscoroutine(result):
-                    asyncio.create_task(result)
-            except Exception:  # noqa: BLE001 - a bad callback must not stop the feed
+                    self._spawn(result)
+            except Exception:  # a bad callback must not stop the feed
                 pass
 
     def mid(self, symbol: str) -> float:
@@ -604,4 +613,4 @@ async def streams_start(broker, client) -> None:
         await STREAM_EXECUTOR.subscribe(symbol, tick)
 
 
-__all__ = ["STREAM_EXECUTOR", "StreamExecutor", "streams_start", "HotBook"]
+__all__ = ["STREAM_EXECUTOR", "HotBook", "StreamExecutor", "streams_start"]

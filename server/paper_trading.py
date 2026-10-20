@@ -11,20 +11,19 @@ Features:
 """
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import os
 import time
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Callable
 
-from nobitex_client import NobitexClient
-from risk_engine import Preflight, RiskEngine, RiskPlan, preflight
 from money import NoRate, Rate
+from nobitex_client import NobitexClient
+from risk_engine import Preflight, RiskEngine, preflight
 from units import min_notional_usd, round_price, truncate_amount
 
 log = logging.getLogger("paper-trading")
@@ -143,7 +142,7 @@ class PaperBroker:
 
     def save(self):
         STATE_FILE.write_text(json.dumps({
-            "ts": datetime.now(timezone.utc).isoformat(),
+            "ts": datetime.now(UTC).isoformat(),
             "start_equity": self.start_equity,
             "equity": self.equity,
             "cash": self.cash,
@@ -183,13 +182,14 @@ class PaperBroker:
         if hot_mid_hook is not None:
             try:
                 live_px = hot_mid_hook(symbol)
-            except Exception:  # noqa: BLE001 - a bad hook must not stop a mark
+            except Exception:  # a bad hook must not stop a mark
                 live_px = None
             if live_px and live_px > 0:
                 return float(live_px)
         ob = await self.client.get_orderbook(symbol)
         if ob and ob.get("asks") and ob.get("bids"):
-            a = float(ob["asks"][0][0]); b = float(ob["bids"][0][0])
+            a = float(ob["asks"][0][0])
+            b = float(ob["bids"][0][0])
             return (a + b) / 2
         if s := ob and ob.get("lastTradePrice"):
             return float(s)
@@ -212,7 +212,7 @@ class PaperBroker:
                 if px > 0:
                     self.usdt_irt = px
                     self.usdt_irt_at = time.time()
-            except Exception as e:  # noqa: BLE001 - handled by the caller
+            except Exception as e:  # handled by the caller
                 log.warning("fx rate unavailable: %s", e)
         if self.usdt_irt <= 0:
             return None
@@ -499,7 +499,7 @@ class PaperBroker:
         realized = [e for e in self.orders if e.kind in ("tp1", "close")]
         pnl_list = [e.extra.get("pnl", 0) for e in realized]
         # R-multiple = realised PnL / the amount that was at risk on entry.
-        r_mult = [p / e.extra.get("risk", 0) for p, e in zip(pnl_list, realized) if e.extra.get("risk")]
+        r_mult = [p / e.extra.get("risk", 0) for p, e in zip(pnl_list, realized, strict=True) if e.extra.get("risk")]
         wins = [p for p in pnl_list if p > 0]
         losses = [p for p in pnl_list if p <= 0]
         hit_rate = (len(wins) / len(pnl_list) * 100) if pnl_list else 0
@@ -539,7 +539,6 @@ market_closed_hook: Callable[[str], bool] | None = None
 hot_mid_hook: Callable[[str], float | None] | None = None
 def get_broker(equity: float, client: NobitexClient, risk: RiskEngine) -> PaperBroker:
     global PAPER_BROKER
-    fez = None
     if PAPER_BROKER is None:
         PAPER_BROKER = PaperBroker(equity, client, risk)
     return PAPER_BROKER

@@ -8,7 +8,6 @@ math without touching the network. Run with:
 from __future__ import annotations
 
 import asyncio
-import math
 import sys
 import time
 from pathlib import Path
@@ -17,9 +16,9 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from nobitex_client import ClientError, NobitexClient  # noqa: E402
-from paper_trading import FEE_PCT, PaperBroker  # noqa: E402
-from risk_engine import RiskConfig, RiskEngine  # noqa: E402
+from nobitex_client import ClientError, NobitexClient
+from paper_trading import FEE_PCT, PaperBroker
+from risk_engine import RiskConfig, RiskEngine
 
 
 # --------------------------------------------------------------------------- #
@@ -399,9 +398,9 @@ def test_remote_mutation_is_rejected_without_a_token(monkeypatch):
     # Same reasoning as the test above: exercise the guard on a mutation that
     # leaves no residue. The handler is expected to reject this request; the
     # point is that the guard runs first.
-    r = c.post("/api/errors/clear", headers={"x-forwarded-for": "8.8.8.8"},
-               # spoof the peer address the app sees
-               )
+    c.post("/api/errors/clear", headers={"x-forwarded-for": "8.8.8.8"},
+           # spoof the peer address the app sees
+           )
     # TestClient always reports 127.0.0.1/testclient; exercise the guard directly.
     from fastapi import HTTPException
 
@@ -422,8 +421,9 @@ def test_remote_mutation_is_rejected_without_a_token(monkeypatch):
 
 
 def test_token_is_required_when_configured(monkeypatch):
-    import security
     from fastapi import HTTPException
+
+    import security
 
     monkeypatch.setattr(security, "API_TOKEN", "s3cret")
 
@@ -453,8 +453,9 @@ def test_token_is_required_when_configured(monkeypatch):
 
 
 def test_rate_limit_blocks_bursts(monkeypatch):
-    import security
     from fastapi import HTTPException
+
+    import security
 
     monkeypatch.setattr(security, "_RATE_LIMIT", 3)
     security.reset_rate_limits()
@@ -530,7 +531,6 @@ def test_client_refuses_to_invent_candles_when_upstream_is_down(monkeypatch, tmp
 
 def test_upstream_endpoints_say_so_instead_of_returning_empty_lists():
     """An empty list reads as "no signals today"; the payload must name the wall."""
-    import main
 
     client = _client()
     for path in ("/api/candles/BTCIRT?tf=1h", "/api/universe", "/api/signals?tf=15m"):
@@ -548,7 +548,6 @@ def test_upstream_endpoints_say_so_instead_of_returning_empty_lists():
 
 def test_no_response_invents_prices():
     """No endpoint may return a fabricated number when the exchange is down."""
-    import main
 
     body = _client().get("/api/candles/NOPEIRT?tf=1h").json()
     if body.get("ok") is False:
@@ -611,7 +610,6 @@ def test_stream_status_reports_rest_transport_by_default():
 
 
 def test_book_freshness_and_mid():
-    import time
 
     from ws_execution import HotBook
 
@@ -690,7 +688,7 @@ def test_fa_result_marks_profile_fallback_as_not_fresh():
 
 
 def test_risk_preview_does_not_reserve_heat():
-    from risk_engine import RiskEngine, RiskConfig
+    from risk_engine import RiskConfig, RiskEngine
 
     r = RiskEngine(RiskConfig(equity=100_000.0))
     before = r.open_heat
@@ -734,7 +732,7 @@ def test_paper_order_accepts_size_quote_alone(monkeypatch, tmp_path):
 
 
 def test_max_risk_pct_caps_a_misconfigured_sizing():
-    from risk_engine import RiskEngine, RiskConfig
+    from risk_engine import RiskConfig, RiskEngine
 
     r = RiskEngine(RiskConfig(equity=100_000.0, risk_pct=5.0, max_risk_pct=2.0))
     plan = r.evaluate("BTCUSDT", "buy", 73_040.0, 500.0, "15m", preview=True)
@@ -889,12 +887,11 @@ def test_published_weights_reproduce_the_score_the_engine_computes():
     from the constants the settings page publishes and compares it to what the
     engine returned for the same bar.
     """
-    import json
+
+    import numpy as np
 
     import settings_view
     import ta_engine
-
-    import numpy as np
     from ta_engine import candles_to_df
 
     rng = np.random.default_rng(11)
@@ -991,7 +988,7 @@ def test_settings_never_renders_a_secret(monkeypatch):
     importlib.reload(settings_view)
     body = str(settings_view.snapshot())
     assert "supersecret" not in body
-    token = [s for s in settings_view.snapshot()["secrets"] if s["name"] == "NBX_API_TOKEN"][0]
+    token = next(s for s in settings_view.snapshot()["secrets"] if s["name"] == "NBX_API_TOKEN")
     assert token["present"] is True and token["hint"].endswith("1234")
     importlib.reload(settings_view)
 
@@ -1041,7 +1038,8 @@ def test_settings_reports_the_env_file_and_never_its_absolute_path(tmp_path, mon
                                                             "vars": 2, "error": None})
     snap = settings_view.snapshot()
     assert snap["env"]["path"] == "server/.env"
-    assert "/" not in snap["env"]["path"].lstrip("server").strip("/")
+    rel = snap["env"]["path"].removeprefix("server/").strip("/")
+    assert "/" not in rel, f"the env path is not relative to the repo: {snap['env']['path']}"
     for s in snap["secrets"]:
         assert s["where"] == "server/.env"
 
@@ -1065,8 +1063,6 @@ def test_a_token_bearing_request_never_writes_the_token_to_the_log(caplog):
     """
     import logging
 
-    import httpx
-
     from logsafe import quiet_httpx, redact
 
     secret = "123456789:AAFakeTokenThatMustNotAppear"
@@ -1086,7 +1082,6 @@ def test_a_token_bearing_request_never_writes_the_token_to_the_log(caplog):
 
 def test_notify_does_not_leak_the_token_through_exception_text(monkeypatch):
     """A transport error's message may embed the URL, so only its type is kept."""
-    import asyncio
     import inspect
 
     import notify
@@ -1185,8 +1180,8 @@ def test_errorlog_never_stores_a_secret():
     token = "123456789:" + "AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw"
     for raw in (
         f"GET https://api.telegram.org/bot{token}/getMe failed",
-        f"Authorization: Bearer sk-live-supersecret-1234",
-        f"NBX_API_TOKEN=sk-live-supersecret-1234 rejected",
+        "Authorization: Bearer sk-live-supersecret-1234",
+        "NBX_API_TOKEN=sk-live-supersecret-1234 rejected",
         f"token was {token}",
     ):
         cleaned = errorlog.scrub(raw)
@@ -1222,7 +1217,6 @@ def test_errorlog_captures_logging_and_survives_a_failing_store(monkeypatch):
 
 
 def test_errorlog_endpoints_are_wired_and_bounded():
-    import main
 
     client = _client()
     r = client.get("/api/errors?limit=5")
@@ -1555,6 +1549,7 @@ def test_book_levels_accepts_both_shapes_and_drops_junk():
 def test_orderbook_route_computes_spread_depth_and_imbalance(monkeypatch):
     """The panel shows numbers, so the numbers have to agree with the rows."""
     import asyncio
+
     import main
 
     book = {
@@ -1587,6 +1582,7 @@ def test_orderbook_route_computes_spread_depth_and_imbalance(monkeypatch):
 def test_orderbook_route_reports_unavailable_instead_of_raising(monkeypatch):
     """A 500 would render as a generic error; the UI contract reads the flag."""
     import asyncio
+
     import main
     from nobitex_client import UpstreamUnavailable
 
@@ -1603,6 +1599,7 @@ def test_orderbook_route_reports_unavailable_instead_of_raising(monkeypatch):
 
 def test_orderbook_route_treats_an_empty_book_as_unavailable(monkeypatch):
     import asyncio
+
     import main
 
     async def empty(symbol):
@@ -1656,6 +1653,7 @@ def test_fa_route_reports_the_fundamental_source_not_the_exchange():
     """`source` on /api/fa used to be Nobitex provenance, so a live CoinGecko
     read came back as source=unavailable while profile=live."""
     import asyncio
+
     import main
     from fa_engine import FAResult
 
@@ -1715,6 +1713,7 @@ def test_premium_veto_can_actually_fire():
     exercised, not just present.
     """
     import asyncio
+
     import fa_engine
 
     eng = fa_engine.FAEngine()
@@ -1745,6 +1744,7 @@ def test_premium_veto_can_actually_fire():
 def test_failed_build_reports_the_reason_not_just_the_exit_code():
     """The runtime rebuild used to log "exit status 1" and nothing else."""
     import subprocess
+
     import main
 
     exc = subprocess.CalledProcessError(1, ["python", "build.py"],
@@ -1770,10 +1770,10 @@ def test_implausible_premium_is_treated_as_missing_data():
 # --------------------------------------------------------------------------- #
 def _pf(**kw):
     import risk_engine
-    base = dict(equity=100_000.0, cash=100_000.0, open_heat=0.0, open_positions=0,
-                concurrent_limit=5, max_heat_pct=6.0, min_cash_pct=10.0,
-                max_single_asset_pct=25.0, risk_pct_cap=0.75, halted=False,
-                notional_usd=10_000.0, fee_usd=20.0, risk_usd=750.0)
+    base = {"equity": 100_000.0, "cash": 100_000.0, "open_heat": 0.0,
+            "open_positions": 0, "concurrent_limit": 5, "max_heat_pct": 6.0,
+            "min_cash_pct": 10.0, "max_single_asset_pct": 25.0, "risk_pct_cap": 0.75,
+            "halted": False, "notional_usd": 10_000.0, "fee_usd": 20.0, "risk_usd": 750.0}
     base.update(kw)
     return risk_engine.preflight(**base)
 
@@ -1818,6 +1818,7 @@ def test_a_rejected_order_reports_heat_it_would_have_added():
 def test_whatif_route_reports_a_real_projection():
     """End-to-end through the route, with the signal cache primed."""
     from fastapi.testclient import TestClient
+
     import main
 
     sym = "BTCIRT"
@@ -1847,6 +1848,7 @@ def test_whatif_route_reports_a_real_projection():
 
 def test_whatif_refuses_to_guess_a_price():
     from fastapi.testclient import TestClient
+
     import main
 
     c = TestClient(main.app)
@@ -1858,6 +1860,7 @@ def test_whatif_refuses_to_guess_a_price():
 def test_whatif_does_not_move_the_account():
     """A projection that reserves heat is a silent trade."""
     from fastapi.testclient import TestClient
+
     import main
 
     sym = "ETHIRT"
@@ -1878,6 +1881,7 @@ def test_whatif_does_not_move_the_account():
 
 def test_whatif_names_the_kill_switch_instead_of_blaming_sizing():
     from fastapi.testclient import TestClient
+
     import main
 
     main._cached["signals_by_tf"].setdefault("15m", {})["SOLIRT"] = {

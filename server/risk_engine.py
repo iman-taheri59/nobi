@@ -80,6 +80,7 @@ class Preflight:
         return next((g for g in self.gates if not g.ok), None)
 
     def summary(self) -> dict:
+        first_block = self.first_block()
         return {
             "equity": round(self.equity, 2),
             "notional_usd": round(self.notional_usd, 2),
@@ -100,7 +101,7 @@ class Preflight:
             "loss_at_stop_pct_of_equity": round(
                 self.loss_at_stop_usd / self.equity * 100 if self.equity else 0.0, 3),
             "blocked": self.blocked,
-            "blocked_by": (self.first_block().id if self.first_block() else None),
+            "blocked_by": (first_block.id if first_block else None),
             "gates": [{"id": g.id, "ok": g.ok, "value": None if g.value is None else round(g.value, 3),
                        "limit": None if g.limit is None else round(g.limit, 3),
                        "detail": g.detail} for g in self.gates],
@@ -258,7 +259,6 @@ class RiskEngine:
 
         stop = entry - stop_dist if side == "buy" else entry + stop_dist
         tp1, tp2 = self._tp(entry, stop, side)
-        stop_pct = stop_dist / entry * 100
         rr = abs((tp2 - entry) / (entry - stop))
         if rr < 1.5:
             warnings.append("low-rr")
@@ -292,4 +292,4 @@ class RiskEngine:
             self.halted = True
 
 
-__all__ = ["RiskEngine", "RiskPlan", "RiskConfig"]
+__all__ = ["RiskConfig", "RiskEngine", "RiskPlan"]

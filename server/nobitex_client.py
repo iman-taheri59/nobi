@@ -18,17 +18,16 @@ import os
 import random
 import time
 from collections.abc import Callable
+from dataclasses import dataclass
+from typing import Any
+from urllib.parse import urlencode
+
+import httpx
 
 from candle_cache import CANDLE_CACHE
 from units import scale_orderbook, scale_stats, scale_udf
 
 log = logging.getLogger("nbx-client")
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any
-from urllib.parse import urlencode
-
-import httpx
 
 
 class ClientError(Exception):
@@ -125,7 +124,7 @@ class NobitexClient:
         self._circuit_open_until: float = 0.0
         self.degraded_mode: bool = False
 
-    async def __aenter__(self) -> "NobitexClient":
+    async def __aenter__(self) -> NobitexClient:
         await self.connect()
         return self
 
@@ -185,10 +184,10 @@ class NobitexClient:
                 # The docs ship `backOff` (seconds) and `limit` with the error;
                 # sleeping a fixed amount can be shorter than asked for, and
                 # repeating that gets the token blocked for two minutes.
-                body = {}
+                body: dict = {}
                 try:
                     body = resp.json() or {}
-                except Exception:      # noqa: BLE001 - body may be empty
+                except Exception:  # body may be empty
                     body = {}
                 raise RateLimitError(
                     "RATE", "rate limited by Nobitex",
@@ -212,14 +211,15 @@ class NobitexClient:
             return body
         except httpx.TimeoutException as e:
             self._emit_stats(False, (time.perf_counter() - t0) * 1000)
-            raise ClientError("TIMEOUT", "Nobitex timeout", {"error": str(e)})
+            raise ClientError("TIMEOUT", "Nobitex timeout", {"error": str(e)}) from e
         except httpx.HTTPStatusError as e:
-            raise ClientError("HTTP", f"bad status {e.response.status_code}", {"status": e.response.status_code})
+            raise ClientError("HTTP", f"bad status {e.response.status_code}",
+                              {"status": e.response.status_code}) from e
         except Exception as e:
             if isinstance(e, ClientError):
                 raise
             self._emit_stats(False, (time.perf_counter() - t0) * 1000)
-            raise ClientError("NETWORK", "network failure", {"error": repr(e)})
+            raise ClientError("NETWORK", "network failure", {"error": repr(e)}) from e
 
     async def get(self, path: str, params: dict | None = None, attempts: int | None = None) -> Any:
         """GET with bounded exponential backoff.
@@ -249,7 +249,7 @@ class NobitexClient:
                 if attempt < attempts:
                     backoff = min(4.0, 0.4 * (2 ** (attempt - 1)))
                     await asyncio.sleep(backoff + random.uniform(0, 0.3))
-            except Exception as e:  # noqa: BLE001 - normalize unexpected errors
+            except Exception as e:  # normalize unexpected errors
                 last_err = ClientError("NETWORK", "network failure", {"error": repr(e)})
                 if attempt < attempts:
                     await asyncio.sleep(0.4 * attempt)
@@ -385,5 +385,11 @@ class NobitexClient:
         raise AuthRequired("AUTH", "TRADE endpoints are intentionally disabled until ADR-0009 promotion gates pass.")
 
 
-__all__ = ["NobitexClient", "ClientError", "UpstreamUnavailable", "RateLimitError",
-           "ClientStats", "TokenBucketer"]
+__all__ = [
+    "ClientError",
+    "ClientStats",
+    "NobitexClient",
+    "RateLimitError",
+    "TokenBucketer",
+    "UpstreamUnavailable",
+]

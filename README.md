@@ -74,6 +74,24 @@ css` را نزنی، `build_standalone.py` هشدار می‌دهد که CSS ا�
 | `python3 scripts/check_preflight_parity.py` | ده دروازهٔ ریسک در Python و JS یکی باشند |
 | `node scripts/js_broker_test.js` | بروکر مرورگر: نرخ ارز، حداقل صرافی، بازار بسته، دقت |
 
+### دروازه‌های ایستا (ADR-0016)
+
+این‌ها همان چیزی هستند که CI اجرا می‌کند؛ محلی هم دقیقاً همین‌طور اجرا می‌شوند:
+
+```bash
+ruff check server scripts        # → All checks passed
+mypy                             # → Success: no issues found in 33 source files
+npm run lint                     # bundles + scripts
+npm run lint:dashboard           # بلوک درون‌خطی index.html
+```
+
+پیکربندی در `pyproject.toml` و `eslint.config.mjs` است، نه در خط فرمان. آنچه
+عمداً فعال **نشده** و دلیلش، در ADR-0016 آمده است (طول خط، `except Exception`،
+`check_untyped_defs`).
+
+CI سه job دارد: `python` (ruff + mypy + pytest)، `js` (eslint + برابری بروکر و
+preflight + تازگی `nobitex-mobile.html`)، و `ui` (۴۵ پنل روی فیکسچر صرافی).
+
 ---
 
 ## تأیید مسیر داده زنده

@@ -9,7 +9,6 @@ from __future__ import annotations
 import hashlib
 import logging
 from pathlib import Path
-from typing import Any
 
 import pandas as pd
 
@@ -98,4 +97,4 @@ class CandleCache:
 
 
 CANDLE_CACHE = CandleCache()
-__all__ = ["CANDLE_CACHE", "CACHE_ROOT"]
+__all__ = ["CACHE_ROOT", "CANDLE_CACHE"]

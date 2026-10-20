@@ -31,7 +31,7 @@ import pandas as pd
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "server"))
-from ta_engine import ta_score_series  # noqa: E402
+from ta_engine import ta_score_series
 
 COINBASE = {
     "BTC": "BTC-USD", "ETH": "ETH-USD", "SOL": "SOL-USD", "XRP": "XRP-USD",
@@ -120,7 +120,7 @@ def spearman(xs: list[float], ys: list[float]) -> float | None:
     if n < 3:
         return None
     mx, my = sum(rx) / n, sum(ry) / n
-    num = sum((a - mx) * (b - my) for a, b in zip(rx, ry))
+    num = sum((a - mx) * (b - my) for a, b in zip(rx, ry, strict=True))
     dx = sum((a - mx) ** 2 for a in rx) ** 0.5
     dy = sum((b - my) ** 2 for b in ry) ** 0.5
     return None if dx == 0 or dy == 0 else num / (dx * dy)

@@ -27,8 +27,8 @@ import httpx
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "server"))
 
-import fa_engine  # noqa: E402
-from units import scale_stats  # noqa: E402
+import fa_engine
+from units import scale_stats
 
 
 async def _down(*_a, **_kw):
@@ -178,8 +178,8 @@ def _wire_exchange(base: str) -> None:
         # Omitting it made `/api/health` report "exchange unreachable" while the
         # board was visibly fetching prices from this same fixture.
         return {"status": "ok",
-                "bids": [[l["p"], l["q"]] for l in body.get("bids") or []],
-                "asks": [[l["p"], l["q"]] for l in body.get("asks") or []]}
+                "bids": [[lvl["p"], lvl["q"]] for lvl in body.get("bids") or []],
+                "asks": [[lvl["p"], lvl["q"]] for lvl in body.get("asks") or []]}
 
     # `/v2/options` is the exchange's own statement of minimums and tick sizes.
     # The fixture answers it locally so the live run exercises the same code path
@@ -229,8 +229,9 @@ def main() -> int:
         fa_engine.FAEngine._listen_prices = _down
         print("fundamentals providers forced down")
 
-    import main  # imported here so the patches land before the app is served
     import uvicorn
+
+    import main  # imported here so the patches land before the app is served
 
     _wire_exchange(a.exchange or "http://127.0.0.1:8010")
 

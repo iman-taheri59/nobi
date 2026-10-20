@@ -28,3 +28,8 @@ node_modules/
 
 # Playwright CLI scratch (screenshots/snapshots from browser checks)
 .playwright-cli/
+
+# Static-analysis caches (ruff, mypy) — local only, see ADR-0016
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/

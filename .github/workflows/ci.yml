@@ -1,0 +1,93 @@
+# The gates this project asserts in its README, run on every push.
+#
+# Three jobs, because they fail for different reasons and a red X should say
+# which one:
+#
+#   python  types and behaviour — ruff, mypy, pytest
+#   js      the browser bundle — eslint, the standalone-broker parity test,
+#           the generated mobile file being up to date
+#   ui      the page itself — 45 panels must be able to explain themselves
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"      # server/ pins 3.11+; 3.12 is the CI floor
+          cache: pip
+      - run: pip install -r server/requirements-dev.txt
+      # No config path arguments: pyproject.toml decides what is selected.
+      - name: ruff
+        run: ruff check server scripts
+      - name: mypy
+        run: mypy
+      - name: pytest
+        run: python -m pytest -q server/tests
+
+  js:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: npm ci --no-audit --no-fund
+      - run: pip install -r server/requirements.txt
+      - name: eslint (bundles and scripts)
+        run: npm run lint
+      - name: eslint (index.html inline block)
+        run: npm run lint:dashboard
+      - name: broker parity — python vs javascript
+        run: node scripts/js_broker_test.js
+      - name: preflight parity — 28 cases × 10 gates
+        run: python3 scripts/check_preflight_parity.py
+      - name: generated mobile file is current
+        run: |
+          npm run css
+          python3 scripts/build_standalone.py
+          git diff --exit-code -- nobitex-mobile.html
+
+  ui:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r server/requirements-dev.txt
+      - run: python -m playwright install --with-deps chromium
+      # The sandbox has no reachable exchange, so the panels are exercised
+      # against the contract-shaped fixture — the same two-script setup the
+      # README documents. A panel that cannot explain itself still fails.
+      - name: fixture exchange + dashboard
+        run: |
+          python3 scripts/mock_upstream.py --port 8010 &
+          python3 scripts/run_with_mock_exchange.py --port 8000 \
+            --exchange http://127.0.0.1:8010 --journal-db /tmp/ci-journal.db &
+          for i in $(seq 1 30); do
+            curl -sf -o /dev/null http://127.0.0.1:8000/api/health && break
+            sleep 1
+          done
+      - name: classifier self-test
+        run: python3 scripts/probe_live.py --selftest
+      - name: 45 panels explain themselves
+        run: python3 scripts/probe_live.py --url http://127.0.0.1:8000

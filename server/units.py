@@ -19,6 +19,7 @@ speak the same dialect:
 
 from __future__ import annotations
 
+import contextlib
 import math
 import os
 
@@ -152,10 +153,10 @@ def scale_orderbook(body: dict, symbol: str, unit: str | None = None) -> dict:
     out["bids"] = _levels(out.get("bids"))
     out["asks"] = _levels(out.get("asks"))
     if out.get("lastTradePrice") is not None:
-        try:
+        # A level the exchange mis-typed stays as it arrived rather than
+        # becoming a zero; `_levels` above already dropped the unusable ones.
+        with contextlib.suppress(TypeError, ValueError):
             out["lastTradePrice"] = float(out["lastTradePrice"]) * k
-        except (TypeError, ValueError):
-            pass
     return out
 
 
@@ -168,10 +169,8 @@ def scale_udf(body: dict, symbol: str, unit: str | None = None) -> dict:
     for f in ("o", "h", "l", "c"):
         seq = out.get(f)
         if isinstance(seq, list):
-            try:
+            with contextlib.suppress(TypeError, ValueError):
                 out[f] = [float(x) * k for x in seq]
-            except (TypeError, ValueError):
-                pass
     return out
 
 

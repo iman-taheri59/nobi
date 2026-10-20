@@ -17,7 +17,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from benchmark import MIN_OBS, PERIODS_PER_YEAR, relative, summarise  # noqa: E402
+from benchmark import MIN_OBS, PERIODS_PER_YEAR, relative, summarise
 
 
 # --------------------------------------------------------------------------- #
@@ -146,6 +146,7 @@ def bench_board(monkeypatch):
 
 def test_route_reports_a_beta_per_symbol(bench_board):
     from fastapi.testclient import TestClient
+
     import main
 
     d = TestClient(main.app).post("/api/benchmark/relative",
@@ -163,6 +164,7 @@ def test_route_reports_a_beta_per_symbol(bench_board):
 
 def test_route_does_not_accept_itself_as_the_benchmark(bench_board):
     from fastapi.testclient import TestClient
+
     import main
 
     d = TestClient(main.app).post("/api/benchmark/relative",
@@ -173,6 +175,7 @@ def test_route_does_not_accept_itself_as_the_benchmark(bench_board):
 
 def test_route_drops_a_symbol_without_enough_bars(bench_board):
     from fastapi.testclient import TestClient
+
     import main
 
     d = TestClient(main.app).post(
@@ -186,6 +189,7 @@ def test_route_drops_a_symbol_without_enough_bars(bench_board):
 def test_route_skips_the_same_asset_in_another_quote(bench_board, monkeypatch):
     """BTC/USDT vs a BTC/IRT benchmark measures the basis, not performance."""
     from fastapi.testclient import TestClient
+
     import main
 
     board = main._cached["signals_by_tf"]["1h"]
@@ -212,6 +216,7 @@ def test_route_skips_the_same_asset_in_another_quote(bench_board, monkeypatch):
 
 def test_route_refuses_an_unknown_benchmark(bench_board):
     from fastapi.testclient import TestClient
+
     import main
 
     d = TestClient(main.app).post("/api/benchmark/relative",

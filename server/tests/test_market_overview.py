@@ -15,7 +15,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from market_overview import MIN_ROWS, overview  # noqa: E402
+from market_overview import overview
 
 
 def _row(sym: str, change: float, vol: float, fx: float = 100_000.0) -> dict:
@@ -158,6 +158,7 @@ def test_premium_passes_through_untouched_including_none():
 # --------------------------------------------------------------------------- #
 def test_route_serves_the_computed_overview(monkeypatch):
     from fastapi.testclient import TestClient
+
     import main
 
     main._cached["universe"] = [
@@ -193,6 +194,7 @@ def test_route_serves_the_computed_overview(monkeypatch):
 
 def test_route_says_so_when_there_is_no_universe(monkeypatch):
     from fastapi.testclient import TestClient
+
     import main
 
     main._cached["universe"] = []
