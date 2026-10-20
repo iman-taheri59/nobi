@@ -388,3 +388,67 @@ def test_empty_is_never_rendered_as_zero(monkeypatch):
     assert d.get("ok") is False
     assert d.get("universe_size") == 0
     assert "reason" in d
+
+
+# =========================================================================== #
+# 6. ONE COPY — a number the user is warned about must be the number that fires
+# =========================================================================== #
+# The ticket's preview used to compare against three literals of its own
+# (0.75 / 25 / 1.5) while `/api/risk/state` published the caps the server
+# actually enforces. Three copies of one rule: server, nbx-core.js, index.html.
+# The browser's copy answered first, so it always won — silently.
+# =========================================================================== #
+def test_the_dashboard_does_not_keep_its_own_copy_of_the_risk_caps():
+    html = _read(REPO / "index.html")
+    code = html.split("<script>", 1)[1]
+    for pattern, what in (
+        (r"riskPct\s*>\s*0?\.\d+", "per-trade risk compared against a literal"),
+        (r"exposure\s*>\s*\d+", "single-asset exposure compared against a literal"),
+        (r"\brr\s*<\s*\d+\.?\d*", "reward:risk compared against a literal"),
+    ):
+        assert not re.search(pattern, code), f"index.html: {what}"
+
+    # …and the numbers come from the server's caps instead.
+    assert "RISK_LIMITS" in code
+    assert "RISK_LIMITS.riskPct" in code
+    assert "RISK_LIMITS.maxSingleAssetPct" in code
+    assert "RISK_LIMITS.minRR" in code
+
+
+def test_the_caps_the_page_receives_are_the_engine_s_own():
+    """Change the engine's config and the published caps must follow. A route
+    that returned literals would keep saying 0.75 with a 0.42 engine."""
+    from fastapi.testclient import TestClient
+
+    import main
+    from risk_engine import MIN_RR, RiskConfig, RiskEngine
+
+    mp = pytest.MonkeyPatch()
+    mp.setattr(main, "risk", RiskEngine(RiskConfig(
+        equity=1_000.0, risk_pct=0.42, max_single_asset_pct=18.0, max_heat_pct=4.0)))
+    caps = TestClient(main.app).get("/api/risk/state").json()["caps"]
+    mp.undo()
+
+    assert caps["riskPct"] == pytest.approx(0.42)
+    assert caps["maxSingleAssetPct"] == pytest.approx(18.0)
+    assert caps["maxHeatPct"] == pytest.approx(4.0)
+    assert caps["minRR"] == pytest.approx(MIN_RR)
+
+
+def test_the_rr_warning_reads_the_published_constant(monkeypatch):
+    """The engine must compare against `MIN_RR`, not against a literal that
+    happens to equal it today. Raising the constant has to change the verdict;
+    a hard-coded 1.5 would keep answering the old way."""
+    import risk_engine
+
+    eng = risk_engine.RiskEngine(risk_engine.RiskConfig(equity=100_000.0))
+
+    def plan() -> risk_engine.RiskPlan:
+        # 2×ATR stop, TP2 at 2R by construction (`_tp`), so rr == 2.0.
+        return eng.evaluate("BTCIRT", "buy", 100.0, 0.5, "15m",
+                            equity_quote=1_000_000.0, preview=True)
+
+    monkeypatch.setattr(risk_engine, "MIN_RR", 1.0)
+    assert "low-rr" not in plan().warnings
+    monkeypatch.setattr(risk_engine, "MIN_RR", 2.5)
+    assert "low-rr" in plan().warnings

@@ -524,6 +524,16 @@
       try { EQUITY = Number(rs.equity); } catch (e) {}
     }
 
+    // The ticket's preview compares against these numbers; it must be the same
+    // object the server gates on, not a second literal set.
+    if (rs && rs.caps && typeof RISK_LIMITS !== 'undefined') {
+      RISK_LIMITS = {
+        riskPct: Number(rs.caps.riskPct),
+        maxSingleAssetPct: Number(rs.caps.maxSingleAssetPct),
+        minRR: Number(rs.caps.minRR),
+      };
+    }
+
     // Risk caps / kill switches come from /api/risk/state, not demo arrays.
     if (rs && typeof caps !== 'undefined' && Array.isArray(caps)) {
       const c = rs.caps || {};

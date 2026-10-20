@@ -48,6 +48,7 @@ const browserGlobals = {
 // declared, and `no-redeclare` would fire on every one of them.
 const pageGlobals = {
   LANG: "writable", T: "writable", EQUITY: "writable", toast: "readonly",
+  RISK_LIMITS: "writable",   // copied from /api/risk/state by nbx-app.js
   refreshIcons: "readonly", renderPositions: "readonly", renderKills: "readonly",
   renderCaps: "readonly", positions: "writable", kills: "writable",
   caps: "writable", equitySeries: "writable", candleSeries: "writable",

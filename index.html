@@ -1319,7 +1319,7 @@ const T = {
     'dk.blockedD':'نمادهای دارای وتو یا مسدودسازی، در هیچ حالتی اجرا نمی‌شوند.',
     'dk.queue':'صف تأیید','dk.queueSub':'پیشنهادها پس از انقضای TTL خودکار باطل می‌شوند','ob.unavailable':'دفتر سفارش در دسترس نیست','dk.price':'قیمت ورود','dk.amount':'حجم','dk.notional':'ارزش معامله','dk.riskAmt':'مبلغ ریسک','dk.riskPct':'ریسک/سرمایه','dk.audit':'ردپای حسابرسی','dk.actor':'عامل','dk.action':'اقدام','dk.detail':'جزئیات',
     'dk.approve':'تأیید و ارسال','dk.reject':'رد','dk.expired':'منقضی',
-    'dk.ok':'حد مجاز — انطباق با سقف‌های ریسک','dk.warn1':'ریسک هر معامله از سقف ۰٫۷۵٪ بیشتر است','dk.warn2':'مواجهه با این دارایی از سقف ۲۵٪ عبور می‌کند','dk.warn3':'نسبت R:TP کمتر از ۱٫۵ است — سودآوری مشکوک',
+    'dk.ok':'حد مجاز — انطباق با سقف‌های ریسک','dk.warn1':'ریسک هر معامله از سقف {p}٪ بیشتر است','dk.warn2':'مواجهه با این دارایی از سقف {p}٪ عبور می‌کند','dk.warn3':'نسبت R:TP کمتر از {r} است — سودآوری مشکوک','dk.needInput':'قیمت، حجم و حد ضرر را پر کنید','dk.limitsUnknown':'سقف‌های ریسک از سرور نرسیده — این عددها بررسی نشده‌اند',
     'dk.stop':'قیمت استاپ',
     'dk.ticket':'بلیت سفارش','dk.symbol':'نماد',
     'dk.submit':'برای ثبت، نگه دارید','dk.ticketNote':'سفارش دستی نیز از دروازه‌های ریسک و clientOrderId عبور می‌کند (ADR-0013).',
@@ -1534,7 +1534,7 @@ const T = {
     'dk.blockedD':'Symbols with a veto or block are never executed in any mode.',
     'dk.queue':'Approval queue','dk.queueSub':'Proposals auto-expire when their TTL elapses','ob.unavailable':'Order book unavailable','dk.price':'Entry price','dk.amount':'Size','dk.notional':'Notional','dk.riskAmt':'Risk amount','dk.riskPct':'Risk/equity','dk.audit':'Audit trail','dk.actor':'Actor','dk.action':'Action','dk.detail':'Details',
     'dk.approve':'Approve & send','dk.reject':'Reject','dk.expired':'Expired',
-    'dk.ok':'Within limits — risk caps satisfied','dk.warn1':'Per-trade risk exceeds the 0.75% cap','dk.warn2':'Single-asset exposure would exceed the 25% cap','dk.warn3':'R:TP ratio below 1.5 — questionable payoff',
+    'dk.ok':'Within limits — risk caps satisfied','dk.warn1':'Per-trade risk exceeds the {p}% cap','dk.warn2':'Single-asset exposure would exceed the {p}% cap','dk.warn3':'R:TP ratio below {r} — questionable payoff','dk.needInput':'Enter a price, a size and a stop','dk.limitsUnknown':'Risk caps have not arrived from the server — these numbers are unchecked',
     'dk.whatif':'If I take this trade','dk.heat':'Heat','dk.worstCase':'Worst case (stop)','dk.slots':'Position slots left',
     'dk.whatifServer':'from server','dk.whatifNoServer':'Server unreachable — portfolio projection not computed',
     'dk.whatifBlocked':'Would be blocked: ','dk.whatifOk':'All gates open',
@@ -4043,6 +4043,12 @@ const queueDismissed = new Set();
 let audit = [
 ];
 let EQUITY = 100000;  // synced from /api/risk/state at runtime
+/* The caps the *server* enforces, copied from `/api/risk/state → caps` by
+ * nbx-app.js. The ticket's preview used to warn against its own literals
+ * (0.75 / 25 / 1.5): a third copy of the rule, and the one the user saw
+ * first. `null` means "the server has not answered", which is a different
+ * sentence from "within limits" — see the warn box below. */
+let RISK_LIMITS = null;
 
 function modeChip(m){
   const map = { auto:['dk.auto','emerald'], semi:['dk.semi','amber'], manual:['dk.manual','sky'], blocked:['dk.blocked','red'] };
@@ -4758,22 +4764,38 @@ function updateTicket(){
   byId('pRiskPct').textContent = PC(riskPct,2);
   byId('pRR').textContent = fmtNum(rr,2);
   const warns=[];
-  if(riskPct>0.75) warns.push(['dk.warn1','red']);
-  if(exposure>25) warns.push(['dk.warn2','amber']);
-  if(rr<1.5) warns.push(['dk.warn3','amber']);
+  if(RISK_LIMITS){
+    // Thresholds come from /api/risk/state, and the text interpolates the same
+    // value that was compared — a warning quoting a different number than the
+    // one that fired is the bug this card used to have. `fmtNum`, not `PC`: the
+    // translated string already carries its own percent sign.
+    if(riskPct > RISK_LIMITS.riskPct)
+      warns.push(t('dk.warn1').replace('{p}', fmtNum(RISK_LIMITS.riskPct, 2)));
+    if(exposure > RISK_LIMITS.maxSingleAssetPct)
+      warns.push(t('dk.warn2').replace('{p}', fmtNum(RISK_LIMITS.maxSingleAssetPct, 0)));
+    if(rr < RISK_LIMITS.minRR)
+      warns.push(t('dk.warn3').replace('{r}', fmtNum(RISK_LIMITS.minRR, 1)));
+  }
   const w = byId('capWarn');
   if(!price||!amount||!stop){ w.className='mt-2.5 text-[10px] leading-5 rounded-lg p-2.5 border border-white/10 bg-white/[.02] text-zinc-500'; w.textContent = t('dk.ticketNote'); }
+  else if(!RISK_LIMITS){
+    // No caps from the server: the local numbers are gone, so the honest
+    // answer is "not checked", never a green "within limits".
+    w.className='mt-2.5 text-[10px] leading-5 rounded-lg p-2.5 border border-red-400/30 bg-red-400/[.07] text-red-300';
+    w.setAttribute('data-unavailable','1');
+    w.innerHTML = `<div class="flex gap-1.5">${icon('plug-zap','w-3.5 h-3.5 shrink-0 mt-0.5')}<span>${t('dk.limitsUnknown')}</span></div>`; }
   else if(warns.length){ w.className='mt-2.5 text-[10px] leading-5 rounded-lg p-2.5 border border-red-400/30 bg-red-400/[.07] text-red-300';
     w.removeAttribute('data-unavailable');
-    w.innerHTML = warns.map(([k])=>`<div class="flex gap-1.5">${icon('triangle-alert','w-3.5 h-3.5 shrink-0 mt-0.5')}${t(k)}</div>`).join(''); }
+    w.innerHTML = warns.map((txt)=>`<div class="flex gap-1.5">${icon('triangle-alert','w-3.5 h-3.5 shrink-0 mt-0.5')}${txt}</div>`).join(''); }
   else { w.className='mt-2.5 text-[10px] leading-5 rounded-lg p-2.5 border border-emerald-400/30 bg-emerald-400/[.07] text-emerald-300';
+    w.removeAttribute('data-unavailable');
     w.innerHTML = `<div class="flex gap-1.5">${icon('badge-check','w-3.5 h-3.5 shrink-0 mt-0.5')}${t('dk.ok')}</div>`; }
   scheduleWhatIf();
   refreshIcons();
 }
 function submitManual(){
   const {sym,side,price,amount,stop} = manual;
-  if(!price||!amount||!stop){ toast(t('dk.warn1'), t('dk.warn1'), 'err'); return; }
+  if(!price||!amount||!stop){ toast(t('dk.needInput'), t('dk.needInput'), 'err'); return; }
   const riskPct = Math.abs(price-stop)*amount/fxOf(sym)/EQUITY*100;
   // No local risk gate here. This used to refuse anything above 0.75 % with a
   // generic toast, computed from a second copy of the rule; the server runs the

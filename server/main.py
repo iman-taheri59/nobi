@@ -52,7 +52,7 @@ from paper_trading import FEE_PCT as PAPER_FEE_PCT
 from paper_trading import get_broker
 from portfolio import Candidate, Limits, aligned_closes, log_returns
 from portfolio import allocate as allocate_portfolio
-from risk_engine import RiskConfig, RiskEngine, preflight
+from risk_engine import MIN_RR, RiskConfig, RiskEngine, preflight
 from security import API_TOKEN, auth_mode, cors_origins, require_client
 from ta_engine import RISK_K, candles_to_df, ta_score, ta_score_series
 from units import apply_options, market_symbol, min_notional_usd
@@ -2056,6 +2056,9 @@ async def risk_state():
             "maxSingleAssetPct": risk.cfg.max_single_asset_pct,
             "maxHeatPct": risk.cfg.max_heat_pct,
             "minCashPct": risk.cfg.min_cash_pct,
+            # Policy, not an account setting: the ticket's R:R warning reads it
+            # from here instead of carrying a copy of 1.5.
+            "minRR": MIN_RR,
         },
         **provenance(),
     }

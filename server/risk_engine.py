@@ -24,6 +24,13 @@ class RiskPlan:
     blocked: bool = False
 
 
+#: Reward-to-risk below this is flagged on the plan. It is a policy line, not
+#: an account setting, so it lives here as a constant — and `/api/risk/state`
+#: publishes it, because the dashboard must not keep its own copy of the number
+#: it warns about.
+MIN_RR = 1.5
+
+
 @dataclass
 class RiskConfig:
     equity: float
@@ -260,7 +267,7 @@ class RiskEngine:
         stop = entry - stop_dist if side == "buy" else entry + stop_dist
         tp1, tp2 = self._tp(entry, stop, side)
         rr = abs((tp2 - entry) / (entry - stop))
-        if rr < 1.5:
+        if rr < MIN_RR:
             warnings.append("low-rr")
 
         if not preview:
