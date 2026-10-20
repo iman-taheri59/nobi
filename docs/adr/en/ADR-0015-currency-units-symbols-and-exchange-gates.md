@@ -86,3 +86,29 @@ Both were fixed.
 - `server/tests/test_api_conformance.py` — one test per documented rule.
 - `server/units.py` — the only conversion point.
 - `docs/reviews/2026-10-20-nobitex-api-conformance-fa.md` — the full mismatch table.
+
+---
+
+## Implementation amendment — 2026-10-20
+
+### The standalone bundle carries the same gates
+
+`nbx-core.js` contains a port of `risk_engine.preflight` (`NBX.Risk.preflight`)
+because the single-file bundle on a phone has no backend to ask. A second copy of
+a rule is dangerous, so the copies are **tested** rather than assumed equal:
+
+- `scripts/check_preflight_parity.py` runs the same ten gates over 28 scenarios
+  in both implementations and reports the first divergence; precision tables,
+  minimums and risk defaults are compared too.
+- `scripts/js_broker_test.js` checks the browser broker's behaviour (FX, exchange
+  minimum, closed market, precision, equity).
+- Both run inside `pytest` (`server/tests/test_js_parity.py`).
+
+### Consequences
+
+- `NBX.Paper` converts through the `USDTIRT` rate and refuses IRT orders without
+  one (`no-fx-rate`); it used to treat Toman as dollars.
+- `NBX.Units` maps `btc-rls` → `BTCIRT` and Rial → Toman on the path where
+  `MarketEngine.loadUniverse` talks to the exchange directly.
+- The local risk gate in the manual ticket was removed; the server decides and
+  names the gate.

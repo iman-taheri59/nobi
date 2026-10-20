@@ -71,6 +71,8 @@ css` را نزنی، `build_standalone.py` هشدار می‌دهد که CSS ا�
 | `python3 scripts/mock_upstream.py --port 8010` + پروب روی ۸۰۱۰ | حالت «داده هست»: ۴۵ پنل باید عدد واقعی نشان بدهند |
 | `python3 scripts/layout_test.py` | ۳ ویوپورت × ۱۰ تب: سرریز افقی، نمودارهای خالی |
 | `python3 scripts/ui_smoke_prep.py && node scripts/ui_smoke_test.js` | DOM و MSI بدون خطای JS |
+| `python3 scripts/check_preflight_parity.py` | ده دروازهٔ ریسک در Python و JS یکی باشند |
+| `node scripts/js_broker_test.js` | بروکر مرورگر: نرخ ارز، حداقل صرافی، بازار بسته، دقت |
 
 ---
 
@@ -128,6 +130,7 @@ docs/                   ADR، تحلیل، ops، بازبینی‌ها
 | `server/units.py` | `btc-rls → BTCIRT`، ریال→تومان، دقت مقدار/قیمت، حداقل سفارش |
 | `NobitexClient` | تنها جایی که این تبدیل‌ها اجرا می‌شود |
 | `risk_engine.preflight` | دروازه‌های `min-notional` و `market-closed` صرافی |
+| `nbx-core.js` (`NBX.Units`، `NBX.Risk`) | همان قواعد برای باندل بدون بک‌اند؛ با تست هم‌ارزی |
 
 نتیجه: عدد داشبورد = عدد صرافی، و سفارشی که زیر حداقل صرافی است در پیش‌نمایش هم
 رد می‌شود. جزئیات: [`docs/reviews/2026-10-20-nobitex-api-conformance-fa.md`](docs/reviews/2026-10-20-nobitex-api-conformance-fa.md).

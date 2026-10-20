@@ -41,6 +41,7 @@
 | [`reviews/2026-10-19-project-review-fa.md`](reviews/2026-10-19-project-review-fa.md) | بازبینی کامل پروژه: وضعیت، باگ‌ها، مسیر |
 | [`reviews/2026-10-20-live-path-verification-fa.md`](reviews/2026-10-20-live-path-verification-fa.md) | تأیید نیمهٔ «داده زنده»: چه سنجیده شد، ۲۰ باگ، چه چیزی هنوز اثبات نشده |
 | [`reviews/2026-10-20-nobitex-api-conformance-fa.md`](reviews/2026-10-20-nobitex-api-conformance-fa.md) | انطباق با مستندات رسمی نوبیتکس: ۱۶ مغایرت، اصلاح‌ها و باقی‌مانده‌ها |
+| [`reviews/2026-10-20-js-broker-parity-fa.md`](reviews/2026-10-20-js-broker-parity-fa.md) | بروکر مرورگر: ۳ دروازه → ۱۰ دروازه، با تست هم‌ارزی Python/JS |
 | [`reviews/probe-live-2026-10-20.md`](reviews/probe-live-2026-10-20.md) | خروجی خام پروب با فید زنده (۴۴ پنل) |
 | [`reviews/probe-offline-2026-10-20.md`](reviews/probe-offline-2026-10-20.md) | خروجی خام پروب با صرافیِ قطع (۴۴ پنل) |
 | [`reviews/real-ic-2026-10-19.json`](reviews/real-ic-2026-10-19.json) | اندازه‌گیری IC روی دادهٔ واقعی |

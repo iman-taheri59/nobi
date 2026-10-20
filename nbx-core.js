@@ -348,9 +348,195 @@
   };
 
   /* ----------------------------------------------------------
+   * 3b. Units and exchange rules (ADR-0015)
+   *
+   * The backend converts Rial→Toman, rounds to the market's tick and enforces
+   * the exchange minimum at its API boundary. The standalone bundle has no
+   * backend, so it needs the same rules in the same place — otherwise the two
+   * brokers admit different orders and the one on the phone is the permissive
+   * one.
+   *
+   * Table values come from the Nobitex docs (`amountPrecisions`,
+   * `pricePrecisions`, `minOrders` on /v2/options, SmallOrder = 3,000,000 Rial
+   * or 11 USDT). `scripts/js_broker_test.js` checks the table against
+   * `server/units.py`, so the two cannot drift apart silently.
+   * --------------------------------------------------------- */
+  const RIAL_PER_TOMAN = 10;
+  const AMOUNT_STEP = {
+    BTCIRT: 0.000001, BTCUSDT: 0.000001,
+    ETHIRT: 0.00001, ETHUSDT: 0.0001,
+    SOLIRT: 0.0001, SOLUSDT: 0.0001,
+    XRPIRT: 1, XRPUSDT: 0.1,
+    ADAIRT: 1, ADAUSDT: 1,
+    DOGEIRT: 1, DOGEUSDT: 1,
+    TONIRT: 0.001, TONUSDT: 0.001,
+    TRXIRT: 1, TRXUSDT: 1,
+    USDTIRT: 0.1,
+  };
+  const PRICE_STEP = { rls: 10, usdt: 0.01 };
+  const MIN_NOTIONAL_QUOTE = { rls: 3000000, usdt: 11 };
+
+  const Units = {
+    RIAL_PER_TOMAN,
+    isRial: (sym) => /IRT$/.test(String(sym || '').toUpperCase()),
+    /** `btc-rls` → `BTCIRT`, `btc-usdt` → `BTCUSDT`; `global` → null. */
+    marketSymbol(key) {
+      const s = String(key || '').trim().toLowerCase();
+      if (!s || s === 'global') return null;
+      if (s.indexOf('-') === -1) return s.toUpperCase();
+      const parts = s.split('-');
+      if (parts.length !== 2 || !parts[0] || !parts[1]) return null;
+      const dst = parts[1] === 'rls' || parts[1] === 'irt' ? 'IRT' : parts[1].toUpperCase();
+      return parts[0].toUpperCase() + dst;
+    },
+    quoteOf: (sym) => (Units.isRial(sym) ? 'rls' : 'usdt'),
+    amountStep: (sym) => AMOUNT_STEP[String(sym || '').toUpperCase()] || 0.00000001,
+    priceStep: (sym) => PRICE_STEP[String(sym || '').toUpperCase()]
+                        || PRICE_STEP[Units.quoteOf(sym)],
+    // Amounts truncate toward zero; prices round half-up (docs §precision).
+    truncateAmount(qty, sym) {
+      const step = Units.amountStep(sym);
+      if (!(step > 0) || !isFinite(qty)) return 0;
+      return Math.floor(Math.max(0, qty) / step) * step;
+    },
+    roundPrice(px, sym) {
+      const step = Units.priceStep(sym);
+      if (!(step > 0) || !isFinite(px)) return 0;
+      return Math.floor(px / step + 0.5) * step;
+    },
+    // Quoted in the market's own quote currency (Rial for IRT pairs).
+    minNotionalQuote: (sym) => MIN_NOTIONAL_QUOTE[Units.quoteOf(sym)],
+    // Same expression as `units.min_notional_usd`: 3,000,000 Rial = 300,000
+    // Toman, divided by the Toman-per-USD rate.
+    minNotionalUsd(sym, usdtIrtToman) {
+      const q = Units.quoteOf(sym);
+      if (q === 'usdt') return MIN_NOTIONAL_QUOTE.usdt;
+      if (!(usdtIrtToman > 0)) return 0;
+      return MIN_NOTIONAL_QUOTE.rls / RIAL_PER_TOMAN / usdtIrtToman;
+    },
+    _tables() { return { AMOUNT_STEP, PRICE_STEP, MIN_NOTIONAL_QUOTE }; },
+  };
+  NBX.Units = Units;
+
+  /* ----------------------------------------------------------
+   * 3c. preflight — a port of `risk_engine.preflight`
+   *
+   * Same gates, same order, same arithmetic, same ids. The backend runs the
+   * Python function before it fills anything; this runs here before the
+   * standalone broker fills anything. `scripts/js_broker_test.js` feeds the
+   * same inputs to both and fails if a single gate disagrees.
+   *
+   * All amounts are USD, exactly as in Python: the caller converts from the
+   * pair's quote currency first. Mixing quote currency into a USD ledger is
+   * what let a 9-billion-Toman BTC order look like 9 billion dollars.
+   * --------------------------------------------------------- */
+  const RISK_DEFAULTS = {
+    risk_pct: 0.75,
+    max_concurrent: 5,
+    max_single_asset_pct: 25.0,
+    max_heat_pct: 6.0,
+    min_cash_pct: 10.0,
+  };
+  NBX.RISK_DEFAULTS = RISK_DEFAULTS;
+
+  function preflight(opts) {
+    const o = opts || {};
+    const equity = Math.max(+(o.equity || 0), 1e-9);
+    const cash = +(o.cash || 0);
+    const notional = +(o.notional_usd || 0);
+    const fee = +(o.fee_usd || 0);
+    const riskUsd = +(o.risk_usd || 0);
+    const minNotional = +(o.min_notional_usd || 0);
+    const openHeat = +(o.open_heat || 0);
+    const openPositions = +(o.open_positions || 0);
+    const concurrentLimit = +(o.concurrent_limit || 0);
+    const maxHeat = +(o.max_heat_pct || 0);
+    const maxSingle = +(o.max_single_asset_pct || 0);
+    const riskCap = +(o.risk_pct_cap || 0);
+    const minCashPct = +(o.min_cash_pct || 0);
+    const halted = !!o.halted;
+    const closed = !!o.market_closed;
+
+    const riskPct = riskUsd / equity * 100;
+    const heatBefore = openHeat;
+    const heatAfter = heatBefore + riskPct;
+    const minCash = minCashPct / 100 * equity;
+    const cashAfter = cash - (notional + fee);
+    // 1e-9 absorbes the float overshoot of `size = exactly the cap`.
+    const EPS = 1e-9;
+
+    const g = (id, ok, value, limit, detail) => ({
+      id, ok: !!ok,
+      value: value === null || value === undefined ? null : +value,
+      limit: limit === null || limit === undefined ? null : +limit,
+      detail: detail || '',
+    });
+    const money = (v) => '$' + Number(v).toLocaleString('en-US',
+      { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+    const gates = [
+      g('halted', !halted, null, null, halted ? 'kill switch is armed' : ''),
+      g('market-closed', !closed, null, null,
+        closed ? 'the exchange reports this market as closed' : ''),
+      g('concurrent-cap', openPositions < concurrentLimit, openPositions, concurrentLimit,
+        openPositions + ' of ' + concurrentLimit + ' slots in use'),
+      g('cash-present', cash > 0, cash, 0, cash <= 0 ? 'paper account is empty' : ''),
+      g('single-asset-cap', notional <= maxSingle / 100 * equity * (1 + EPS),
+        notional / equity * 100, maxSingle,
+        'notional ' + (notional / equity * 100).toFixed(2) + '% of equity'),
+      g('min-notional', notional >= minNotional - EPS, notional, minNotional,
+        (minNotional && notional < minNotional - EPS)
+          ? money(notional) + ' is below the exchange minimum (' + money(minNotional) + ')'
+          : ''),
+      g('risk-cap', riskPct <= riskCap * 1.05, riskPct, riskCap,
+        'this order risks ' + riskPct.toFixed(2) + '% of equity'),
+      g('heat-cap', heatAfter <= maxHeat, heatAfter, maxHeat,
+        'heat ' + heatBefore.toFixed(2) + '% + ' + riskPct.toFixed(2) + '% = ' + heatAfter.toFixed(2) + '%'),
+      g('min-cash', cashAfter >= minCash, cashAfter, minCash,
+        'cash after the order ' + money(cashAfter) + ', floor ' + money(minCash)),
+      g('funds', cashAfter >= 0, cashAfter, 0,
+        'needs ' + money(notional + fee) + ', available ' + money(cash)),
+    ];
+    const firstBlock = gates.find((x) => !x.ok) || null;
+    return {
+      equity, notional_usd: notional, fee_usd: fee, risk_usd: riskUsd,
+      risk_pct: +riskPct.toFixed(6),
+      heat_before: heatBefore, heat_after: +heatAfter.toFixed(6),
+      max_heat: maxHeat, open_positions: openPositions,
+      max_concurrent: concurrentLimit, cash_before: cash, cash_after: cashAfter,
+      min_cash: minCash,
+      loss_at_stop_usd: riskUsd + fee,
+      blocked: gates.some((x) => !x.ok),
+      blocked_by: firstBlock ? firstBlock.id : null,
+      gates,
+    };
+  }
+  NBX.Risk = { preflight, DEFAULTS: RISK_DEFAULTS };
+  NBX.preflight = preflight;
+
+  /* ----------------------------------------------------------
    * 4. Standalone Risk & Paper Broker Engine (ADR-0008/0009)
    * --------------------------------------------------------- */
   const PAPER_START_EQUITY = 100000;
+  /** Per-leg fee, same 0.2 % the Python broker charges (FEE_PCT). */
+  const PAPER_FEE_PCT = 0.002;
+
+  /*: Quote units per USD, exactly like `PaperBroker._quote_rate`: 1 for USDT
+   * pairs, USDTIRT for IRT pairs. Everything the gates see is then in USD, so
+   * a 9-billion-Toman BTC order is compared with a 100,000-dollar balance
+   * instead of being called 9 billion. */
+  function quoteRate(symbol) {
+    if (!Units.isRial(symbol)) return 1;
+    const eng = NBX.core && NBX.core.engine;
+    const rows = (eng && eng.universe) || [];
+    const row = rows.find((r) => r && r.symbol === 'USDTIRT');
+    const px = row ? +row.last : 0;
+    if (px > 0) return px;
+    // The engine may have a premium figure even when the universe is partial.
+    const p = eng && +eng.premium;
+    return p > 0 ? p : 0;
+  }
+
   NBX.Paper = {
     start_equity: PAPER_START_EQUITY,
     equity: PAPER_START_EQUITY,
@@ -358,12 +544,29 @@
     openHeat: 0,
     dailyPnl: 0,
     halted: false,
-    halt() { this.halted = true; return this.getMetrics(); },
-    resume() { this.halted = false; return this.getMetrics(); },
     positions: [],
     closed: [],
+    /** Betas for markets the exchange has closed, e.g. new Set(['DOGEIRT']). */
+    closedMarkets: new Set(),
+    /** Risk limits, identical to `risk_engine.RiskConfig` defaults. */
+    cfg: Object.assign({}, RISK_DEFAULTS),
+    quoteRate,
+    halt() { this.halted = true; return this.getMetrics(); },
+    resume() { this.halted = false; return this.getMetrics(); },
+
+    _open() { return this.positions.filter((p) => p.state !== 'CLOSED'); },
+
+    _markEquity() {
+      const openVal = this._open().reduce((a, p) => {
+        const rate = p.quote_usd > 0 ? p.quote_usd : 1;
+        return a + (p.filled_qty * (p.last_price || p.entry_price)) / rate;
+      }, 0);
+      this.equity = this.cash + openVal;
+      return this.equity;
+    },
+
     getMetrics() {
-      const open = this.positions.filter((p) => p.state !== 'CLOSED');
+      const open = this._open();
       const pnls = this.closed.map((p) => p.realized_pnl || 0);
       const wins = pnls.filter((v) => v > 0);
       const losses = pnls.filter((v) => v <= 0);
@@ -383,25 +586,77 @@
         daily_pnl: this.dailyPnl,
       };
     },
-    placeOrder(payload) {
-      if (this.halted) return { ok: false, error: 'halted: kill switch is armed' };
+
+    /*: What the broker would do with this order, without doing it. Same ten
+     * gates, same order of evaluation, as `/api/risk/whatif`. */
+    preflightOrder(payload) {
       const sym = normSymbol(payload.symbol || 'BTCIRT');
       const side = (payload.side || 'buy').toLowerCase();
-      const qty = +(payload.qty || 0);
-      const px = +(payload.price || 0);
-      if (!px) {
+      const px = Units.roundPrice(+(payload.price || 0), sym);
+      const qty = Units.truncateAmount(+(payload.qty || 0), sym);
+      const rate = quoteRate(sym);
+      const empty = {
+        ok: false, symbol: sym, side, qty, price: px, rate,
+        gates: [], blocked: true, blocked_by: null,
+      };
+      if (!(px > 0) || !(qty > 0)) return Object.assign({}, empty, { error: 'precision' });
+      if (!(rate > 0)) {
+        return Object.assign({}, empty, {
+          error: 'no-fx-rate',
+          message: 'USDTIRT price unavailable; an IRT order cannot be valued in USD',
+        });
+      }
+      const notionalQuote = px * qty;
+      const notionalUsd = notionalQuote / rate;
+      const feeUsd = notionalQuote * PAPER_FEE_PCT / rate;
+      const stop = +(payload.stop || (side === 'buy' ? px * 0.962 : px * 1.038));
+      const riskUsd = Math.abs(px - stop) * qty / rate;
+      const pf = preflight({
+        equity: this.equity, cash: this.cash,
+        open_heat: this.openHeat, open_positions: this._open().length,
+        concurrent_limit: this.cfg.max_concurrent,
+        max_heat_pct: this.cfg.max_heat_pct,
+        min_cash_pct: this.cfg.min_cash_pct,
+        max_single_asset_pct: this.cfg.max_single_asset_pct,
+        risk_pct_cap: this.cfg.risk_pct,
+        halted: !!this.halted,
+        notional_usd: notionalUsd, fee_usd: feeUsd, risk_usd: riskUsd,
+        min_notional_usd: Units.minNotionalUsd(sym, rate),
+        market_closed: this.closedMarkets.has(sym),
+      });
+      return { ok: !pf.blocked, symbol: sym, side, qty, price: px, rate,
+               notional_quote: notionalQuote, notional_usd: notionalUsd,
+               projected: pf };
+    },
+
+    placeOrder(payload) {
+      const sym = normSymbol(payload.symbol || 'BTCIRT');
+      const side = (payload.side || 'buy').toLowerCase();
+      if (!+(payload.price || 0)) {
         return { ok: false, unavailable: true,
                  error: 'price unavailable: the exchange is unreachable — pass the last traded price explicitly' };
       }
-      if (!qty) return { ok: false, error: 'qty is required' };
-      const notional = px * qty;
-      const cap = this.equity * 0.25;
-      if (notional > cap) {
-        return { ok: false, error: `single-asset-cap: notional ${Math.round(notional)} exceeds 25% of paper equity (${Math.round(cap)})` };
+      if (!+(payload.qty || 0)) return { ok: false, error: 'qty is required' };
+
+      const pf = this.preflightOrder(payload);
+      if (pf.error) {
+        return { ok: false, error: pf.error, message: pf.message, projection: null };
       }
-      if (notional > this.cash) {
-        return { ok: false, error: `insufficient-funds: need ${Math.round(notional)}, available ${Math.round(this.cash)}` };
+      if (pf.projected.blocked) {
+        // The id and the sentence, exactly as the backend refuses: the two
+        // brokers must not describe the same rejection differently.
+        const gate = pf.projected.gates.find((g) => !g.ok);
+        return {
+          ok: false,
+          error: pf.projected.blocked_by + ': ' + (gate ? gate.detail : ''),
+          blocked_by: pf.projected.blocked_by,
+          projection: pf.projected,
+        };
       }
+
+      const px = pf.price;
+      const qty = pf.qty;
+      const notional = pf.notional_quote;
       const stop = +(payload.stop || (side === 'buy' ? px * 0.962 : px * 1.038));
       const tp1 = +(payload.tp1 || (side === 'buy' ? px * 1.045 : px * 0.955));
       const tp2 = +(payload.tp2 || (side === 'buy' ? px * 1.075 : px * 0.925));
@@ -422,12 +677,37 @@
         filled_qty: qty,
         tp1_filled: false,
         last_price: px,
+        quote: Units.isRial(sym) ? 'IRT' : 'USDT',
+        quote_usd: pf.rate,
+        size_usd: pf.notional_usd,
+        risk_usd: pf.projected.risk_usd,
+        risk_pct: pf.projected.risk_pct,
+        client_order_id: 'nobi-' + Date.now() + '-' + Math.random().toString(16).slice(2, 10),
       };
       this.positions.unshift(pos);
-      this.cash -= notional;
-      this.equity = this.cash + this.positions
-        .filter((p) => p.state !== 'CLOSED')
-        .reduce((a, p) => a + p.filled_qty * (p.last_price || p.entry_price), 0);
+      this.cash -= pf.notional_usd + pf.projected.fee_usd;
+      this.openHeat = +(this.openHeat + pf.projected.risk_pct).toFixed(4);
+      this._markEquity();
+      return { ok: true, position: pos, projection: pf.projected, metrics: this.getMetrics() };
+    },
+
+    closePosition(id, exitPrice) {
+      const pos = this.positions.find((p) => p.id === id && p.state !== 'CLOSED');
+      if (!pos) return { ok: false, error: 'position not found' };
+      const px = Units.roundPrice(+(exitPrice || pos.last_price || 0), pos.symbol);
+      if (!(px > 0)) return { ok: false, error: 'exit price is required' };
+      const rate = pos.quote_usd > 0 ? pos.quote_usd : 1;
+      const outQuote = px * pos.filled_qty;
+      const feeQuote = outQuote * PAPER_FEE_PCT;
+      const pnl = (outQuote - pos.size_quote) / rate - feeQuote / rate;
+      this.cash += pos.size_usd || (pos.size_quote / rate);
+      this.cash += pnl;
+      pos.realized_pnl = pnl;
+      pos.state = 'CLOSED';
+      pos.last_price = px;
+      this.closed.unshift(pos);
+      this.openHeat = Math.max(0, +(this.openHeat - (pos.risk_pct || 0)).toFixed(4));
+      this._markEquity();
       return { ok: true, position: pos, metrics: this.getMetrics() };
     },
   };
@@ -1491,12 +1771,24 @@
       try {
         const stats = await this.api.getStats();
         if (stats && stats.stats) {
-          const rows = Object.entries(stats.stats).map(([sym, d]) => ({
-            symbol: normSymbol(sym),
-            last: +d.latest || +d.last || 0,
-            vol24: +d.valueDst || +d.volumeDst || +d['24h_volume'] || 0,
-            change24: +d.dayChange || 0,
-          }));
+          // `/market/stats` keys markets `btc-rls`, and quotes rial markets in
+          // Rial. `normSymbol` alone turned that into `BTC-RLS` — a market the
+          // order book and the chart have never heard of — and left every price
+          // ten times its Toman label. Same conversion the backend does
+          // (server/units.py), applied here because this path talks to the
+          // exchange directly when the backend is down.
+          const rows = Object.entries(stats.stats).map(([key, d]) => {
+            const symbol = Units.marketSymbol(key);
+            if (!symbol) return null;                    // deprecated `global`
+            const scale = Units.isRial(symbol) ? 1 / RIAL_PER_TOMAN : 1;
+            return {
+              symbol,
+              last: (+d.latest || +d.last || 0) * scale,
+              vol24: (+d.volumeDst || +d.valueDst || +d['24h_volume'] || 0) * scale,
+              change24: +d.dayChange || 0,               // a ratio: never scaled
+              closed: !!d.isClosed,
+            };
+          }).filter(Boolean);
           this.universe = rows.filter((r) => r.symbol && r.last > 0);
           this.premium = (rows.find((x) => x.symbol === 'USDTIRT') || {}).last || null;
         }

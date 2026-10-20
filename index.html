@@ -4414,7 +4414,11 @@ function submitManual(){
   const {sym,side,price,amount,stop} = manual;
   if(!price||!amount||!stop){ toast(t('dk.warn1'), t('dk.warn1'), 'err'); return; }
   const riskPct = Math.abs(price-stop)*amount/fxOf(sym)/EQUITY*100;
-  if(riskPct>0.75){ toast(t('dk.warn1'), t('dk.warn1'), 'err'); return; }
+  // No local risk gate here. This used to refuse anything above 0.75 % with a
+  // generic toast, computed from a second copy of the rule; the server runs the
+  // same gate with the account's real numbers and names the one that failed.
+  // Two implementations of one rule drift, and the one in the browser wins
+  // silently because it answers first.
   audit.unshift({ t:new Date().toLocaleTimeString('fa-IR'), a:'human', act:{fa:'سفارش دستی',en:'Manual order'}, sym,
     d:{fa:`${side==='buy'?t('sg.long'):(LANG==='fa'?'فروش':'Sell')} · نامینال ${fmtNum(price*amount)} · ریسک ${PC(riskPct,2)}`,
        en:`${side==='buy'?'Long':'Sell'} · notional ${fmtNum(price*amount)} · risk ${PC(riskPct,2)}`} });
