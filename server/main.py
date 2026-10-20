@@ -41,7 +41,7 @@ from risk_engine import RiskEngine, RiskConfig, preflight
 from portfolio import (Candidate, Limits, allocate as allocate_portfolio,
                        aligned_closes, log_returns)
 from benchmark import MIN_OBS as BENCH_MIN_OBS, PERIODS_PER_YEAR, relative as relative_to, summarise as summarise_relative
-from money import Rate, from_api, usd
+from money import Rate, toman, usd
 from units import apply_options, market_symbol, min_notional_usd, truncate_amount, round_price
 from market_overview import overview as market_overview
 import paper_trading
@@ -2085,7 +2085,11 @@ def _position_payload(pos) -> dict:
     rate = get_broker(EQUITY, client, risk).usdt_irt
     if pos.symbol.endswith("IRT"):
         if rate > 0:
-            value_usd = from_api(value_quote, pos.symbol).to_usd(
+            # `value_quote` is already Toman: the positions were priced at the
+            # API boundary. Wrapping it in `from_api` would read Toman as Rial
+            # and divide the result by ten again — the same mistake as the
+            # original bug, arriving through the helper meant to prevent it.
+            value_usd = toman(value_quote).to_usd(
                 Rate(toman_per_usdt=rate, as_of=time.time(), source="paper-broker",
                      max_age_s=paper_trading.RATE_TTL_S)).amount
             fx_used = rate
@@ -2409,8 +2413,16 @@ async def auto_tick(tf: str = "15m") -> dict:
         entry = float(snap.get("lastClose") or 0.0)
         atr = float((snap.get("risk") or {}).get("atr") or 0.0)
         eq, _start = _live_equity()
-        fx = await _fx_rate(sym)
-        equity_quote = eq * fx if fx else eq
+        rate = await _fx(sym)
+        if rate is None:
+            # Same refusal as the plan route: an auto pass without a rate would
+            # size the order against a number in the wrong currency.
+            out["skipped"] += 1
+            out["rejected"].append({"symbol": sym, "reason": "no-fx-rate"})
+            audit("paper.order.auto", actor="auto", result="blocked",
+                  detail={"symbol": sym, "reason": "no-fx-rate"})
+            continue
+        equity_quote = usd(eq).to_irt(rate).amount
         plan = risk.evaluate(sym, "buy", entry, atr, tf, equity_quote=equity_quote,
                              preview=True)
         _AUTO_LAST[sym] = now
