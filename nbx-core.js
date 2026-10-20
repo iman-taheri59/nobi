@@ -1532,6 +1532,67 @@
       } catch (e) { return { ok: false, error: String(e).slice(0, 80) }; }
     }
 
+    async getDiagnostics() {
+      // What can be checked. No results — a catalogue is not a result set.
+      if (this.standaloneMobile) return { checks: [], devsuite: { available: false, reason: 'offline' } };
+      try {
+        const r = await this.get(cfg.pythonApi + '/diagnostics', 1);
+        return r && Array.isArray(r.checks) ? r : { checks: [], devsuite: { available: false } };
+      } catch (e) {
+        return { checks: [], devsuite: { available: false }, error: 'unavailable' };
+      }
+    }
+
+    async runDiagnostics(opts) {
+      // The exchange checks are the slow ones, so the caller decides whether
+      // to include them rather than the default being a 3x20s wait.
+      const body = { kinds: (opts && opts.kinds) || null, only: (opts && opts.only) || null };
+      if (this.standaloneMobile) return { standalone: true, overall: 'skip', results: [] };
+      try {
+        const res = await fetch(cfg.pythonApi + '/diagnostics/run', {
+          method: 'POST', headers: this._authHeaders(), body: JSON.stringify(body),
+        });
+        const data = await res.json();
+        if (!res.ok) return { error: (data && data.detail) || ('HTTP ' + res.status), results: [] };
+        return data;
+      } catch (e) {
+        return { error: 'unreachable', detail: String(e && e.message || e).slice(0, 120), results: [] };
+      }
+    }
+
+    async getDevSuite() {
+      if (this.standaloneMobile) return { available: false, reason: 'offline', gates: [], last: null };
+      try {
+        return await this.get(cfg.pythonApi + '/devsuite', 1);
+      } catch (e) {
+        return { available: false, reason: 'unreachable', gates: [], last: null };
+      }
+    }
+
+    async runDevSuite(gates) {
+      if (this.standaloneMobile) return { error: 'offline' };
+      try {
+        const res = await fetch(cfg.pythonApi + '/devsuite/run', {
+          method: 'POST', headers: this._authHeaders(),
+          body: JSON.stringify({ gates: gates || null }),
+        });
+        const data = await res.json();
+        if (!res.ok) return { error: (data && data.detail && data.detail.message) || ('HTTP ' + res.status),
+                            busy: res.status === 409 };
+        return data;
+      } catch (e) {
+        return { error: 'unreachable', detail: String(e && e.message || e).slice(0, 120) };
+      }
+    }
+
+    async getDevSuiteRun(runId) {
+      try {
+        return await this.get(cfg.pythonApi + '/devsuite/' + encodeURIComponent(runId), 1);
+      } catch (e) {
+        return { error: 'unreachable' };
+      }
+    }
+
     async getAudit(opts) {
       const o = opts || {};
       if (this.standaloneMobile) return { events: [], counts: {}, standalone: true };

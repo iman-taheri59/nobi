@@ -21,8 +21,14 @@ import pytest
 # The suite must not read (or write) the paper account of whoever ran the
 # dashboard last. A single demo order used to leave `paper_state.json` with an
 # equity of 5.3 billion and the portfolio test then failed three files away.
-os.environ.setdefault("NBX_PAPER_STATE",
-                      str(Path(tempfile.mkdtemp(prefix="nbx-test-")) / "paper.json"))
+_SCRATCH = Path(tempfile.mkdtemp(prefix="nbx-test-"))
+os.environ.setdefault("NBX_PAPER_STATE", str(_SCRATCH / "paper.json"))
+
+# Same argument for the journal: `errorlog` writes through `journal.connect()`,
+# so a test that exercises a failing health check used to append a row to the
+# database the dashboard is reading. `setdefault` keeps an explicitly configured
+# path — pytest run against a fixture database still uses that one.
+os.environ.setdefault("NBX_JOURNAL_DB", str(_SCRATCH / "journal.db"))
 
 SERVER = Path(__file__).resolve().parents[1]
 if str(SERVER) not in sys.path:

@@ -34,6 +34,8 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 import _env  # noqa: F401 — must precede every module that reads os.environ
+import devsuite
+import diagnostics
 import errorlog
 import journal as signal_journal
 import notify
@@ -1380,6 +1382,96 @@ async def errors_selftest():
     """Prove the log can write and read back — a log that is silently dead is
     worse than none, because its emptiness looks like health."""
     return errorlog.self_test()
+
+
+# ---------------- Diagnostics: "is this process healthy right now?" --------
+def _diag_ctx() -> diagnostics.Ctx:
+    """Hand the checks the same objects the routes use.
+
+    Built per request rather than cached: the whole point is to observe the
+    state *now*, and a snapshot taken at import time would answer a question
+    nobody asked.
+    """
+    broker = get_broker(EQUITY, client, risk)
+
+    def paper_state() -> dict:
+        return {"equity": broker.equity, "cash": broker.cash,
+                "positions": dict(broker.positions)}
+
+    def risk_state() -> dict:
+        eq, _start = _live_equity()
+        return {"equity": eq, "halted": risk.halted, "openHeat": risk.open_heat,
+                "caps": {"riskPct": risk.cfg.risk_pct,
+                         "maxConcurrent": risk.cfg.max_concurrent,
+                         "maxSingleAssetPct": risk.cfg.max_single_asset_pct,
+                         "maxHeatPct": risk.cfg.max_heat_pct,
+                         "minCashPct": risk.cfg.min_cash_pct}}
+
+    def ws_state() -> dict:
+        st = dict(STREAM_EXECUTOR.status())
+        st.setdefault("connected", st.get("transport") == "ws")
+        return st
+
+    import settings_view
+    return diagnostics.Ctx(
+        client=client, cached=_cached, paper_state=paper_state, risk_state=risk_state,
+        fx=lambda: _fx("BTCIRT"), ws_status=ws_state,
+        secrets={s["name"]: bool(s.get("present")) for s in settings_view.secrets()},
+    )
+
+
+@app.get("/api/diagnostics")
+async def diagnostics_catalogue():
+    """What can be checked, before anything has been checked."""
+    ok, why = devsuite.available()
+    return {"checks": diagnostics.catalogue(), "devsuite": {"available": ok, "reason": why}}
+
+
+@app.post("/api/diagnostics/run", dependencies=[Depends(require_client)])
+async def diagnostics_run(body: dict | None = None):
+    """Run every check (or the named ones) and return what was observed.
+
+    Synchronous on purpose: the slow checks are three HTTP calls to the
+    exchange with a 20s ceiling each, and a run that returned an id would only
+    add polling to hide a two-second wait.
+    """
+    only = (body or {}).get("only") or None
+    kinds = (body or {}).get("kinds") or None
+    if only is not None and not isinstance(only, list):
+        raise HTTPException(status_code=400, detail="`only` must be a list of check ids")
+    try:
+        return await diagnostics.run(_diag_ctx(), only=only, kinds=kinds)
+    except KeyError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+
+# ---------------- Dev suite: "is this checkout correct?" -------------------
+@app.get("/api/devsuite")
+async def devsuite_status():
+    return devsuite.status()
+
+
+@app.post("/api/devsuite/run", dependencies=[Depends(require_client)])
+async def devsuite_run(body: dict | None = None):
+    gates = (body or {}).get("gates") or None
+    try:
+        run = await devsuite.start(gates)
+    except devsuite.Busy as e:
+        raise HTTPException(status_code=409,
+                            detail={"message": str(e), "run_id": e.run_id}) from e
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e)) from e
+    except KeyError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    return {"run_id": run.id, "state": run.state}
+
+
+@app.get("/api/devsuite/{run_id}")
+async def devsuite_get(run_id: str):
+    run = devsuite.get(run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="no such run (the last 10 are kept)")
+    return run.as_dict()
 
 
 @app.get("/api/settings")

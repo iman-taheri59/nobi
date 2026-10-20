@@ -957,6 +957,35 @@
           </div>
         </div>
       </div>
+
+      <!-- diagnostics: each row names what it actually observed -->
+      <div class="glass p-4 sm:p-5" id="diagCard">
+        <div class="flex flex-wrap items-center gap-2 mb-2">
+          <div class="font-bold text-[13px] sm:text-sm flex items-center gap-2"><i data-lucide="shield-check" class="w-4 h-4 text-emerald-300"></i> <span data-i18n="diag.title"></span></div>
+          <span id="diagSummary" class="text-[10px] sm:text-[11px] num text-zinc-500"></span>
+          <div class="ms-auto flex flex-wrap items-center justify-end gap-2">
+            <button id="diagRunMarket" type="button" class="text-[10px] sm:text-[11px] font-bold px-2.5 py-1.5 rounded-lg bg-white/5 text-zinc-300 border border-white/10" data-i18n="diag.runMarket"></button>
+            <button id="diagRun" type="button" class="text-[10px] sm:text-[11px] font-bold px-2.5 py-1.5 rounded-lg bg-emerald-400/10 text-emerald-300 border border-emerald-300/25" data-i18n="diag.run"></button>
+          </div>
+        </div>
+        <p id="diagNote" class="text-[10px] text-zinc-500 leading-5 mb-2" data-i18n="diag.note"></p>
+        <div id="diagList" class="divide-y divide-white/5"></div>
+      </div>
+
+      <!-- the project's own gates: pytest / ruff / mypy -->
+      <div class="glass p-4 sm:p-5" id="suiteCard">
+        <div class="flex flex-wrap items-center gap-2 mb-2">
+          <div class="font-bold text-[13px] sm:text-sm flex items-center gap-2"><i data-lucide="flask-conical" class="w-4 h-4 text-cyan-300"></i> <span data-i18n="suite.title"></span></div>
+          <span id="suiteState" class="text-[10px] sm:text-[11px] text-zinc-500"></span>
+          <div class="ms-auto flex items-center gap-2">
+            <button id="suiteRun" type="button" class="text-[10px] sm:text-[11px] font-bold px-2.5 py-1.5 rounded-lg bg-cyan-400/10 text-cyan-300 border border-cyan-300/25" data-i18n="suite.run"></button>
+            <button id="suiteToggleOut" type="button" class="hidden text-[10px] sm:text-[11px] font-bold px-2.5 py-1.5 rounded-lg bg-white/5 text-zinc-400 border border-white/10" data-i18n="suite.showOut"></button>
+          </div>
+        </div>
+        <p id="suiteNote" class="text-[10px] text-zinc-500 leading-5 mb-2" data-i18n="suite.note"></p>
+        <div id="suiteGates" class="divide-y divide-white/5"></div>
+        <pre id="suiteOut" class="hidden mt-3 max-h-72 overflow-auto rounded-lg bg-black/40 border border-white/10 text-[10px] leading-4 p-2.5 text-zinc-400 font-mono whitespace-pre-wrap" dir="ltr"></pre>
+      </div>
     </section>
 
     <section id="page-backtest" class="tab-page hidden space-y-4 sm:space-y-6">
@@ -1240,6 +1269,25 @@ const T = {
     'err.copy':'کپی', 'err.copied':'در کلیپ‌بورد کپی شد', 'err.copyFail':'کپی نشد — متن را دستی انتخاب و کپی کن',
     'err.copyHint':'دانلود مسدود شد؛ متن JSON پایین صفحه است', 'err.close':'بستن',
     'err.clearArm':'برای تأیید، دوباره بزن',
+    'diag.title':'بررسی سلامت سیستم',
+    'diag.note':'هر ردیف یک چیز واقعی را می‌سنجد و همان چیزی را می‌گوید که دید. «نامعلوم» یعنی سنجیده نشد — نه اینکه سالم است.',
+    'diag.run':'بررسی سریع', 'diag.runMarket':'با صرافی', 'diag.running':'در حال بررسی…',
+    'diag.never':'هنوز اجرا نشده — دکمهٔ «بررسی سریع» را بزن',
+    'diag.needsExchange':'با تماس واقعی به صرافی سنجیده می‌شود',
+    'diag.needsLocal':'درون همین سرور سنجیده می‌شود',
+    'diag.offline':'این بررسی‌ها فقط با سرور کار می‌کنند؛ در نسخهٔ آفلاین چیزی برای سنجیدن نیست',
+    'diag.ok':'سالم', 'diag.fail':'خراب', 'diag.skip':'نامعلوم', 'diag.error':'خطای خود بررسی',
+    'diag.notRun':'اجرا نشده',
+    'diag.allOk':'همه‌چیز سالم است', 'diag.someBad':'{n} بررسی خراب است',
+    'diag.someError':'{n} بررسی خودش خطا داد', 'diag.someSkip':'{n} مورد قابل سنجش نبود',
+    'suite.title':'تست‌های پروژه', 'suite.run':'اجرا',
+    'suite.note':'همان سه دستوری که CI اجرا می‌کند: pytest، ruff، mypy — روی همین کد. فقط وقتی سرور از پوشهٔ کد منبع اجرا شده باشد کار می‌کند.',
+    'suite.unavailable':'اجرای تست از این‌جا ممکن نیست',
+    'suite.running':'در حال اجرا…', 'suite.done':'تمام شد', 'suite.timeout':'از مهلت گذشت',
+    'suite.failed':'اجرا نشد', 'suite.commit':'کامیت {c}', 'suite.dirty':'تغییرات کامیت‌نشده',
+    'suite.showOut':'خروجی', 'suite.hideOut':'بستن خروجی',
+    'suite.raw':'خروجی قابل خلاصه‌شدن نبود — متن خام را ببین',
+    'suite.allPassed':'همهٔ دروازه‌ها سبز', 'suite.someFailed':'{n} دروازه قرمز شد',
     'page.settings.title':'تنظیمات','page.settings.desc':'پیکربندی واقعیِ در حال اجرا — فقط‌خواندنی، با ذکر منبع هر مقدار',
     'set.readonly':'دو نوع چیز در این صفحه هست: تنظیمات همین مرورگر که می‌توانی عوض کنی (پایین)، و پارامترهای موتور که فقط نمایش داده می‌شوند و در config_hash قفل‌اند.',
     'set.editTitle':'تنظیمات این مرورگر',
@@ -1454,6 +1502,25 @@ const T = {
     'err.copy':'Copy', 'err.copied':'copied to clipboard', 'err.copyFail':'copy failed — select the text and copy manually',
     'err.copyHint':'download blocked; the JSON is shown below', 'err.close':'Close',
     'err.clearArm':'tap again to confirm',
+    'diag.title':'System health checks',
+    'diag.note':'Each row measures one real thing and reports what it saw. "Unknown" means it was not measured — not that it is fine.',
+    'diag.run':'Quick check', 'diag.runMarket':'Include exchange', 'diag.running':'checking…',
+    'diag.never':'not run yet — press "Quick check"',
+    'diag.needsExchange':'measured by calling the exchange',
+    'diag.needsLocal':'measured inside this server',
+    'diag.offline':'these checks need the server; the offline build has nothing to measure',
+    'diag.ok':'ok', 'diag.fail':'broken', 'diag.skip':'unknown', 'diag.error':'check crashed',
+    'diag.notRun':'not run',
+    'diag.allOk':'everything is healthy', 'diag.someBad':'{n} check(s) broken',
+    'diag.someError':'{n} check(s) crashed', 'diag.someSkip':'{n} could not be measured',
+    'suite.title':'Project tests', 'suite.run':'Run',
+    'suite.note':'The same three commands CI runs — pytest, ruff, mypy — against this checkout. Only available when the server runs from the source tree.',
+    'suite.unavailable':'tests cannot run from here',
+    'suite.running':'running…', 'suite.done':'finished', 'suite.timeout':'timed out',
+    'suite.failed':'did not run', 'suite.commit':'commit {c}', 'suite.dirty':'uncommitted changes',
+    'suite.showOut':'output', 'suite.hideOut':'hide output',
+    'suite.raw':'output could not be summarised — read the raw text',
+    'suite.allPassed':'all gates green', 'suite.someFailed':'{n} gate(s) red',
     'page.settings.title':'Settings','page.settings.desc':'What the engine is actually running — read-only, with the source of every value',
     'set.readonly':'Two kinds of things live here: preferences for this browser, which you can change (below), and engine parameters, which are display-only and sealed into config_hash.',
     'set.editTitle':'This browser',
@@ -1767,7 +1834,13 @@ document.querySelectorAll('.navbtn').forEach(btn=>{
     if(btn.dataset.tab==='risk'){ requestAnimationFrame(()=>setTimeout(()=>{ loadAudit(); },30)); }
     if(btn.dataset.tab==='settings'){ requestAnimationFrame(()=>setTimeout(()=>{ loadSettings(); },30)); }
     if(btn.dataset.tab==='errors'){
-      requestAnimationFrame(()=>setTimeout(()=>{ loadErrors(); errAutoRefresh(byId('errAuto') ? byId('errAuto').checked : false); },30));
+      requestAnimationFrame(()=>setTimeout(()=>{
+        loadErrors();
+        errAutoRefresh(byId('errAuto') ? byId('errAuto').checked : false);
+        // The catalogue only: running checks on tab open would hit the
+        // exchange every time someone glances at the log.
+        loadDiagnostics();
+      },30));
     } else { if (errTimer) { clearInterval(errTimer); errTimer = null; } }
     if(btn.dataset.tab==='signals' && window.NBX_APP && typeof NBX_APP.ensureSparks === 'function'){
       requestAnimationFrame(()=>setTimeout(()=>{ NBX_APP.ensureSparks(); },40));
@@ -3803,6 +3876,246 @@ if (_errSelfTest) _errSelfTest.onclick = async () => {
     toast(t('err.selfTestFail'), String(e && e.message || e), 'err');
   } finally { errBusy(_errSelfTest, false); }
 };
+
+/* ------------------------------------------------------------------ *
+ * Diagnostics: "is this process healthy right now?"
+ *
+ * The server decides the status. This code only renders it — no default of
+ * "ok" anywhere, because a check that never ran and a check that passed look
+ * identical on a screenshot and completely different to someone debugging.
+ * ------------------------------------------------------------------ */
+const DIAG_STYLE = {
+  ok:    ['bg-emerald-400/10', 'text-emerald-300', 'border-emerald-300/25'],
+  fail:  ['bg-red-400/10', 'text-red-300', 'border-red-300/25'],
+  skip:  ['bg-white/5', 'text-zinc-400', 'border-white/10'],
+  error: ['bg-amber-400/10', 'text-amber-300', 'border-amber-300/25'],
+};
+const DIAG_LABEL = { ok: 'diag.ok', fail: 'diag.fail', skip: 'diag.skip',
+                     error: 'diag.error', notrun: 'diag.notRun' };
+
+function diagChip(status){
+  // `notrun` is deliberately *not* `skip`: skip means "measured, but the answer
+  // is not available"; notrun means "nothing was measured". Same grey, different word.
+  const cls = DIAG_STYLE[status] || DIAG_STYLE.skip;
+  const label = t(DIAG_LABEL[status] || 'diag.skip');
+  return `<span class="chip text-[9px] border ${cls.join(' ')}">${escText(label)}</span>`;
+}
+
+function renderDiagCatalogue(checks){
+  // Before the first run the panel lists what *would* be measured. An empty
+  // box would let someone conclude the feature does nothing.
+  const box = byId('diagList');
+  if (!box || !checks || !checks.length) return;
+  box.innerHTML = checks.map(c => `<div class="py-2 flex items-start gap-2" data-diag="${escText(c.id)}">
+      ${diagChip('notrun')}
+      <div class="min-w-0 flex-1">
+        <div class="text-[11px] font-bold text-zinc-400">${escText(c.fa || c.id)}</div>
+        <div class="text-[10px] text-zinc-600">${escText(c.needs === 'exchange' ? t('diag.needsExchange') : t('diag.needsLocal'))}</div>
+      </div>
+      <span class="text-[10px] num text-zinc-700 shrink-0">—</span>
+    </div>`).join('');
+}
+
+function renderDiagRow(r){
+  const hint = r.hint ? `<div class="text-[10px] text-amber-300/80 leading-5">${escText(r.hint)}</div>` : '';
+  const detail = r.detail ? `<div class="text-[10px] text-zinc-500 leading-5" dir="auto">${escText(r.detail)}</div>` : '';
+  return `<div class="py-2 flex items-start gap-2" data-diag="${escText(r.id)}">
+    ${diagChip(r.status)}
+    <div class="min-w-0 flex-1">
+      <div class="text-[11px] font-bold text-zinc-300">${escText(r.fa || r.id)}</div>
+      ${detail}${hint}
+    </div>
+    <span class="text-[10px] num text-zinc-600 shrink-0">${fmtNum(r.ms || 0)}ms</span>
+  </div>`;
+}
+
+function renderDiag(payload){
+  const box = byId('diagList');
+  if (!box) return;
+  const rows = (payload && payload.results) || [];
+  if (!rows.length) {
+    box.innerHTML = `<div class="py-3 text-[10px] text-zinc-500">${escText(t('diag.never'))}</div>`;
+    if (byId('diagSummary')) byId('diagSummary').textContent = '';
+    return;
+  }
+  box.innerHTML = rows.map(renderDiagRow).join('');
+  const c = (payload && payload.counts) || {};
+  if (byId('diagSummary')) {
+    // The headline is the worst status, so it must be said in words, not in
+    // an average that hides one red row among ten green ones.
+    const head = payload.overall === 'ok' ? t('diag.allOk')
+      : payload.overall === 'fail' ? t('diag.someBad').replace('{n}', fmtNum(c.fail || 0))
+      : payload.overall === 'error' ? t('diag.someError').replace('{n}', fmtNum(c.error || 0))
+      : t('diag.someSkip').replace('{n}', fmtNum(c.skip || 0));
+    byId('diagSummary').textContent = head;
+    byId('diagSummary').className = 'text-[10px] sm:text-[11px] num ' +
+      (payload.overall === 'ok' ? 'text-emerald-300'
+        : payload.overall === 'fail' ? 'text-red-300' : 'text-amber-300');
+  }
+}
+
+async function runDiagnostics(includeMarket){
+  const api = window.NBX && NBX.core && NBX.core.api;
+  if (!api || typeof api.runDiagnostics !== 'function' || errOffline()) {
+    toast(t('diag.title'), t('err.offlineHint'), 'warn');
+    return;
+  }
+  const btn = byId(includeMarket ? 'diagRunMarket' : 'diagRun');
+  errBusy(btn, true);
+  if (byId('diagSummary')) byId('diagSummary').textContent = t('diag.running');
+  try {
+    const r = await api.runDiagnostics({ kinds: includeMarket ? null : ['core', 'storage'] });
+    if (r && r.error) { toast(t('diag.title'), String(r.error), 'err'); return; }
+    renderDiag(r);
+    const n = (r && r.counts && (r.counts.fail + r.counts.error)) || 0;
+    toast(t('diag.title'), n ? t('diag.someBad').replace('{n}', fmtNum(n)) : t('diag.allOk'),
+          n ? 'err' : 'ok');
+  } catch (e) {
+    reportCaught(e, 'diagnostics-run');
+    toast(t('diag.title'), String(e && e.message || e), 'err');
+  } finally { errBusy(btn, false); }
+}
+
+const _diagRun = byId('diagRun');
+if (_diagRun) _diagRun.onclick = () => runDiagnostics(false);
+const _diagRunMarket = byId('diagRunMarket');
+if (_diagRunMarket) _diagRunMarket.onclick = () => runDiagnostics(true);
+
+/* ------------------------------------------------------------------ *
+ * The project's gates (pytest / ruff / mypy), when running from source.
+ * A run is a server-side job: start it, then poll the id. Holding a request
+ * open for twenty seconds is how a proxy in the middle turns "still running"
+ * into a 504.
+ * ------------------------------------------------------------------ */
+let suiteTimer = null;
+
+function renderSuiteGates(run){
+  const box = byId('suiteGates');
+  if (!box) return;
+  const rows = (run && run.results) || [];
+  if (!rows.length) { box.innerHTML = ''; return; }
+  box.innerHTML = rows.map(r => {
+    const status = r.ok ? 'ok' : (r.state === 'timeout' ? 'skip' : 'fail');
+    const counts = Object.entries(r.counts || {}).filter(([, v]) => v)
+      .map(([k, v]) => `${fmtNum(v)} ${k}`).join(' · ');
+    return `<div class="py-2 flex items-start gap-2" data-gate="${escText(r.name)}">
+      ${diagChip(status)}
+      <div class="min-w-0 flex-1">
+        <div class="text-[11px] font-bold text-zinc-300">${escText(r.fa || r.name)}</div>
+        <div class="text-[10px] text-zinc-500">${escText(r.summary || '')}${counts ? ' · ' + escText(counts) : ''}</div>
+        ${r.parsed === false ? `<div class="text-[10px] text-amber-300/80">${escText(t('suite.raw'))}</div>` : ''}
+      </div>
+      <span class="text-[10px] num text-zinc-600 shrink-0">${(r.ms / 1000).toFixed(1)}s</span>
+    </div>`;
+  }).join('');
+}
+
+function renderSuite(run){
+  renderSuiteGates(run);
+  const pre = byId('suiteOut'), toggle = byId('suiteToggleOut');
+  if (pre) {
+    pre.textContent = (run && run.output) ? run.output : '';
+    if (!pre.textContent) pre.classList.add('hidden');
+  }
+  if (toggle) toggle.classList.toggle('hidden', !(pre && pre.textContent));
+  if (!byId('suiteState')) return;
+  if (!run) { byId('suiteState').textContent = ''; return; }
+  const head = run.state === 'running' ? t('suite.running')
+    : run.state === 'timeout' ? t('suite.timeout')
+    : run.state === 'failed' ? t('suite.failed')
+    : t('suite.done');
+  const who = run.commit ? ` · ${t('suite.commit').replace('{c}', run.commit)}` : '';
+  const dirt = run.dirty ? ` · ${t('suite.dirty')}` : '';
+  byId('suiteState').textContent = head + who + dirt;
+  // A dirty tree explains why a run can fail on code that is not in any commit.
+  byId('suiteState').className = 'text-[10px] sm:text-[11px] ' +
+    (run.state === 'done' ? 'text-zinc-500' : 'text-amber-300');
+}
+
+async function pollSuite(runId){
+  const api = window.NBX && NBX.core && NBX.core.api;
+  if (!api || typeof api.getDevSuiteRun !== 'function') return;
+  clearTimeout(suiteTimer);
+  suiteTimer = setTimeout(async () => {
+    const run = await api.getDevSuiteRun(runId);
+    if (run && run.error) { toast(t('suite.title'), String(run.error), 'err'); return; }
+    renderSuite(run);
+    if (run && run.state === 'running') { pollSuite(runId); return; }
+    errBusy(byId('suiteRun'), false);
+    const failed = (run && run.results || []).filter(r => !r.ok).length;
+    toast(t('suite.title'), failed ? t('suite.someFailed').replace('{n}', fmtNum(failed))
+                                   : t('suite.allPassed'), failed ? 'err' : 'ok');
+  }, 1200);
+}
+
+async function loadSuite(){
+  const api = window.NBX && NBX.core && NBX.core.api;
+  if (!api || typeof api.getDevSuite !== 'function') { renderSuite(null); return; }
+  const st = await api.getDevSuite();
+  const btn = byId('suiteRun');
+  if (!st || !st.available) {
+    if (btn) { btn.disabled = true; btn.classList.add('opacity-50'); }
+    if (byId('suiteNote')) {
+      byId('suiteNote').textContent = t('suite.unavailable') + (st && st.reason ? ' — ' + st.reason : '');
+      byId('suiteNote').className = 'text-[10px] text-amber-300/80 leading-5 mb-2';
+    }
+    // The stored result of an earlier run is still evidence; show it.
+    if (st && st.last) renderSuite(st.last);
+    return;
+  }
+  if (btn) { btn.disabled = false; btn.classList.remove('opacity-50'); }
+  if (st.last) renderSuite(st.last);
+  if (st.busy && st.last && st.last.state === 'running') {
+    errBusy(btn, true);
+    pollSuite(st.last.id);
+  }
+}
+
+const _suiteRun = byId('suiteRun');
+if (_suiteRun) _suiteRun.onclick = async () => {
+  const api = window.NBX && NBX.core && NBX.core.api;
+  if (!api || typeof api.runDevSuite !== 'function' || errOffline()) {
+    toast(t('suite.title'), t('err.offlineHint'), 'warn');
+    return;
+  }
+  errBusy(_suiteRun, true);
+  if (byId('suiteState')) byId('suiteState').textContent = t('suite.running');
+  try {
+    const r = await api.runDevSuite(null);
+    if (r && r.error) { toast(t('suite.title'), String(r.error), r.busy ? 'warn' : 'err'); return; }
+    if (r && r.run_id) pollSuite(r.run_id);
+    else { toast(t('suite.title'), t('suite.failed'), 'err'); errBusy(_suiteRun, false); }
+  } catch (e) {
+    reportCaught(e, 'devsuite-run');
+    toast(t('suite.title'), String(e && e.message || e), 'err');
+    errBusy(_suiteRun, false);
+  }
+};
+if (byId('suiteToggleOut')) byId('suiteToggleOut').onclick = () => {
+  const pre = byId('suiteOut');
+  if (!pre) return;
+  pre.classList.toggle('hidden');
+  byId('suiteToggleOut').textContent = pre.classList.contains('hidden')
+    ? t('suite.showOut') : t('suite.hideOut');
+};
+
+async function loadDiagnostics(){
+  const api = window.NBX && NBX.core && NBX.core.api;
+  if (!api || typeof api.getDiagnostics !== 'function' || errOffline()) {
+    renderDiag(null);
+    if (byId('diagNote')) byId('diagNote').textContent = t('diag.offline');
+    return;
+  }
+  const cat = await api.getDiagnostics();
+  if (cat && cat.error) {
+    renderDiag(null);
+    if (byId('diagNote')) byId('diagNote').textContent = t('diag.offline');
+  } else if (!document.querySelector('#diagList [data-diag]')) {
+    renderDiagCatalogue((cat && cat.checks) || []);
+    if (byId('diagSummary')) byId('diagSummary').textContent = t('diag.never');
+  }
+  await loadSuite();
+}
 
 /* No window.confirm(): sandboxed previews and mobile webviews return false
  * without ever showing a dialog, which would make the button look dead. */

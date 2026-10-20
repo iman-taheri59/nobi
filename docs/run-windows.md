@@ -306,6 +306,8 @@ NBX_CORS_ORIGINS=null
 | صفحه باز می‌شود، همه «—» | اسکن اول تمام نشده، یا upstream قطع است | ۲۰ ثانیه صبر؛ `curl .../api/health` |
 | `nobi.test` → 502 | پروکسی به :8000 نمی‌رسد | اول بدون پروکسی `127.0.0.1:8000` را چک کن؛ بعد `mod_proxy` |
 | سفارش کاغذی از گوشی/لن رد می‌شود | `loopback-only` است | از همان ماشین باز کن، یا `NBX_API_TOKEN` بگذار و هدر بفرست |
+| در تب لاگ، کارت «تست‌های پروژه» غیرفعال است | سرور از پوشهٔ کد منبع اجرا نشده، یا `NBX_DEV_TOOLS=0`، یا ابزارها نصب نیستند | دلیلش زیر همان کارت نوشته شده؛ `python -m pip install -r server\requirements-dev.txt` |
+| در تب لاگ، بررسی‌ها همه «نامعلوم» | پردازه هنوز با صرافی حرف نزده یا سوکت وصل نیست | «با صرافی» را بزن؛ اگر باز هم نامعلوم ماند، `/api/health` را چک کن |
 | `database is locked` | دو نمونهٔ سرور روی یک `journal.db` | یکی را ببند، یا `NBX_JOURNAL_DB` جدا بده |
 | `playwright install chromium` دانلود نمی‌شود | CDN مسدود است یا آنتی‌ویروس فایل را می‌بلعد | از مرورگر نصب‌شده استفاده کن: `python scripts\layout_test.py --channel msedge` (بخش ۳٫۳ `docs/testing.md`) |
 | `playwright is not installed for this interpreter` | `python` خالی، venv پروژه نیست؛ پکیج در مفسر دیگری نصب شده | با همان مسیری که در پیام چاپ شده نصب کن: `"...\python.exe" -m pip install playwright`، یا اسکریپت را با `.venv\Scripts\python.exe` اجرا کن |
