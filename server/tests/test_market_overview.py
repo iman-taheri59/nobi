@@ -1,3 +1,5 @@
+# mypy: check_untyped_defs = False
+# Test doubles stand in for objects on purpose; their bodies answer to pytest.
 """A6 — breadth, dispersion and concentration, computed rather than asserted.
 
 The failure mode this guards against is a tidy dashboard that says "market is

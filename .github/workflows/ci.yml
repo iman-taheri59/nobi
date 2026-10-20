@@ -73,7 +73,12 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
       - run: pip install -r server/requirements-dev.txt
+      - run: npm ci --no-audit --no-fund   # jsdom, for the smoke test
       - run: python -m playwright install --with-deps chromium
       # The sandbox has no reachable exchange, so the panels are exercised
       # against the contract-shaped fixture — the same two-script setup the
@@ -91,3 +96,11 @@ jobs:
         run: python3 scripts/probe_live.py --selftest
       - name: 45 panels explain themselves
         run: python3 scripts/probe_live.py --url http://127.0.0.1:8000
+      # jsdom instead of a browser: no CDN, no layout engine — it asserts the
+      # page's own claims (7 KPI cells, an MSI badge that matches its sample
+      # count, a provenance chip that is never a bare number) and that nothing
+      # threw.
+      - name: ui smoke — jsdom
+        run: |
+          python3 scripts/ui_smoke_prep.py
+          node scripts/ui_smoke_test.js

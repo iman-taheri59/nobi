@@ -1,3 +1,5 @@
+# mypy: check_untyped_defs = False
+# Test doubles stand in for objects on purpose; their bodies answer to pytest.
 """The standalone broker must refuse what the server refuses.
 
 `nbx-core.js` carries a port of `risk_engine.preflight` for the bundle that runs
@@ -7,6 +9,7 @@ comparison is a test: same inputs into both implementations, gate by gate.
 Skipped (not passed) when node is unavailable: a skipped gate is visible, an
 assertion that never ran is not.
 """
+
 from __future__ import annotations
 
 import shutil

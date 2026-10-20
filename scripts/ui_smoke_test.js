@@ -24,15 +24,18 @@ const vc = new VirtualConsole();
 vc.on('jsdomError', (e) => errors.push('jsdomError: ' + (e.message || e)));
 vc.on('error', (m) => errors.push('console.error: ' + m));
 
+// Where the page should send its /api calls. CI and local runs both use :8000;
+// an override lets the empty-journal case be exercised without touching it.
+const origin = process.env.SMOKE_ORIGIN || 'http://localhost:8000/';
+
 const dom = new JSDOM(html, {
-  url: 'http://localhost:8000/',
+  url: origin,
   runScripts: 'dangerously',
   pretendToBeVisual: true,
   virtualConsole: vc,
 });
 const { window } = dom;
 // Node's fetch has no document base: resolve the app's relative /api paths.
-const origin = 'http://localhost:8000/';
 window.fetch = (u, o) => fetch(/^[a-z]+:\/\//i.test(String(u)) ? u : new URL(String(u), origin).toString(), o);
 window.onerror = (m) => errors.push('window.onerror: ' + m);
 // jsdom does not implement scrolling; switching tabs would otherwise report
@@ -109,6 +112,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     secretWhere: [...doc.querySelectorAll('#setSecrets .num')].filter(e => /server\/.env/.test(e.textContent)).length,
     tgButton: !!doc.getElementById('setTgTest'),
     perfWarnVisible: !!doc.querySelector('#perfWarn') && !doc.querySelector('#perfWarn').classList.contains('hidden'),
+    perfWarn: (doc.querySelector('#perfWarn')?.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 120),
+    perfChip: txt('#perfOrigin'),
     errors,
   };
   console.log(JSON.stringify(report, null, 2));
@@ -116,21 +121,33 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const problems = [];
   if (kpiCells !== 7) problems.push(`expected 7 KPI cells, got ${kpiCells}`);
   if (!report.pVoid) problems.push('#pVoid is empty');
-  // Two acceptable states now. When the exchange is unreachable the MSI card
-  // must NOT print a verdict computed from synthetic rows — it must say so.
-  // When the exchange is up it falls back to the ordinary verdict badge.
-  const msiSaysUnavailable = /در دسترس نیست|unreachable|unavailable/i.test(report.msiBadge);
-  if (msiSaysUnavailable) {
-    if (report.msiWarnVisible) {
-      problems.push('MSI shows the "unavailable" badge but still shows a verdict warning');
-    }
-  } else {
-    if (!report.msiWarnVisible) problems.push('synthetic-baseline warning is not visible');
-    if (!/insufficient|ناکافی/i.test(report.msiBadge)) {
-      problems.push(`MSI badge is neither "unavailable" nor "insufficient": ${report.msiBadge}`);
-    }
+
+  // The MSI card may never print a verdict it cannot support. Synthetic rows
+  // are gone, so the two honest states are "unavailable" (no feed) and
+  // "insufficient" (a feed, too few resolved outcomes) — and the badge has to
+  // agree with the sample count printed next to it.
+  const msiSaysUnavailable = /در دسترس نیست|unreachable|unavailable|ناموجود/i.test(report.msiBadge);
+  const msiSaysInsufficient = /insufficient|ناکافی/i.test(report.msiBadge);
+  if (!msiSaysUnavailable && !msiSaysInsufficient) {
+    problems.push(`MSI badge is neither "unavailable" nor "insufficient": ${report.msiBadge}`);
   }
-  if (!report.perfWarnVisible) problems.push('#perfWarn (synthetic sample) not visible');
+  const zeroSamples = /(نمونه|sample)[^0-9۰-۹]{0,3}[۰0]/.test(report.msiMsg);
+  if (zeroSamples && !(msiSaysUnavailable || msiSaysInsufficient)) {
+    problems.push('MSI reports zero samples but still prints a verdict');
+  }
+  if (msiSaysUnavailable && report.msiWarnVisible) {
+    problems.push('MSI shows the "unavailable" badge and still warns about the verdict');
+  }
+
+  // The performance page may only warn about provenance when it has rows to
+  // warn about; with an empty journal the warning stays hidden and the origin
+  // chip must not collapse into a bare number ("0" is not provenance).
+  if (report.perfWarnVisible && report.perfWarn.length < 40) {
+    problems.push('#perfWarn is visible but says nothing');
+  }
+  if (report.perfChip && /^[\s۰-۹0-9.,٪%]+$/.test(report.perfChip)) {
+    problems.push(`perf origin chip is a bare number: "${report.perfChip}"`);
+  }
   if (!report.exportBtns) problems.push('export buttons missing');
   if (!report.auditRows) problems.push('#auBody has no audit rows');
   if (report.settingsRows < 5) problems.push(`settings flags table has ${report.settingsRows} rows`);

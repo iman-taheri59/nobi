@@ -1,3 +1,5 @@
+# mypy: check_untyped_defs = False
+# Test doubles stand in for objects on purpose; their bodies answer to pytest.
 """Make the backend modules importable regardless of test order.
 
 `test_core.py` inserted the server directory into `sys.path` as a side effect of

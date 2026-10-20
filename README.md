@@ -80,17 +80,19 @@ css` را نزنی، `build_standalone.py` هشدار می‌دهد که CSS ا�
 
 ```bash
 ruff check server scripts        # → All checks passed
-mypy                             # → Success: no issues found in 33 source files
+mypy                             # → Success: no issues found in 35 source files
 npm run lint                     # bundles + scripts
 npm run lint:dashboard           # بلوک درون‌خطی index.html
 ```
 
 پیکربندی در `pyproject.toml` و `eslint.config.mjs` است، نه در خط فرمان. آنچه
-عمداً فعال **نشده** و دلیلش، در ADR-0016 آمده است (طول خط، `except Exception`،
-`check_untyped_defs`).
+عمداً فعال **نشده** و دلیلش، در ADR-0016 آمده است (طول خط، `except Exception`).
+`check_untyped_defs` فعال است؛ بدنهٔ تست‌ها با یک directive در خط اول خودشان از
+آن معاف‌اند.
 
 CI سه job دارد: `python` (ruff + mypy + pytest)، `js` (eslint + برابری بروکر و
-preflight + تازگی `nobitex-mobile.html`)، و `ui` (۴۵ پنل روی فیکسچر صرافی).
+preflight + تازگی `nobitex-mobile.html`)، و `ui` (۴۵ پنل روی فیکسچر صرافی +
+اسموک jsdom با ۷ سلول KPI، صداقت کارت MSI و صفر خطای JS).
 
 ---
 

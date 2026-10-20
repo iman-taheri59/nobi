@@ -1,3 +1,5 @@
+# mypy: check_untyped_defs = False
+# Test doubles stand in for objects on purpose; their bodies answer to pytest.
 """Core invariants for the Nobi backend.
 
 These tests are intentionally dependency-light: they exercise the money/risk
@@ -5,6 +7,7 @@ math without touching the network. Run with:
 
     cd server && python -m pytest -q
 """
+
 from __future__ import annotations
 
 import asyncio

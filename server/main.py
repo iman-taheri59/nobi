@@ -669,7 +669,9 @@ async def _load_options() -> int:
 async def _load_universe_locked():
     try:
         stats = await client.get_market_stats()
-        rows = []
+        # Mixed str/float/bool per row: `dict[str, Any]` is the honest type, and
+        # it is what lets `--check-untyped-defs` see the sort and join below.
+        rows: list[dict[str, Any]] = []
         for sym, d in (stats.get("stats") or {}).items():
             # The documented key is `btc-rls`; `market_symbol` turns it into the
             # `BTCIRT` the order book and the chart endpoints require. The old

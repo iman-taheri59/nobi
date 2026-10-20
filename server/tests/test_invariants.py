@@ -1,3 +1,5 @@
+# mypy: check_untyped_defs = False
+# Test doubles stand in for objects on purpose; their bodies answer to pytest.
 """Five cross-cutting rules, tested as rules rather than as incidents.
 
 Every bug this project has shipped belonged to one of five classes. Fixing
@@ -18,6 +20,7 @@ The static half scans the source for the exact shapes that produced the bugs;
 the dynamic half drives the real routes. A test that only greps is a lint rule
 with a nicer error message, so the important ones run code.
 """
+
 from __future__ import annotations
 
 import ast

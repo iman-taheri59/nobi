@@ -1,3 +1,5 @@
+# mypy: check_untyped_defs = False
+# Test doubles stand in for objects on purpose; their bodies answer to pytest.
 """A3 — the portfolio allocator has to be arithmetic, not vibes.
 
 Every test here either computes an answer by hand and compares, or checks that

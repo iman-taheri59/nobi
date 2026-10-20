@@ -1,7 +1,10 @@
+# mypy: check_untyped_defs = False
+# Test doubles stand in for objects on purpose; their bodies answer to pytest.
 """The money type: units that cannot be confused, and no silent 1.0.
 
 Each test here pins a bug the project actually shipped. The names say which.
 """
+
 from __future__ import annotations
 
 import time

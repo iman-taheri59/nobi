@@ -2,13 +2,19 @@
 # `ruff`, `mypy` and CI read the same configuration instead of each tool
 # inventing its own defaults.
 #
-# Measured before the gate existed: 255 ruff findings and 74 mypy errors, both
-# now zero. The rule set below is a choice, not a completeness claim:
+# Measured on the parent of the commit that added this file, with exactly the
+# configuration below: 277 ruff findings and 80 mypy errors in 13 files, both
+# now zero. To reproduce:
 #
-#   * E501 (line length) is not enforced. 99 lines in server/ are longer than
-#     100 columns and shrinking them would be a whitespace-only commit that
-#     makes `git blame` useless. `line-length` is still set, so a formatter run
-#     later produces 100-column output.
+#   git worktree add /tmp/pre 18e7a2f~1
+#   cp pyproject.toml /tmp/pre/ && cd /tmp/pre && ruff check server scripts && mypy
+#
+# The rule set is a choice, not a completeness claim:
+#
+#   * E501 (line length) is not enforced. 97 lines in server/ are longer than
+#     100 columns (re-count: `awk 'length>100' $(find server -name '*.py')`)
+#     and shrinking them would be a whitespace-only commit that makes
+#     `git blame` useless. `line-length` is still set for a future formatter.
 #   * BLE001 / S110 (blind except, pass) are not enforced. The polling loops in
 #     this project catch `Exception` on purpose: one bad tick must not kill the
 #     socket, and `errorlog` is where the failure is recorded. Those call sites
@@ -54,10 +60,15 @@ ignore_missing_imports = true
 warn_unused_ignores = true
 warn_redundant_casts = true
 warn_unused_configs = true
-# The modules are typed where it matters (money, risk, journal, paper_trading).
-# Untyped function bodies are still skipped by mypy's default; enabling
-# `check_untyped_defs` is the next step, not this one.
-check_untyped_defs = false
+# Bodies of unannotated functions are checked too: in a codebase that is only
+# partly annotated, this is the flag that decides whether mypy sees anything at
+# all. Turning it on surfaced 90 findings: 4 in `server/main.py` (one untyped
+# `rows` list made a sort and a `join` unverifiable — now annotated) and 86
+# inside test doubles. Test modules opt out on their first line with
+# `# mypy: check_untyped_defs = False`: a fake broker that passes `None` on
+# purpose answers to pytest, not to mypy. Every server module is checked body
+# and signature.
+check_untyped_defs = true
 exclude = ["^\\.venv", "node_modules"]
 
 [[tool.mypy.overrides]]

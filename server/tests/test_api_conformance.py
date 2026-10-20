@@ -1,9 +1,12 @@
+# mypy: check_untyped_defs = False
+# Test doubles stand in for objects on purpose; their bodies answer to pytest.
 """Conformance tests against the Nobitex API documentation.
 
 Each test here pins one documented rule the app used to ignore. The doc reference
 is in the test name or docstring; the code under test is the one that decides
 what the dashboard shows or what the paper broker places.
 """
+
 from __future__ import annotations
 
 import asyncio

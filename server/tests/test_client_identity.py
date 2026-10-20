@@ -1,3 +1,5 @@
+# mypy: check_untyped_defs = False
+# Test doubles stand in for objects on purpose; their bodies answer to pytest.
 """Who the exchange thinks we are.
 
 Nobitex reads exactly one thing about the caller that we control: the
@@ -10,6 +12,7 @@ These tests exist because the old header was
 to a third party, a version that nothing maintained, and three different
 values across five call sites.
 """
+
 from __future__ import annotations
 
 import pathlib

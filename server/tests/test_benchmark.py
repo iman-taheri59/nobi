@@ -1,3 +1,5 @@
+# mypy: check_untyped_defs = False
+# Test doubles stand in for objects on purpose; their bodies answer to pytest.
 """A7 — the market is the benchmark, not zero.
 
 The math is short enough to check by hand, so these tests do: a series that is

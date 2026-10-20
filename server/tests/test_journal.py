@@ -1,3 +1,5 @@
+# mypy: check_untyped_defs = False
+# Test doubles stand in for objects on purpose; their bodies answer to pytest.
 """Tests for the ADR-0012 prediction journal.
 
 The journal decides whether a signal "worked", so its arithmetic has to be

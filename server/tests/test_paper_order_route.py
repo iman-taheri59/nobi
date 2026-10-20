@@ -1,3 +1,5 @@
+# mypy: check_untyped_defs = False
+# Test doubles stand in for objects on purpose; their bodies answer to pytest.
 """`POST /api/paper/order` — the route that turns a queue row into a position.
 
 It is 25 lines with no test until now, and it sits on the boundary the whole
@@ -11,6 +13,7 @@ is a separate test below:
 3. it answers questions about its own inputs (missing field, `size_quote`
    without a price) with a sentence, not a `KeyError`.
 """
+
 from __future__ import annotations
 
 import pytest
