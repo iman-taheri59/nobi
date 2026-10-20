@@ -1,0 +1,114 @@
+{
+  "venue": "coinbase",
+  "symbols": [
+    "BTC",
+    "ETH",
+    "SOL",
+    "XRP",
+    "ADA",
+    "DOGE",
+    "AVAX",
+    "DOT",
+    "LINK",
+    "LTC"
+  ],
+  "bars": {
+    "BTC": 1504,
+    "ETH": 1504,
+    "SOL": 1504,
+    "XRP": 1504,
+    "ADA": 1504,
+    "DOGE": 1504,
+    "AVAX": 1504,
+    "DOT": 1504,
+    "LINK": 1504,
+    "LTC": 1504
+  },
+  "generated_at": 1792430056,
+  "horizons": {
+    "h4": {
+      "per_symbol": {
+        "BTC": -0.0697,
+        "ETH": -0.0413,
+        "SOL": -0.055,
+        "XRP": -0.0426,
+        "ADA": -0.0095,
+        "DOGE": -0.0481,
+        "AVAX": -0.0033,
+        "DOT": 0.0066,
+        "LINK": -0.0398,
+        "LTC": -0.009
+      },
+      "mean": -0.0312,
+      "median": -0.0406,
+      "symbols_scored": 10,
+      "bootstrap": {
+        "common_bars": 1440,
+        "point": -0.0312,
+        "resamples": 500,
+        "block": 4,
+        "ci95": [
+          -0.0894,
+          0.0259
+        ],
+        "share_negative": 0.836
+      }
+    },
+    "h24": {
+      "per_symbol": {
+        "BTC": -0.0767,
+        "ETH": -0.0318,
+        "SOL": -0.14,
+        "XRP": -0.0537,
+        "ADA": 0.0157,
+        "DOGE": -0.0863,
+        "AVAX": 0.0261,
+        "DOT": 0.0186,
+        "LINK": -0.0103,
+        "LTC": -0.0211
+      },
+      "mean": -0.0359,
+      "median": -0.0264,
+      "symbols_scored": 10,
+      "bootstrap": {
+        "common_bars": 1420,
+        "point": -0.0359,
+        "resamples": 500,
+        "block": 24,
+        "ci95": [
+          -0.1546,
+          0.0715
+        ],
+        "share_negative": 0.828
+      }
+    },
+    "h96": {
+      "per_symbol": {
+        "BTC": -0.0963,
+        "ETH": -0.0513,
+        "SOL": -0.2299,
+        "XRP": -0.161,
+        "ADA": -0.0403,
+        "DOGE": -0.1727,
+        "AVAX": -0.1377,
+        "DOT": 0.0839,
+        "LINK": -0.1497,
+        "LTC": -0.1673
+      },
+      "mean": -0.1122,
+      "median": -0.1437,
+      "symbols_scored": 10,
+      "bootstrap": {
+        "common_bars": 1348,
+        "point": -0.1122,
+        "resamples": 500,
+        "block": 96,
+        "ci95": [
+          -0.278,
+          0.0149
+        ],
+        "share_negative": 0.946
+      }
+    }
+  }
+}

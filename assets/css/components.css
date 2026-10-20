@@ -1,3 +1,4 @@
+@layer components {
 /* ===========================================================
  * components.css — glass cards, chips, tables, buttons, indicators
  * Depends on base.css for body/typography
@@ -150,4 +151,5 @@ table td {
 .toast.err {
   background: rgba(248, 113, 113, 0.06);
   border-color: rgba(248, 113, 113, 0.3);
+}
 }

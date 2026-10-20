@@ -13,9 +13,7 @@ Private endpoints (Phase 3+) — wired but gated:
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import logging
-import math
 import os
 import random
 import time
@@ -30,8 +28,6 @@ from typing import Any
 from urllib.parse import urlencode
 
 import httpx
-from tenacity import (AsyncRetrying, retry_if_exception_type,
-                      stop_after_attempt, wait_exponential, wait_random)
 
 
 class ClientError(Exception):
@@ -39,13 +35,24 @@ class ClientError(Exception):
 
     def __init__(self, code: str, message: str, meta: dict | None = None):
         super().__init__(message)
-        self.code, self.message, self.meta = code, self, {}
-        self.message = message  # type: ignore[assignment]
+        self.code = code
+        self.message = message
         self.meta = meta or {}
 
 
 class RateLimitError(ClientError):
     pass
+
+
+class UpstreamUnavailable(ClientError):
+    """Nobitex could not be reached and no cached answer exists.
+
+    Raising is the point: the dashboard must say "the exchange is unreachable",
+    not draw a price chart invented by a random-number generator.
+    """
+
+    def __init__(self, message: str = "Nobitex is unreachable", meta: dict | None = None):
+        super().__init__("UPSTREAM", message, meta or {})
 
 
 class AuthRequired(ClientError):
@@ -93,38 +100,20 @@ class NobitexClient:
     BASE_URL = "https://apiv2.nobitex.ir"
     UA = "TraderBot/1.0 (+https://github.com/your-repo)"
 
-    SEED_MARKETS: dict[str, tuple[float, float, float]] = {
-        "BTCIRT": (4985000000.0, 950000000000.0, 2.4),
-        "ETHIRT": (229500000.0, 410000000000.0, 3.1),
-        "USDTIRT": (68250.0, 1250000000000.0, 0.4),
-        "SOLIRT": (11850000.0, 185000000000.0, 5.2),
-        "TONIRT": (385000.0, 142000000000.0, 1.8),
-        "TRXIRT": (16200.0, 98000000000.0, -0.7),
-        "DOGEIRT": (14800.0, 88000000000.0, 4.3),
-        "XRPIRT": (152000.0, 76000000000.0, 1.9),
-        "ADAIRT": (48500.0, 54000000000.0, -1.2),
-        "AVAXIRT": (2150000.0, 42000000000.0, 2.8),
-        "LINKIRT": (1240000.0, 35000000000.0, 3.5),
-        "DOTIRT": (445000.0, 28000000000.0, -0.5),
-        "LTCIRT": (6450000.0, 25000000000.0, 1.1),
-        "SHIBIRT": (1.42, 22000000000.0, 6.0),
-        "MATICIRT": (31500.0, 19000000000.0, -1.8),
-        "BTCUSDT": (73040.0, 48000000.0, 2.3),
-        "ETHUSDT": (3362.0, 29000000.0, 3.0),
-        "SOLUSDT": (173.6, 16500000.0, 5.1),
-        "TONUSDT": (5.64, 9800000.0, 1.7),
-        "TRXUSDT": (0.237, 7400000.0, -0.8),
-        "DOGEUSDT": (0.217, 6900000.0, 4.2),
-        "XRPUSDT": (2.23, 6100000.0, 1.8),
-        "ADAUSDT": (0.71, 4300000.0, -1.1),
-        "AVAXUSDT": (31.5, 3500000.0, 2.7),
-        "LINKUSDT": (18.17, 2900000.0, 3.4),
-    }
+    #: Symbols the dashboard offers in its pickers. Names only — no price,
+    #: volume or change is stored here, because a stale hard-coded number is
+    #: indistinguishable from a live one once it reaches the screen.
+    SYMBOLS: tuple[str, ...] = (
+        "BTCIRT", "ETHIRT", "USDTIRT", "SOLIRT", "TONIRT", "TRXIRT", "DOGEIRT",
+        "XRPIRT", "ADAIRT", "AVAXIRT", "LINKIRT", "DOTIRT", "LTCIRT", "SHIBIRT",
+        "BTCUSDT", "ETHUSDT", "SOLUSDT", "TONUSDT", "TRXUSDT", "DOGEUSDT",
+        "XRPUSDT", "ADAUSDT", "AVAXUSDT", "LINKUSDT",
+    )
 
     def __init__(
         self,
         base_url: str | None = None,
-        timeout_s: float = 10.0,
+        timeout_s: float = 6.0,
         rate_per_min: int = 120,
         session_factory: Callable[[], httpx.AsyncClient] | None = None,
     ):
@@ -209,27 +198,37 @@ class NobitexClient:
             self._emit_stats(False, (time.perf_counter() - t0) * 1000)
             raise ClientError("NETWORK", "network failure", {"error": repr(e)})
 
-    async def get(self, path: str, params: dict | None = None) -> Any:
-        attempts = 3
+    async def get(self, path: str, params: dict | None = None, attempts: int | None = None) -> Any:
+        """GET with bounded exponential backoff.
+
+        Note: exceptions are handled *here* rather than inside a tenacity
+        ``with attempt`` block — catching them there makes tenacity treat the
+        attempt as successful and silently disables retries.
+        """
+        attempts = attempts or 2
+        url = path + ("?" + urlencode(params or {}) if params else "")
         last_err: ClientError | None = None
-        async for attempt in AsyncRetrying(
-            stop=stop_after_attempt(attempts),
-            wait=wait_exponential(min=0.4, max=4.0) + wait_random(0, 0.3),
-            retry=retry_if_exception_type((httpx.TimeoutException, ClientError)),
-            reraise=True,
-        ):
-            with attempt:
-                try:
-                    return await self._request("GET", path + ("?" + urlencode(params or {}) if params else ""))
-                except RateLimitError as e:
-                    last_err = e
-                    await asyncio.sleep(1.2 * (attempt.retry_state.attempt_number or 1))
-                except ClientError as e:
-                    if e.code in ("NETWORK", "TIMEOUT", "HTTP", "RATE"):
-                        last_err = e
-                        continue
+
+        for attempt in range(1, attempts + 1):
+            try:
+                return await self._request("GET", url)
+            except RateLimitError as e:
+                last_err = e
+                if attempt < attempts:
+                    await asyncio.sleep(1.2 * attempt)
+            except ClientError as e:
+                if e.code not in ("NETWORK", "TIMEOUT", "HTTP", "RATE"):
                     log.error("client error: %s", e)
                     raise
+                last_err = e
+                if attempt < attempts:
+                    backoff = min(4.0, 0.4 * (2 ** (attempt - 1)))
+                    await asyncio.sleep(backoff + random.uniform(0, 0.3))
+            except Exception as e:  # noqa: BLE001 - normalize unexpected errors
+                last_err = ClientError("NETWORK", "network failure", {"error": repr(e)})
+                if attempt < attempts:
+                    await asyncio.sleep(0.4 * attempt)
+
         assert last_err is not None
         raise last_err
 
@@ -243,107 +242,38 @@ class NobitexClient:
         self._circuit_open_until = time.monotonic() + duration_s
         self.degraded_mode = True
 
-    def _synth_market_stats(self) -> dict:
-        stats_map = {}
-        for sym, (price, vol, chg) in self.SEED_MARKETS.items():
-            stats_map[sym.lower()] = {
-                "latest": str(price),
-                "last": str(price),
-                "valueDst": str(vol),
-                "dayChange": str(chg),
-            }
-        return {"status": "ok", "stats": stats_map, "simulated": True}
-
-    def _synth_orderbook(self, symbol: str) -> dict:
-        sym = symbol.upper()
-        base_px = self.SEED_MARKETS.get(sym, (100000.0, 1e9, 0.0))[0]
-        bids = []
-        asks = []
-        for lvl in range(1, 12):
-            step = 0.0006 * lvl
-            bp = round(base_px * (1.0 - step), 4 if base_px < 1000 else 0)
-            ap = round(base_px * (1.0 + step), 4 if base_px < 1000 else 0)
-            qty = round(15.0 / (lvl * 0.7), 4)
-            bids.append([str(bp), str(qty)])
-            asks.append([str(ap), str(qty)])
-        return {
-            "status": "ok",
-            "lastUpdate": int(time.time() * 1000),
-            "lastTradePrice": str(base_px),
-            "bids": bids,
-            "asks": asks,
-            "simulated": True,
-        }
-
-    def _synth_candles(self, symbol: str, tf: str, count: int) -> list[dict]:
-        sym = symbol.upper()
-        tf_s = {"1m": 60, "5m": 300, "15m": 900, "1h": 3600, "4h": 14400, "D": 86400}.get(tf, 900)
-        target_px, base_vol, chg24 = self.SEED_MARKETS.get(sym, (100000.0, 5e8, 1.0))
-        seed_int = int(hashlib.md5(f"{sym}:{tf}".encode()).hexdigest()[:8], 16)
-        rng = random.Random(seed_int)
-        now = (int(time.time()) // tf_s) * tf_s
-        # Build forward price path with realistic trend regimes & pullbacks, then scale to target_px
-        raw_closes = [100.0]
-        vols = []
-        bias = 0.0014 if chg24 >= 0 else -0.0004
-        for i in range(1, count):
-            cycle = math.sin(i / 21.0 + (seed_int % 5)) * 0.0085 + math.cos(i / 11.0) * 0.0045
-            shock = rng.gauss(bias + cycle, 0.0085)
-            nxt = max(5.0, raw_closes[-1] * (1.0 + shock))
-            raw_closes.append(nxt)
-            vol_mult = 1.9 if (cycle > 0.002 and shock > 0.003) else rng.uniform(0.6, 1.1)
-            vols.append(max(1.0, (base_vol / max(target_px, 1e-6) / 96.0) * vol_mult))
-        vols.append(vols[-1] if vols else 100.0)
-        scale = target_px / raw_closes[-1]
-        rows = []
-        for i in range(count):
-            t_i = now - (count - 1 - i) * tf_s
-            c_i = raw_closes[i] * scale
-            o_i = (raw_closes[i - 1] * scale) if i > 0 else c_i * 0.994
-            wick_up = abs(rng.gauss(0, 0.005)) + 0.002
-            wick_dn = abs(rng.gauss(0, 0.004)) + 0.0015
-            h_i = max(o_i, c_i) * (1.0 + wick_up)
-            l_i = min(o_i, c_i) * (1.0 - wick_dn)
-            prec = 4 if target_px < 100 else (2 if target_px < 10000 else 0)
-            rows.append({
-                "t": t_i,
-                "o": round(o_i, prec),
-                "h": round(h_i, prec),
-                "l": round(l_i, prec),
-                "c": round(c_i, prec),
-                "v": round(vols[i], 2),
-            })
-        return rows
-
     async def get_market_stats(self) -> dict:
         if not self._is_circuit_open():
             try:
-                res = await self.get("/market/stats")
+                res = await self.get("/market/stats", attempts=1)
                 self.degraded_mode = False
                 return res
             except ClientError as e:
-                log.warning("Nobitex /market/stats unreachable (%s), activating circuit-breaker fallback", e)
+                log.warning("Nobitex /market/stats unreachable (%s)", e)
                 self._trip_circuit()
-        return self._synth_market_stats()
+                raise UpstreamUnavailable(f"market stats unavailable: {e}", {"cause": str(e)}) from e
+        raise UpstreamUnavailable("market stats unavailable: circuit breaker is open")
 
     async def get_orderbook(self, symbol: str) -> dict:
         if not self._is_circuit_open():
             try:
-                res = await self.get(f"/v3/orderbook/{symbol.upper()}")
+                res = await self.get(f"/v3/orderbook/{symbol.upper()}", attempts=1)
                 self.degraded_mode = False
                 return res
             except ClientError as e:
-                log.warning("Nobitex orderbook %s unreachable (%s), activating circuit-breaker fallback", symbol, e)
+                log.warning("Nobitex orderbook %s unreachable (%s)", symbol, e)
                 self._trip_circuit()
-        return self._synth_orderbook(symbol)
+                raise UpstreamUnavailable(f"orderbook {symbol} unavailable: {e}") from e
+        raise UpstreamUnavailable(f"orderbook {symbol} unavailable: circuit breaker is open")
 
     async def get_orderbook_all(self) -> dict:
         if not self._is_circuit_open():
             try:
-                return await self.get("/v3/orderbook/all")
-            except ClientError:
+                return await self.get("/v3/orderbook/all", attempts=1)
+            except ClientError as e:
                 self._trip_circuit()
-        return {sym: self._synth_orderbook(sym) for sym in self.SEED_MARKETS}
+                raise UpstreamUnavailable(f"orderbooks unavailable: {e}") from e
+        raise UpstreamUnavailable("orderbooks unavailable: circuit breaker is open")
 
     async def get_udf_history(
         self, symbol: str, resolution: str, from_ts: int, to_ts: int
@@ -351,11 +281,24 @@ class NobitexClient:
         return await self.get(
             "/market/udf/history",
             params={"symbol": symbol.upper(), "resolution": resolution, "from": from_ts, "to": to_ts},
+            attempts=1,
         )
 
     async def get_candles(
         self, symbol: str, tf: str = "15m", count: int = 260
     ) -> list[dict]:
+        rows, _ = await self.get_candles_ex(symbol, tf, count)
+        return rows
+
+    async def get_candles_ex(
+        self, symbol: str, tf: str = "15m", count: int = 260
+    ) -> tuple[list[dict], str]:
+        """Return ``(rows, source)`` where source is ``live`` or ``cache``.
+
+        If neither the exchange nor the cache can answer, raise
+        `UpstreamUnavailable`. There is deliberately no third branch: a
+        generated candle series looks exactly like a traded one on screen.
+        """
         tf_s = {"1m": 60, "5m": 300, "15m": 900, "1h": 3600, "4h": 14400, "D": 86400}[tf]
         res = {"15m": "15", "1h": "60", "4h": "240", "D": "D"}.get(tf, str(tf_s // 60 if tf_s >= 60 else 1))
         now = (int(time.time()) // tf_s) * tf_s
@@ -363,7 +306,7 @@ class NobitexClient:
         # use cache when present
         cached = CANDLE_CACHE.load(symbol.upper(), res, from_ts, now)
         if cached:
-            return cached
+            return cached, "cache"
         if not self._is_circuit_open():
             try:
                 raw = await self.get_udf_history(symbol, res, from_ts, now)
@@ -373,15 +316,16 @@ class NobitexClient:
                         for i in range(len(raw["t"]))
                     ]
                     rows.sort(key=lambda r: r["t"])
-                    CANDLE_CACHE.store(symbol.upper(), res, from_ts, now, rows)
+                    CANDLE_CACHE.store(symbol.upper(), res, from_ts, now, rows, synthetic=False)
                     self.degraded_mode = False
-                    return rows
+                    return rows, "live"
             except ClientError as e:
-                log.warning("Nobitex UDF %s/%s unreachable (%s), using fallback candles", symbol, tf, e)
+                log.warning("Nobitex UDF %s/%s unreachable (%s)", symbol, tf, e)
                 self._trip_circuit()
-        rows = self._synth_candles(symbol, tf, count)
-        CANDLE_CACHE.store(symbol.upper(), res, from_ts, now, rows)
-        return rows
+                raise UpstreamUnavailable(
+                    f"candles {symbol} {tf} unavailable: {e}", {"symbol": symbol, "tf": tf}) from e
+        raise UpstreamUnavailable(f"candles {symbol} {tf} unavailable: circuit breaker is open",
+                                  {"symbol": symbol, "tf": tf})
 
     # ----------------
     # Private shell (Phase 3+, gated)
@@ -396,4 +340,5 @@ class NobitexClient:
         raise AuthRequired("AUTH", "TRADE endpoints are intentionally disabled until ADR-0009 promotion gates pass.")
 
 
-__all__ = ["NobitexClient", "ClientError", "RateLimitError", "ClientStats", "TokenBucketer"]
+__all__ = ["NobitexClient", "ClientError", "UpstreamUnavailable", "RateLimitError",
+           "ClientStats", "TokenBucketer"]

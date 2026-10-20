@@ -1,14 +1,28 @@
-version: "3.9"
 services:
   backend:
-    build: .
+    build:
+      # The build context is the repository root because the backend also
+      # serves index.html + assets/css from there.
+      context: ..
+      dockerfile: server/Dockerfile
     container_name: nbx-backend
-    env_file: .env
+    environment:
+      # Override on the command line, e.g. NBX_EQUITY_USD=500 docker compose up
+      NBX_EQUITY_USD: ${NBX_EQUITY_USD:-100000}
+      NBX_SIGNALS_TTL_S: ${NBX_SIGNALS_TTL_S:-90}
+      NBX_TICK_S: ${NBX_TICK_S:-8}
+      # Empty token keeps mutations loopback-only; set it before exposing ports.
+      NBX_API_TOKEN: ${NBX_API_TOKEN:-}
+      NBX_CORS_ORIGINS: ${NBX_CORS_ORIGINS:-}
     ports:
       - "8000:8000"
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=4).status == 200 else 1)"
       interval: 30s
       timeout: 5s
       retries: 3

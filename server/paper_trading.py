@@ -55,6 +55,12 @@ class Position:
     filled_qty: float = 0.0
     tp1_filled: bool = False
     sl_filled: bool = False
+    last_price: float = 0.0
+    risk_amount: float = 0.0          # in the pair's quote currency
+    size_usd: float = 0.0             # cost basis in account currency (USD)
+    risk_usd: float = 0.0             # amount at risk in account currency
+    risk_pct: float = 0.0             # risk_usd / equity at entry (percent)
+    quote: str = "USDT"
 
 @dataclass
 class OrderEvent:
@@ -71,6 +77,7 @@ class PaperBroker:
     """Loads existing state if present, otherwise starts fresh."""
 
     def __init__(self, equity: float, client: NobitexClient, risk: RiskEngine):
+        self.start_equity = equity
         self.equity = equity
         self.cash = equity
         self.client = client
@@ -79,7 +86,9 @@ class PaperBroker:
         self.orders: list[OrderEvent] = []
         self.equity_curve: list[tuple[float, float]] = [(time.time(), equity)]
         self.concurrent_limit = 5
+        self.usdt_irt = 0.0          # cached FX rate for IRT-quoted pairs
         self.halted = False
+        self.last_error: str | None = None
         self.load()
 
     # --------- persistence ----------
@@ -87,6 +96,7 @@ class PaperBroker:
         try:
             if STATE_FILE.exists():
                 raw = json.loads(STATE_FILE.read_text())
+                self.start_equity = float(raw.get("start_equity", self.start_equity))
                 self.equity = raw.get("equity", self.equity)
                 self.cash = raw.get("cash", self.cash)
                 self.equity_curve = [tuple(x) for x in raw.get("equity_curve", [])]
@@ -99,6 +109,7 @@ class PaperBroker:
     def save(self):
         STATE_FILE.write_text(json.dumps({
             "ts": datetime.now(timezone.utc).isoformat(),
+            "start_equity": self.start_equity,
             "equity": self.equity,
             "cash": self.cash,
             "equity_curve": [list(x) for x in self.equity_curve[-500:]],
@@ -115,6 +126,21 @@ class PaperBroker:
         if s := ob and ob.get("lastTradePrice"):
             return float(s)
         raise ValueError(f"no price for {symbol}")
+
+    async def _quote_rate(self, symbol: str) -> float:
+        """USD value of one unit of the pair's quote currency."""
+        if not symbol.upper().endswith("IRT"):
+            return 1.0
+        if not self.usdt_irt:
+            try:
+                stats = await self.client.get_market_stats()
+                row = (stats.get("stats") or {}).get("usdtirt") or {}
+                px = float(row.get("latest") or row.get("last") or 0)
+                if px > 0:
+                    self.usdt_irt = px
+            except Exception as e:  # noqa: BLE001 - handled by the caller
+                log.warning("fx rate unavailable: %s", e)
+        return self.usdt_irt
 
     async def _execution_price(self, symbol: str, side: str, qty: float) -> tuple[float, float]:
         """Return (avg_price, fill_quantity) walking the orderbook."""
@@ -137,13 +163,17 @@ class PaperBroker:
     async def place_limit(self, symbol: str, side: str, qty: float, price: float | None = None,
                           stop: float | None = None, tp1: float | None = None,
                           tp2: float | None = None, source="SEMI") -> Position | None:
-        if self.halted:
+        self.last_error = None
+        if self.halted or getattr(self.risk, "halted", False):
+            self.last_error = "halted: kill switch is armed"
             self.orders.append(OrderEvent(time.time(), "reject", symbol, side, qty, price or 0, {"reason": "halted"}))
             return None
-        if len(self.positions) >= self.concurrent_limit:
+        if len([p for p in self.positions.values() if p.state != "CLOSED"]) >= self.concurrent_limit:
+            self.last_error = f"concurrent-cap: already {self.concurrent_limit} open positions"
             self.orders.append(OrderEvent(time.time(), "reject", symbol, side, qty, price or 0, {"reason": "concurrent-cap"}))
             return None
         if not self.cash:
+            self.last_error = "no-cash: paper account is empty"
             self.orders.append(OrderEvent(time.time(), "reject", symbol, side, qty, price or 0, {"reason": "no-cash"}))
             return None
 
@@ -152,6 +182,7 @@ class PaperBroker:
             mid = await self._mid_price(symbol)
             px, filled_qty = await self._execution_price(symbol, side, qty)
             if not px:
+                self.last_error = "no-depth: orderbook has no liquidity"
                 self.orders.append(OrderEvent(time.time(), "reject", symbol, side, qty, mid, {"reason": "no-depth"}))
                 return None
             slip = px * SLIP_BPS / 10000
@@ -162,8 +193,59 @@ class PaperBroker:
 
         notional = fill_price * filled_qty
         fee = notional * FEE_PCT
-        total_cost = notional + fee if side == "buy" else notional - fee
+
+        # Everything below is in the *account* currency (USD). IRT pairs are
+        # converted with the live USDTIRT rate so a 21,000 IRT order no longer
+        # consumes 21,000 USD of the paper balance.
+        rate = await self._quote_rate(symbol)
+        if rate <= 0:
+            self.last_error = "no-fx-rate: USDTIRT price unavailable for IRT-quoted pair"
+            self.orders.append(OrderEvent(time.time(), "reject", symbol, side, qty, fill_price, {"reason": "no-fx-rate"}))
+            return None
+        notional_usd = notional / rate
+        fee_usd = fee / rate
+        total_cost = notional_usd + fee_usd if side == "buy" else notional_usd - fee_usd
+
+        # Hard cap: no single position may exceed 25% of equity (ADR-0008).
+        cap = 0.25 * max(self.equity, 1e-9)
+        if notional_usd > cap:
+            self.last_error = (
+                f"single-asset-cap: notional ${notional_usd:,.2f} exceeds 25% of equity (${cap:,.2f})"
+            )
+            self.orders.append(OrderEvent(time.time(), "reject", symbol, side, qty, fill_price, {"reason": "single-asset-cap"}))
+            return None
+
+        # Per-trade risk + portfolio heat + cash buffer gates (ADR-0008).
+        stop_px = stop or fill_price * (0.96 if side == "buy" else 1.04)
+        risk_amount = abs(fill_price - stop_px) * filled_qty
+        risk_usd = risk_amount / rate
+        risk_pct = risk_usd / max(self.equity, 1e-9) * 100
+        max_risk = getattr(self.risk.cfg, "risk_pct", 0.75) * 1.05
+        if risk_pct > max_risk:
+            self.last_error = (
+                f"risk-cap: this order risks {risk_pct:.2f}% of equity, cap is {max_risk:.2f}%"
+            )
+            self.orders.append(OrderEvent(time.time(), "reject", symbol, side, qty, fill_price, {"reason": "risk-cap"}))
+            return None
+        max_heat = getattr(self.risk.cfg, "max_heat_pct", 6.0)
+        if getattr(self.risk, "open_heat", 0.0) + risk_pct > max_heat:
+            self.last_error = (
+                f"heat-cap: open heat {self.risk.open_heat:.2f}% + {risk_pct:.2f}% > {max_heat:.2f}%"
+            )
+            self.orders.append(OrderEvent(time.time(), "reject", symbol, side, qty, fill_price, {"reason": "heat-cap"}))
+            return None
+        min_cash = getattr(self.risk.cfg, "min_cash_pct", 10.0) / 100 * self.equity
+        if self.cash - total_cost < min_cash:
+            self.last_error = (
+                f"min-cash: trade would leave ${self.cash - total_cost:,.2f}, floor is ${min_cash:,.2f}"
+            )
+            self.orders.append(OrderEvent(time.time(), "reject", symbol, side, qty, fill_price, {"reason": "min-cash"}))
+            return None
+
         if total_cost > self.cash:
+            self.last_error = (
+                f"insufficient-funds: need ${total_cost:,.2f}, available ${self.cash:,.2f}"
+            )
             self.orders.append(OrderEvent(time.time(), "reject", symbol, side, qty, fill_price, {"reason": "insufficient-funds"}))
             return None
 
@@ -172,15 +254,22 @@ class PaperBroker:
         pos = Position(
             id=pid, symbol=symbol, side=side, entry_price=fill_price,
             qty=filled_qty, size_quote=notional,
-            stop=stop or fill_price * (0.96 if side == "buy" else 1.04),
+            stop=stop_px,
             tp1=tp1 or fill_price * (1.04 if side == "buy" else 0.96),
             tp2=tp2 or fill_price * (1.06 if side == "buy" else 0.94),
-            stop_pct=abs(fill_price - (stop or fill_price * (0.96 if side == "buy" else 1.04))) / fill_price * 100,
+            stop_pct=abs(fill_price - stop_px) / fill_price * 100,
             opened_at=time.time(), state="OPEN",
             filled_qty=filled_qty,
             max_favorable=0.0, max_adverse=0.0,
+            last_price=fill_price,
+            risk_amount=risk_amount,
+            size_usd=notional_usd,
+            risk_usd=risk_usd,
+            risk_pct=risk_pct,
+            quote="IRT" if symbol.upper().endswith("IRT") else "USDT",
         )
         self.positions[pid] = pos
+        self.risk.open_heat = round(getattr(self.risk, "open_heat", 0.0) + risk_pct, 4)
         self.cash -= total_cost
         self.orders.append(OrderEvent(time.time(), "submit", symbol, side, filled_qty, fill_price, {"source": source}))
         self.orders.append(OrderEvent(time.time(), "fill", symbol, side, filled_qty, fill_price, {"source": source, "fee": fee}))
@@ -197,19 +286,23 @@ class PaperBroker:
             self.orders.append(OrderEvent(time.time(), "reject", pos.symbol, pos.side, pos.filled_qty, 0, {"reason": "revert-failed"}))
             return
         notional_out = spx * sold_qty
+        rate = await self._quote_rate(pos.symbol) or 1.0
         fee_out = notional_out * FEE_PCT
+        fee_out_usd = fee_out / rate
         if pos.side == "buy":
-            pnl_net = notional_out - pos.size_quote - fee_out
-            self.cash += pos.size_quote + pnl_net
+            pnl_net = (notional_out - pos.size_quote) / rate - fee_out_usd
+            self.cash += pos.size_usd + pnl_net
         else:
-            pnl_net = (pos.entry_price - spx) * sold_qty - fee_out
-            self.cash += pos.size_quote + pnl_net
+            pnl_net = (pos.entry_price - spx) * sold_qty / rate - fee_out_usd
+            self.cash += pos.size_usd + pnl_net
+        self.risk.open_heat = max(0.0, round(getattr(self.risk, "open_heat", 0.0) - pos.risk_pct, 4))
+        pos.last_price = spx
         pos.realized_pnl = pnl_net
         pos.closed_at = time.time()
         pos.state = "CLOSED"
         pos.close_reason = reason
         self._mark_equity_minute()
-        self.orders.append(OrderEvent(time.time(), "close", pos.symbol, pos.side, sold_qty, spx, {"reason": reason, "pnl": pnl_net, "fee": fee_out}))
+        self.orders.append(OrderEvent(time.time(), "close", pos.symbol, pos.side, sold_qty, spx, {"reason": reason, "pnl": pnl_net, "fee": fee_out, "risk": pos.risk_usd}))
         self.save()
 
     async def evaluate_positions(self):
@@ -223,6 +316,7 @@ class PaperBroker:
                 mid = await self._mid_price(pos.symbol)
             except Exception:
                 continue
+            pos.last_price = mid
             base_entry = pos.entry_price
             diff = (mid - base_entry) / base_entry * 100
             if pos.side == "sell":
@@ -236,15 +330,17 @@ class PaperBroker:
                 pos.tp1_filled = True
                 exit_qty = pos.filled_qty * 0.5
                 notional_tp1 = exit_qty * mid
+                rate = await self._quote_rate(pos.symbol) or 1.0
                 fee_tp1 = notional_tp1 * FEE_PCT
-                cost_basis_tp1 = pos.size_quote * 0.5
-                pnl_tp1 = (notional_tp1 - cost_basis_tp1 - fee_tp1) if pos.side == "buy" else ((pos.entry_price - mid) * exit_qty - fee_tp1)
+                cost_basis_tp1 = pos.size_usd * 0.5
+                pnl_tp1 = (notional_tp1 - pos.size_quote * 0.5) / rate - fee_tp1 / rate
                 self.cash += cost_basis_tp1 + pnl_tp1
                 pos.filled_qty -= exit_qty
-                pos.size_quote -= cost_basis_tp1
+                pos.size_quote -= pos.size_quote * 0.5
+                pos.size_usd -= cost_basis_tp1
                 pos.realized_pnl += pnl_tp1
                 pos.state = "PARTIAL"
-                self.orders.append(OrderEvent(time.time(), "tp1", pos.symbol, pos.side, exit_qty, mid, {"pnl_pct": diff, "pnl": pnl_tp1, "fee": fee_tp1}))
+                self.orders.append(OrderEvent(time.time(), "tp1", pos.symbol, pos.side, exit_qty, mid, {"pnl_pct": diff, "pnl": pnl_tp1, "fee": fee_tp1, "risk": pos.risk_usd}))
             # trailing stop post-tp1
             if pos.tp1_filled:
                 if pos.side == "buy":
@@ -261,7 +357,13 @@ class PaperBroker:
         self._mark_equity_minute()
 
     def _mark_equity_minute(self):
-        open_val = sum(p.size_quote for p in self.positions.values() if p.state != "CLOSED")
+        # Mark open legs to the last observed price (not to their entry cost).
+        open_val = sum(
+            p.filled_qty * (p.last_price or p.entry_price)
+            / (self.usdt_irt if p.quote == "IRT" and self.usdt_irt else 1.0)
+            for p in self.positions.values()
+            if p.state != "CLOSED"
+        )
         current_eq = self.cash + open_val
         self.equity = current_eq
         self.equity_curve.append((time.time(), current_eq))
@@ -270,11 +372,13 @@ class PaperBroker:
     def metrics(self) -> dict:
         realized = [e for e in self.orders if e.kind in ("tp1", "close")]
         pnl_list = [e.extra.get("pnl", 0) for e in realized]
-        r_mult = [p / max(abs(p), 1e-6) for p in pnl_list]
+        # R-multiple = realised PnL / the amount that was at risk on entry.
+        r_mult = [p / e.extra.get("risk", 0) for p, e in zip(pnl_list, realized) if e.extra.get("risk")]
         wins = [p for p in pnl_list if p > 0]
         losses = [p for p in pnl_list if p <= 0]
         hit_rate = (len(wins) / len(pnl_list) * 100) if pnl_list else 0
-        pf = (sum(wins) / abs(sum(losses) or 1e-6)) if pnl_list else 0
+        pf = (sum(wins) / abs(sum(losses))) if losses else (99.99 if wins else 0.0)
+        pf = min(float(pf), 99.99)
         expectancy = (sum(pnl_list) / len(pnl_list)) if pnl_list else 0
         eq_vals = [v for _, v in self.equity_curve]
         mdd = 0.0
@@ -284,12 +388,14 @@ class PaperBroker:
             mdd = max(mdd, (peak - v) / max(peak, 1) * 100)
         return {
             "trades": len(pnl_list),
+            "start_equity": round(self.start_equity, 2),
             "openPositions": sum(1 for p in self.positions.values() if p.state != "CLOSED"),
             "cash": round(self.cash, 2),
             "equity": round(self.equity, 2),
             "hit_rate": round(hit_rate, 1),
             "profit_factor": round(pf, 2),
             "expectancy": round(expectancy, 2),
+            "expectancy_r": round(sum(r_mult) / len(r_mult), 3) if r_mult else 0.0,
             "max_drawdown": round(mdd, 1),
             "daily_pnl": round(self.risk.daily_pnl, 2),
         }

@@ -1,0 +1,15 @@
+/* Cascade order, declared once, before anything else loads.
+ *
+ * Tailwind puts its utilities in `@layer utilities`. CSS in a layer always
+ * loses to unlayered CSS, and layers are ordered by first mention. Our own
+ * component CSS (`base/components/dashboard.css`, plus the inline <style> in
+ * index.html) is therefore wrapped in `@layer components` and this file fixes
+ * the order so utilities can override it:
+ *
+ *     theme < base < components < utilities
+ *
+ * Without this, `.chip { display:inline-flex }` beat `.hidden`, and every
+ * `class="chip hidden lg:inline-flex"` rendered on phones — which pushed the
+ * header to 741px inside a 390px viewport and made the page scroll sideways.
+ */
+@layer theme, base, components, utilities;

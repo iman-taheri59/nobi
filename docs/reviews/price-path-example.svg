@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="300" viewBox="0 0 800 300">
+  <rect width="800" height="300" fill="#09090b"/>
+  <rect x="12" y="12" width="776" height="276" rx="14" fill="#111113" stroke="#27272a"/>
+  <text x="34" y="40" fill="#e4e4e7" font-family="ui-sans-serif,system-ui,sans-serif" font-size="13" font-weight="700">USDTIRT · 15m — امتیاز ۶۲٫۱ · نتیجه H2: −۱٫۰۰R (حد ضرر)</text>
+  <rect x="34" y="52" width="756" height="56" rx="8" fill="#fbbf24" fill-opacity="0.07" stroke="#fbbf24" stroke-opacity="0.25"/>
+  <text x="44" y="70" fill="#fcd34d" font-family="ui-sans-serif,system-ui,sans-serif" font-size="10">⚠ مسیر قیمت نمایش داده نمی‌شود: کندل‌های شبیه‌سازی‌شده در هر درخواست از نو ساخته می‌شوند</text>
+  <text x="44" y="88" fill="#fcd34d" font-family="ui-sans-serif,system-ui,sans-serif" font-size="10" opacity="0.8">و با مسیری که این نتیجه را ساخته یکی نیستند. سطوح و اجزا مستقیماً از ردیف ژورنال خوانده شده‌اند.</text>
+  <svg x="70" y="120" width="700" height="110" preserveAspectRatio="xMidYMid meet" viewBox="0 0 640 90">
+    <line x1="8" y1="8.0" x2="520" y2="8.0" stroke="#34d399" stroke-width="1.5" opacity=".85"></line>
+    <text x="8" y="4.0" fill="#34d399" font-size="9" font-family="ui-monospace,monospace">tp2</text>
+    <text x="524" y="11.0" fill="#34d399" font-size="9" font-family="ui-monospace,monospace">۹۲٬۳۶۸</text>
+    <line x1="8" y1="27.7" x2="520" y2="27.7" stroke="#10b981" stroke-width="1.5" opacity=".85"></line>
+    <text x="8" y="23.7" fill="#10b981" font-size="9" font-family="ui-monospace,monospace">tp1</text>
+    <text x="524" y="30.7" fill="#10b981" font-size="9" font-family="ui-monospace,monospace">۸۹٬۹۴۹</text>
+    <line x1="8" y1="57.3" x2="520" y2="57.3" stroke="#e4e4e7" stroke-width="1.5" opacity=".85"></line>
+    <text x="8" y="53.3" fill="#e4e4e7" font-size="9" font-family="ui-monospace,monospace">entry</text>
+    <text x="524" y="60.3" fill="#e4e4e7" font-size="9" font-family="ui-monospace,monospace">۸۶٬۳۲۰</text>
+    <line x1="8" y1="82.0" x2="520" y2="82.0" stroke="#f87171" stroke-width="1.5" opacity=".85"></line>
+    <text x="8" y="78.0" fill="#f87171" font-size="9" font-family="ui-monospace,monospace">stop</text>
+    <text x="524" y="85.0" fill="#f87171" font-size="9" font-family="ui-monospace,monospace">۸۳٬۲۹۶</text></svg>
+  <text x="70" y="266" fill="#52525b" font-family="ui-monospace,monospace" font-size="9">levels come from the stored journal row · rendered by index.html · levelBarsSvg()</text>
+</svg>

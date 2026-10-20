@@ -51,13 +51,26 @@ class RiskEngine:
             return entry + dist * rr_levels[0], entry + dist * rr_levels[1]
         return entry - dist * rr_levels[0], entry - dist * rr_levels[1]
 
-    def evaluate(self, symbol: str, side: str, entry: float, atr: float, exec_tf="15m") -> RiskPlan:
+    def evaluate(self, symbol: str, side: str, entry: float, atr: float, exec_tf="15m",
+                 equity_quote: float | None = None, preview: bool = False) -> RiskPlan:
+        """Size one trade.
+
+        ``equity_quote`` is the account equity expressed in the *quote currency
+        of the pair* (IRT for `*IRT`, USDT for `*USDT`). Without it, sizing an
+        IRT pair against a USD balance mixes units and under-sizes by ~68,000x.
+
+        ``preview=True`` answers "what would this trade size to?" without
+        reserving heat. Previously the caller had to subtract the heat after
+        the fact, which corrupted any concurrent request that read state in
+        between.
+        """
         warnings: list[str] = []
         if self.halted:
             return RiskPlan(symbol, "blocked", entry, entry, entry, entry, 0.0, 0.0, 0.0, ["kill-switch-armed"], True)
 
+        equity = float(equity_quote) if equity_quote and equity_quote > 0 else self.cfg.equity
         # volatility-based size: risk / (2*ATR)
-        risk_amt = self.cfg.equity * self.cfg.risk_pct / 100
+        risk_amt = equity * self.cfg.risk_pct / 100
         stop_dist = self.cfg.risk_k_multiplier * atr
         if stop_dist <= 0 or entry <= 0:
             return RiskPlan(symbol, "blocked", entry, entry, entry, entry, 0.0, 0.0, 0.0, ["bad-atr"], True)
@@ -66,18 +79,35 @@ class RiskEngine:
 
         # precision guard (approximate — Nobitex steps usually safe to round 6)
         size_quote = float(f"{size_quote:.2f}")
-        nominal_pct = size_quote / self.cfg.equity * 100
+        nominal_pct = size_quote / max(equity, 1e-9) * 100
 
         rp = self.cfg.risk_pct
+        # Hard ceiling on per-trade risk. It existed in the config but nothing
+        # read it, so a mis-set risk_pct could silently exceed the mandate.
+        if rp > self.cfg.max_risk_pct:
+            warnings.append("risk-pct-clamped")
+            rp = self.cfg.max_risk_pct
+            if risk_amt > 0 and self.cfg.risk_pct:
+                size_quote *= rp / self.cfg.risk_pct
         # trading day check
         if self.daily_pnl <= -3.0:
             warnings.append("daily-loss-halt")
         if self.open_heat + rp > self.cfg.max_heat_pct:
             warnings.append("heat-cap-exceeded")
             rp = max(0, self.cfg.max_heat_pct - self.open_heat)
+            # Shrink the order to whatever heat budget is left (was: only a
+            # warning, which let the cap be exceeded silently).
+            if risk_amt > 0:
+                size_quote *= (rp / self.cfg.risk_pct) if self.cfg.risk_pct else 0
+
+        # Enforce (not merely warn about) the per-asset exposure cap: shrink the
+        # order to the cap instead of letting an outlier ATR produce a giant size.
         if nominal_pct > self.cfg.max_single_asset_pct:
-            warnings.append("single-asset-cap")
-        if rp <= 0:
+            scale = self.cfg.max_single_asset_pct / nominal_pct
+            size_quote = float(f"{size_quote * scale:.2f}")
+            nominal_pct = self.cfg.max_single_asset_pct
+            warnings.append("single-asset-cap-resized")
+        if rp <= 0 or size_quote <= 0:
             return RiskPlan(symbol, "blocked", entry, entry, entry, entry, 0.0, 0.0, 0.0, warnings, True)
 
         stop = entry - stop_dist if side == "buy" else entry + stop_dist
@@ -87,7 +117,8 @@ class RiskEngine:
         if rr < 1.5:
             warnings.append("low-rr")
 
-        self.open_heat += rp
+        if not preview:
+            self.open_heat += rp
         return RiskPlan(
             symbol=symbol,
             action="open",

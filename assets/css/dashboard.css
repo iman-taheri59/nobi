@@ -1,3 +1,4 @@
+@layer components {
 /* ===========================================================
  * dashboard.css — sidebar, header, layout, live-status, charts
  * Specific to the trader dashboard (index.html)
@@ -109,3 +110,4 @@ html[dir="ltr"] .live-badge { right: auto; left: 14px; }
 /* ---------- Order book color coherence ---------- */
 .ob-ask { background: rgba(248, 113, 113, 0.06); border-right: 2px solid rgba(248, 113, 113, 0.4); }
 .ob-bid { background: rgba(52, 211, 153, 0.06); border-right: 2px solid rgba(52, 211, 153, 0.4); }
+}

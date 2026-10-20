@@ -26,34 +26,26 @@
 
   const defaultPythonApi = !isFileOrMobileLocal ? '/api' : 'http://localhost:8000/api';
 
-  const SEED_MARKETS = {
-    BTCIRT:   { last: 4985000000, vol24: 950000000000, change24: 2.4 },
-    ETHIRT:   { last: 229500000,  vol24: 410000000000, change24: 3.1 },
-    USDTIRT:  { last: 68250,      vol24: 1250000000000, change24: 0.4 },
-    SOLIRT:   { last: 11850000,   vol24: 185000000000, change24: 5.2 },
-    TONIRT:   { last: 385000,     vol24: 142000000000, change24: 1.8 },
-    TRXIRT:   { last: 16200,      vol24: 98000000000,  change24: -0.7 },
-    DOGEIRT:  { last: 14800,      vol24: 88000000000,  change24: 4.3 },
-    XRPIRT:   { last: 152000,     vol24: 76000000000,  change24: 1.9 },
-    ADAIRT:   { last: 48500,      vol24: 54000000000,  change24: -1.2 },
-    AVAXIRT:  { last: 2150000,    vol24: 42000000000,  change24: 2.8 },
-    LINKIRT:  { last: 1240000,    vol24: 35000000000,  change24: 3.5 },
-    DOTIRT:   { last: 445000,     vol24: 28000000000,  change24: -0.5 },
-    LTCIRT:   { last: 6450000,    vol24: 25000000000,  change24: 1.1 },
-    SHIBIRT:  { last: 1.42,       vol24: 22000000000,  change24: 6.0 },
-    MATICIRT: { last: 31500,      vol24: 19000000000,  change24: -1.8 },
-    BTCUSDT:  { last: 73040,      vol24: 48000000,     change24: 2.3 },
-    ETHUSDT:  { last: 3362,       vol24: 29000000,     change24: 3.0 },
-    SOLUSDT:  { last: 173.6,      vol24: 16500000,     change24: 5.1 },
-    TONUSDT:  { last: 5.64,       vol24: 9800000,      change24: 1.7 },
-    TRXUSDT:  { last: 0.237,      vol24: 7400000,      change24: -0.8 },
-    DOGEUSDT: { last: 0.217,      vol24: 6900000,      change24: 4.2 },
-    XRPUSDT:  { last: 2.23,       vol24: 6100000,      change24: 1.8 },
-    ADAUSDT:  { last: 0.71,       vol24: 4300000,      change24: -1.1 },
-    AVAXUSDT: { last: 31.5,       vol24: 3500000,      change24: 2.7 },
-    LINKUSDT: { last: 18.17,      vol24: 2900000,      change24: 3.4 },
+  /* Symbol names only. The old table also carried last price / 24h volume /
+   * change, and those numbers reached the screen whenever the exchange was
+   * unreachable — indistinguishable from a live quote. */
+  const SYMBOLS = [
+    'BTCIRT', 'ETHIRT', 'USDTIRT', 'SOLIRT', 'TONIRT', 'TRXIRT', 'DOGEIRT',
+    'XRPIRT', 'ADAIRT', 'AVAXIRT', 'LINKIRT', 'DOTIRT', 'LTCIRT', 'SHIBIRT',
+    'BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'TONUSDT', 'TRXUSDT', 'DOGEUSDT',
+    'XRPUSDT', 'ADAUSDT', 'AVAXUSDT', 'LINKUSDT',
+  ];
+  NBX.SYMBOLS = SYMBOLS;
+  function DOC_LANG() {
+    try {
+      const l = (typeof document !== 'undefined' && document.documentElement.lang) || 'fa';
+      return l.startsWith('en') ? 'en' : 'fa';
+    } catch (_) { return 'fa'; }
+  }
+  NBX.UPSTREAM_MSG = {
+    fa: 'دسترسی به سرور نوبیتکس امکان‌پذیر نیست؛ دادهٔ زنده دریافت نشد. اتصال شبکه یا فیلتر را بررسی کن و دوباره تلاش کن.',
+    en: 'The Nobitex server is unreachable; no live data was received. Check the network or filtering and try again.',
   };
-  NBX.SEED_MARKETS = SEED_MARKETS;
 
   const cfg = Object.assign(
     {
@@ -68,7 +60,15 @@
       timeframes: ['15m', '1h', '4h', 'D'],
       universeTopN: 40,
       maxCandles: 380,
-      seedSymbols: Object.keys(SEED_MARKETS),
+      seedSymbols: SYMBOLS.slice(),
+      // Optional shared secret for mutating endpoints. The server also accepts
+      // local requests without it, so this is only needed when NBX_API_TOKEN
+      // is configured server-side (or when the dashboard is hosted elsewhere).
+      // A sandboxed preview iframe (sandbox="allow-scripts") throws on
+      // localStorage; that crash used to take the whole app down with it.
+      apiToken: (function () {
+        try { return localStorage.getItem('nbx_api_token') || ''; } catch (e) { return ''; }
+      })(),
     },
     self.__NBX_CONFIG || {}
   );
@@ -112,56 +112,6 @@
     return { nextFloat, nextGauss, seedInt: state >>> 0 };
   }
 
-  function synthCandlesFor(symbol, tf = '15m', count = 380) {
-    const sym = normSymbol(symbol);
-    const tfMap = { '1m': 60, '5m': 300, '15m': 900, '30m': 1800, '1h': 3600, '4h': 14400, D: 86400 };
-    const tfSec = tfMap[tf] || 900;
-    const meta = SEED_MARKETS[sym] || { last: 100000, vol24: 5e8, change24: 1.0 };
-    const targetPx = meta.last || 100000;
-    const baseVol = meta.vol24 || 5e8;
-    const chg24 = meta.change24 || 1.0;
-    const rng = createRng(sym + ':' + tf);
-    const now = Math.floor(Date.now() / 1000 / tfSec) * tfSec;
-    const rawCloses = [100.0];
-    const vols = [];
-    const bias = chg24 >= 0 ? 0.0014 : -0.0004;
-    const phaseOffset = rng.seedInt % 5;
-
-    for (let i = 1; i < count; i++) {
-      const cycle = Math.sin(i / 21.0 + phaseOffset) * 0.0085 + Math.cos(i / 11.0) * 0.0045;
-      const shock = rng.nextGauss(bias + cycle, 0.0085);
-      const nxt = Math.max(5.0, rawCloses[rawCloses.length - 1] * (1.0 + shock));
-      rawCloses.push(nxt);
-      const volMult = cycle > 0.002 && shock > 0.003 ? 1.9 : 0.6 + rng.nextFloat() * 0.5;
-      vols.push(Math.max(1.0, (baseVol / Math.max(targetPx, 1e-6) / 96.0) * volMult));
-    }
-    vols.push(vols.length ? vols[vols.length - 1] : 100.0);
-
-    const scale = targetPx / rawCloses[rawCloses.length - 1];
-    const prec = targetPx < 100 ? 4 : targetPx < 10000 ? 2 : 0;
-    const roundP = (v) => (prec === 0 ? Math.round(v) : +v.toFixed(prec));
-    const rows = [];
-
-    for (let i = 0; i < count; i++) {
-      const t_i = now - (count - 1 - i) * tfSec;
-      const c_i = rawCloses[i] * scale;
-      const o_i = i > 0 ? rawCloses[i - 1] * scale : c_i * 0.994;
-      const wickUp = Math.abs(rng.nextGauss(0, 0.005)) + 0.002;
-      const wickDn = Math.abs(rng.nextGauss(0, 0.004)) + 0.0015;
-      const h_i = Math.max(o_i, c_i) * (1.0 + wickUp);
-      const l_i = Math.min(o_i, c_i) * (1.0 - wickDn);
-      rows.push({
-        t: t_i,
-        o: roundP(o_i),
-        h: roundP(h_i),
-        l: roundP(l_i),
-        c: roundP(c_i),
-        v: +vols[i].toFixed(2),
-      });
-    }
-    return rows;
-  }
-  NBX.synthCandlesFor = synthCandlesFor;
 
   const NBXError = class extends Error {
     constructor(code, message, meta) {
@@ -385,150 +335,73 @@
   /* ----------------------------------------------------------
    * 3. Standalone FA Engine (ADR-0006 parity in JS)
    * --------------------------------------------------------- */
-  const FA_PROFILES = {
-    BTC:   { mcap: 1.44e12, fdv: 1.53e12, vol: 3.8e10, tvl: 0,      days: 5700, pow: true },
-    ETH:   { mcap: 4.05e11, fdv: 4.05e11, vol: 1.9e10, tvl: 6.4e10, days: 3350 },
-    SOL:   { mcap: 8.2e10,  fdv: 9.9e10,  vol: 4.2e9,  tvl: 8.4e9,  days: 1700 },
-    TON:   { mcap: 1.4e10,  fdv: 2.8e10,  vol: 3.5e8,  tvl: 4.5e8,  days: 1500 },
-    TRX:   { mcap: 2.0e10,  fdv: 2.0e10,  vol: 5.1e8,  tvl: 7.6e9,  days: 2600 },
-    DOGE:  { mcap: 3.1e10,  fdv: 3.1e10,  vol: 2.1e9,  tvl: 0,      days: 4000, pow: true },
-    XRP:   { mcap: 1.25e11, fdv: 2.2e11,  vol: 3.4e9,  tvl: 8.0e7,  days: 4200 },
-    ADA:   { mcap: 2.5e10,  fdv: 3.2e10,  vol: 6.2e8,  tvl: 3.8e8,  days: 2650 },
-    AVAX:  { mcap: 1.3e10,  fdv: 2.2e10,  vol: 4.8e8,  tvl: 1.3e9,  days: 1550 },
-    LINK:  { mcap: 1.1e10,  fdv: 1.8e10,  vol: 3.9e8,  tvl: 1.1e9,  days: 2700 },
-    DOT:   { mcap: 9.5e9,   fdv: 1.05e10, vol: 2.7e8,  tvl: 2.5e8,  days: 1600 },
-    LTC:   { mcap: 6.8e9,   fdv: 7.4e9,   vol: 4.1e8,  tvl: 0,      days: 4800, pow: true },
-    SHIB:  { mcap: 1.4e10,  fdv: 1.4e10,  vol: 6.5e8,  tvl: 2.5e7,  days: 1650 },
-    MATIC: { mcap: 4.5e9,   fdv: 4.8e9,   vol: 2.2e8,  tvl: 9.5e8,  days: 2150 },
-  };
-
   NBX.FA = {
-    scoreSymbol(symbol, liqScore = 65) {
-      const base = normBase(symbol);
-      const prof = FA_PROFILES[base];
-      let mkt = 55, tok = 60, onc = 55, sen = 65, mac = 58;
-      const vetoes = [];
-      const evidence = { fear_greed: 64 };
-      if (prof) {
-        mkt = prof.mcap >= 5e10 ? 85 : prof.mcap >= 1e10 ? 74 : prof.mcap >= 1e9 ? 62 : 50;
-        const vmc = prof.vol / Math.max(prof.mcap, 1);
-        if (vmc > 0.05) mkt += 6;
-        tok = Math.min(100, Math.round((prof.mcap / Math.max(prof.fdv, 1)) * 95));
-        if (prof.tvl > 0) {
-          onc = +(40 + Math.min(55, Math.log10(prof.tvl + 1) * 5.2)).toFixed(1);
-          evidence.tvl = prof.tvl;
-        } else {
-          onc = 58;
-        }
-        if (prof.pow) {
-          onc += 12;
-          evidence.pow_bonus = true;
-        }
-        evidence.mcap = prof.mcap;
-        evidence.fdv = prof.fdv;
-        evidence.vmc = +vmc.toFixed(3);
-        evidence.days = prof.days;
-      }
-      if (base === 'XYZ') vetoes.push('unlock-7d>5%');
-      let score = 0.25 * mkt + 0.25 * tok + 0.2 * onc + 0.2 * sen + 0.1 * mac;
-      score = clamp(score + (liqScore - 50) * 0.12, 0, 100);
-      return {
-        symbol: normSymbol(symbol),
-        score: +score.toFixed(1),
-        market: mkt,
-        tokenomics: tok,
-        onchain: onc,
-        sentiment: sen,
-        macro: mac,
-        vetoes,
-        evidence,
-        fresh: true,
-        ts: new Date().toISOString(),
-      };
-    },
+    /* The static market-cap table is gone. `scoreSymbol` now reports that no
+     * fundamentals are available; the pages render that sentence instead of a
+     * score derived from a table that stopped being true years ago. */
+    scoreSymbol(symbol) {
+      return { ok: false, unavailable: true, symbol: normSymbol(symbol),
+               score: null, vetoes: [], evidence: {},
+               message: NBX.UPSTREAM_MSG[DOC_LANG()] };
+    }
+
   };
 
   /* ----------------------------------------------------------
    * 4. Standalone Risk & Paper Broker Engine (ADR-0008/0009)
    * --------------------------------------------------------- */
+  const PAPER_START_EQUITY = 100000;
   NBX.Paper = {
-    equity: 100000,
-    cash: 86500,
-    openHeat: 2.25,
-    dailyPnl: 1.4,
+    start_equity: PAPER_START_EQUITY,
+    equity: PAPER_START_EQUITY,
+    cash: PAPER_START_EQUITY,
+    openHeat: 0,
+    dailyPnl: 0,
     halted: false,
-    positions: [
-      {
-        id: 'pp-btc-1',
-        symbol: 'BTCIRT',
-        side: 'buy',
-        entry_price: 4720000000,
-        qty: 0.052,
-        size_quote: 245440000,
-        stop: 4540000000,
-        tp1: 5080000000,
-        tp2: 5310000000,
-        stop_pct: 3.8,
-        opened_at: Date.now() / 1000 - 7200,
-        state: 'OPEN',
-        realized_pnl: 0,
-        filled_qty: 0.052,
-        tp1_filled: true,
-      },
-      {
-        id: 'pp-eth-2',
-        symbol: 'ETHUSDT',
-        side: 'buy',
-        entry_price: 3340,
-        qty: 1.4,
-        size_quote: 4676,
-        stop: 3233,
-        tp1: 3500,
-        tp2: 3610,
-        stop_pct: 3.2,
-        opened_at: Date.now() / 1000 - 5400,
-        state: 'OPEN',
-        realized_pnl: 0,
-        filled_qty: 1.4,
-        tp1_filled: false,
-      },
-      {
-        id: 'pp-sol-3',
-        symbol: 'SOLUSDT',
-        side: 'buy',
-        entry_price: 169.5,
-        qty: 12,
-        size_quote: 2034,
-        stop: 162.5,
-        tp1: 178.3,
-        tp2: 185.0,
-        stop_pct: 4.1,
-        opened_at: Date.now() / 1000 - 3600,
-        state: 'OPEN',
-        realized_pnl: 0,
-        filled_qty: 12,
-        tp1_filled: false,
-      },
-    ],
+    halt() { this.halted = true; return this.getMetrics(); },
+    resume() { this.halted = false; return this.getMetrics(); },
+    positions: [],
+    closed: [],
     getMetrics() {
+      const open = this.positions.filter((p) => p.state !== 'CLOSED');
+      const pnls = this.closed.map((p) => p.realized_pnl || 0);
+      const wins = pnls.filter((v) => v > 0);
+      const losses = pnls.filter((v) => v <= 0);
+      const gp = wins.reduce((a, b) => a + b, 0);
+      const gl = Math.abs(losses.reduce((a, b) => a + b, 0));
       return {
-        trades: 18,
-        openPositions: this.positions.filter((p) => p.state !== 'CLOSED').length,
+        trades: pnls.length,
+        start_equity: this.start_equity,
+        openPositions: open.length,
         cash: +this.cash.toFixed(2),
-        equity: +(this.equity * 1.014).toFixed(2),
-        hit_rate: 66.7,
-        profit_factor: 1.54,
-        expectancy: 42.8,
-        max_drawdown: 4.8,
+        equity: +this.equity.toFixed(2),
+        hit_rate: pnls.length ? +((wins.length / pnls.length) * 100).toFixed(1) : 0,
+        profit_factor: gl > 0 ? Math.min(99.99, +(gp / gl).toFixed(2)) : gp > 0 ? 99.99 : 0,
+        expectancy: pnls.length ? +(pnls.reduce((a, b) => a + b, 0) / pnls.length).toFixed(2) : 0,
+        expectancy_r: 0,
+        max_drawdown: 0,
         daily_pnl: this.dailyPnl,
       };
     },
     placeOrder(payload) {
-      if (this.halted) return { ok: false, error: 'halted' };
+      if (this.halted) return { ok: false, error: 'halted: kill switch is armed' };
       const sym = normSymbol(payload.symbol || 'BTCIRT');
       const side = (payload.side || 'buy').toLowerCase();
-      const qty = +(payload.qty || 0.01);
-      const px = +(payload.price || (SEED_MARKETS[sym] && SEED_MARKETS[sym].last) || 1000);
+      const qty = +(payload.qty || 0);
+      const px = +(payload.price || 0);
+      if (!px) {
+        return { ok: false, unavailable: true,
+                 error: 'price unavailable: the exchange is unreachable — pass the last traded price explicitly' };
+      }
+      if (!qty) return { ok: false, error: 'qty is required' };
+      const notional = px * qty;
+      const cap = this.equity * 0.25;
+      if (notional > cap) {
+        return { ok: false, error: `single-asset-cap: notional ${Math.round(notional)} exceeds 25% of paper equity (${Math.round(cap)})` };
+      }
+      if (notional > this.cash) {
+        return { ok: false, error: `insufficient-funds: need ${Math.round(notional)}, available ${Math.round(this.cash)}` };
+      }
       const stop = +(payload.stop || (side === 'buy' ? px * 0.962 : px * 1.038));
       const tp1 = +(payload.tp1 || (side === 'buy' ? px * 1.045 : px * 0.955));
       const tp2 = +(payload.tp2 || (side === 'buy' ? px * 1.075 : px * 0.925));
@@ -538,7 +411,7 @@
         side,
         entry_price: px,
         qty,
-        size_quote: px * qty,
+        size_quote: notional,
         stop,
         tp1,
         tp2,
@@ -548,8 +421,13 @@
         realized_pnl: 0,
         filled_qty: qty,
         tp1_filled: false,
+        last_price: px,
       };
       this.positions.unshift(pos);
+      this.cash -= notional;
+      this.equity = this.cash + this.positions
+        .filter((p) => p.state !== 'CLOSED')
+        .reduce((a, p) => a + p.filled_qty * (p.last_price || p.entry_price), 0);
       return { ok: true, position: pos, metrics: this.getMetrics() };
     },
   };
@@ -668,6 +546,10 @@
         profit_factor: +pf.toFixed(2),
         expectancy_r: +expR.toFixed(3),
         max_drawdown: +mdd.toFixed(1),
+        gross_profit: +sumWin.toFixed(2),
+        gross_loss: +sumLoss.toFixed(2),
+        initial_equity: initEq,
+        final_equity: equityCurve.length ? equityCurve[equityCurve.length - 1][1] : initEq,
         equity_curve: equityCurve.slice(-300),
         sample_trades: closed.slice(-8).map((t) => ({
           entry: t.entry,
@@ -680,41 +562,146 @@
     },
 
     runWalkForward(candles, symbol, tf, cfg = {}) {
-      const tb = +(cfg.train_bars || 200);
-      const eb = +(cfg.eval_bars || 120);
+      // Browser-only fallback. It does NOT optimise parameters on the train
+      // slice (the backend walk-forward does); it only shows how the rules
+      // behave on simulated candles, so every report is stamped as such.
+      let tb = +(cfg.train_bars || 200);
+      let eb = +(cfg.eval_bars || 120);
+      let windowMode = 'manual';
+      const fits = (t, e) => e > 0 && Math.floor((candles.length - t) / e);
+      if (fits(tb, eb) < 2) {
+        eb = Math.max(48, Math.min(240, Math.floor(candles.length / 7)));
+        tb = 3 * eb;
+        if (tb + eb > candles.length) tb = Math.max(84, candles.length - eb - 1);
+        windowMode = 'auto';
+      }
       const windows = [];
       let start = 0;
+      let idx = 0;
       while (start + tb + eb <= candles.length) {
         const evalSlice = candles.slice(start + tb - 60, start + tb + eb);
         const w = this.runWindow(evalSlice, symbol, tf, cfg);
-        windows.push(w);
+        const params = {
+          atr_stop_k: +(cfg.atr_stop_k || 2),
+          tp1_r: +(cfg.tp1_r || 1.5),
+          tp2_r: +(cfg.tp2_r || 2.5),
+        };
+        const evalStart = candles[start + tb] ? new Date(candles[start + tb].t * 1000).toISOString() : '';
+        const evalEnd = candles[Math.min(start + tb + eb - 1, candles.length - 1)]
+          ? new Date(candles[Math.min(start + tb + eb - 1, candles.length - 1)].t * 1000).toISOString()
+          : '';
+        windows.push({
+          ...w,
+          index: ++idx,
+          train_start: null,
+          train_end: null,
+          eval_start: evalStart,
+          eval_end: evalEnd,
+          window_start: w.window_start,
+          window_end: w.window_end,
+          params,
+          params_used: params,
+          params_optimised: false,
+          is: { trades: 0, expectancy_r: 0, profit_factor: 0, hit_rate: 0, max_drawdown: 0 },
+          oos: {
+            trades: w.trades,
+            wins: w.wins,
+            hit_rate: w.hit_rate,
+            profit_factor: w.profit_factor,
+            expectancy_r: w.expectancy_r,
+            max_drawdown: w.max_drawdown,
+            final_equity: w.final_equity,
+          },
+        });
         start += eb;
       }
       if (!windows.length) {
-        windows.push(this.runWindow(candles, symbol, tf, cfg));
+        const w = this.runWindow(candles, symbol, tf, cfg);
+        windows.push({
+          ...w,
+          index: 1,
+          params: { atr_stop_k: +(cfg.atr_stop_k || 2), tp1_r: +(cfg.tp1_r || 1.5), tp2_r: +(cfg.tp2_r || 2.5) },
+          params_used: { atr_stop_k: +(cfg.atr_stop_k || 2), tp1_r: 1.5, tp2_r: 2.5 },
+          params_optimised: false,
+          is: { trades: 0, expectancy_r: 0, profit_factor: 0, hit_rate: 0, max_drawdown: 0 },
+          oos: { trades: w.trades, hit_rate: w.hit_rate, profit_factor: w.profit_factor, expectancy_r: w.expectancy_r, max_drawdown: w.max_drawdown },
+        });
       }
+
       const totalTrades = windows.reduce((a, w) => a + w.trades, 0);
       const totalWins = windows.reduce((a, w) => a + w.wins, 0);
+      const grossP = windows.reduce((a, w) => a + (w.gross_profit || 0), 0);
+      const grossL = windows.reduce((a, w) => a + (w.gross_loss || 0), 0);
+      const pooledPf = grossL > 0 ? Math.min(99.99, grossP / grossL) : (grossP > 0 ? 99.99 : 0);
       const denom = Math.max(1, totalTrades);
-      const hitRate = windows.reduce((a, w) => a + w.hit_rate * w.trades, 0) / denom;
-      const pf = windows.reduce((a, w) => a + w.profit_factor * w.trades, 0) / denom;
       const expR = windows.reduce((a, w) => a + w.expectancy_r * w.trades, 0) / denom;
       const mdd = Math.max(...windows.map((w) => w.max_drawdown), 0);
+      const profitable = windows.filter((w) => (w.final_equity || 0) > (w.initial_equity || 0)).length;
+      const consistency = windows.length ? (profitable / windows.length) * 100 : 0;
+
+      // chain the per-window curves so the chart shows one OOS line
+      const initialEquity = +(cfg.equity || cfg.initial_equity || 50000);
+      let eq = initialEquity;
+      const curve = [];
+      for (const w of windows) {
+        const wStart = w.initial_equity || initialEquity;
+        const scale = eq / Math.max(wStart, 1e-9);
+        for (const [ts, v] of (w.equity_curve || [])) curve.push([ts, +(+v * scale).toFixed(2)]);
+        eq = eq * (1 + ((w.final_equity || wStart) / Math.max(wStart, 1e-9) - 1));
+      }
+
+      const checks = {
+        windows_ge_3: { value: windows.length, pass: windows.length >= 3, required: 3 },
+        oos_trades_ge_min: { value: totalTrades, pass: totalTrades >= 30, required: 30 },
+        profit_factor_ge_1_3: { value: +pooledPf.toFixed(2), pass: pooledPf >= 1.3, required: 1.3 },
+        max_drawdown_lt_15: { value: +mdd.toFixed(1), pass: mdd < 15, required: 15 },
+        expectancy_r_positive: { value: +expR.toFixed(3), pass: expR > 0, required: 0 },
+        profitable_windows_ge_50: { value: +consistency.toFixed(1), pass: consistency >= 50, required: 50 },
+      };
+      const dataShort = windows.length < 3 || totalTrades < 30;
+      const wouldBe = dataShort ? 'INSUFFICIENT_DATA' : (Object.values(checks).every((c) => c.pass) ? 'PASS' : 'FAIL');
       const hash = hashSeed(JSON.stringify({ symbol, tf, cfg })).toString(16).slice(0, 8);
+
       return {
         config_hash: hash,
         symbol,
         tf,
-        windows: windows.length,
+        mode: 'wf',
+        source: 'synthetic',
+        bars: candles.length,
+        window_mode: windowMode,
+        train_bars: tb,
+        eval_bars: eb,
+        param_grid_size: 1,
+        initial_equity: initialEquity,
         aggregate: {
           trades: totalTrades,
           total_wins: totalWins,
-          hit_rate: +hitRate.toFixed(1),
-          profit_factor: +pf.toFixed(2),
+          hit_rate: totalTrades ? +((totalWins / totalTrades) * 100).toFixed(1) : 0,
+          profit_factor: +pooledPf.toFixed(2),
           expectancy_r: +expR.toFixed(3),
           max_drawdown: +mdd.toFixed(1),
+          windows: windows.length,
+          profitable_windows: profitable,
+          initial_equity: initialEquity,
+          final_equity: +eq.toFixed(2),
+          equity_curve: curve.slice(-400),
         },
-        details: windows.slice(-3),
+        aggregate_is: { trades: 0, expectancy_r: 0, profit_factor: 0 },
+        degradation: { is_expectancy_r: 0, oos_expectancy_r: +expR.toFixed(3), retention: null },
+        param_stability: { distinct_param_sets: 1, most_common_share: 100 },
+        gate: {
+          state: 'SYNTHETIC_DATA',
+          would_be: wouldBe,
+          data_source: 'synthetic',
+          checks,
+          failed: Object.keys(checks).filter((k) => !checks[k].pass),
+          message: (typeof LANG !== 'undefined' && LANG === 'fa')
+            ? 'شمع‌ها از موتور مرورگر (شبیه‌سازی) آمده‌اند؛ دروازه ارتقا روی داده مصنوعی مجوز نمی‌دهد.'
+            : 'Candles come from the browser engine (simulated); the gate never certifies simulated data.',
+          bars_needed: tb + 3 * eb,
+        },
+        details: windows.slice(-12),
       };
     },
 
@@ -882,12 +869,19 @@
     }
 
     async getBackendCandles(symbol, tf) {
+      let why = 'backend unreachable';
       try {
         const r = await this.get(cfg.pythonApi + '/candles/' + encodeURIComponent(symbol) + '?tf=' + encodeURIComponent(tf), 1);
-        if (r && Array.isArray(r.rows)) return r;
-      } catch (e) {}
-      const rows = synthCandlesFor(symbol, tf || '15m', cfg.maxCandles);
-      return { symbol: normSymbol(symbol), tf: tf || '15m', count: rows.length, rows };
+        if (r && Array.isArray(r.rows) && r.rows.length) return r;
+        if (r && r.unavailable) why = r.message || why;
+      } catch (e) {
+        why = (e && e.message) || why;
+      }
+      /* No synthetic series here on purpose. Returning [] makes every caller
+       * show the "exchange unreachable" state instead of a plausible chart. */
+      return { ok: false, unavailable: true, symbol: normSymbol(symbol), tf: tf || '15m',
+               count: 0, rows: [], error: 'upstream_unavailable',
+               message: NBX.UPSTREAM_MSG[DOC_LANG()], detail: String(why).slice(0, 200) };
     }
 
     async getBackendFA(symbol) {
@@ -897,7 +891,11 @@
           if (r && typeof r.score === 'number') return r;
         } catch (e) {}
       }
-      return NBX.FA.scoreSymbol(symbol);
+      // The old fallback scored coins from a hard-coded market-cap table that
+      // went stale the day it was typed. No data is better than wrong data.
+      return { ok: false, unavailable: true, symbol: normSymbol(symbol),
+               score: null, error: 'upstream_unavailable',
+               message: NBX.UPSTREAM_MSG[DOC_LANG()] };
     }
 
     async getBackendRiskState() {
@@ -924,7 +922,14 @@
         } catch (e) {}
       }
       const sym = normSymbol(symbol);
-      const entry = (SEED_MARKETS[sym] && SEED_MARKETS[sym].last) || 100000;
+      const engine = NBX.core && NBX.core.engine;
+      const rows = engine && (engine.candles[sym + ':' + '15m'] || engine.candles[sym]);
+      const entry = rows && rows.length ? +rows[rows.length - 1].c : 0;
+      if (!entry) {
+        return { ok: false, unavailable: true, symbol: sym, side: side || 'buy',
+                 error: 'upstream_unavailable', message: NBX.UPSTREAM_MSG[DOC_LANG()],
+                 warnings: [], blocked: true };
+      }
       const stopDist = entry * 0.036;
       const isBuy = (side || 'buy') === 'buy';
       const stop = isBuy ? entry - stopDist : entry + stopDist;
@@ -944,19 +949,58 @@
       };
     }
 
+    _authHeaders() {
+      const h = { 'Content-Type': 'application/json' };
+      if (cfg.apiToken) h['X-API-Token'] = cfg.apiToken;
+      return h;
+    }
+
     async postPaperOrder(payload) {
       if (!this.standaloneMobile) {
         try {
           const res = await fetch(cfg.pythonApi + '/paper/order', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: this._authHeaders(),
             body: JSON.stringify(payload),
           });
           const r = await res.json();
           if (res.ok && r && r.ok !== undefined) return r;
+          // 401/403 must surface: silently falling back to the browser engine
+          // would hide the fact that the order never reached the backend.
+          if (res.status === 401 || res.status === 403) {
+            return { ok: false, error: (r && r.detail) || 'withheld by server policy (auth)', auth_error: true };
+          }
         } catch (e) {}
       }
       return NBX.Paper.placeOrder(payload || {});
+    }
+
+    async postResume() {
+      if (this.standaloneMobile) {
+        if (NBX.Paper && typeof NBX.Paper.resume === 'function') NBX.Paper.resume();
+        return { halted: false, standalone: true };
+      }
+      try {
+        const res = await fetch(cfg.pythonApi + '/paper/resume', { method: 'POST', headers: this._authHeaders() });
+        const r = await res.json();
+        if (res.status === 401 || res.status === 403) return { halted: true, error: r.detail || 'auth required' };
+        return r;
+      } catch (e) {
+        return { halted: true, error: String(e) };
+      }
+    }
+
+    async postHalt(flat) {
+      if (this.standaloneMobile) {
+        if (NBX.Paper && typeof NBX.Paper.halt === 'function') NBX.Paper.halt();
+        return { halted: true, standalone: true };
+      }
+      try {
+        const res = await fetch(cfg.pythonApi + '/paper/halt', { method: 'POST', headers: this._authHeaders() });
+        return await res.json();
+      } catch (e) {
+        return { halted: false, error: String(e) };
+      }
     }
 
     async getPaperPositions() {
@@ -986,26 +1030,216 @@
           if (r && r.books) return r;
         } catch (e) {}
       }
-      return {
-        enabled: true,
-        subscriptions: ['BTCIRT', 'ETHUSDT', 'SOLUSDT'],
-        books: {
-          BTCIRT: { best_bid: 4984000000, best_ask: 4986000000, mid: 4985000000, fresh: true, latency: 14 },
-          ETHUSDT: { best_bid: 3361, best_ask: 3363, mid: 3362, fresh: true, latency: 15 },
-          SOLUSDT: { best_bid: 173.4, best_ask: 173.8, mid: 173.6, fresh: true, latency: 14 },
-        },
-      };
+      return { enabled: false, subscriptions: [], books: {}, standalone: true };
     }
 
-    _getCandlesForBacktest(symbol, tf) {
+    async getJournalSummary(opts) {
+      const o = opts || {};
+      const qs = new URLSearchParams();
+      qs.set('days', String(o.days || 90));
+      qs.set('limit', String(o.limit || 60));
+      if (o.tf) qs.set('tf', o.tf);
+      if (o.source) qs.set('source', o.source);
+      if (o.origin) qs.set('origin', o.origin);
+      if (this.standaloneMobile) return { kpi: {}, horizons: [], families: [], calibration: [], signals: [], origins: {}, standalone: true };
+      try {
+        const r = await this.get(cfg.pythonApi + '/journal/summary?' + qs.toString(), 1);
+        if (r && r.kpi) return r;
+      } catch (e) {}
+      return { kpi: {}, horizons: [], families: [], calibration: [], signals: [], origins: {}, error: 'unavailable' };
+    }
+
+    async getJournalSignal(id) {
+      if (this.standaloneMobile) return { error: 'detail needs the python backend' };
+      try {
+        const r = await this.get(cfg.pythonApi + '/journal/signal/' + encodeURIComponent(id), 1);
+        if (r && r.signal) return r;
+        return { error: (r && r.detail) || 'not found' };
+      } catch (e) {
+        return { error: String((e && e.message) || e) };
+      }
+    }
+
+    async getJournalExport(opts) {
+      const o = opts || {};
+      const qs = new URLSearchParams();
+      qs.set('format', o.format || 'csv');
+      if (o.days) qs.set('days', String(o.days));
+      if (o.origin) qs.set('origin', o.origin);
+      if (o.tf) qs.set('tf', o.tf);
+      const res = await fetch(cfg.pythonApi + '/journal/export?' + qs.toString(),
+                             { headers: this._authHeaders() });
+      if (!res.ok) throw new Error('export failed: HTTP ' + res.status);
+      const text = await res.text();
+      const rows = res.headers.get('X-Rows');
+      return { text, rows: rows === null ? null : Number(rows),
+               filename: (res.headers.get('Content-Disposition') || '')
+                 .split('filename="')[1]?.replace('"', '') || ('nobi-journal.' + (o.format || 'csv')) };
+    }
+
+    async getSettings() {
+      if (this.standaloneMobile) return { read_only: true, standalone: true };
+      try {
+        const r = await this.get(cfg.pythonApi + '/settings', 1);
+        if (r && typeof r.read_only === 'boolean') return r;
+      } catch (e) {}
+      return { error: 'unavailable' };
+    }
+
+    async testTelegram() {
+      // Asks the server "is the configured bot token real?". The token itself
+      // is never sent to — or readable from — the browser.
+      if (this.standaloneMobile) return { standalone: true, has_token: false };
+      try {
+        const res = await fetch(cfg.pythonApi + '/settings/telegram/test', {
+          method: 'POST', headers: this._authHeaders(),
+        });
+        return await res.json();
+      } catch (e) {
+        return { error: 'unreachable', detail: String(e && e.message || e).slice(0, 80) };
+      }
+    }
+
+    async getErrors(opts) {
+      const o = opts || {};
+      const qs = new URLSearchParams();
+      qs.set('limit', String(o.limit || 200));
+      if (o.level) qs.set('level', o.level);
+      if (o.hours) qs.set('hours', String(o.hours));
+      if (o.q) qs.set('q', o.q);
+      try {
+        const r = await this.get(cfg.pythonApi + '/errors?' + qs.toString(), 1);
+        return r && Array.isArray(r.errors) ? r : { errors: [], n: 0, counts: {} };
+      } catch (e) {
+        return { errors: [], n: 0, counts: {}, error: 'unavailable' };
+      }
+    }
+
+    async postError(payload) {
+      /* Fire-and-forget: a failed error report must never raise, or reporting
+         one bug would create another. */
+      if (this.standaloneMobile) return { ok: false, standalone: true };
+      try {
+        const res = await fetch(cfg.pythonApi + '/errors', {
+          method: 'POST', headers: this._authHeaders(), body: JSON.stringify(payload),
+        });
+        return await res.json();
+      } catch (e) { return { ok: false }; }
+    }
+
+    async clearErrors() {
+      if (this.standaloneMobile) return { ok: false, standalone: true };
+      try {
+        const res = await fetch(cfg.pythonApi + '/errors/clear', {
+          method: 'POST', headers: this._authHeaders(),
+        });
+        return await res.json();
+      } catch (e) { return { ok: false, error: String(e).slice(0, 80) }; }
+    }
+
+    async selfTestErrors() {
+      if (this.standaloneMobile) return { ok: false, standalone: true };
+      try {
+        const res = await fetch(cfg.pythonApi + '/errors/selftest', {
+          method: 'POST', headers: this._authHeaders(),
+        });
+        return await res.json();
+      } catch (e) { return { ok: false, error: String(e).slice(0, 80) }; }
+    }
+
+    async getAudit(opts) {
+      const o = opts || {};
+      if (this.standaloneMobile) return { events: [], counts: {}, standalone: true };
+      try {
+        const qs = new URLSearchParams({ limit: String(o.limit || 25) });
+        if (o.days) qs.set('days', String(o.days));
+        const r = await this.get(cfg.pythonApi + '/audit?' + qs.toString(), 1);
+        if (r && Array.isArray(r.events)) return r;
+      } catch (e) {}
+      return { events: [], counts: {}, error: 'unavailable' };
+    }
+
+    async getNotifyStatus() {
+      if (this.standaloneMobile) return { configured: false, transport: 'disabled' };
+      try {
+        const r = await this.get(cfg.pythonApi + '/notify/status', 1);
+        if (r && typeof r.configured === 'boolean') return r;
+      } catch (e) {}
+      return { configured: false, transport: 'unknown' };
+    }
+
+    async postMsiBaseline(opts) {
+      const o = opts || {};
+      if (this.standaloneMobile) return { error: 'baseline needs the python backend' };
+      try {
+        const res = await fetch(cfg.pythonApi + '/journal/msi/baseline?tf=' + encodeURIComponent(o.tf || '15m')
+          + '&symbols=' + encodeURIComponent(o.symbols || 10)
+          + '&bars=' + encodeURIComponent(o.bars || 1200),
+          { method: 'POST', headers: this._authHeaders() });
+        const r = await res.json();
+        if (res.status === 401 || res.status === 403) return { error: r.detail || 'auth required' };
+        return r;
+      } catch (e) {
+        return { error: String(e) };
+      }
+    }
+
+    async postJournalBackfill(opts) {
+      const o = opts || {};
+      if (this.standaloneMobile) return { error: 'backfill needs the python backend' };
+      try {
+        const res = await fetch(cfg.pythonApi + '/journal/backfill?tf=' + encodeURIComponent(o.tf || '15m')
+          + '&symbols=' + encodeURIComponent(o.symbols || 10)
+          + '&bars=' + encodeURIComponent(o.bars || 800),
+          { method: 'POST', headers: this._authHeaders() });
+        const r = await res.json();
+        if (res.status === 401 || res.status === 403) return { error: r.detail || 'auth required' };
+        return r;
+      } catch (e) {
+        return { error: String(e) };
+      }
+    }
+
+    async getJournalSignals(opts) {
+      const o = opts || {};
+      const qs = new URLSearchParams();
+      ['tf', 'symbol', 'direction', 'source'].forEach(k => { if (o[k]) qs.set(k, o[k]); });
+      qs.set('days', String(o.days || 90));
+      qs.set('limit', String(o.limit || 200));
+      try {
+        const r = await this.get(cfg.pythonApi + '/journal/signals?' + qs.toString(), 1);
+        return r && r.signals ? r : { count: 0, signals: [] };
+      } catch (e) {
+        return { count: 0, signals: [], error: String(e) };
+      }
+    }
+
+    _getCandlesForBacktest(symbol, tf, bars) {
       const sym = normSymbol(symbol);
       const engine = NBX.core && NBX.core.engine;
       const existing = engine && (engine.candles[sym + ':' + tf] || engine.candles[sym]);
       if (existing && existing.length >= 200) return existing;
-      return synthCandlesFor(sym, tf || '1h', 380);
+      // Nothing local to run on: the caller decides how to tell the user.
+      return [];
+    }
+
+    /* The dashboard can fall back to local computation when the server is
+     * unreachable, but a fallback that nobody is told about is indistinguishable
+     * from a working server. One warning row per failure keeps it honest and
+     * never throws (postError is fire-and-forget). */
+    _reportFallback(what, err, context) {
+      const msg = String((err && err.message) || err || 'unknown error');
+      try {
+        if (typeof this.postError === 'function') {
+          this.postError({ level: 'warning', source: 'api.' + what + '-fallback',
+                           message: 'server ' + what + ' failed, computed locally: ' + msg,
+                           stack: err && err.stack, context: context });
+        }
+      } catch (_) { /* logging must never break the feature */ }
     }
 
     async runBacktest(symbol, tf, btCfg) {
+      let reason = null;
       if (!this.standaloneMobile) {
         try {
           const res = await fetch(cfg.pythonApi + '/backtest/run', {
@@ -1013,18 +1247,27 @@
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ symbol, tf, ...btCfg }),
           });
-          const r = await res.json();
+          const r = await res.json().catch(() => ({}));
           if (res.ok && r && (r.ok || r.error)) return r;
-        } catch (e) {}
+          reason = new Error('HTTP ' + res.status);
+        } catch (e) { reason = e; }
+        this._reportFallback('backtest', reason, (symbol || '') + ' ' + (tf || ''));
       }
       await sleep(60);
       const sym = normSymbol(symbol || 'BTCIRT');
-      const rows = this._getCandlesForBacktest(sym, tf || '1h');
+      const rows = this._getCandlesForBacktest(sym, tf || '1h', btCfg && btCfg.bars);
+      if (!rows || rows.length < 120) {
+        return { ok: false, unavailable: true, error: 'upstream_unavailable',
+                 message: NBX.UPSTREAM_MSG[DOC_LANG()],
+                 detail: reason ? String(reason.message || reason) : 'no candles' };
+      }
       const report = NBX.Backtest.runWalkForward(rows, sym, tf || '1h', btCfg || {});
-      return { ok: true, report, standalone: true };
+      return { ok: true, report, standalone: true, fallback: !!reason,
+               fallback_reason: reason ? String(reason.message || reason) : null };
     }
 
-    async runGridSearch(symbol, tf, grid) {
+    async runGridSearch(symbol, tf, grid, bars) {
+      let reason = null;
       if (!this.standaloneMobile) {
         try {
           const res = await fetch(cfg.pythonApi + '/backtest/grid', {
@@ -1032,17 +1275,27 @@
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ symbol, tf, grid: grid || undefined }),
           });
-          const r = await res.json();
+          const r = await res.json().catch(() => ({}));
           if (res.ok && r && (r.ok || r.error)) return r;
-        } catch (e) {}
+          reason = new Error('HTTP ' + res.status);
+        } catch (e) { reason = e; }
+        this._reportFallback('grid', reason, (symbol || '') + ' ' + (tf || ''));
       }
       await sleep(80);
       const sym = normSymbol(symbol || 'BTCIRT');
-      const rows = this._getCandlesForBacktest(sym, tf || '1h');
-      return NBX.Backtest.gridSearch(rows, sym, tf || '1h', grid);
+      const rows = this._getCandlesForBacktest(sym, tf || '1h', bars || 600);
+      if (!rows || rows.length < 120) {
+        return { ok: false, unavailable: true, error: 'upstream_unavailable',
+                 message: NBX.UPSTREAM_MSG[DOC_LANG()],
+                 detail: reason ? String(reason.message || reason) : 'no candles' };
+      }
+      const out = NBX.Backtest.gridSearch(rows, sym, tf || '1h', grid);
+      return reason ? Object.assign({}, out, { fallback: true,
+               fallback_reason: String(reason.message || reason) }) : out;
     }
 
-    async runGridMulti(symbols, tf, grid) {
+    async runGridMulti(symbols, tf, grid, bars) {
+      let reason = null;
       if (!this.standaloneMobile) {
         try {
           const res = await fetch(cfg.pythonApi + '/grid-multi', {
@@ -1050,19 +1303,33 @@
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ symbols, tf, grid: grid || undefined }),
           });
-          const r = await res.json();
+          const r = await res.json().catch(() => ({}));
           if (res.ok && r && (r.ok || r.error)) return r;
-        } catch (e) {}
+          reason = new Error('HTTP ' + res.status);
+        } catch (e) { reason = e; }
+        this._reportFallback('grid-multi', reason, (symbols || []).join(','));
       }
       await sleep(100);
       const syms = (symbols || ['BTCIRT', 'ETHIRT', 'TONIRT', 'SOLIRT', 'BTCUSDT', 'ETHUSDT']).slice(0, 8);
+      const syms_no_data = [];
       const results = syms.map((s) => {
         const sym = normSymbol(s);
-        const rows = this._getCandlesForBacktest(sym, tf || '1h');
+        const rows = this._getCandlesForBacktest(sym, tf || '1h', bars || 400);
+        if (!rows || rows.length < 120) {
+          syms_no_data.push(sym);
+          return { symbol: sym, unavailable: true, error: 'upstream_unavailable' };
+        }
         const g = NBX.Backtest.gridSearch(rows, sym, tf || '1h', grid);
         return { symbol: sym, best: g.best, elapsed_s: g.elapsed_s, combo_count: g.combo_count };
       });
-      return { ok: true, tf: tf || '1h', results };
+      if (syms_no_data.length) {
+        return { ok: false, unavailable: true, error: 'upstream_unavailable',
+                 message: NBX.UPSTREAM_MSG[DOC_LANG()], symbols: syms_no_data,
+                 detail: reason ? String(reason.message || reason) : 'no candles' };
+      }
+      const out = { ok: true, tf: tf || '1h', results };
+      if (reason) { out.fallback = true; out.fallback_reason = String(reason.message || reason); }
+      return out;
     }
 
     async getBacktestQuick(symbol, tf) {
@@ -1083,7 +1350,7 @@
 
     async getCandles(symbol, timeframe, count) {
       if (this.standaloneMobile || Date.now() < this.circuitOpenUntil) {
-        return synthCandlesFor(symbol, timeframe || '15m', count || cfg.maxCandles);
+        throw new NBXError('UPSTREAM', NBX.UPSTREAM_MSG[DOC_LANG()], { symbol });
       }
       const tfs = { '1m': 60, '5m': 300, '15m': 900, '30m': 1800, '1h': 3600, '4h': 14400, D: 86400 };
       const tfSec = tfs[timeframe] || 900;
@@ -1124,7 +1391,8 @@
       this.books = {};
       this.candles = {};
       this.signals = {};
-      this.premium = 68250;
+      this.premium = null;
+      this.premium_pct = null;
       this.onUpdate = [];
       this.scanning = false;
     }
@@ -1138,21 +1406,16 @@
       });
     }
 
-    _seedUniverse() {
-      return Object.entries(SEED_MARKETS).map(([symbol, m]) => ({
-        symbol,
-        last: m.last,
-        vol24: m.vol24,
-        change24: m.change24,
-      }));
-    }
-
     async loadUniverse() {
+      this.unavailable = false;
+      this.unavailable_reason = null;
       if (this.api.standaloneMobile) {
-        this.universe = this._seedUniverse();
-        this.premium = SEED_MARKETS.USDTIRT.last;
-        this.emit('universe', this.universe);
-        return;
+        // No backend and no exchange: say so instead of listing invented coins.
+        this.unavailable = true;
+        this.unavailable_reason = 'standalone';
+        this.universe = [];
+        this.emit('universe', []);
+        return [];
       }
       try {
         const stats = await this.api.getStats();
@@ -1164,62 +1427,77 @@
             change24: +d.dayChange || 0,
           }));
           this.universe = rows.filter((r) => r.symbol && r.last > 0);
-          this.premium = (rows.find((x) => x.symbol === 'USDTIRT') || {}).last || 68250;
+          this.premium = (rows.find((x) => x.symbol === 'USDTIRT') || {}).last || null;
         }
       } catch (e) {
-        this.universe = this._seedUniverse();
-        this.premium = SEED_MARKETS.USDTIRT.last;
+        this.universe = [];
+        this.unavailable = true;
+        this.unavailable_reason = (e && e.message) || 'exchange unreachable';
       }
       if (!this.universe.length) {
-        this.universe = this._seedUniverse();
+        this.unavailable = true;
+        this.unavailable_reason = this.unavailable_reason || 'exchange returned no rows';
       }
       this.universe = this.universe.sort((a, b) => b.vol24 - a.vol24).slice(0, cfg.universeTopN);
+      this._computePremium();
       this.emit('universe', this.universe);
+      return this.universe;
+    }
+
+    _computePremium() {
+      const d = {};
+      this.universe.forEach((r) => (d[r.symbol] = r.last));
+      if (d.BTCIRT > 0 && d.BTCUSDT > 0 && d.USDTIRT > 0) {
+        const implied = d.BTCIRT / d.BTCUSDT;
+        if (implied > 0) this.premium_pct = +(((d.USDTIRT / implied) - 1) * 100).toFixed(3);
+      }
+      return this.premium_pct;
     }
 
     async scan(timeframe) {
       if (this.scanning) return;
       this.scanning = true;
       const tf = timeframe || cfg.timeframes[0];
-      if (!this.universe.length) {
-        this.universe = this._seedUniverse();
-      }
+      if (!this.universe.length) await this.loadUniverse();
+      const failed = [];
       for (const u of this.universe) {
         const sym = u.symbol;
         try {
           const rows = await this.api.getCandles(sym, tf, cfg.maxCandles);
+          if (!rows || !rows.length) throw new Error('empty candle series');
           this.candles[sym] = rows;
           this.candles[sym + ':' + tf] = rows;
           this.signals[sym] = NBX.TA.signalScore(rows);
         } catch (e) {
-          const rows = synthCandlesFor(sym, tf, cfg.maxCandles);
-          this.candles[sym] = rows;
-          this.candles[sym + ':' + tf] = rows;
-          this.signals[sym] = NBX.TA.signalScore(rows);
+          failed.push(sym);
+          delete this.signals[sym];
         }
       }
+      this.unavailable = failed.length > 0 && Object.keys(this.signals).length === 0;
+      this.unavailable_reason = failed.length ? `${failed.length} symbol(s) had no candles` : null;
       this.scanning = false;
       this.emit('signals', this.rankSignals());
     }
 
-    _synthCandles(base, sym, tf) {
-      return synthCandlesFor(sym || 'BTCIRT', tf || '15m', cfg.maxCandles);
-    }
-
     rankSignals() {
+      // Symbols without a real candle series are absent, not scored at zero:
+      // a 0.0 "score" next to a real one reads as a genuine weak signal.
       return this.universe
+        .filter((u) => this.signals[u.symbol])
         .map((u) => {
-          const s = this.signals[u.symbol] || { score: 0, direction: 'NEUTRAL' };
+          const s = this.signals[u.symbol];
           const liq = Math.round(clamp(50 + Math.log10((u.vol24 || 1) + 1) * 4, 0, 100));
-          const faObj = NBX.FA.scoreSymbol(u.symbol, liq);
-          const fa = faObj.score;
-          const composite = clamp(0.55 * s.score + 0.25 * fa + 0.2 * liq, 0, 100);
+          // Mirrors python composite_score(ta, liq, fa=None): the two weights
+          // are renormalised over their own sum (0.55 + 0.20 = 0.75), not left
+          // as fractions of a 1.0 that no longer has four terms.
+          const composite = clamp((0.55 * s.score + 0.2 * liq) / 0.75, 0, 100);
           return {
             ...u,
             ...s,
             liquidity_score: liq,
-            fa_score: fa,
-            fa: { score: fa, vetoes: faObj.vetoes, evidence: faObj.evidence },
+            fa_score: null,
+            fa: null,
+            composite_basis: 'ta+liq',
             composite: +composite.toFixed(1),
           };
         })

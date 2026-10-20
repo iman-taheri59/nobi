@@ -1,0 +1,14 @@
+.git
+.gitignore
+.venv
+venv
+__pycache__
+*.py[cod]
+server/__pycache__
+server/candle_cache
+server/backtest_reports
+server/paper_state.json
+server/.env
+.env
+nobitex-trader-robat.zip
+docs

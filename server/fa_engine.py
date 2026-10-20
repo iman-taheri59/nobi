@@ -48,6 +48,12 @@ LLAMA_CHAINS_MAPPED = {
     "TRX": "Tron", "AVAX": "Avalanche", "MATIC": "Polygon",
 }
 VETO_CACHE: dict[str, tuple[float, list[str]]] = {}
+# Shared upstream payloads: DefiLlama /protocols is ~1MB and Fear&Greed is a
+# single global value, so fetching them once per symbol is wasteful (and got
+# us rate-limited by CoinGecko in testing).
+_LLAMA_CACHE: dict[str, Any] = {"ts": 0.0, "data": []}
+_FNG_CACHE: dict[str, Any] = {"ts": 0.0, "data": {"fg_value": 50}}
+SHARED_TTL_S = 60
 FA_CACHE: dict[str, tuple[float, "FAResult"]] = {}
 CACHE_TTL_S = 60 * 10  # 10 minutes per symbol for FA lookup
 
@@ -126,26 +132,34 @@ class FAEngine:
         return r.json()
 
     async def _llama_protocols(self) -> list:
+        if _LLAMA_CACHE["data"] and (time.time() - _LLAMA_CACHE["ts"]) < SHARED_TTL_S:
+            return _LLAMA_CACHE["data"]
         if self._is_circuit_open():
             raise RuntimeError("FA circuit open")
         c = await self._ensure()
         r = await c.get(f"{LLAMA_BASE}/protocols")
         if not r.is_success:
-            return []
-        return r.json() or []
+            return _LLAMA_CACHE["data"] or []
+        _LLAMA_CACHE["data"] = r.json() or []
+        _LLAMA_CACHE["ts"] = time.time()
+        return _LLAMA_CACHE["data"]
 
     async def _listen_prices(self) -> dict:
-        """Fear & Greed + market headlines (best-effort)."""
+        """Fear & Greed + market headlines (best-effort, shared cache)."""
+        if _FNG_CACHE["data"] and (time.time() - _FNG_CACHE["ts"]) < SHARED_TTL_S:
+            return _FNG_CACHE["data"]
         if self._is_circuit_open():
-            return {"fg_value": 64}
+            return _FNG_CACHE["data"] or {"fg_value": 50}
         try:
             c = await self._ensure()
             r = await c.get("https://api.alternative.me/fng/", params={"limit": 1})
             dat = (r.json() or {}).get("data", [{}])[0]
-            return {"fg_value": int(dat.get("value", 50))}
+            _FNG_CACHE["data"] = {"fg_value": int(dat.get("value", 50))}
+            _FNG_CACHE["ts"] = time.time()
+            return _FNG_CACHE["data"]
         except Exception:
             self._trip_circuit()
-            return {"fg_value": 64}
+            return _FNG_CACHE["data"] or {"fg_value": 50}
 
     # ---------- scorers ----------
     async def score(self, symbol: str, usdt_premium_dev: float = 0, nobil_depth_score: int = 50) -> FAResult:
@@ -241,14 +255,18 @@ class FAEngine:
                 if cg and not self._is_circuit_open():
                     chains = await self._llama_protocols()
                     match = next((p for p in chains if p.get("name", "").lower() == KNOWN_CG_IDS[base].replace("-", " ").lower() or p.get("symbol", "").upper() == base), None)
-                    if match:
-                        tvl = match.get("tvl") or 0
+                    tvl = float((match or {}).get("tvl") or 0)
+                    if tvl > 0:
+                        # TVL only makes sense for assets that actually have a
+                        # DeFi/L1 TVL figure; a zero/missing value must not
+                        # become a "thin-tvl" veto (it used to fire for BTC).
                         onc = 40 + min(60, math.log10(tvl + 1) * 18)
                         ev["tvl"] = tvl
                         if tvl <= 1e7:
                             vetoes.append("thin-tvl")
                     else:
                         onc = 55
+                        ev["tvl"] = None
                     if base in {"BTC", "LTC", "DOGE"}:
                         onc += 12
                         ev["pow_bonus"] = True
@@ -293,8 +311,9 @@ class FAEngine:
         score = min(score, score + (nobil_depth_score - 50) * 0.2)
         score = max(0, min(100, round(score, 1)))
 
+        ev["profile"] = "fallback" if used_fallback else "live"
         res = FAResult(score=score, market=mkt, tokenomics=tok, onchain=onc, sentiment=sen, macro=mac,
-                       vetoes=vetoes, evidence=ev, fresh=True)
+                       vetoes=vetoes, evidence=ev, fresh=not used_fallback)
         VETO_CACHE[cache_key] = (time.time(), list(vetoes))
         FA_CACHE[cache_key] = (time.time(), res)
         return res
