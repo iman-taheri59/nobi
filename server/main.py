@@ -714,6 +714,92 @@ async def candles(symbol: str, tf: str = Query("15m", pattern="^(15m|1h|4h|D)$")
     }
 
 
+def _book_levels(raw, limit: int) -> list[dict]:
+    """Normalise one side of a Nobitex book: [[price, amount], ...] as floats.
+
+    The exchange sometimes sends strings and sometimes numbers depending on the
+    endpoint generation, so both are accepted; anything that is not a finite
+    positive pair is dropped rather than turned into a zero.
+    """
+    out: list[dict] = []
+    for row in raw or []:
+        try:
+            if isinstance(row, dict):
+                px = float(row.get("price") or row.get("p") or 0)
+                qty = float(row.get("amount") or row.get("quantity") or row.get("q") or 0)
+            else:
+                px, qty = float(row[0]), float(row[1])
+        except (TypeError, ValueError, IndexError):
+            continue
+        if px > 0 and qty > 0:
+            out.append({"p": px, "q": qty})
+        if len(out) >= limit:
+            break
+    return out
+
+
+@app.get("/api/orderbook/{symbol}")
+async def orderbook(symbol: str, limit: int = Query(8, ge=1, le=50)):
+    """Depth for one symbol.
+
+    The client could already read the book — it is what the paper broker fills
+    against — but no route exposed it, so the depth panel had no way to show
+    anything but an apology. This route is the whole gap.
+
+    On failure it returns the uniform `unavailable` payload rather than an
+    exception: the UI's three-state contract (ADR-0014) reads that flag, and a
+    500 would render as a generic error instead of the sentence.
+    """
+    sym = symbol.upper()
+    try:
+        raw = await asyncio.wait_for(client.get_orderbook(sym), timeout=6)
+    except (UpstreamUnavailable, ClientError) as e:
+        return {**upstream_error("orderbook", str(e)), "symbol": sym,
+                "bids": [], "asks": [], "levels": 0}
+    except asyncio.TimeoutError:
+        return {**upstream_error("orderbook", "timeout"), "symbol": sym,
+                "bids": [], "asks": [], "levels": 0}
+
+    bids = _book_levels(raw.get("bids"), limit)
+    asks = _book_levels(raw.get("asks"), limit)
+    if not bids and not asks:
+        return {**upstream_error("orderbook", "empty book"), "symbol": sym,
+                "bids": [], "asks": [], "levels": 0}
+
+    best_bid = bids[0]["p"] if bids else None
+    best_ask = asks[0]["p"] if asks else None
+    mid = (best_bid + best_ask) / 2 if (best_bid and best_ask) else (best_bid or best_ask)
+    spread = (best_ask - best_bid) if (best_bid and best_ask) else None
+    spread_pct = (spread / mid * 100) if (spread is not None and mid) else None
+
+    # Depth within ±1% of the mid, and the imbalance between the two sides.
+    # Both are computed here from the levels actually returned, so the panel
+    # never shows a statistic that disagrees with the rows above it.
+    band = (mid or 0) * 0.01
+    bid_depth = sum(l["p"] * l["q"] for l in bids if abs(l["p"] - mid) <= band)
+    ask_depth = sum(l["p"] * l["q"] for l in asks if abs(l["p"] - mid) <= band)
+    total = bid_depth + ask_depth
+    imbalance = ((bid_depth - ask_depth) / total * 100) if total else None
+
+    return {
+        "ok": True,
+        "symbol": sym,
+        "bids": bids,
+        "asks": asks,
+        "levels": len(bids) + len(asks),
+        "best_bid": best_bid,
+        "best_ask": best_ask,
+        "mid": mid,
+        "spread": spread,
+        "spread_pct": spread_pct,
+        "bid_depth": bid_depth,
+        "ask_depth": ask_depth,
+        "imbalance": imbalance,
+        "last_update": raw.get("lastUpdate"),
+        **provenance(),
+    }
+
+
 def _signal_lookup(symbol: str, tf: str | None = None):
     """Find a scored symbol, preferring the requested timeframe's cache.
 
@@ -757,6 +843,26 @@ async def journal_summary(tf: str | None = Query(None, pattern="^(15m|1h|4h|D)$"
         return {**payload, **provenance()}
     finally:
         conn.close()
+
+
+@app.get("/api/journal/stage")
+async def journal_stage():
+    """Current strategy stage and the rule that produced it (ADR-0012 §3).
+
+    The stage is advisory: it can move a strategy to `watch` or `retire` on its
+    own, but nothing here promotes a strategy to live money — that gate stays
+    human (ADR-0009) and this payload says so.
+    """
+    try:
+        conn = signal_journal.connect()
+    except Exception as e:  # noqa: BLE001 - an unreadable journal is not a 500
+        return {"ok": False, "unavailable": True, "error": "journal_unavailable",
+                "detail": str(e)[:200], "stage": None}
+    try:
+        out = signal_journal.lifecycle(conn)
+    finally:
+        conn.close()
+    return {"ok": True, **out}
 
 
 @app.get("/api/journal/signals")

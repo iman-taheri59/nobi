@@ -1512,3 +1512,80 @@ def test_probe_classifier_separates_empty_state_from_outage():
     assert p.classify(rec("", drawn=True, un=1), "market")[0] == "EXPLAINED"
     # a hidden marker is not a reader-visible claim
     assert p.classify(rec("۸۸٬۴۱۲", un=0, inCard=0), "market")[0] == "DATA"
+
+
+# --------------------------------------------------------------------------- #
+# Order book route (the gap that left the depth panel apologising forever)
+# --------------------------------------------------------------------------- #
+def test_book_levels_accepts_both_shapes_and_drops_junk():
+    import main
+
+    raw = [[100, 2], ["101.5", "0.5"], [0, 5], [-1, 2], ["x", 1], [102]]
+    out = main._book_levels(raw, 10)
+    assert out == [{"p": 100.0, "q": 2.0}, {"p": 101.5, "q": 0.5}]
+
+    # dict rows are the other shape the API has used
+    assert main._book_levels([{"price": 5, "amount": 1}], 3) == [{"p": 5.0, "q": 1.0}]
+    # the limit is honoured
+    assert len(main._book_levels([[i + 1, 1] for i in range(50)], 4)) == 4
+
+
+def test_orderbook_route_computes_spread_depth_and_imbalance(monkeypatch):
+    """The panel shows numbers, so the numbers have to agree with the rows."""
+    import asyncio
+    import main
+
+    book = {
+        "status": "ok",
+        "lastUpdate": 1700000000000,
+        "bids": [[100.0, 2.0], [99.5, 1.0], [90.0, 5.0]],
+        "asks": [[101.0, 1.0], [101.5, 3.0]],
+    }
+
+    async def fake(symbol):
+        return book
+
+    monkeypatch.setattr(main.client, "get_orderbook", fake)
+    out = asyncio.run(main.orderbook("BTCIRT", 8))
+
+    assert out["ok"] is True
+    assert out["symbol"] == "BTCIRT"
+    assert out["best_bid"] == 100.0 and out["best_ask"] == 101.0
+    assert out["mid"] == 100.5
+    assert round(out["spread"], 6) == 1.0
+    assert round(out["spread_pct"], 4) == round(1.0 / 100.5 * 100, 4)
+    # ±1% of mid = ±1.005 around 100.5: 99.5 and 101.5 are inside, 90.0 is not.
+    assert out["bid_depth"] == 100.0 * 2.0 + 99.5 * 1.0
+    assert out["ask_depth"] == 101.0 * 1.0 + 101.5 * 3.0
+    assert round(out["imbalance"], 2) == round(
+        (out["bid_depth"] - out["ask_depth"]) / (out["bid_depth"] + out["ask_depth"]) * 100, 2)
+    assert out["levels"] == 5
+
+
+def test_orderbook_route_reports_unavailable_instead_of_raising(monkeypatch):
+    """A 500 would render as a generic error; the UI contract reads the flag."""
+    import asyncio
+    import main
+    from nobitex_client import UpstreamUnavailable
+
+    async def boom(symbol):
+        raise UpstreamUnavailable("circuit breaker is open")
+
+    monkeypatch.setattr(main.client, "get_orderbook", boom)
+    out = asyncio.run(main.orderbook("BTCIRT", 8))
+    assert out["ok"] is False
+    assert out["unavailable"] is True
+    assert out["bids"] == [] and out["asks"] == []
+    assert out["message"]          # the sentence the UI shows
+
+
+def test_orderbook_route_treats_an_empty_book_as_unavailable(monkeypatch):
+    import asyncio
+    import main
+
+    async def empty(symbol):
+        return {"status": "ok", "bids": [], "asks": []}
+
+    monkeypatch.setattr(main.client, "get_orderbook", empty)
+    out = asyncio.run(main.orderbook("BTCIRT", 8))
+    assert out["ok"] is False and out["unavailable"] is True

@@ -648,6 +648,129 @@ def backtest_ic(frames: list[tuple[str, "pd.DataFrame"]], horizon_bars: int,
     return out
 
 
+# --------------------------------------------------------------------------- #
+# Strategy lifecycle (ADR-0012 §3, stage transitions)
+# --------------------------------------------------------------------------- #
+#: Ordered stages. `retire` is terminal: nothing in this module moves a strategy
+#: back out of it, because un-retiring is a human decision that should leave a
+#: trace, not something a ratio should do silently.
+STAGES = ("train", "run", "watch", "retire")
+
+
+def next_stage(current: str, msi_status: str, *, streak: int = 0) -> tuple[str, str]:
+    """Where a strategy should be, and why.
+
+    Pure policy: no database, no clock. That is deliberate — the rule that
+    decides whether real money may follow a signal is exactly the rule that has
+    to be readable and testable on its own.
+
+    `streak` is how many consecutive evaluations have already agreed with a
+    *degraded* verdict. Stepping down on a single bad day would make the
+    dashboard thrash; waiting forever would make the rule decorative.
+    """
+    cur = current if current in STAGES else "train"
+
+    if msi_status == "corrupted":
+        return "retire", ("realized IC fell to ≤50% of the reference — retire and "
+                          "re-review before any promotion (ADR-0009)")
+    if msi_status == "insufficient":
+        # No evidence is not evidence of health. Hold the stage; never promote.
+        if cur in ("watch", "retire"):
+            return cur, "not enough resolved signals to change stage; staying put"
+        return cur, "not enough resolved signals to promote; staying put"
+    if msi_status == "degraded":
+        if cur == "retire":
+            return cur, "already retired; un-retiring is a human decision"
+        if cur == "train":
+            return "train", "still in training; degradation does not promote"
+        if cur == "run":
+            # One bad reading is not a demotion; three in a row is.
+            if streak + 1 >= 3:
+                return "watch", "degraded on three consecutive evaluations — move to watch"
+            return "run", "degraded once; watching, not demoting yet"
+        return "watch", "still degraded while on watch"
+    if msi_status == "healthy":
+        if cur == "train":
+            return "run", "reference held on realized data — eligible to run"
+        if cur == "watch":
+            return "run", "recovered to the reference — back to run"
+        return cur, "healthy; stage unchanged"
+    return cur, f"unknown MSI status {msi_status!r}; stage unchanged"
+
+
+def stage_reason_key(current: str, msi_status: str) -> str:
+    """Machine-readable twin of `next_stage`'s sentence.
+
+    The UI is bilingual; shipping an English sentence into a Persian page is the
+    same defect as an untranslated label. The sentence stays for logs and for
+    API consumers that read English, the key is what the dashboard renders.
+    """
+    cur = current if current in STAGES else "train"
+    if msi_status == "corrupted":
+        return "retire_corrupted"
+    if msi_status == "insufficient":
+        return "hold_insufficient"
+    if msi_status == "degraded":
+        if cur == "retire":
+            return "retired"
+        if cur == "train":
+            return "hold_training"
+        if cur == "run":
+            return "degraded_watch"      # decision depends on the streak
+        return "watch_degraded"
+    if msi_status == "healthy":
+        if cur in ("train", "watch"):
+            return "promote_to_run"
+        return "hold_healthy"
+    return "hold_unknown"
+
+
+def lifecycle(conn: sqlite3.Connection) -> dict[str, Any]:
+    """Current stage plus the evaluation that produced it.
+
+    Stored in meta so the stage survives a restart, but recomputed on every
+    read: a stage that disagrees with the current MSI would be worse than none.
+    """
+    verdict = msi(conn)
+    stored = get_meta(conn, "strategy_stage") or {}
+    current = stored.get("stage") or "train"
+    prev_status = stored.get("msi_status")
+    streak = int(stored.get("streak") or 0)
+    # Streak counts consecutive `degraded` evaluations; anything else resets it.
+    # (The first degraded reading is day one of the streak, not day zero.)
+    if verdict["status"] != "degraded":
+        new_streak = 0
+    elif prev_status == "degraded":
+        new_streak = streak + 1
+    else:
+        new_streak = 1
+
+    stage, why = next_stage(current, verdict["status"], streak=streak)
+    if stage != current or verdict["status"] != prev_status or streak != new_streak:
+        set_meta(conn, "strategy_stage", {
+            "stage": stage,
+            "msi_status": verdict["status"],
+            "streak": new_streak,
+            "changed_at": int(time.time()),
+        })
+    return {
+        "stage": stage,
+        "previous": current,
+        "changed": stage != current,
+        "reason": why,
+        "reason_key": stage_reason_key(current, verdict["status"]),
+        "demoted_for_streak": (verdict["status"] == "degraded" and current == "run"
+                               and new_streak >= 3),
+        "streak": new_streak,
+        "stages": list(STAGES),
+        "msi_status": verdict["status"],
+        "automatic": True,
+        # Promotion *out of* the paper stage is not something this module does;
+        # ADR-0009 keeps that gate human.
+        "promotion_is_manual": True,
+    }
+
+
 def msi(conn: sqlite3.Connection, *, window_days: int = MSI_WINDOW_DAYS,
         baseline_days: int = MSI_BASELINE_DAYS,
         min_samples: int = MSI_MIN_SAMPLES) -> dict[str, Any]:

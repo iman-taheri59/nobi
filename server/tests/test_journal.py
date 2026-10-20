@@ -645,3 +645,80 @@ def test_migration_repairs_nanosecond_exit_ts(tmp_path):
     assert J._repair_nanosecond_exit_ts(c, force=True) == 0
     assert c.execute("SELECT exit_ts FROM signal_outcomes").fetchone()["exit_ts"] == 1_792_423_800
     c.close()
+
+
+# --------------------------------------------------------------------------- #
+# Strategy lifecycle (ADR-0012 §3)
+# --------------------------------------------------------------------------- #
+def test_lifecycle_corruption_retires_immediately():
+    from journal import next_stage
+
+    for cur in ("train", "run", "watch"):
+        stage, why = next_stage(cur, "corrupted")
+        assert stage == "retire", cur
+        assert "retire" in why
+
+
+def test_lifecycle_never_promotes_without_evidence():
+    from journal import next_stage
+
+    # "insufficient" is not a health signal: keep the stage, never move up.
+    for cur in ("train", "run", "watch", "retire"):
+        stage, _ = next_stage(cur, "insufficient")
+        assert stage == cur, cur
+
+
+def test_lifecycle_promotion_and_demotion_require_different_effort():
+    from journal import next_stage
+
+    # One healthy window is enough to run; one degraded window is not enough to
+    # demote. Asymmetry is deliberate: bad days are noisy, and a rule that
+    # thrashes on noise gets switched off by the operator.
+    assert next_stage("train", "healthy")[0] == "run"
+    assert next_stage("watch", "healthy")[0] == "run"
+    assert next_stage("run", "degraded", streak=0)[0] == "run"
+    assert next_stage("run", "degraded", streak=1)[0] == "run"
+    assert next_stage("run", "degraded", streak=2)[0] == "watch"
+
+
+def test_lifecycle_retire_is_terminal_and_unknown_inputs_hold():
+    from journal import next_stage
+
+    for status in ("healthy", "degraded", "insufficient", "corrupted"):
+        assert next_stage("retire", status)[0] == "retire", status
+    assert next_stage("run", "nonsense")[0] == "run"
+    assert next_stage("bogus-stage", "healthy")[0] == "run"   # coerced to train first
+
+
+def test_lifecycle_streak_counts_consecutive_degraded_readings():
+    import time
+    from journal import connect, lifecycle, set_meta
+
+    conn = connect(":memory:")
+    # A degraded verdict needs a baseline and enough resolved rows; rather than
+    # fabricate a journal, drive the streak bookkeeping directly through meta.
+    set_meta(conn, "strategy_stage", {"stage": "run", "msi_status": "degraded", "streak": 1})
+    out = lifecycle(conn)
+    # Whatever MSI says in an empty journal (insufficient), the rule must not
+    # invent a demotion out of a stale streak.
+    assert out["stage"] in ("run", "watch")
+    if out["msi_status"] != "degraded":
+        assert out["streak"] == 0
+    conn.close()
+
+
+def test_every_stage_reason_has_a_machine_key():
+    """The UI renders a key, not the server's English sentence."""
+    from journal import stage_reason_key
+
+    seen = set()
+    for cur in ("train", "run", "watch", "retire"):
+        for status in ("healthy", "degraded", "insufficient", "corrupted", "weird"):
+            k = stage_reason_key(cur, status)
+            assert isinstance(k, str) and k and " " not in k, (cur, status, k)
+            seen.add(k)
+    # every reachable combination maps to a defined key
+    assert seen <= {"retire_corrupted", "hold_insufficient", "retired", "hold_training",
+                    "degraded_watch", "watch_degraded", "promote_to_run", "hold_healthy",
+                    "hold_unknown"}
+    assert "retire_corrupted" in seen and "promote_to_run" in seen

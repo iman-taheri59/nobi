@@ -22,8 +22,8 @@ python3 scripts/probe_live.py --url http://127.0.0.1:8010
 
 | حالت | دستور | نتیجه | کد خروج |
 |---|---|---|---|
-| صرافی زنده (فیکسچر) | `--url http://127.0.0.1:8010` | **۴۴ پنل تأیید شد · ۳ cross-check** | ۰ |
-| صرافی قطع (سرور واقعی) | `--url http://127.0.0.1:8000` | **۴۴ پنل خودشان را توضیح می‌دهند** | ۲ |
+| صرافی زنده (فیکسچر) | `--url http://127.0.0.1:8010` | **۴۵ پنل تأیید شد · ۳ cross-check** | ۰ |
+| صرافی قطع (سرور واقعی) | `--url http://127.0.0.1:8000` | **۴۵ پنل خودشان را توضیح می‌دهند** | ۲ |
 
 گزارش‌های خام هر دو اجرا:
 [`probe-live-2026-10-20.md`](probe-live-2026-10-20.md) ·
@@ -73,9 +73,9 @@ python3 scripts/probe_live.py --json probe.json --md probe.md
 
 | تست | نتیجه |
 |---|---|
-| `pytest server/tests` | ۱۱۵ passed |
+| `pytest server/tests` | ۱۲۵ passed |
 | `probe_live.py --selftest` | PASS (۸/۸ حالت) |
 | `layout_test.py` | PASS — ۳ ویوپورت × ۱۰ تب، بدون سرریز |
 | `ui_smoke_test.js` | PASS |
-| `probe_live.py` (زنده) | PASS — ۴۴ پنل |
-| `probe_live.py` (قطع) | PASS — ۴۴ پنل |
+| `probe_live.py` (زنده) | PASS — ۴۵ پنل |
+| `probe_live.py` (قطع) | PASS — ۴۵ پنل |

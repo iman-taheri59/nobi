@@ -627,7 +627,8 @@
         if (bars.length) candleSeries.setData(bars);
         lastCandle = { time: rows[rows.length - 1].t, open: rows[rows.length - 1].o, high: rows[rows.length - 1].h, low: rows[rows.length - 1].l, close: rows[rows.length - 1].c };
         if ($('lastPrice')) $('lastPrice').textContent = fmtPrice(lastCandle.close, live.activeSymbol);
-        if (typeof renderOB === 'function') renderOB(lastCandle.close);
+        // Depth comes from its own route; a last-trade price is not a book.
+        if (typeof window.refreshOrderbook === 'function') window.refreshOrderbook(live.activeSymbol);
       }
     } catch (e) {}
 

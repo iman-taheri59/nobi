@@ -1,4 +1,4 @@
-# گزارش پروب داده زنده — 2026-10-20 04:16 UTC
+# گزارش پروب داده زنده — 2026-10-20 05:10 UTC
 
 آدرس: `http://127.0.0.1:8010` · وضعیت upstream: **زنده**
 
@@ -11,6 +11,7 @@
 | overview | lastChg | market | DATA | OK |
 | overview | candleChart | market | DATA | OK |
 | overview | obRows | market | DATA | OK |
+| overview | obStats | market | DATA | OK |
 | overview | equityChart | server | DATA | OK |
 | overview | allocBox | optional | DATA | OK |
 | overview | posBody | optional | EMPTY | OK |
@@ -53,11 +54,11 @@
 
 | چه چیزی | UI | API | وضعیت |
 |---|---|---|---|
-| BTCIRT last price | 88655523922.0 | 88655914737.559 | OK |
+| BTCIRT last price | 88751881937.0 | 88751826522.62979 | OK |
 | paper equity | 100000.0 | 100000.0 | OK |
 | signal rows ⊆ API scored | 9 rows | 9 scored | OK |
 
 ## جمع‌بندی
 
-- پنل‌های بررسی‌شده: 44
+- پنل‌های بررسی‌شده: 45
 - مشکل‌دار: 0

@@ -182,6 +182,30 @@ class Handler(BaseHTTPRequestHandler):
                                "as_of": datetime.now(timezone.utc).isoformat()})
         if p.startswith("/api/fa/"):
             return self._send(fa(p.rsplit("/", 1)[-1].upper()))
+        if p.startswith("/api/orderbook/"):
+            sym = p.rsplit("/", 1)[-1].upper()
+            mid = price(sym)
+            rnd = random.Random("book:" + sym)
+            # {p, q} is what /api/orderbook returns after normalising the
+            # exchange's [price, amount] arrays. The fixture speaks the backend's
+            # contract, not the exchange's — mixing the two is how a panel ends
+            # up drawing fifteen em-dashes.
+            bids, asks = [], []
+            for i in range(8):
+                bids.append({"p": round(mid * (1 - 0.0006 * (i + 1)), 6),
+                             "q": round(rnd.uniform(0.2, 4.0), 4)})
+                asks.append({"p": round(mid * (1 + 0.0006 * (i + 1)), 6),
+                             "q": round(rnd.uniform(0.2, 4.0), 4)})
+            return self._send({"ok": True, "symbol": sym, "bids": bids, "asks": asks,
+                               "levels": len(bids) + len(asks),
+                               "best_bid": bids[0]["p"], "best_ask": asks[0]["p"],
+                               "mid": round(mid, 6),
+                               "spread": round(asks[0]["p"] - bids[0]["p"], 6),
+                               "spread_pct": round((asks[0]["p"] - bids[0]["p"]) / mid * 100, 4),
+                               "bid_depth": round(sum(x["p"] * x["q"] for x in bids), 2),
+                               "ask_depth": round(sum(x["p"] * x["q"] for x in asks), 2),
+                               "imbalance": 3.2, "last_update": int(time.time() * 1000),
+                               "source": "mock"})
         if p == "/api/risk/state":
             return self._send({"ok": True, "equity": 100000.0, "halted": False,
                                "openHeat": 0.0, "dailyPnl": 0.0,

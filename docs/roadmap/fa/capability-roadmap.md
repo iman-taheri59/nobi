@@ -11,11 +11,11 @@
 
 | مورد | وضعیت | شاهد |
 |---|---|---|
-| A1 — دادهٔ واقعی نوبیتکس در بک‌اند | **انجام شد** (به‌جز عمق بازار در UI: اندپوینت `/api/orderbook` وجود ندارد) | `server/main.py`، `/api/universe`، `/api/signals`، `/api/candles/{symbol}` |
+| A1 — دادهٔ واقعی نوبیتکس در بک‌اند | **انجام شد** | `/api/universe`، `/api/signals`، `/api/candles/{symbol}`، `/api/orderbook/{symbol}` |
 | A4 — بک‌تست Walk-Forward + Grid | **انجام شد** | `WalkForwardRunner`, `grid_search`, `/api/backtest`, `/api/grid-multi` |
 | A5 — هشدار تلگرام | **انجام شد** (اختیاری، با `NBX_TELEGRAM_*`) | `server/notify.py`، `/api/notify/status` |
 | B1 — ثبت نتیجهٔ سیگنال | **انجام شد** | `server/journal.py`، `/api/journal/*` |
-| B2 — MSI / چرخهٔ عمر استراتژی | **نیمه‌کاره** (MSI محاسبه و نمایش داده می‌شود، گذار خودکار Stage ندارد) | `/api/journal/msi` |
+| B2 — MSI / چرخهٔ عمر استراتژی | **انجام شد** (گذار `train→run→watch→retire`؛ ارتقا به پول واقعی عمداً دستی) | `/api/journal/msi`، `/api/journal/stage`، `journal.next_stage()` |
 | B8 — استریم WebSocket | **نیمه‌کاره** (فقط opt-in؛ پیش‌فرض REST polling) | `NBX_WS_URL`، `/api/ws/status` |
 | — | **تأیید قرارداد داده** (ابزار تازه، خارج از نقشهٔ اولیه) | `scripts/probe_live.py`، `scripts/mock_upstream.py` |
 

@@ -1013,6 +1013,20 @@
       return { positions: NBX.Paper.positions, metrics: NBX.Paper.getMetrics() };
     }
 
+    /* Depth is only meaningful from the exchange: a locally synthesised book
+       would look exactly like a traded one. On failure this returns null and the
+       panel says why, rather than returning an empty object that reads as data. */
+    async getBackendOrderbook(symbol) {
+      if (this.standaloneMobile) return null;
+      try {
+        const r = await this.get(cfg.pythonApi + '/orderbook/' + encodeURIComponent(symbol), 1);
+        if (r && r.ok && (r.bids || r.asks)) return r;
+        return null;
+      } catch (e) {
+        return null;
+      }
+    }
+
     async getPaperMetrics() {
       if (!this.standaloneMobile) {
         try {

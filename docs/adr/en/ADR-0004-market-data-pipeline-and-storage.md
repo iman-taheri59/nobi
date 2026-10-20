@@ -55,6 +55,9 @@ Accurate, gap-free historical candles drive both TA signals and backtests. Nobit
 
 - **Implemented:** on-disk candle cache (`server/candle_cache.py`) with TTL and coverage;
   candles come from `/market/udf/history`.
-- **Not implemented:** the 180-day order-book snapshot archive. The client reads the book
-  for the paper broker, but no API route exposes depth to the UI and nothing is archived,
-  so the depth panel honestly stays `EXPLAINED` (ADR-0014).
+- **Implemented (2026-10-20):** `GET /api/orderbook/{symbol}` exposes depth as
+  normalised `{p, q}` levels plus spread, ±1% depth and imbalance. Before this the client
+  read the book for the paper broker while no route published it, so the depth panel could
+  only apologise.
+- **Not implemented:** the 180-day snapshot archive. The route serves the current book
+  only; nothing is persisted, so historical depth analysis is not possible.

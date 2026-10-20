@@ -58,6 +58,7 @@ PANELS: dict[str, list[tuple[str, str, str]]] = {
         ("lastChg", "market", "24h change"),
         ("candleChart", "market", "candlestick chart"),
         ("obRows", "market", "order book"),
+        ("obStats", "market", "spread / depth / imbalance"),
         ("equityChart", "server", "equity curve"),
         ("allocBox", "optional", "allocation donut"),
         ("posBody", "optional", "open positions"),

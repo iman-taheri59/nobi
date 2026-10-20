@@ -74,7 +74,14 @@ hit_tp1 / hit_sl / timeout, r_multiple, realized_return_pct
 
 - **Implemented:** the SQLite journal (`server/journal.py`), the VOID rule with a grace
   period, MSI and the `/api/journal/*` endpoints, digest and CSV export.
-- **Not implemented:** automatic strategy-stage transitions (`train → run → watch →
-  retire`). MSI is computed and shown; the decision to act on it is still human.
+- **Implemented (2026-10-20):** strategy-stage transitions. `journal.next_stage()` is a
+  pure policy function (`train → run → watch → retire`) and `GET /api/journal/stage`
+  returns its verdict with a reason and a translatable key.
+  - `insufficient` never promotes: absence of evidence is not evidence of health.
+  - `corrupted` retires immediately, and `retire` is terminal.
+  - Stepping down from `run` to `watch` needs **three consecutive** degraded readings,
+    while one healthy window is enough to run — the asymmetry is deliberate, so the rule
+    does not thrash on daily noise.
+  - **Promotion to live money stays manual** (ADR-0009), and the API payload says so.
 - **Rule adopted in practice:** hit rate and PF show "no data" with a reason rather than
   a bare dash when the sample is empty (ADR-0014).

@@ -67,8 +67,8 @@ css` را نزنی، `build_standalone.py` هشدار می‌دهد که CSS ا�
 |---|---|
 | `python3 -m pytest server/tests -q` | منطق بک‌اند + قرارداد «هر پنل می‌تواند خودش را توضیح دهد» |
 | `python3 scripts/probe_live.py --selftest` | خودِ طبقه‌بند پنل‌ها (۸ حالت) |
-| `python3 scripts/probe_live.py --url http://127.0.0.1:8000` | حالت «داده نیست»: ۴۴ پنل باید خودشان را توضیح بدهند |
-| `python3 scripts/mock_upstream.py --port 8010` + پروب روی ۸۰۱۰ | حالت «داده هست»: ۴۴ پنل باید عدد واقعی نشان بدهند |
+| `python3 scripts/probe_live.py --url http://127.0.0.1:8000` | حالت «داده نیست»: ۴۵ پنل باید خودشان را توضیح بدهند |
+| `python3 scripts/mock_upstream.py --port 8010` + پروب روی ۸۰۱۰ | حالت «داده هست»: ۴۵ پنل باید عدد واقعی نشان بدهند |
 | `python3 scripts/layout_test.py` | ۳ ویوپورت × ۱۰ تب: سرریز افقی، نمودارهای خالی |
 | `python3 scripts/ui_smoke_prep.py && node scripts/ui_smoke_test.js` | DOM و MSI بدون خطای JS |
 

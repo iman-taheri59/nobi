@@ -1,4 +1,4 @@
-# گزارش پروب داده زنده — 2026-10-20 04:16 UTC
+# گزارش پروب داده زنده — 2026-10-20 05:10 UTC
 
 آدرس: `http://127.0.0.1:8000` · وضعیت upstream: **در دسترس نیست**
 
@@ -13,6 +13,7 @@
 | overview | lastChg | market | EXPLAINED | OK |
 | overview | candleChart | market | EXPLAINED | OK |
 | overview | obRows | market | EXPLAINED | OK |
+| overview | obStats | market | EXPLAINED | OK |
 | overview | equityChart | server | DATA | OK |
 | overview | allocBox | optional | EXPLAINED | OK |
 | overview | posBody | optional | EXPLAINED | OK |
@@ -53,5 +54,5 @@
 
 ## جمع‌بندی
 
-- پنل‌های بررسی‌شده: 44
+- پنل‌های بررسی‌شده: 45
 - مشکل‌دار: 0
