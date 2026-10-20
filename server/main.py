@@ -739,6 +739,13 @@ async def universe():
     }
 
 
+#: Markets that exist but cannot be analysed with candles. USDTIRT is the
+#: quote asset itself: Nobitex answers `/market/udf/history?symbol=USDTIRT`
+#: with 403, so asking spent one request per scan to collect a rejection (and
+#: the rejection used to trip the shared breaker — see `nobitex_client`).
+NOT_A_TA_SYMBOL = frozenset({"USDTIRT"})
+
+
 async def rescan(tf: str = "15m", top: int = 40):
     """Score the universe with TA + liquidity, then enrich with fundamentals.
 
@@ -756,6 +763,10 @@ async def rescan(tf: str = "15m", top: int = 40):
         return composite_score(ta, liq, fa)
 
     async def one(u):
+        if u["symbol"] in NOT_A_TA_SYMBOL:
+            # Not a failure: this market is deliberately outside the scan, so
+            # it is not counted as "had no candles" in the empty-scan message.
+            return
         try:
             async with sem:
                 rows, src = await client.get_candles_ex(u["symbol"], tf, 260)

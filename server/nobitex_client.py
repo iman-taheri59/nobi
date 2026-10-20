@@ -69,6 +69,27 @@ class RateLimitError(ClientError):
     pass
 
 
+def is_outage(e: ClientError) -> bool:
+    """Does this failure mean "the exchange is down", or "this request is wrong"?
+
+    The client-wide circuit breaker is for outages. A per-symbol refusal —
+    401/403 (endpoint or pair not public), 404, any other 4xx — must stay
+    local: one pair the exchange does not serve turned into "circuit breaker
+    is open" for every other pair in the same scan.
+
+    429 counts as an outage: the exchange is telling this client to slow down,
+    which is a statement about the client, not about one symbol.
+    """
+    if e.code in ("TIMEOUT", "NETWORK", "RATE"):
+        return True
+    status = (e.meta or {}).get("status")
+    if isinstance(status, int):
+        return status == 429 or status >= 500
+    return False
+
+
+
+
 class UpstreamUnavailable(ClientError):
     """Nobitex could not be reached and no cached answer exists.
 
@@ -379,8 +400,16 @@ class NobitexClient:
                     self.degraded_mode = False
                     return rows, "live"
             except ClientError as e:
-                log.warning("Nobitex UDF %s/%s unreachable (%s)", symbol, tf, e)
-                self._trip_circuit()
+                if is_outage(e):
+                    log.warning("Nobitex UDF %s/%s unreachable (%s)", symbol, tf, e)
+                    self._trip_circuit()
+                else:
+                    # Nobitex serves some pairs (USDTIRT, delisted symbols)
+                    # without public UDF history. That refusal says nothing
+                    # about the other forty symbols — tripping the shared
+                    # breaker here cost a whole scan its candles.
+                    log.info("Nobitex UDF %s/%s refused (%s) — symbol skipped, breaker left closed",
+                             symbol, tf, e)
                 raise UpstreamUnavailable(
                     f"candles {symbol} {tf} unavailable: {e}", {"symbol": symbol, "tf": tf}) from e
 
