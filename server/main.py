@@ -433,7 +433,13 @@ def _premium_pct(rows: list[dict]) -> float | None:
         implied = float(btc_irt) / float(btc_usdt)
         if implied <= 0:
             return None
-        return round((float(usdt_irt) / implied - 1.0) * 100.0, 3)
+        pct = (float(usdt_irt) / implied - 1.0) * 100.0
+        # A "premium" of ±50 % is not a premium, it is a data error: a stale
+        # quote on one leg, or a pair that is not what its name says. Feeding
+        # that into the macro veto would silently flip a real signal.
+        if abs(pct) > 50.0:
+            return None
+        return round(pct, 3)
     except (TypeError, ValueError, ZeroDivisionError):
         return None
 

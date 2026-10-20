@@ -73,7 +73,7 @@ python3 scripts/probe_live.py --json probe.json --md probe.md
 
 | تست | نتیجه |
 |---|---|
-| `pytest server/tests` | ۱۳۳ passed (پس از رفع باگ‌های تحلیل؛ ۹ تست جدید) |
+| `pytest server/tests` | ۱۳۴ passed (پس از رفع باگ‌های تحلیل؛ ۱۰ تست جدید) |
 | `probe_live.py --selftest` | PASS (۸/۸ حالت) |
 | `layout_test.py` | PASS — ۳ ویوپورت × ۱۰ تب، بدون سرریز |
 | `ui_smoke_test.js` | PASS |

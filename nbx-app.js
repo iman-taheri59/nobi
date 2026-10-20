@@ -984,10 +984,18 @@
     if ($('faVetoes')) $('faVetoes').textContent = fa.length ? faNum(vetoCt) : '—';
     if ($('faPrem')) {
       const pp = NBX.core.engine.premium_pct;
-      $('faPrem').textContent =
-        typeof pp === 'number' && Number.isFinite(pp)
-          ? (pp >= 0 ? '+' : '') + faNum(pp, 2) + '%'
-          : '—';
+      const known = typeof pp === 'number' && Number.isFinite(pp);
+      $('faPrem').textContent = known
+        ? (pp >= 0 ? '+' : '') + faNum(pp, 2) + '%'
+        : LANG === 'fa' ? 'محاسبه‌نشدنی' : 'not available';
+      // A dash here reads as "zero" or "loading". The premium needs all three
+      // of BTCIRT, BTCUSDT and USDTIRT to be quoted; say that instead.
+      $('faPrem').title = known
+        ? ''
+        : LANG === 'fa'
+          ? 'پرمیوم به هر سه جفت BTCIRT، BTCUSDT و USDTIRT نیاز دارد؛ دست‌کم یکی در فهرست بازار نیست.'
+          : 'The premium needs BTCIRT, BTCUSDT and USDTIRT; at least one is missing from the market list.';
+      $('faPrem').classList.toggle('text-base', !known);
     }
     if ($('faList')) {
       const faScoreBySym = {};

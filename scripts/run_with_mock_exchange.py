@@ -35,7 +35,9 @@ async def _down(*_a, **_kw):
 
 
 #: Only the shape is fixed here; every price comes from the exchange fixture.
-UNIVERSE = ("BTCIRT", "ETHIRT", "SOLIRT", "XRPIRT", "ADAIRT", "DOGEIRT")
+#: BTCUSDT and USDTIRT are included because the premium needs all three legs.
+UNIVERSE = ("BTCIRT", "ETHIRT", "SOLIRT", "XRPIRT", "ADAIRT", "DOGEIRT",
+            "BTCUSDT", "USDTIRT")
 
 
 def _wire_exchange(base: str) -> None:
@@ -63,6 +65,11 @@ def _wire_exchange(base: str) -> None:
                 }
         if not out:
             raise RuntimeError("exchange fixture returned no candles")
+        # The fixture prices each symbol independently, which makes the implied
+        # premium meaningless. Re-derive the USDT leg from the other two so the
+        # premium panel shows something plausible instead of -76 %.
+        if {"BTCIRT", "BTCUSDT", "USDTIRT"} <= set(out):
+            out["USDTIRT"]["latest"] = out["BTCIRT"]["latest"] / out["BTCUSDT"]["latest"] * 1.012
         return {"status": "ok", "stats": out}
 
     async def get_udf_history(symbol: str, resolution: str, from_ts: int, to_ts: int) -> dict:
@@ -81,8 +88,18 @@ def _wire_exchange(base: str) -> None:
                 "l": [x["l"] for x in rows], "c": [x["c"] for x in rows],
                 "v": [x["v"] for x in rows]}
 
+    async def get_orderbook(symbol: str) -> dict:
+        async with httpx.AsyncClient(timeout=10) as c:
+            r = await c.get(f"{base}/api/orderbook/{symbol}")
+        body = r.json() or {}
+        # The exchange speaks [price, amount] arrays; the rest of the app speaks
+        # {p, q}. Translate here, at the boundary, like the real client does.
+        return {"bids": [[l["p"], l["q"]] for l in body.get("bids") or []],
+                "asks": [[l["p"], l["q"]] for l in body.get("asks") or []]}
+
     main.client.get_market_stats = get_market_stats
     main.client.get_udf_history = get_udf_history
+    main.client.get_orderbook = get_orderbook
     print(f"exchange reads served from {base}")
 
 

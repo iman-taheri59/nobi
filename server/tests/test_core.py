@@ -1730,3 +1730,14 @@ def test_failed_build_reports_the_reason_not_just_the_exit_code():
     msg = main._short_proc_error(exc)
     assert "npm run css" in msg
     assert msg.startswith("Run:")
+
+
+def test_implausible_premium_is_treated_as_missing_data():
+    """±50 % is a broken quote, not a premium; it must not reach the veto."""
+    import main
+
+    rows = [{"symbol": "BTCIRT", "last": 100.0}, {"symbol": "BTCUSDT", "last": 1.0},
+            {"symbol": "USDTIRT", "last": 100.0}]
+    assert main._premium_pct(rows) == 0.0
+    rows[2]["last"] = 40.0          # -60 % implied premium: a data error
+    assert main._premium_pct(rows) is None
