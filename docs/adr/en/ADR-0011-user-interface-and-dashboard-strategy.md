@@ -1,6 +1,6 @@
 # ADR-0011: User Interface and Dashboard Strategy
 
-- **Status:** Proposed
+- **Status:** Accepted (amended)
 - **Date:** 2026-02-14
 - **Deciders:** Technical Architect, Product Owner
 - **Related ADRs:** 0001, 0002, 0008, 0009
@@ -75,3 +75,26 @@ The bot trades autonomously, but humans must be able to (a) understand system st
 
 **Positive:** fast situational awareness, audit-grade explainability, safe intervention patterns, RTL/Persian-native UX.
 **Negative:** SPA adds build tooling/CI surface — mitigated by phasing and the HTMX fallback.
+
+---
+
+## Implementation amendment — 2026-10-20: the information architecture as it stands
+
+§3 defined seven pages; the dashboard has **ten** tabs today. The three below were added
+later and should be read as part of this ADR:
+
+| New tab | Why | Design note |
+|---|---|---|
+| **Performance report** (`performance`) | ADR-0012 needed its own home for MSI, hit rate, IC and calibration | with no sample, each tile says so instead of "—" |
+| **Manual desk** (`desk`) | ADR-0013 defined hybrid execution and needed a human entry point | ticket + TTL approval queue |
+| **Error log** (`errors`) | grid and aggregation errors were invisible without a log | each of its four buttons has a visible effect |
+
+Two further changes not in the original text:
+
+- **Settings is read-only** except for browser-local preferences (language, ranges).
+  No key or token is ever written from the UI — that is a boundary, not a gap.
+- **Mobile navigation** covers all ten tabs; the settings tab used to be unreachable
+  on a phone.
+
+ADR-0014 governs all of these: every panel has a number, a sentence, or "nothing to
+show" — a bare "—" is never acceptable.

@@ -1,6 +1,6 @@
 # ADR-0002: High-Level Architecture and Technology Stack
 
-- **Status:** Proposed
+- **Status:** Accepted (amended)
 - **Date:** 2026-02-14
 - **Deciders:** Technical Architect
 - **Related ADRs:** 0001, 0003, 0004
@@ -68,3 +68,18 @@ FA providers → FA scores ─────────────────�
 **Positive:** best-in-class analysis stack; train/serve parity; testable modules; local-first, no external SaaS dependencies for secrets.
 
 **Negative:** custom Nobitex client = maintenance when API changes (mitigated by thin adapter + contract tests).
+
+---
+
+## 9. Implementation amendment — 2026-10-20
+
+This ADR defines a target stack; what runs in the repository today is a subset:
+
+| ADR component | In the code today | Note |
+|---|---|---|
+| `Redis` for cache/queue | **not used** — in-process cache with TTL | `redis` is commented out in `requirements.txt` |
+| `PostgreSQL` + `SQLAlchemy` | **not used** — the journal runs on `sqlite3` | deliberate: no database server to install |
+| `vectorbt` for backtests | **not used** — `EventBacktester` on pandas | manual grid search in `backtest.py` |
+
+If the symbol count or backtest scope grows, returning to this stack is justified; at
+the current scale all three dependencies added install cost and failure surface only.

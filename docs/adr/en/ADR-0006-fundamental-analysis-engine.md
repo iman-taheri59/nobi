@@ -1,6 +1,6 @@
 # ADR-0006: Fundamental Analysis Engine — Architecture and Data Sources
 
-- **Status:** Proposed
+- **Status:** Accepted (implemented)
 - **Date:** 2026-02-14
 - **Deciders:** Technical Architect, Research Lead
 - **Related ADRs:** 0002, 0007

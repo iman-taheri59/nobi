@@ -1,6 +1,6 @@
 # ADR-0009: Execution, Backtesting, Security, and Operations
 
-- **Status:** Proposed
+- **Status:** Accepted — backtest and security implemented; live execution deliberately off
 - **Date:** 2026-02-14
 - **Deciders:** Technical Architect, Ops Owner
 - **Related ADRs:** 0001, 0003, 0008

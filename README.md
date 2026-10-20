@@ -120,5 +120,6 @@ docs/                   ADR، تحلیل، ops، بازبینی‌ها
 
 - [`docs/README.md`](docs/README.md) — نقشهٔ مستندات (از کجا شروع کنم)
 - [`docs/adr/`](docs/adr) — ۱۴ ADR دوزبانه (قرارداد داده در ADR-0014)
+- [`docs/adr/README.md`](docs/adr/README.md) — کدام ADR پیاده شده و شاهدش کجاست
 - [`docs/reviews/2026-10-20-live-path-verification-fa.md`](docs/reviews/2026-10-20-live-path-verification-fa.md)
   — تأیید مسیر زنده: ۲۰ باگ، فیکسچر، و آنچه هنوز اثبات نشده

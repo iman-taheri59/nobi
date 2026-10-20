@@ -1,6 +1,6 @@
 # ADR-0008: Risk Management, Position Sizing, and Drawdown Controls
 
-- **Status:** Proposed
+- **Status:** Accepted (implemented)
 - **Date:** 2026-02-14
 - **Deciders:** Technical Architect, Risk Owner
 - **Related ADRs:** 0001, 0007, 0009

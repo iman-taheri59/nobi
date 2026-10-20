@@ -1,6 +1,6 @@
 # ADR-0001: System Vision, Goals, and Scope
 
-- **Status:** Proposed
+- **Status:** Accepted (charter)
 - **Date:** 2026-02-14
 - **Deciders:** Project Owner, Technical Architect
 - **Related ADRs:** 0002, 0007, 0008

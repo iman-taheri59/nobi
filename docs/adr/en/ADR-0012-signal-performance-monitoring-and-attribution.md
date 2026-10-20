@@ -1,6 +1,6 @@
 # ADR-0012: Signal Performance Monitoring, Attribution and Prediction Reporting
 
-- **Status:** Proposed
+- **Status:** Accepted (partially implemented)
 - **Date:** 2026-02-14
 - **Deciders:** Technical Architect, Quant Lead
 - **Related ADRs:** 0005, 0006, 0007, 0011
@@ -67,3 +67,14 @@ hit_tp1 / hit_sl / timeout, r_multiple, realized_return_pct
 ## 4. Consequences
 **Positive:** full auditability from score to outcome; continuous calibration; feedback data for pack re-weighting (ADR-0005).
 **Negative:** incremental storage (cheap — thousands of small rows/day) and extra cleanup rules for symbol halts (mitigated by the VOID state).
+
+---
+
+## Implementation amendment — 2026-10-20
+
+- **Implemented:** the SQLite journal (`server/journal.py`), the VOID rule with a grace
+  period, MSI and the `/api/journal/*` endpoints, digest and CSV export.
+- **Not implemented:** automatic strategy-stage transitions (`train → run → watch →
+  retire`). MSI is computed and shown; the decision to act on it is still human.
+- **Rule adopted in practice:** hit rate and PF show "no data" with a reason rather than
+  a bare dash when the sample is empty (ADR-0014).

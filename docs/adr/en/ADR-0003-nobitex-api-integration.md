@@ -1,6 +1,6 @@
 # ADR-0003: Nobitex API Integration and Exchange Client Design
 
-- **Status:** Proposed
+- **Status:** Accepted (read-only path implemented)
 - **Date:** 2026-02-14
 - **Deciders:** Technical Architect
 - **Related ADRs:** 0002, 0008, 0009
@@ -65,3 +65,18 @@ Build a thin, owned adapter — `exchange/NobitexClient`:
 - Logged but redacted: request/response metadata (never signatures/secrets).
 - Every order carries our `clientOrderId` = deterministic hash of (signal_id, symbol, side, ts-bucket) → safe re-attempts without duplicates.
 - On startup, reconcile: fetch open orders + balances; treat exchange as source of truth before scheduling new signals.
+
+---
+
+## Implementation amendment — 2026-10-20
+
+The §2 table defines the full API contract, not what the client implements. Today:
+
+| Group | Status |
+|---|---|
+| `/market/stats`, `/v3/orderbook/{symbol}`, `/market/udf/history` | implemented (`server/nobitex_client.py`) |
+| `POST /market/orders/*` (place/cancel/status) | **not implemented** — the client has no order-submitting method |
+| API-key auth (`NOBITEX_API_KEY/SECRET`) | reserved in `.env.example` as phase 3 only |
+
+So the dashboard is **read-only** today, which agrees with the promotion gates in
+ADR-0009 rather than violating them.

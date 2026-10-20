@@ -1,6 +1,6 @@
 # ADR-0004: Market Data Pipeline, Storage, and Data Quality
 
-- **Status:** Proposed
+- **Status:** Accepted (partially implemented)
 - **Date:** 2026-02-14
 - **Deciders:** Technical Architect
 - **Related ADRs:** 0002, 0003, 0005
@@ -48,3 +48,13 @@ Accurate, gap-free historical candles drive both TA signals and backtests. Nobit
 ## 4. Retention & Ops
 - Raw candles: indefinite. Orderbook snapshots: 180 days (compressed). Trades: 90 days raw, then aggregations.
 - Nightly VACUUM/compression policy; backup encrypted to local storage.
+
+---
+
+## Implementation amendment — 2026-10-20
+
+- **Implemented:** on-disk candle cache (`server/candle_cache.py`) with TTL and coverage;
+  candles come from `/market/udf/history`.
+- **Not implemented:** the 180-day order-book snapshot archive. The client reads the book
+  for the paper broker, but no API route exposes depth to the UI and nothing is archived,
+  so the depth panel honestly stays `EXPLAINED` (ADR-0014).

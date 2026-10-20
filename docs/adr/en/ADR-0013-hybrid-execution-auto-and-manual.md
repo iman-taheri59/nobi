@@ -1,6 +1,6 @@
 # ADR-0013: Hybrid Execution — Automated, Semi-Automated and Manual Trading
 
-- **Status:** Proposed
+- **Status:** Accepted (manual mode implemented)
 - **Date:** 2026-02-14
 - **Deciders:** Project Owner, Technical Architect, Risk Owner
 - **Related ADRs:** 0001, 0007, 0008, 0009, 0011
@@ -62,3 +62,16 @@ PendingTrade {
 ## 6. Consequences
 **Positive:** gradual control; low-risk path to full automation; comparable human-vs-bot performance data; complete auditability.
 **Negative:** SEMI latency depends on human availability (mitigated by TTL, and by defaulting to semi only during the trust-building phase); manual edits can damage a quantitative plan (mitigated by deviation warnings and logged overrides).
+
+---
+
+## Implementation amendment — 2026-10-20
+
+- **Implemented:** the full manual mode (ticket priced from a single source, risk cap
+  checks, TTL-expiring approval queue) with an audit record for every action.
+- **Not implemented:** automatic mode. No order leaves this repository for Nobitex;
+  the client has no order-submitting method at all — `POST /market/orders/*` is
+  named in its docstring and never implemented. The only outbound `POST` is to
+  `api.telegram.org`.
+- **The lesson that produced ADR-0014:** after a recovery the ticket kept its
+  "unavailable" marker — it had a number on screen while claiming an outage.

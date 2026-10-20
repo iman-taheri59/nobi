@@ -1,6 +1,6 @@
 # ADR-0007: Decision Engine — Signal Fusion, Composite Scoring, and Asset Selection
 
-- **Status:** Proposed
+- **Status:** Accepted (implemented)
 - **Date:** 2026-02-14
 - **Deciders:** Technical Architect, Quant Lead
 - **Related ADRs:** 0005, 0006, 0008, 0009

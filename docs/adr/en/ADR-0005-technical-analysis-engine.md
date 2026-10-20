@@ -1,6 +1,6 @@
 # ADR-0005: Technical Analysis Engine — Architecture and Design
 
-- **Status:** Proposed
+- **Status:** Accepted (implemented)
 - **Date:** 2026-02-14
 - **Deciders:** Technical Architect, Quant Lead
 - **Related ADRs:** 0004, 0007, 0008
