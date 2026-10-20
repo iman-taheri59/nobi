@@ -308,6 +308,7 @@ NBX_CORS_ORIGINS=null
 | سفارش کاغذی از گوشی/لن رد می‌شود | `loopback-only` است | از همان ماشین باز کن، یا `NBX_API_TOKEN` بگذار و هدر بفرست |
 | `database is locked` | دو نمونهٔ سرور روی یک `journal.db` | یکی را ببند، یا `NBX_JOURNAL_DB` جدا بده |
 | `playwright install chromium` دانلود نمی‌شود | CDN مسدود است یا آنتی‌ویروس فایل را می‌بلعد | از مرورگر نصب‌شده استفاده کن: `python scripts\layout_test.py --channel msedge` (بخش ۳٫۳ `docs/testing.md`) |
+| `playwright is not installed for this interpreter` | `python` خالی، venv پروژه نیست؛ پکیج در مفسر دیگری نصب شده | با همان مسیری که در پیام چاپ شده نصب کن: `"...\python.exe" -m pip install playwright`، یا اسکریپت را با `.venv\Scripts\python.exe` اجرا کن |
 
 ---
 

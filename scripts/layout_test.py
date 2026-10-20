@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Layout regression test in a real browser (Chromium via Playwright).
+r"""Layout regression test in a real browser (Chromium via Playwright).
 
 Why this exists
 ---------------
@@ -26,14 +26,28 @@ Run:
     cd server && python3 -m uvicorn main:app --port 8000 &
     python3 scripts/layout_test.py            # add --url for another host
 
-Exit code 0 = clean, 1 = at least one problem.
+No download? Use a browser that is already on the machine:
+
+    python3 scripts/layout_test.py --channel msedge
+    python3 scripts/layout_test.py --executable C:\tools\chrome-win64\chrome.exe
+
+Exit code 0 = clean, 1 = at least one problem, 2 = no browser to run in.
 """
 from __future__ import annotations
 
 import argparse
 import asyncio
-import os
 import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from browser_launch import (
+    add_arguments,
+    launch_args,
+    launch_failed_message,
+    missing_package_message,
+)
 
 TABS = ["overview", "signals", "fa", "orders", "performance",
         "desk", "risk", "backtest", "errors", "settings"]
@@ -115,51 +129,22 @@ ERRORS_PROBE = """() => {
 """
 
 
-def _launch_args(channel: str | None, executable: str | None) -> dict:
-    """Where the browser comes from.
-
-    `python -m playwright install chromium` downloads one specific revision and
-    fails on networks that block its CDN — and behind some proxies and
-    antivirus scanners. Two ways around it, both wired here:
-
-      --channel msedge|chrome   use the browser already installed on the
-                                machine (Edge ships with Windows)
-      --executable PATH         any Chromium binary you downloaded yourself
-                                (also NBX_CHROME, so a shell variable works)
-    """
-    exe = executable or os.getenv("NBX_CHROME") or ""
-    if exe:
-        if not os.path.isfile(exe):
-            raise SystemExit(f"--executable does not exist: {exe}")
-        return {"executable_path": exe}
-    if channel:
-        return {"channel": channel}
-    return {}
-
-
 async def run(url: str, channel: str | None = None, executable: str | None = None) -> int:
     try:
         from playwright.async_api import async_playwright
     except ImportError:
-        print("playwright is not installed:\n"
-              "  pip install playwright\n"
-              "  python -m playwright install chromium     # or --channel msedge",
-              file=sys.stderr)
+        print(missing_package_message(), file=sys.stderr)
         return 2
 
     problems: list[str] = []
 
     async with async_playwright() as p:
         try:
-            browser = await p.chromium.launch(**_launch_args(channel, executable))
+            browser = await p.chromium.launch(**launch_args(channel, executable))
         except Exception as exc:
             # A missing download surfaces as a Playwright traceback that looks
             # like a test bug. Say what to do instead.
-            print("FAIL\n - could not start a browser: " + str(exc).splitlines()[0])
-            print("   one of these fixes it:\n"
-                  "     python -m playwright install chromium     # download\n"
-                  "     --channel msedge                          # Edge, already on Windows\n"
-                  "     --executable C:\\path\\to\\chrome.exe      # a build you downloaded")
+            print("FAIL\n - " + launch_failed_message(exc))
             return 2
         for width, height in VIEWPORTS:
             page = await browser.new_page(viewport={"width": width, "height": height})
@@ -292,9 +277,6 @@ async def run(url: str, channel: str | None = None, executable: str | None = Non
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--url", default="http://127.0.0.1:8000/")
-    ap.add_argument("--channel", choices=["chrome", "msedge", "chromium"],
-                    help="use an installed browser instead of Playwright's download")
-    ap.add_argument("--executable",
-                    help="path to chrome.exe / chrome (default: $NBX_CHROME)")
+    add_arguments(ap)
     a = ap.parse_args()
     sys.exit(asyncio.run(run(a.url, a.channel, a.executable)))

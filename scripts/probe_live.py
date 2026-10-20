@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""probe_live.py — verify the dashboard against a REAL Nobitex feed.
+r"""probe_live.py — verify the dashboard against a REAL Nobitex feed.
 
 Every other test in this repo runs where the exchange is unreachable, so it can
 only prove one half of the contract ("when data is missing, say so"). This
@@ -22,8 +22,14 @@ Two invariants, checked everywhere:
    a number is worse than a blank one: it is a lie. The probe treats that as a
    failure, not a success.
 
-Exit codes:  0 = verified    1 = problems found    2 = no upstream (only the
-error-state half could be verified — re-run where Nobitex is reachable).
+Exit codes:  0 = verified    1 = problems found    2 = could not run (no
+upstream — only the error-state half could be verified; or no browser at all).
+
+Browser: Playwright's own Chromium by default. If `playwright install chromium`
+will not download, point the script at a browser you already have:
+
+    python scripts/probe_live.py --channel msedge
+    python scripts/probe_live.py --executable C:\tools\chrome-win64\chrome.exe
 
     --selftest   prove the classifiers can tell DATA / EXPLAINED / BLANK apart
                  (needs no server and no network)
@@ -39,6 +45,15 @@ import urllib.error
 import urllib.request
 from datetime import UTC, datetime
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from browser_launch import (
+    add_arguments,
+    launch_args,
+    launch_failed_message,
+    missing_package_message,
+)
 
 # --------------------------------------------------------------------------- #
 # What each panel is supposed to do
@@ -298,9 +313,14 @@ def judge(kind: str, verdict: str, live: bool) -> tuple[bool, str]:
 # --------------------------------------------------------------------------- #
 # Selftest — prove the classifier is not a no-op
 # --------------------------------------------------------------------------- #
-def selftest(_url: str | None = None) -> int:
+def selftest(_url: str | None = None, channel: str | None = None,
+             executable: str | None = None) -> int:
     """Feed the classifier known-bad and known-good panels and check its answers."""
-    from playwright.sync_api import sync_playwright
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError:
+        print(missing_package_message(), file=sys.stderr)
+        return 2
 
     root = Path(__file__).resolve().parents[1]
     target = (root / "nobitex-mobile.html").as_uri()
@@ -318,7 +338,11 @@ def selftest(_url: str | None = None) -> int:
     ]
     failures = 0
     with sync_playwright() as p:
-        b = p.chromium.launch()
+        try:
+            b = p.chromium.launch(**launch_args(channel, executable))
+        except Exception as exc:
+            print(launch_failed_message(exc), file=sys.stderr)
+            return 2
         pg = b.new_page(viewport={"width": 1440, "height": 900})
         pg.goto(target, wait_until="load")
         pg.wait_for_timeout(2000)
@@ -392,13 +416,12 @@ def preflight(base: str) -> dict:
     return out
 
 
-def run_probe(base: str, wait_s: float, json_path: str | None, md_path: str | None) -> int:
+def run_probe(base: str, wait_s: float, json_path: str | None, md_path: str | None,
+              channel: str | None = None, executable: str | None = None) -> int:
     try:
         from playwright.sync_api import sync_playwright
     except ImportError:
-        print("playwright is not installed:\n"
-              "  pip install playwright && python -m playwright install chromium",
-              file=sys.stderr)
+        print(missing_package_message(), file=sys.stderr)
         return 2
 
     pf = preflight(base)
@@ -423,7 +446,11 @@ def run_probe(base: str, wait_s: float, json_path: str | None, md_path: str | No
 
     rows: list[dict] = []
     with sync_playwright() as p:
-        b = p.chromium.launch()
+        try:
+            b = p.chromium.launch(**launch_args(channel, executable))
+        except Exception as exc:
+            print(launch_failed_message(exc), file=sys.stderr)
+            return 2
         pg = b.new_page(viewport={"width": 1440, "height": 950})
         js_errors: list[str] = []
         pg.on("pageerror", lambda e: js_errors.append(str(e)[:160]))
@@ -601,10 +628,13 @@ def main() -> int:
     ap.add_argument("--md", dest="md_path")
     ap.add_argument("--selftest", action="store_true",
                     help="verify the DATA/EXPLAINED/BLANK classifier (no network needed)")
+    add_arguments(ap)
     a = ap.parse_args()
     if a.selftest:
-        return selftest(None if a.url.startswith("http") else a.url)
-    return run_probe(a.url.rstrip("/"), a.wait, a.json_path, a.md_path)
+        return selftest(None if a.url.startswith("http") else a.url,
+                        a.channel, a.executable)
+    return run_probe(a.url.rstrip("/"), a.wait, a.json_path, a.md_path,
+                     a.channel, a.executable)
 
 
 if __name__ == "__main__":

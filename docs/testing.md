@@ -19,7 +19,8 @@ pip install -r server/requirements-dev.txt
 npm ci
 npm run css
 
-# فقط برای تست چیدمان (Chromium)
+# مرورگر برای سه اسکریپت UI (probe_live / layout_test / fa_label_test)
+# اگر این دانلود نشد، بخش ۳٫۳ سه راه دیگر دارد.
 python -m playwright install chromium
 ```
 
@@ -114,28 +115,39 @@ python scripts/layout_test.py --url http://127.0.0.1:8000
 سه عرض (۳۹۰ / ۷۶۸ / ۱۴۴۰) × ده تب: اسکرول افقی، تبی که باز نمی‌شود، ردیفی که
 نمودارش خالی است. jsdom این‌ها را نمی‌بیند؛ فقط این اسکریپت می‌بیند.
 
-#### اگر `playwright install chromium` دانلود نشد
+#### اگر مرورگر بالا نیامد
 
-Playwright یک **نسخهٔ مشخص** از Chromium را از CDN خودش می‌گیرد؛ شبکه‌ای که آن
-دامنه را مسدود کند (یا پروکسی/آنتی‌ویروس شرکتی که فایل اجرایی را می‌بلعد) این
-مرحله را متوقف می‌کند. لازم نیست با آن بجنگید — اسکریپت دو راه دیگر دارد:
+دو خطای متفاوت‌اند و راه‌حلشان هم متفاوت است. اول تشخیص بده کدام است:
+
+| پیام | یعنی | راه |
+|---|---|---|
+| `the playwright package is not installed for this interpreter` | **پکیج** پایتون نصب نیست — نه این‌که مرورگر کم است | با همان مسیری که پیام چاپ می‌کند: `"...\python.exe" -m pip install playwright` |
+| `could not start a browser: …` | پکیج هست، مرورگر نیست | یکی از سه راه پایین |
+
+⚠️ رایج‌ترین تله در ویندوز: `python` خالی، venv پروژه نیست. اگر پکیج را در venv
+نصب کرده باشی و اسکریپت را با `python` اجرا کنی، پیام «نصب نیست» می‌گیری. از
+این به بعد خود اسکریپت مسیر مفسرِ در حال اجرا را در همان پیام می‌نویسد؛ همان را
+با `-m pip install` استفاده کن. **`--channel` جای نصب پکیج را نمی‌گیرد** — فقط
+جای دانلود مرورگر را.
+
+اگر پکیج هست و فقط Chromium دانلود نمی‌شود: Playwright یک **نسخهٔ مشخص** را از
+CDN خودش می‌گیرد؛ شبکه‌ای که آن دامنه را مسدود کند (یا پروکسی/آنتی‌ویروس شرکتی
+که فایل اجرایی را می‌بلعد) این مرحله را متوقف می‌کند. لازم نیست با آن بجنگید —
+**هر سه اسکریپت مرورگری** دو راه دیگر دارند:
 
 ```bat
 :: ۱) مرورگری که از قبل نصب است. روی ویندوز، Edge هست.
-python scripts\layout_test.py --url http://127.0.0.1:8000 --channel msedge
-python scripts\layout_test.py --url http://127.0.0.1:8000 --channel chrome
+python scripts\layout_test.py   --url http://127.0.0.1:8000 --channel msedge
+python scripts\probe_live.py    --url http://127.0.0.1:8000 --channel msedge --json probe-live.json --md probe-live.md
+python scripts\fa_label_test.py --url http://127.0.0.1:8000 --case all --channel msedge
 
 :: ۲) هر باینری Chromium که خودت دانلود کرده‌ای
 python scripts\layout_test.py --url http://127.0.0.1:8000 --executable C:\tools\chrome-win64\chrome.exe
 
-:: یا یک‌بار در همان پنجره:
+:: یا یک‌بار در همان پنجره (برای هر سه اسکریپت):
 set NBX_CHROME=C:\tools\chrome-win64\chrome.exe
 python scripts\layout_test.py --url http://127.0.0.1:8000
 ```
-
-`--channel` مرورگر نصب‌شدهٔ سیستم را از مسیر استانداردش برمی‌دارد:
-Edge در `C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe`،
-Chrome در `C:\Program Files\Google\Chrome\Application\chrome.exe`.
 
 **دربارهٔ zip‌ای که خودت دانلود کرده‌ای:** Playwright ساختار پوشه‌ای خاص خودش
 (`chromium-<build>/chrome-win/chrome.exe`) را نمی‌خواهد؛ فقط مسیر یک فایل
@@ -151,11 +163,11 @@ Chrome در `C:\Program Files\Google\Chrome\Application\chrome.exe`.
 
 ```
 FAIL
- - could not start a browser: ...
-   one of these fixes it:
-     python -m playwright install chromium
-     --channel msedge
-     --executable C:\path\to\chrome.exe
+ - could not start a browser: BrowserType.launch: ...
+one of these fixes it:
+  python -m playwright install chromium     # Playwright's own build
+  --channel msedge                          # Edge, already on Windows
+  --executable C:\path\to\chrome.exe       # a build you unpacked
 ```
 
 ### ۳٫۴ DOM و کارت MSI

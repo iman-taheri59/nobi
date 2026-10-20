@@ -2,8 +2,11 @@
 """Check that the FA panel labels a static profile and does not mislabel a cache hit.
 
     npm install && pip install playwright && playwright install chromium
-    node scripts/build_standalone.py   # not needed; the page is served directly
     python3 scripts/fa_label_test.py --url http://127.0.0.1:8020/
+
+If the Chromium download is blocked, add `--channel msedge` (or `--chrome`) to
+use the browser the machine already has, or `--executable PATH` for a build you
+unpacked yourself. Same flags on probe_live.py and layout_test.py.
 
 Only /api/fa/* is stubbed, per case. Everything else comes from the running
 server, so the rest of the page behaves normally. The point is that the label
@@ -17,6 +20,16 @@ import argparse
 import asyncio
 import json
 import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from browser_launch import (  # the path insert above makes this importable
+    add_arguments,
+    launch_args,
+    launch_failed_message,
+    missing_package_message,
+)
 
 
 def fa_row(symbol: str, source: str) -> dict:
@@ -38,12 +51,21 @@ CASES = {
 }
 
 
-async def run(url: str, case: str) -> int:
-    from playwright.async_api import async_playwright
+async def run(url: str, case: str, channel: str | None = None,
+              executable: str | None = None) -> int:
+    try:
+        from playwright.async_api import async_playwright
+    except ImportError:
+        print(missing_package_message(), file=sys.stderr)
+        return 2
 
     source, needle, want_chip = CASES[case]
     async with async_playwright() as p:
-        b = await p.chromium.launch()
+        try:
+            b = await p.chromium.launch(**launch_args(channel, executable))
+        except Exception as exc:  # every launch failure gets the same three answers
+            print(launch_failed_message(exc), file=sys.stderr)
+            return 2
         pg = await b.new_page(viewport={"width": 1440, "height": 950})
 
         async def fa(route):
@@ -77,9 +99,17 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--url", default="http://127.0.0.1:8020/")
     ap.add_argument("--case", choices=[*CASES, "all"], default="all")
+    add_arguments(ap)
     a = ap.parse_args()
     cases = list(CASES) if a.case == "all" else [a.case]
-    return max(asyncio.run(run(a.url, c)) for c in cases)
+    rc = 0
+    for c in cases:
+        rc = max(rc, asyncio.run(run(a.url, c, a.channel, a.executable)))
+        if rc == 2:
+            # 2 = the browser never started. The other two cases would print
+            # the same paragraph a second and third time.
+            break
+    return rc
 
 
 if __name__ == "__main__":
