@@ -929,6 +929,20 @@
       return r;
     }
 
+    async postAllocate(body) {
+      // A3: splitting the heat budget is the server's arithmetic — correlations
+      // come from the candle cache, and the caps live in risk_engine.
+      if (this.standaloneMobile) return null;
+      const res = await fetch(cfg.pythonApi + '/portfolio/allocate', {
+        method: 'POST',
+        headers: this._authHeaders(),
+        body: JSON.stringify(body || {}),
+      });
+      const r = await res.json();
+      if (!res.ok) throw new NBXError('DATA', (r && r.detail) || 'allocate failed');
+      return r;
+    }
+
     async getBackendRiskPlan(symbol, side) {
       if (!this.standaloneMobile) {
         try {

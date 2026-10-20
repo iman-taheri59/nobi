@@ -107,14 +107,26 @@ nbx-core.js             موتور TA/FA، API client، offline fallback
 nbx-app.js              اسکن، سیگنال، عملکرد، میز
 nobitex-mobile.html     باندل تک‌فایلی (ساخته می‌شود، دستی ویرایش نکن)
 assets/css/             tailwind (src + built) و استایل‌های پایه
-server/                 FastAPI: main, ta/fa/risk, paper, backtest, journal,
-                        errorlog, notify, security, settings_view
+server/                 FastAPI: main, ta/fa/risk/portfolio, paper, backtest,
+                        journal, errorlog, notify, security, settings_view
 server/tests/           pytest
 scripts/                probe_live, mock_upstream, layout_test, ui_smoke, build
 docs/                   ADR، تحلیل، ops، بازبینی‌ها
 ```
 
 ---
+
+## دو روت «قبل از معامله»
+
+| روت | چه می‌گوید | تغییر state |
+|---|---|---|
+| `POST /api/risk/whatif` | اگر این سفارش را بگذارم، حرارت/نقد/دروازه‌ها چه می‌شود | هرگز |
+| `POST /api/portfolio/allocate` | بودجهٔ حرارت بین کاندیداهای LONG چطور تقسیم شود (با همبستگی) | هرگز |
+
+هر دو از `risk_engine.preflight` می‌خوانند — همان تابعی که `PaperBroker.place_limit`
+اجرا می‌کند — تا پیش‌نمایش نتواند چیزی را وعده بدهد که بروکر رد می‌کند.
+جزئیات: `docs/reviews/2026-10-20-whatif-preflight-fa.md` و
+`docs/reviews/2026-10-20-a3-portfolio-allocator-fa.md`.
 
 ## مستندات
 

@@ -38,6 +38,8 @@ from nobitex_client import ClientError, NobitexClient, UpstreamUnavailable
 from ta_engine import RISK_K, candles_to_df, ta_score, ta_score_series
 from fa_engine import FA_ENGINE, FAResult
 from risk_engine import RiskEngine, RiskConfig, preflight
+from portfolio import (Candidate, Limits, allocate as allocate_portfolio,
+                       aligned_closes, log_returns)
 import paper_trading
 from paper_trading import FEE_PCT as PAPER_FEE_PCT, get_broker, PaperBroker
 from backtest import EventBacktester, WalkForwardRunner, run_and_save, grid_search, DEFAULT_GRID
@@ -1522,6 +1524,136 @@ async def risk_whatif(payload: dict, request: Request):
         "projection": out,
         **provenance(),
     }
+
+
+@app.post("/api/portfolio/allocate")
+async def portfolio_allocate(payload: dict, request: Request):
+    """Split the heat budget across the board's LONG candidates.
+
+    The board can offer eight longs at once. Sizing each as if it were alone
+    spends the whole heat budget on what may be one bet, because alts move
+    together. This route prices that correlation instead of ignoring it, then
+    runs the *same* `preflight` the broker runs on each survivor, so what it
+    prints is what the desk can actually place.
+
+    Read-only, like the what-if route: no order, no journal row, no heat.
+    """
+    body = payload or {}
+    tf = body.get("tf") if body.get("tf") in ("15m", "1h", "4h", "D") else "15m"
+    try:
+        lookback = max(60, min(int(body.get("lookback") or 200), 400))
+        limit = max(1, min(int(body.get("limit") or 5), 8))
+    except (TypeError, ValueError):
+        return {"ok": False, "error": "lookback and limit must be integers"}
+
+    br = get_broker(EQUITY, client, risk)
+    if br.halted or risk.halted:
+        return {"ok": False, "blocked": True, "blocked_by": "halted",
+                "message": "the kill switch is armed", **provenance()}
+
+    board = _cached.get("signals_by_tf", {}).get(tf) or _cached.get("signals") or {}
+    if not board:
+        return {**upstream_error("portfolio", "no scan has run yet"),
+                "ok": False, "allocations": []}
+
+    explicit = body.get("symbols")
+    if explicit:
+        if not isinstance(explicit, list):
+            return {"ok": False, "error": "symbols must be a list"}
+        selected = [str(x).upper() for x in explicit][:8]
+        why_absent = [s for s in selected if s not in board]
+        if why_absent:
+            return {"ok": False, "error": f"not in the scanned universe: {', '.join(why_absent)}"}
+    else:
+        longs = [(sym, row.get("composite") or 0.0) for sym, row in board.items()
+                 if row.get("direction") == "LONG"]
+        selected = [sym for sym, _ in sorted(longs, key=lambda kv: -kv[1])[:limit]]
+
+    if not selected:
+        return {"ok": False,
+                "error": "the board has no LONG candidate to allocate",
+                "message": "nothing to allocate; a NEUTRAL board is not a reason to invent trades",
+                **provenance()}
+
+    candidates: list[Candidate] = []
+    series: dict[str, list[tuple[int, float]]] = {}
+    notes: list[dict] = []
+    srcs: dict[str, str] = {}
+    for sym in selected:
+        snap = board.get(sym) or {}
+        entry = float(snap.get("lastClose") or 0.0)
+        atr = float((snap.get("risk") or {}).get("atr") or 0.0)
+        if entry <= 0 or atr <= 0:
+            notes.append({"symbol": sym, "reason": "no price or ATR on this timeframe"})
+            continue
+        stop = entry - RISK_K * atr
+        if stop <= 0:
+            notes.append({"symbol": sym, "reason": "ATR stop is below zero"})
+            continue
+        try:
+            rows, src = await client.get_candles_ex(sym, tf, lookback)
+        except UpstreamUnavailable as e:
+            notes.append({"symbol": sym, "reason": f"no candles: {e}"})
+            continue
+        series[sym] = [(int(r["t"]), float(r["c"])) for r in rows
+                       if r.get("c") is not None and float(r["c"]) > 0]
+        srcs[sym] = src
+        candidates.append(Candidate(sym, entry, stop, float(snap.get("composite") or 0.0)))
+
+    if not candidates:
+        return {"ok": False, "allocations": [], "dropped": notes,
+                "error": "no candidate had a price, a stop and candles",
+                **provenance()}
+
+    _stamps, closes = aligned_closes(series)
+    returns: dict[str, list[float]] = {}
+    for sym, cl in closes.items():
+        try:
+            returns[sym] = log_returns(cl)
+        except ValueError:
+            notes.append({"symbol": sym, "reason": "non-positive close in the series"})
+
+    lim = Limits(
+        equity=br.equity, cash=br.cash,
+        open_heat_pct=float(getattr(risk, "open_heat", 0.0) or 0.0),
+        open_positions=len([p for p in br.positions.values() if p.state != "CLOSED"]),
+        concurrent_limit=br.concurrent_limit,
+        max_heat_pct=risk.cfg.max_heat_pct,
+        min_cash_pct=risk.cfg.min_cash_pct,
+        max_single_asset_pct=risk.cfg.max_single_asset_pct,
+        per_trade_risk_pct=risk.cfg.risk_pct,
+        fee_pct=PAPER_FEE_PCT,
+        halted=bool(br.halted or risk.halted),
+        shrinkage=float(body.get("shrinkage") if body.get("shrinkage") is not None
+                        else 0.30),
+    )
+    res = allocate_portfolio(candidates, returns, lim)
+    res["dropped"] = notes + list(res.get("dropped") or [])
+
+    # USD notional → the pair's own quote currency. A quantity printed in USD
+    # on an IRT ticket is off by the exchange rate, which is how an allocator
+    # becomes a way to lose money politely.
+    for row in res.get("allocations", []):
+        fx = await _fx_rate(row["symbol"]) or 1.0
+        row["fx"] = round(fx, 4)
+        row["quote"] = "IRT" if row["symbol"].endswith("IRT") else "USDT"
+        row["notional_quote"] = round(row["notional_usd"] * fx, 2)
+        row["qty"] = round(row["notional_usd"] * fx / row["entry"], 10)
+        row["stop_pct"] = round(row["stop_pct"] * 100, 3)
+    res["totals"]["invested_quote"] = round(
+        sum(r["notional_quote"] for r in res.get("allocations", [])), 2)
+
+    # `provenance()["source"]` is the exchange status (live/unavailable); the
+    # candle origins travel under their own key so the two cannot overwrite
+    # each other — the first version of this line did, and the page crashed on
+    # a string where it expected a list.
+    res.update({"tf": tf, "lookback": lookback,
+                "candles_from": sorted(set(srcs.values())) or ["none"],
+                **provenance()})
+    audit("portfolio.allocate", actor="ui",
+          detail={"tf": tf, "n": len(res.get("allocations", [])),
+                  "invested_usd": res["totals"]["invested_usd"]}, request=request)
+    return res
 
 
 @app.get("/api/risk/state")

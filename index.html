@@ -645,6 +645,25 @@
         </div>
       </div>
 
+      <!-- Portfolio allocation (A3): the heat budget split across the board's
+           LONG candidates with correlation priced in. Read-only until a row is
+           applied to the ticket — the numbers below are what the broker would
+           accept, gate by gate, in the order shown. -->
+      <div class="glass p-4 sm:p-5">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+          <div class="font-bold text-[13px] sm:text-sm flex items-center gap-2">
+            <i data-lucide="layers" class="w-4 h-4 text-violet-300"></i>
+            <span data-i18n="al.hdr"></span>
+          </div>
+          <div class="flex items-center gap-2">
+            <span id="allocSrc" class="text-[10px] text-zinc-500 num"></span>
+            <button id="allocRun" class="px-3 py-1.5 rounded-lg border border-violet-400/40 bg-violet-500/10 text-[11px] font-bold text-violet-200" data-i18n="al.run"></button>
+          </div>
+        </div>
+        <div class="text-[10px] sm:text-[11px] text-zinc-500 leading-5" data-i18n="al.sub"></div>
+        <div id="allocBody" class="mt-3"></div>
+      </div>
+
       <!-- Audit trail -->
       <div class="glass p-4 sm:p-5">
         <div class="font-bold text-[13px] sm:text-sm mb-3 flex items-center gap-2"><i data-lucide="scroll-text" class="w-4 h-4 text-zinc-300"></i> <span data-i18n="dk.audit"></span></div>
@@ -1266,6 +1285,13 @@ const T = {
     'dk.whatif':'اگر این معامله را بگذارم','dk.heat':'حرارت','dk.worstCase':'بدترین حالت (استاپ)','dk.slots':'جای خالی پوزیشن',
     'dk.whatifServer':'از سرور','dk.whatifNoServer':'سرور در دسترس نیست — پیش‌نمایش سبد محاسبه نشد',
     'dk.whatifBlocked':'مسدود می‌شود: ','dk.whatifOk':'همهٔ دروازه‌ها باز است',
+    'al.hdr':'سبد پیشنهادی (با همبستگی)','al.run':'محاسبه','al.working':'در حال محاسبه…',
+    'al.sub':'حرارت سبد بین کاندیداهای LONG تقسیم می‌شود، با احتساب همبستگی بازده‌ها. هر ردیف همان دروازه‌هایی را می‌گذراند که بروکر بعداً اجرا می‌کند؛ تا وقتی «استفاده» را نزنید هیچ سفارشی ثبت نمی‌شود.',
+    'al.risk':'ریسک','al.notional':'نامینال','al.stop':'فاصلهٔ استاپ','al.corr':'بیشترین همبستگی','al.why':'محدودکننده','al.use':'استفاده',
+    'al.totals':'جمع','al.noServer':'سرور پاسخ نداد — تخصیصی نمایش داده نمی‌شود.','al.empty':'امروز کاندیدای LONG برای تخصیص نیست.',
+    'al.fromServer':'از سرور','al.heat':'حرارت بعد از سبد','al.cash':'نقد بعد از سبد','al.slots':'جای خالی',
+    'al.bound.erc-share':'وزن همبستگی','al.bound.cash':'کف نقدینگی','al.bound.single-asset-cap':'سقف تک‌دارایی','al.bound.per-trade-cap':'سقف ریسک هر معامله',
+    'al.applied':'اندازه و استاپ در بلیت گذاشته شد؛ پیش از ثبت، پیش‌نمایش را ببینید.','al.dropped':'کنار گذاشته شد',
     'dk.tApproved':'سفارش تأیید و ارسال شد','dk.tApprovedM':'پلن اجرا شد؛ در لاگ حسابرسی با برچسب نیمه‌خودکار ثبت شد.',
     'dk.tRejected':'سیگنال رد شد','dk.tRejectedM':'رد انسانی در گزارش عملکرد (ADR-0012) برچسب‌گذاری شد.',
     'dk.tManual':'سفارش دستی ثبت شد','dk.tManualM':'سفارش با clientOrderId به ماشین‌حالت اجرا سپرده شد.',
@@ -1453,6 +1479,13 @@ const T = {
     'dk.whatif':'If I take this trade','dk.heat':'Heat','dk.worstCase':'Worst case (stop)','dk.slots':'Position slots left',
     'dk.whatifServer':'from server','dk.whatifNoServer':'Server unreachable — portfolio projection not computed',
     'dk.whatifBlocked':'Would be blocked: ','dk.whatifOk':'All gates open',
+    'al.hdr':'Suggested book (correlation-aware)','al.run':'Compute','al.working':'Computing…',
+    'al.sub':'The heat budget is split across the board\'s LONG candidates with return correlation priced in. Each row passes the same gates the broker runs; nothing is placed until you press Use.',
+    'al.risk':'Risk','al.notional':'Notional','al.stop':'Stop distance','al.corr':'Max corr.','al.why':'Bound by','al.use':'Use',
+    'al.totals':'Total','al.noServer':'The server did not answer — no allocation is shown.','al.empty':'No LONG candidate to allocate today.',
+    'al.fromServer':'from server','al.heat':'Heat after book','al.cash':'Cash after book','al.slots':'Slots left',
+    'al.bound.erc-share':'correlation weight','al.bound.cash':'cash floor','al.bound.single-asset-cap':'single-asset cap','al.bound.per-trade-cap':'per-trade risk cap',
+    'al.applied':'Size and stop were put in the ticket; check the preview before sending.','al.dropped':'left out',
     'dk.stop':'Stop price',
     'dk.ticket':'Order ticket','dk.symbol':'Symbol',
     'dk.submit':'Hold to place order','dk.ticketNote':'Manual orders also pass the risk gates and receive a clientOrderId (ADR-0013).',
@@ -1651,6 +1684,7 @@ document.querySelectorAll('.navbtn').forEach(btn=>{
     animateBars(pg);
     if(btn.dataset.tab==='backtest' && !inited.bt){ inited.bt=true; requestAnimationFrame(()=>setTimeout(drawBt,30)); }
     if(btn.dataset.tab==='performance' && !inited.perf){ inited.perf=true; requestAnimationFrame(()=>setTimeout(async()=>{ await loadPerf(); drawCal(); },30)); }
+    if(btn.dataset.tab==='desk'){ requestAnimationFrame(()=>setTimeout(()=>{ runBookAlloc(false); },60)); }
     if(btn.dataset.tab==='risk'){ requestAnimationFrame(()=>setTimeout(()=>{ loadAudit(); },30)); }
     if(btn.dataset.tab==='settings'){ requestAnimationFrame(()=>setTimeout(()=>{ loadSettings(); },30)); }
     if(btn.dataset.tab==='errors'){
@@ -3844,8 +3878,17 @@ function renderDynamic(){
 let halted=false;
 let execMode = 'semi';
 const MODES = ['auto','semi','manual'];
-const symbols = ['BTCIRT','ETHUSDT','TONIRT','SOLIRT','TRXUSDT','ADAIRT','DOGEUSDT','XYZIRT'];
-const symMode = { BTCIRT:'manual', ETHUSDT:'auto', TONIRT:'auto', SOLIRT:'semi', TRXUSDT:'blocked', ADAIRT:'auto', DOGEUSDT:'semi', XYZIRT:'blocked' };
+// Until the first scan returns there is nothing real to offer. `XYZIRT` used
+// to sit in this list: a symbol that does not exist cannot be traded, and a
+// ticket that lets you pick it only teaches the user to distrust the rest.
+const symbolsFallback = ['BTCIRT','ETHIRT','SOLIRT','XRPIRT','ADAIRT','DOGEIRT'];
+const symbols = symbolsFallback;
+function ticketSymbols(){
+  const unis = (window.NBX && NBX.core && NBX.core.engine && NBX.core.engine.universe) || [];
+  const live = [...new Set(unis.map(u => u && u.symbol).filter(Boolean))];
+  return live.length ? live : symbolsFallback;
+}
+const symMode = { BTCIRT:'manual', ETHIRT:'auto', SOLIRT:'semi', ADAIRT:'auto', DOGEIRT:'semi' };
 
 let queue = [
 ];
@@ -3955,7 +3998,8 @@ function fillTicketFromLive(){
 }
 window.fillTicketFromLive = fillTicketFromLive;
 function initTicket(){
-  byId('mSym').innerHTML = symbols.map(s=>`<option value="${s}">${s}</option>`).join('');
+  const run = byId('allocRun'); if(run) run.onclick = ()=>runBookAlloc(true);
+  byId('mSym').innerHTML = ticketSymbols().map(s=>`<option value="${s}">${s}</option>`).join('');
   byId('mSym').value = manual.sym;
   byId('mAmt').value = manual.amount;
   fillTicketFromLive();
@@ -4042,6 +4086,85 @@ async function refreshWhatIf(seq){
     gate.className = 'mt-2 text-[10px] leading-5 text-red-300';
     gate.textContent = t('dk.whatifNoServer');
   }
+}
+/* ---- A3: correlation-aware allocation of the heat budget ---- */
+let bookAllocState = null, bookAllocRan = false;
+function bookMsg(msg, kind){
+  const b = byId('allocBody'); if(!b) return;
+  b.innerHTML = `<div class="rounded-lg p-2.5 text-[11px] leading-5 border ${
+    kind === 'err' ? 'border-red-400/30 bg-red-400/[.07] text-red-300'
+                   : 'border-white/10 bg-white/[.02] text-zinc-500'}">${msg}</div>`;
+}
+async function runBookAlloc(force){
+  const api = window.NBX && NBX.core && NBX.core.api;
+  if(!api || !api.postAllocate){ bookMsg(t('al.noServer'), 'err'); return; }
+  if(!force && bookAllocRan && bookAllocState) return;
+  bookMsg(t('al.working'), '');
+  try{ bookAllocState = await api.postAllocate({ tf:'15m', lookback:200 }); }
+  catch(e){ bookAllocState = null; bookMsg(t('al.noServer'), 'err'); return; }
+  bookAllocRan = true;
+  renderBookAlloc();
+}
+function renderBookAlloc(){
+  const d = bookAllocState;
+  if(!d || d.ok !== true){
+    const why = (d && (d.message || d.error)) || t('al.noServer');
+    bookMsg(why, 'err');
+    byId('allocSrc').textContent = '';
+    return;
+  }
+  const rows = d.allocations || [], tot = d.totals || {};
+  const from = Array.isArray(d.candles_from) ? d.candles_from : [];
+  byId('allocSrc').textContent = from.length
+    ? `${t('al.fromServer')} · ${from.join('/')}` : '';
+  if(!rows.length){
+    const why = d.reason || t('al.empty');
+    const also = (d.dropped || []).map(x=>`${x.symbol}: ${x.reason}`).join(' · ');
+    bookMsg(why + (also ? ` — ${also}` : ''), '');
+    return;
+  }
+  const body = rows.map(a=>`<tr>
+      <td class="num font-bold">${a.symbol}</td>
+      <td class="num">${PC(a.risk_pct, 2, false)}</td>
+      <td class="num">${fmtNum(a.notional_usd)} <span class="text-zinc-500">USD</span></td>
+      <td class="num">${PC(a.stop_pct, 2, false)}</td>
+      <td class="num">${a.corr_max == null ? '—' : fmtNum(a.corr_max, 2)}</td>
+      <td class="text-[10px] text-zinc-400">${t('al.bound.' + a.bound_by) || a.bound_by}</td>
+      <td class="text-end"><button class="allocUse px-2 py-1 rounded-md border border-sky-400/40 bg-sky-500/10 text-[10px] font-bold text-sky-200"
+          data-sym="${a.symbol}" data-qty="${a.qty}" data-stop="${a.stop}">${t('al.use')}</button></td>
+    </tr>`).join('');
+  const dropped = (d.dropped || []);
+  byId('allocBody').innerHTML = `
+    <div class="table-scroll"><table class="w-full min-w-[680px] text-[11px]">
+      <thead><tr>
+        <th>${t('col.symbol')}</th><th>${t('al.risk')}</th><th>${t('al.notional')}</th>
+        <th>${t('al.stop')}</th><th>${t('al.corr')}</th><th>${t('al.why')}</th><th></th>
+      </tr></thead><tbody>${body}</tbody></table></div>
+    <div class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-zinc-500">
+      <span>${t('al.heat')}: <b class="num text-zinc-300">${PC(tot.heat_after_pct, 2, false)}</b></span>
+      <span>${t('al.notional')}: <b class="num text-zinc-300">${fmtNum(tot.invested_usd)} USD</b></span>
+      <span>${t('al.cash')}: <b class="num text-zinc-300">${fmtNum(tot.cash_after_usd)} USD</b></span>
+      <span>${t('al.slots')}: <b class="num text-zinc-300">${fmtNum(tot.slots_left, 0)}</b></span>
+    </div>
+    ${dropped.length ? `<div class="mt-1.5 text-[10px] text-amber-300/90">${t('al.dropped')}: ${dropped.map(x=>`${x.symbol} (${x.reason})`).join(' · ')}</div>` : ''}`;
+  byId('allocBody').querySelectorAll('.allocUse').forEach(b=>{
+    b.onclick = ()=>applyBookAlloc(b.dataset.sym, Number(b.dataset.qty), Number(b.dataset.stop));
+  });
+  refreshIcons();
+}
+function applyBookAlloc(sym, qty, stop){
+  if(!Number.isFinite(qty) || qty <= 0) return;
+  manual.sym = sym;
+  const sel = byId('mSym');
+  if(sel){
+    if(![...sel.options].some(o=>o.value===sym)) sel.add(new Option(sym, sym));
+    sel.value = sym;
+  }
+  fillTicketFromLive();                 // live price and a default stop, as a human would get
+  if(Number.isFinite(stop) && stop > 0){ manual.stop = stop; byId('mStop').value = stop; }
+  manual.amount = qty; byId('mAmt').value = qty;
+  updateTicket();
+  toast(t('al.hdr'), t('al.applied'), 'ok');
 }
 function updateTicket(){
   const {sym,side,price,amount,stop,tp} = manual;
