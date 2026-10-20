@@ -52,6 +52,8 @@
 
 ## شاهد
 
+![کارت «اگر این معامله را بگذارم» با اندازهٔ ۰٫۳۰ BTC](whatif-box.png)
+
 - `pytest -q server/tests` ⇒ **۱۴۲ passed** (شامل ۴ تست `preflight`، ۴ تست روت
   whatif، و `test_whatif_names_the_kill_switch_instead_of_blaming_sizing`).
 - مرور مرورگری روی فیکسچر (`:8022`، ۱۴۴۰×۱۰۰۰): با اندازهٔ ۰٫۰۵ BTC ⇒
