@@ -20,6 +20,7 @@ import time
 from collections.abc import Callable
 
 from candle_cache import CANDLE_CACHE
+from units import scale_orderbook, scale_stats, scale_udf
 
 log = logging.getLogger("nbx-client")
 from dataclasses import dataclass, field
@@ -100,15 +101,12 @@ class NobitexClient:
     BASE_URL = "https://apiv2.nobitex.ir"
     UA = "TraderBot/1.0 (+https://github.com/your-repo)"
 
-    #: Symbols the dashboard offers in its pickers. Names only — no price,
-    #: volume or change is stored here, because a stale hard-coded number is
-    #: indistinguishable from a live one once it reaches the screen.
-    SYMBOLS: tuple[str, ...] = (
-        "BTCIRT", "ETHIRT", "USDTIRT", "SOLIRT", "TONIRT", "TRXIRT", "DOGEIRT",
-        "XRPIRT", "ADAIRT", "AVAXIRT", "LINKIRT", "DOTIRT", "LTCIRT", "SHIBIRT",
-        "BTCUSDT", "ETHUSDT", "SOLUSDT", "TONUSDT", "TRXUSDT", "DOGEUSDT",
-        "XRPUSDT", "ADAUSDT", "AVAXUSDT", "LINKUSDT",
-    )
+    #: There used to be a hard-coded `SYMBOLS` tuple here. Nothing read it —
+    #: the market list comes from `/market/stats` — and it had already drifted
+    #: from the exchange's own list (the docs ship MATICIRT/MATICUSDT; the
+    #: tuple did not). A second list of "what exists" is a second thing to be
+    #: wrong. `units.market_symbol` turns the stats payload into symbols; that
+    #: is the only source.
 
     def __init__(
         self,
@@ -184,9 +182,34 @@ class NobitexClient:
             if resp.status_code in (401, 403):
                 raise ClientError("AUTH", f"Nobitex rejected request with {resp.status_code} — check endpoint visibility (public vs private)", {"status": resp.status_code})
             if resp.status_code == 429:
-                raise RateLimitError("RATE", "rate limited by Nobitex", {"status": 429})
+                # The docs ship `backOff` (seconds) and `limit` with the error;
+                # sleeping a fixed amount can be shorter than asked for, and
+                # repeating that gets the token blocked for two minutes.
+                body = {}
+                try:
+                    body = resp.json() or {}
+                except Exception:      # noqa: BLE001 - body may be empty
+                    body = {}
+                raise RateLimitError(
+                    "RATE", "rate limited by Nobitex",
+                    {"status": 429,
+                     "backoff_s": float(body.get("backOff") or 0.0),
+                     "limit": body.get("limit")},
+                )
             resp.raise_for_status()
-            return resp.json()
+            body = resp.json()
+            # HTTP 200 does not mean the exchange did the thing. Every Nobitex
+            # endpoint reports business errors with 200 and
+            # {"status": "failed", "code": ..., "message": ...}; treating that
+            # as success turned "the exchange refused" into "the market is
+            # empty" one layer up.
+            if isinstance(body, dict) and body.get("status") == "failed":
+                raise ClientError(
+                    str(body.get("code") or "FAILED"),
+                    str(body.get("message") or "Nobitex refused the request"),
+                    {"status": resp.status_code, "code": body.get("code")},
+                )
+            return body
         except httpx.TimeoutException as e:
             self._emit_stats(False, (time.perf_counter() - t0) * 1000)
             raise ClientError("TIMEOUT", "Nobitex timeout", {"error": str(e)})
@@ -215,7 +238,9 @@ class NobitexClient:
             except RateLimitError as e:
                 last_err = e
                 if attempt < attempts:
-                    await asyncio.sleep(1.2 * attempt)
+                    # Wait what the exchange asked for, not what we feel like.
+                    wait = float((e.meta or {}).get("backoff_s") or 0) or 1.2 * attempt
+                    await asyncio.sleep(min(60.0, wait))
             except ClientError as e:
                 if e.code not in ("NETWORK", "TIMEOUT", "HTTP", "RATE"):
                     log.error("client error: %s", e)
@@ -247,7 +272,9 @@ class NobitexClient:
             try:
                 res = await self.get("/market/stats", attempts=1)
                 self.degraded_mode = False
-                return res
+                # Rial markets are quoted in Rial (docs); the app works in
+                # Toman. One conversion, here, at the boundary.
+                return scale_stats(res)
             except ClientError as e:
                 log.warning("Nobitex /market/stats unreachable (%s)", e)
                 self._trip_circuit()
@@ -259,7 +286,7 @@ class NobitexClient:
             try:
                 res = await self.get(f"/v3/orderbook/{symbol.upper()}", attempts=1)
                 self.degraded_mode = False
-                return res
+                return scale_orderbook(res, symbol)
             except ClientError as e:
                 log.warning("Nobitex orderbook %s unreachable (%s)", symbol, e)
                 self._trip_circuit()
@@ -276,13 +303,20 @@ class NobitexClient:
         raise UpstreamUnavailable("orderbooks unavailable: circuit breaker is open")
 
     async def get_udf_history(
-        self, symbol: str, resolution: str, from_ts: int, to_ts: int
+        self, symbol: str, resolution: str, from_ts: int, to_ts: int,
+        count: int | None = None,
     ) -> dict:
-        return await self.get(
-            "/market/udf/history",
-            params={"symbol": symbol.upper(), "resolution": resolution, "from": from_ts, "to": to_ts},
-            attempts=1,
-        )
+        """OHLC series. ``countback`` is the documented way to ask for the last
+        ``count`` candles before ``to`` and takes priority over ``from``, so the
+        request does not depend on the server's idea of how far back the range
+        may start."""
+        params = {"symbol": symbol.upper(), "resolution": resolution, "to": int(to_ts)}
+        if count:
+            params["countback"] = int(count)
+        else:
+            params["from"] = int(from_ts)
+        res = await self.get("/market/udf/history", params=params, attempts=1)
+        return scale_udf(res, symbol)
 
     async def get_candles(
         self, symbol: str, tf: str = "15m", count: int = 260
@@ -309,7 +343,7 @@ class NobitexClient:
             return cached, "cache"
         if not self._is_circuit_open():
             try:
-                raw = await self.get_udf_history(symbol, res, from_ts, now)
+                raw = await self.get_udf_history(symbol, res, from_ts, now, count=count)
                 if raw and raw.get("s") == "ok" and raw.get("c"):
                     rows = [
                         {"t": raw["t"][i], "o": raw["o"][i], "h": raw["h"][i], "l": raw["l"][i], "c": raw["c"][i], "v": raw["v"][i]}
@@ -324,6 +358,17 @@ class NobitexClient:
                 self._trip_circuit()
                 raise UpstreamUnavailable(
                     f"candles {symbol} {tf} unavailable: {e}", {"symbol": symbol, "tf": tf}) from e
+
+            # The exchange answered — it just has no candles (or rejected the
+            # resolution). That is not an outage, and saying "circuit breaker is
+            # open" here sent readers looking at the network.
+            state = (raw or {}).get("s")
+            detail = (raw or {}).get("errmsg") or ""
+            raise UpstreamUnavailable(
+                f"candles {symbol} {tf} unavailable: {state or 'empty response'}"
+                + (f" ({detail})" if detail else ""),
+                {"symbol": symbol, "tf": tf, "state": state},
+            )
         raise UpstreamUnavailable(f"candles {symbol} {tf} unavailable: circuit breaker is open",
                                   {"symbol": symbol, "tf": tf})
 

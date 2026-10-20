@@ -59,7 +59,11 @@ TAB_PROBE = """() => {
   const t = (sec || document.body).innerText || '';
   const digits = (t.match(/[0-9\u06F0-\u06F9]/g) || []).length;
   const unavail = sec ? sec.querySelectorAll('[data-unavailable]').length : 0;
-  const explained = /در دسترس نیست|امکان‌پذیر نیست|ذهنی|unreachable|unavailable/i.test(t);
+  // An EMPTY panel is allowed to say "nothing to show, because …"; only an
+  // unexplained blank fails. `data-empty-note` is that sentence.
+  const emptyNote = sec ? sec.querySelectorAll('[data-empty-note]').length : 0;
+  const explained = emptyNote > 0 ||
+    /در دسترس نیست|امکان‌پذیر نیست|ذهنی|unreachable|unavailable/i.test(t);
   // A data-i18n element with no text means a missing dictionary key, which
   // renders as a blank label nobody notices in a screenshot.
   const emptyI18n = [...(sec || document).querySelectorAll('[data-i18n]')]

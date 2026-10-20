@@ -28,6 +28,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "server"))
 
 import fa_engine  # noqa: E402
+from units import scale_stats  # noqa: E402
 
 
 async def _down(*_a, **_kw):
@@ -109,9 +110,27 @@ def _wire_exchange(base: str) -> None:
                     if twin:
                         row["latest"] = twin["latest"] * usd_irt
         _PRICES.update({sym: row["latest"] for sym, row in out.items()})
-        return {"status": "ok", "stats": out}
 
-    async def get_udf_history(symbol: str, resolution: str, from_ts: int, to_ts: int) -> dict:
+        # Hand the *documented* shape back to the client — `btc-rls` keys and
+        # Rial quotes — so the fixture exercises the same conversion path the
+        # real API does. A fixture that pre-divides by ten cannot catch a
+        # boundary that forgets to.
+        wire = {"status": "ok", "stats": {}}
+        for sym, row in out.items():
+            if sym.endswith("USDT"):
+                key, k = sym[:-4].lower() + "-usdt", 1.0
+            elif sym.endswith("IRT"):
+                key, k = sym[:-3].lower() + "-rls", 10.0
+            else:
+                continue
+            wire["stats"][key] = {"latest": row["latest"] * k,
+                                  "volumeDst": row["valueDst"] * k,
+                                  "dayChange": row["dayChange"],
+                                  "isClosed": False}
+        return scale_stats(wire)
+
+    async def get_udf_history(symbol: str, resolution: str, from_ts: int, to_ts: int,
+                              count: int | None = None) -> dict:
         tf = {"60": "1h", "240": "4h", "15": "15m"}.get(resolution, "1h")
         async with httpx.AsyncClient(timeout=10) as c:
             r = await c.get(f"{base}/api/candles/{symbol}", params={"tf": tf, "count": 400})
@@ -140,9 +159,28 @@ def _wire_exchange(base: str) -> None:
         body = r.json() or {}
         # The exchange speaks [price, amount] arrays; the rest of the app speaks
         # {p, q}. Translate here, at the boundary, like the real client does.
-        return {"bids": [[l["p"], l["q"]] for l in body.get("bids") or []],
+        # The real payload carries `status: "ok"`; the health probe checks it.
+        # Omitting it made `/api/health` report "exchange unreachable" while the
+        # board was visibly fetching prices from this same fixture.
+        return {"status": "ok",
+                "bids": [[l["p"], l["q"]] for l in body.get("bids") or []],
                 "asks": [[l["p"], l["q"]] for l in body.get("asks") or []]}
 
+    # `/v2/options` is the exchange's own statement of minimums and tick sizes.
+    # The fixture answers it locally so the live run exercises the same code path
+    # without reaching the network.
+    _real_get = main.client.get
+
+    async def get(path, params=None, attempts=1):
+        if path == "/v2/options":
+            return {"status": "ok", "nobitex": {
+                "minOrders": {"rls": "3000000", "usdt": "11"},
+                "amountPrecisions": {"BTCIRT": "0.000001", "XRPIRT": "1"},
+                "pricePrecisions": {"BTCIRT": "10"},
+            }}
+        return await _real_get(path, params=params, attempts=attempts)
+
+    main.client.get = get
     main.client.get_market_stats = get_market_stats
     main.client.get_udf_history = get_udf_history
     main.client.get_orderbook = get_orderbook

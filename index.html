@@ -1320,6 +1320,11 @@ const T = {
     'dk.whatif':'اگر این معامله را بگذارم','dk.heat':'حرارت','dk.worstCase':'بدترین حالت (استاپ)','dk.slots':'جای خالی پوزیشن',
     'dk.whatifServer':'از سرور','dk.whatifNoServer':'سرور در دسترس نیست — پیش‌نمایش سبد محاسبه نشد',
     'dk.whatifBlocked':'مسدود می‌شود: ','dk.whatifOk':'همهٔ دروازه‌ها باز است',
+    // نام دروازه‌ها همان شناسه‌هایی است که preflight برمی‌گرداند؛ نمایش شناسهٔ
+    // انگلیسی در رابط فارسی یعنی کاربر نمی‌داند چه چیزی او را متوقف کرده.
+    'gate.halted':'کلید توقف','gate.market-closed':'بازار بسته است','gate.concurrent-cap':'سقف پوزیشن‌های هم‌زمان',
+    'gate.cash-present':'موجودی نقد','gate.single-asset-cap':'سقف تک‌دارایی','gate.min-notional':'حداقل ارزش سفارش صرافی',
+    'gate.risk-cap':'سقف ریسک هر معامله','gate.heat-cap':'سقف حرارت سبد','gate.min-cash':'کف نقدینگی','gate.funds':'موجودی کافی',
     'mk.hdr':'وضعیت بازار','mk.up':'بالا','mk.down':'پایین','mk.flat':'بی‌تغییر','mk.breadth':'گستردگی (۲۴س)',
     'mk.sub':'سهم نمادهای مثبت، تغییر میانگین با وزن گردش دلاری، پراکندگی، و تمرکز گردش. «شاخص» نیست: میانگین وزنی تغییرِ نمادهای پوشش‌داده‌شده است.',
     'mk.median':'میانهٔ تغییر','mk.weighted':'میانگین وزنی گردش','mk.disp':'پراکندگی','mk.conc':'سهم ۳ نماد اول','mk.turnover':'گردش ۲۴س (دلار)',
@@ -1525,6 +1530,9 @@ const T = {
     'dk.whatif':'If I take this trade','dk.heat':'Heat','dk.worstCase':'Worst case (stop)','dk.slots':'Position slots left',
     'dk.whatifServer':'from server','dk.whatifNoServer':'Server unreachable — portfolio projection not computed',
     'dk.whatifBlocked':'Would be blocked: ','dk.whatifOk':'All gates open',
+    'gate.halted':'Kill switch','gate.market-closed':'Market closed','gate.concurrent-cap':'Concurrent position cap',
+    'gate.cash-present':'Cash available','gate.single-asset-cap':'Single-asset cap','gate.min-notional':'Exchange minimum order',
+    'gate.risk-cap':'Per-trade risk cap','gate.heat-cap':'Portfolio heat cap','gate.min-cash':'Cash floor','gate.funds':'Funds',
     'mk.hdr':'Market state','mk.up':'up','mk.down':'down','mk.flat':'flat','mk.breadth':'Breadth (24h)',
     'mk.sub':'Share of symbols up, turnover-weighted average change, dispersion, and turnover concentration. Not an index: it is the weighted average move of the tracked symbols.',
     'mk.median':'Median change','mk.weighted':'Turnover-weighted','mk.disp':'Dispersion','mk.conc':'Top-3 share','mk.turnover':'24h turnover (USD)',
@@ -2561,7 +2569,10 @@ function emptyRow(cols, why, opts){
     return `<tr><td colspan="${cols}" class="text-center text-[11px] leading-5 text-red-200/80 py-3" data-unavailable="1">
       <span class="block font-bold text-red-200">${t('up.short')}</span><span>${why || t('up.inline')}</span></td></tr>`;
   }
-  return `<tr><td colspan="${cols}" class="text-center text-[11px] leading-5 text-zinc-500 py-3">
+  // `data-empty-note` marks this as a *reason*, not an empty box: an EMPTY
+  // panel with a sentence is fine; an EMPTY panel with nothing is the bug the
+  // layout test is looking for.
+  return `<tr><td colspan="${cols}" data-empty-note="1" class="text-center text-[11px] leading-5 text-zinc-500 py-3">
     <span class="block font-bold text-zinc-400">${LANG==='fa'?'چیزی برای نمایش نیست':'Nothing to show'}</span><span>${why || ''}</span></td></tr>`;
 }
 function renderOrders(){
@@ -4142,7 +4153,9 @@ async function refreshWhatIf(seq){
     byId('whatifSlots').textContent = fmtNum(p.slots_left,0) + ' / ' + fmtNum(p.max_concurrent,0);
     if(p.blocked){
       gate.className = 'mt-2 text-[10px] leading-5 text-red-300';
-      gate.textContent = t('dk.whatifBlocked') + (p.blocked_by || '?');
+      const gk = 'gate.' + (p.blocked_by || '');
+      const gl = t(gk);                       // t() echoes the key when unknown
+      gate.textContent = t('dk.whatifBlocked') + (gl && gl !== gk ? gl : (p.blocked_by || '?'));
     } else {
       gate.className = 'mt-2 text-[10px] leading-5 text-emerald-300';
       gate.textContent = t('dk.whatifOk');

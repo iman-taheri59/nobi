@@ -86,7 +86,9 @@ class FakeClient:
         }
 
     async def get_market_stats(self):
-        return {"stats": {"usdtirt": {"latest": str(self.usdt_irt), "last": str(self.usdt_irt)}}}
+        # `NobitexClient.get_market_stats` returns symbol-keyed stats in Toman;
+        # the fake stands in for the client, so it must speak that dialect.
+        return {"stats": {"USDTIRT": {"latest": str(self.usdt_irt), "last": str(self.usdt_irt)}}}
 
 
 def run(coro):
@@ -102,15 +104,20 @@ def make_broker(tmp_path, monkeypatch, equity=100_000, price=73_040.0):
 
 
 def test_paper_irt_order_consumes_usd_not_toman(tmp_path, monkeypatch):
+    """Prices in the app are Toman; cash is USD. One order proves both.
+
+    0.001 BTC at 498,500,000 Toman = 498,500 Toman; at USDTIRT 68,250 that is
+    ~7.30 USD. Consuming 498,500 (Toman) or 4,985,000,000 (Rial) of a 100,000
+    USD balance would have been the same bug with a different factor.
+    """
     broker, _ = make_broker(tmp_path, monkeypatch)
-    # 0.0000043 BTC at 4.985B IRT = 21,435 IRT ≈ 0.31 USD
     pos = run(broker.place_limit(
-        "BTCIRT", "buy", 0.0000043, price=4_985_000_000,
-        stop=4_809_755_233, tp1=5_195_293_719, source="TEST",
+        "BTCIRT", "buy", 0.001, price=498_500_000,
+        stop=480_975_523, tp1=519_529_371, source="TEST",
     ))
     assert pos is not None, broker.last_error
-    assert pos.size_usd == pytest.approx(0.31, abs=0.02)
-    assert broker.cash == pytest.approx(100_000 - 0.31 * (1 + FEE_PCT), abs=0.05)
+    assert pos.size_usd == pytest.approx(498_500 / 68_250, abs=0.01)
+    assert broker.cash == pytest.approx(100_000 - pos.size_usd * (1 + FEE_PCT), abs=0.02)
 
 
 def test_paper_rejects_oversized_single_asset(tmp_path, monkeypatch):
@@ -719,7 +726,9 @@ def test_paper_order_accepts_size_quote_alone(monkeypatch, tmp_path):
     body = r.json()
     assert r.status_code == 200, body
     assert body.get("ok") is True, body
-    assert body["position"]["qty"] == pytest.approx(500.0 / 73_040.0, rel=1e-6)
+    # Amounts are truncated to the market's precision (BTC: 6 decimals), so the
+    # filled quantity is 500/73,040 floored at 1e-6 — not the exact quotient.
+    assert body["position"]["qty"] == pytest.approx(0.006845, abs=1e-9)
     # size_usd includes the taker fee, so compare the notional with a small band.
     assert body["position"]["size_usd"] == pytest.approx(500.0, abs=2.0)
 
@@ -1825,7 +1834,10 @@ def test_whatif_route_reports_a_real_projection():
     assert d["ok"] is True, d
     p = d["projection"]
     assert {"heat_before", "heat_after", "loss_at_stop_usd", "gates"} <= set(p)
-    assert len(p["gates"]) == 8
+    ids = {g["id"] for g in p["gates"]}
+    # The two exchange-rule gates are part of the projection, not just the broker.
+    assert {"halted", "concurrent-cap", "cash-present", "single-asset-cap",
+            "min-notional", "market-closed"} <= ids
     # The suggested size must itself pass the gates it was sized against.
     if d["sized_by"] == "risk-engine" and not p["blocked"]:
         assert p["risk_pct"] <= 0.75 * 1.05 + 1e-9

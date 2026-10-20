@@ -111,7 +111,8 @@ def preflight(*, equity: float, cash: float, open_heat: float, open_positions: i
               concurrent_limit: int, max_heat_pct: float, min_cash_pct: float,
               max_single_asset_pct: float, risk_pct_cap: float,
               halted: bool, notional_usd: float, fee_usd: float,
-              risk_usd: float) -> Preflight:
+              risk_usd: float, min_notional_usd: float = 0.0,
+              market_closed: bool = False) -> Preflight:
     """Evaluate every admission gate for one candidate order.
 
     Mirrors the checks in `PaperBroker.place_limit` exactly — same order, same
@@ -130,14 +131,31 @@ def preflight(*, equity: float, cash: float, open_heat: float, open_positions: i
     gates = [
         Gate("halted", not halted, None, None,
              "kill switch is armed" if halted else ""),
+        # From the exchange documentation: a market can be temporarily closed
+        # (`isClosed` on /market/stats, `MarketClosed` on order placement). A
+        # paper fill in a closed market is a fill that could not have happened.
+        Gate("market-closed", not market_closed, None, None,
+             "the exchange reports this market as closed" if market_closed else ""),
         Gate("concurrent-cap", open_positions < concurrent_limit,
              float(open_positions), float(concurrent_limit),
              f"{open_positions} of {concurrent_limit} slots in use"),
         Gate("cash-present", float(cash) > 0, float(cash), 0.0,
              "paper account is empty" if float(cash) <= 0 else ""),
-        Gate("single-asset-cap", notional_usd <= max_single_asset_pct / 100 * equity,
+        # A size computed as exactly `cap` is not "over the cap"; floating
+        # division made 25% of equity a hair larger than 25% of equity.
+        Gate("single-asset-cap", notional_usd <= max_single_asset_pct / 100 * equity * (1 + 1e-9),
              notional_usd / equity * 100, float(max_single_asset_pct),
              f"notional {notional_usd / equity * 100:.2f}% of equity"),
+        # `SmallOrder` on the exchange: 3,000,000 Rial or 11 USDT depending on
+        # the quote. Default 0 keeps older callers working unchanged.
+        Gate("min-notional",
+             notional_usd >= float(min_notional_usd) - 1e-9,
+             notional_usd, float(min_notional_usd),
+             # The detail explains a *failure*; printing it on a passing gate
+             # made the panel say "$25,000 is below the minimum ($2.95)".
+             (f"${notional_usd:,.2f} is below the exchange minimum "
+              f"(${min_notional_usd:,.2f})"
+              if min_notional_usd and notional_usd < min_notional_usd - 1e-9 else "")),
         # The broker allows 5 % slack over the configured per-trade risk; the
         # preview has to allow the same or it will block trades that fill.
         Gate("risk-cap", risk_pct <= float(risk_pct_cap) * 1.05,

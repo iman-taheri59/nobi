@@ -16,13 +16,15 @@ import json
 import logging
 import os
 import time
+import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from nobitex_client import NobitexClient
 from risk_engine import Preflight, RiskEngine, RiskPlan, preflight
+from units import min_notional_usd, round_price, truncate_amount
 
 log = logging.getLogger("paper-trading")
 
@@ -61,6 +63,14 @@ class Position:
     risk_usd: float = 0.0             # amount at risk in account currency
     risk_pct: float = 0.0             # risk_usd / equity at entry (percent)
     quote: str = "USDT"
+    #: Idempotency key sent with the order, as documented (`clientOrderId`,
+    #: at most 32 characters). The ticket has always claimed orders "receive a
+    #: clientOrderId"; nothing produced one.
+    client_order_id: str = ""
+    #: Quote units per USD at entry (1.0 for USDT pairs, USDTIRT for IRT pairs).
+    #: Without it, marking a persisted position after a restart divided Toman by
+    #: 1.0 and inflated equity by the FX rate.
+    quote_usd: float = 0.0
 
 @dataclass
 class OrderEvent:
@@ -120,6 +130,21 @@ class PaperBroker:
         }, ensure_ascii=False, indent=1))
 
     # --------- market helpers ----------
+    @staticmethod
+    def _pos_rate(pos: Position) -> float:
+        """Quote units per USD for this position (USDTIRT for IRT pairs, 1 for USDT).
+
+        Uses the rate recorded at entry when it exists — marking an IRT position
+        with a *missing* rate must never fall back to 1.0, which silently treats
+        Toman as dollars and multiplies equity by ~100,000. Older state files
+        predate `quote_usd`, so they are reconstructed from `size_quote/size_usd`.
+        """
+        if pos.quote_usd > 0:
+            return pos.quote_usd
+        if pos.size_quote and pos.size_usd:
+            return pos.size_quote / pos.size_usd
+        return 1.0
+
     async def _mid_price(self, symbol: str) -> float:
         ob = await self.client.get_orderbook(symbol)
         if ob and ob.get("asks") and ob.get("bids"):
@@ -136,7 +161,9 @@ class PaperBroker:
         if not self.usdt_irt:
             try:
                 stats = await self.client.get_market_stats()
-                row = (stats.get("stats") or {}).get("usdtirt") or {}
+                # Stats are keyed by the tradable symbol (`USDTIRT`), which is
+                # what the documented `usdt-rls` key becomes at the boundary.
+                row = (stats.get("stats") or {}).get("USDTIRT") or {}
                 px = float(row.get("latest") or row.get("last") or 0)
                 if px > 0:
                     self.usdt_irt = px
@@ -193,6 +220,16 @@ class PaperBroker:
             fill_price = price
             filled_qty = qty
 
+        # The exchange truncates amounts to the market's amount precision and
+        # rejects prices off the tick; a fill for 0.0000001234 BTC at a price the
+        # book cannot quote is a fill the exchange would never print.
+        filled_qty = truncate_amount(filled_qty, symbol)
+        fill_price = round_price(fill_price, symbol)
+        if filled_qty <= 0 or fill_price <= 0:
+            self.last_error = f"precision: {symbol} qty rounds to zero at the amount step"
+            self.orders.append(OrderEvent(time.time(), "reject", symbol, side, qty, fill_price,
+                                          {"reason": "precision"}))
+            return None
         notional = fill_price * filled_qty
         fee = notional * FEE_PCT
 
@@ -236,6 +273,8 @@ class PaperBroker:
             risk_pct_cap=getattr(self.risk.cfg, "risk_pct", 0.75),
             halted=bool(self.halted or getattr(self.risk, "halted", False)),
             notional_usd=notional_usd, fee_usd=fee_usd, risk_usd=risk_usd,
+            min_notional_usd=min_notional_usd(symbol, rate),
+            market_closed=bool(market_closed_hook and market_closed_hook(symbol)),
         )
         # single-asset-cap is enforced above, before the fee is known; the rest
         # are decided here.
@@ -249,6 +288,9 @@ class PaperBroker:
 
         # take position
         pid = f"pp-{int(time.time() * 1000)}-{symbol}"
+        # 27 characters: "nobi-" + epoch millis + 8 hex. The exchange documents a
+        # 32-character limit and deduplicates on it.
+        coid = f"nobi-{int(time.time() * 1000)}-{uuid.uuid4().hex[:8]}"[:32]
         pos = Position(
             id=pid, symbol=symbol, side=side, entry_price=fill_price,
             qty=filled_qty, size_quote=notional,
@@ -265,11 +307,14 @@ class PaperBroker:
             risk_usd=risk_usd,
             risk_pct=risk_pct,
             quote="IRT" if symbol.upper().endswith("IRT") else "USDT",
+            quote_usd=rate,
+            client_order_id=coid,
         )
         self.positions[pid] = pos
         self.risk.open_heat = round(getattr(self.risk, "open_heat", 0.0) + risk_pct, 4)
         self.cash -= total_cost
-        self.orders.append(OrderEvent(time.time(), "submit", symbol, side, filled_qty, fill_price, {"source": source}))
+        self.orders.append(OrderEvent(time.time(), "submit", symbol, side, filled_qty, fill_price,
+                                      {"source": source, "clientOrderId": coid}))
         self.orders.append(OrderEvent(time.time(), "fill", symbol, side, filled_qty, fill_price, {"source": source, "fee": fee}))
         self._mark_equity_minute()
         self.save()
@@ -284,7 +329,7 @@ class PaperBroker:
             self.orders.append(OrderEvent(time.time(), "reject", pos.symbol, pos.side, pos.filled_qty, 0, {"reason": "revert-failed"}))
             return
         notional_out = spx * sold_qty
-        rate = await self._quote_rate(pos.symbol) or 1.0
+        rate = self._pos_rate(pos)
         fee_out = notional_out * FEE_PCT
         fee_out_usd = fee_out / rate
         if pos.side == "buy":
@@ -328,7 +373,7 @@ class PaperBroker:
                 pos.tp1_filled = True
                 exit_qty = pos.filled_qty * 0.5
                 notional_tp1 = exit_qty * mid
-                rate = await self._quote_rate(pos.symbol) or 1.0
+                rate = self._pos_rate(pos)
                 fee_tp1 = notional_tp1 * FEE_PCT
                 cost_basis_tp1 = pos.size_usd * 0.5
                 pnl_tp1 = (notional_tp1 - pos.size_quote * 0.5) / rate - fee_tp1 / rate
@@ -358,7 +403,7 @@ class PaperBroker:
         # Mark open legs to the last observed price (not to their entry cost).
         open_val = sum(
             p.filled_qty * (p.last_price or p.entry_price)
-            / (self.usdt_irt if p.quote == "IRT" and self.usdt_irt else 1.0)
+            / self._pos_rate(p)
             for p in self.positions.values()
             if p.state != "CLOSED"
         )
@@ -400,6 +445,10 @@ class PaperBroker:
 
 
 PAPER_BROKER: PaperBroker | None = None
+
+#: Set by `main` to the exchange's `isClosed` view of each market. A paper fill
+#: in a market the exchange has closed is a fill that could not have happened.
+market_closed_hook: Callable[[str], bool] | None = None
 def get_broker(equity: float, client: NobitexClient, risk: RiskEngine) -> PaperBroker:
     global PAPER_BROKER
     fez = None

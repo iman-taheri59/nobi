@@ -25,3 +25,6 @@ server/exports/
 
 # Tailwind build tooling (package.json + built css are committed)
 node_modules/
+
+# Playwright CLI scratch (screenshots/snapshots from browser checks)
+.playwright-cli/

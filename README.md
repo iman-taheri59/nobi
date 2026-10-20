@@ -117,6 +117,21 @@ docs/                   ADR، تحلیل، ops، بازبینی‌ها
 
 ---
 
+## مرز واحد و نماد (ADR-0015)
+
+صرافی بازارها را `btc-rls` نام می‌دهد، نماد معامله `BTCIRT` است و قیمت بازارهای
+ریالی **به ریال** است؛ داشبورد همه‌جا «تومان» می‌نویسد. هر سه تبدیل در یک فایل
+است و فقط کلاینت API صدایش می‌زند:
+
+| فایل | کار |
+|---|---|
+| `server/units.py` | `btc-rls → BTCIRT`، ریال→تومان، دقت مقدار/قیمت، حداقل سفارش |
+| `NobitexClient` | تنها جایی که این تبدیل‌ها اجرا می‌شود |
+| `risk_engine.preflight` | دروازه‌های `min-notional` و `market-closed` صرافی |
+
+نتیجه: عدد داشبورد = عدد صرافی، و سفارشی که زیر حداقل صرافی است در پیش‌نمایش هم
+رد می‌شود. جزئیات: [`docs/reviews/2026-10-20-nobitex-api-conformance-fa.md`](docs/reviews/2026-10-20-nobitex-api-conformance-fa.md).
+
 ## دو روت «قبل از معامله»
 
 | روت | چه می‌گوید | تغییر state |
@@ -135,7 +150,9 @@ docs/                   ADR، تحلیل، ops، بازبینی‌ها
 ## مستندات
 
 - [`docs/README.md`](docs/README.md) — نقشهٔ مستندات (از کجا شروع کنم)
-- [`docs/adr/`](docs/adr) — ۱۴ ADR دوزبانه (قرارداد داده در ADR-0014)
+- [`docs/adr/`](docs/adr) — ۱۵ ADR دوزبانه (قرارداد داده ADR-0014، مرز واحد ADR-0015)
 - [`docs/adr/README.md`](docs/adr/README.md) — کدام ADR پیاده شده و شاهدش کجاست
 - [`docs/reviews/2026-10-20-live-path-verification-fa.md`](docs/reviews/2026-10-20-live-path-verification-fa.md)
   — تأیید مسیر زنده: ۲۰ باگ، فیکسچر، و آنچه هنوز اثبات نشده
+- [`docs/reviews/2026-10-20-nobitex-api-conformance-fa.md`](docs/reviews/2026-10-20-nobitex-api-conformance-fa.md)
+  — انطباق با مستندات رسمی: ۱۶ مغایرت، چه چیزی اصلاح شد و چه چیزی باز ماند

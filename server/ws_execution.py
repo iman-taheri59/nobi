@@ -30,11 +30,16 @@ from typing import Any, Callable
 
 import httpx
 
+from units import price_scale
+
 log = logging.getLogger("market-stream")
 
 WS_URL = os.getenv("NBX_WS_URL", "").strip()
 POLL_S = max(1.0, float(os.getenv("NBX_STREAM_POLL_S", "5")))
-WS_CHANNEL_PREFIX = os.getenv("NBX_WS_CHANNEL_PREFIX", "market:")
+#: Public order-book channels are `public:orderbook-BTCIRT` (docs §websocket).
+#: This used to default to `market:`, a prefix the exchange never publishes, so
+#: an opted-in WebSocket could connect and then receive nothing forever.
+WS_CHANNEL_PREFIX = os.getenv("NBX_WS_CHANNEL_PREFIX", "public:orderbook-")
 
 
 @dataclass
@@ -200,7 +205,9 @@ class StreamExecutor:
         while self._subs:
             try:
                 async with websockets.connect(WS_URL, ping_interval=20, ping_timeout=20) as ws:
-                    await ws.send(json.dumps({"id": 1, "connect": {"name": "nobi"}}))
+                    # Anonymous connection: the protocol still wants a
+                    # `connect` frame. `name` is not a field the server reads.
+                    await ws.send(json.dumps({"id": 1, "connect": {}}))
                     hello = json.loads(await asyncio.wait_for(ws.recv(), timeout=10))
                     if "connect" not in hello:
                         raise RuntimeError(f"unexpected handshake: {hello}")
@@ -232,22 +239,49 @@ class StreamExecutor:
         except Exception:
             return
         push = (msg or {}).get("push") or {}
+        if not push:
+            return
         channel = str(push.get("channel") or "")
         symbol = channel.split(WS_CHANNEL_PREFIX, 1)[-1].upper()
-        data = (push.get("pub") or {}).get("data") or {}
+        data = (push.get("pub") or {}).get("data")
+        # Centrifugo publishes `data` as a JSON *string* when the SDK is not in
+        # use (docs §websocket); the old parser required a dict and dropped
+        # every real frame on the floor.
+        if isinstance(data, (str, bytes)):
+            try:
+                data = json.loads(data)
+            except Exception:
+                return
         if not symbol or not isinstance(data, dict):
             return
         book = self.books.setdefault(symbol, HotBook())
-        bid = data.get("bestBid") or data.get("bid") or data.get("b")
-        ask = data.get("bestAsk") or data.get("ask") or data.get("a")
-        last = data.get("lastTradePrice") or data.get("last")
+        # The documented payload is a full L2 snapshot: arrays of
+        # [price, amount] strings, Rial-quoted for IRT markets.
+        bids, asks = data.get("bids") or [], data.get("asks") or []
+        scale = price_scale() if symbol.endswith("IRT") else 1.0
+
+        def _top(rows, want_max):
+            best = None
+            for row in rows:
+                try:
+                    p = float(row[0]) * scale
+                except (TypeError, ValueError, IndexError):
+                    continue
+                if p <= 0:
+                    continue
+                best = p if best is None else (max(best, p) if want_max else min(best, p))
+            return best
+
+        bid = _top(bids, want_max=True)
+        ask = _top(asks, want_max=False)
+        last = data.get("lastTradePrice")
         try:
             if bid:
-                book.best_bid = float(bid)
+                book.best_bid = bid
             if ask:
-                book.best_ask = float(ask)
-            elif last and not book.best_ask:
-                book.best_bid = book.best_ask = float(last)
+                book.best_ask = ask
+            if not (bid or ask) and last:
+                book.best_bid = book.best_ask = float(last) * scale
         except (TypeError, ValueError):
             return
         if book.mid <= 0:

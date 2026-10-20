@@ -41,6 +41,7 @@ from risk_engine import RiskEngine, RiskConfig, preflight
 from portfolio import (Candidate, Limits, allocate as allocate_portfolio,
                        aligned_closes, log_returns)
 from benchmark import MIN_OBS as BENCH_MIN_OBS, PERIODS_PER_YEAR, relative as relative_to, summarise as summarise_relative
+from units import apply_options, market_symbol, min_notional_usd, truncate_amount, round_price
 from market_overview import overview as market_overview
 import paper_trading
 from paper_trading import FEE_PCT as PAPER_FEE_PCT, get_broker, PaperBroker
@@ -277,6 +278,9 @@ async def lifespan(_app: FastAPI):
         _supervise("rescan", rescan("15m")),
         _supervise("position-tick", _position_tick_loop()),
         _supervise("digest", _digest_loop()),
+        # The exchange publishes its own minimums and tick sizes at /v2/options;
+        # reading them once beats shipping a copy that can silently go stale.
+        _supervise("options", _load_options()),
     ]
     try:
         yield
@@ -316,9 +320,14 @@ SIGNALS_TTL_S = int(os.getenv("NBX_SIGNALS_TTL_S", "90"))
 UNIVERSE_TTL_S = int(os.getenv("NBX_UNIVERSE_TTL_S", "120"))
 UPSTREAM_TTL_S = int(os.getenv("NBX_UPSTREAM_TTL_S", "20"))
 
+#: Read by `paper_trading.market_closed_hook`; kept as its own object so the
+#: hook stays valid across the `_cached` resets below.
+_CACHE_CLOSED: set = set()
+
 _cached: dict = {
     "universe": [],
     "universe_ts": 0.0,
+    "closed_markets": [],
     "signals": {},
     "signals_by_tf": {},
     "signals_ts": {},
@@ -457,7 +466,7 @@ async def _fx_rate(symbol: str) -> float:
     if px <= 0:
         try:
             stats = await client.get_market_stats()
-            px = float((stats.get("stats") or {}).get("usdtirt", {}).get("latest") or 0)
+            px = float((stats.get("stats") or {}).get("USDTIRT", {}).get("latest") or 0)
         except Exception:  # noqa: BLE001 - FX is best effort here
             px = 0.0
     return px or 0.0
@@ -539,19 +548,50 @@ async def load_universe():
         return await _load_universe_locked()
 
 
+async def _load_options() -> int:
+    """Apply the exchange's documented minimums and precisions (best effort)."""
+    try:
+        body = await client.get("/v2/options", attempts=1)
+        n = apply_options(body)
+        if n:
+            log.info("options: %d precision/minimum override(s) applied", n)
+        return n
+    except Exception as e:  # noqa: BLE001 - defaults stay in force
+        log.warning("options: could not read /v2/options (%s); using documented defaults", e)
+        return 0
+
+
 async def _load_universe_locked():
     try:
         stats = await client.get_market_stats()
         rows = []
         for sym, d in (stats.get("stats") or {}).items():
-            sym_n = norm(sym)
+            # The documented key is `btc-rls`; `market_symbol` turns it into the
+            # `BTCIRT` the order book and the chart endpoints require. The old
+            # `norm()` (upper-case only) produced "BTC-RLS", which is not a
+            # market: every lookup, the premium and the FX conversion failed.
+            sym_n = market_symbol(sym) or norm(sym)
             last = float(d.get("latest") or d.get("last") or 0)
-            vol = float(d.get("valueDst") or d.get("volumeDst") or d.get("24h_volume") or 0)
+            # `volumeDst` is the documented field; `valueDst` is not in the docs
+            # and is kept only as a legacy alias for older payloads.
+            vol = float(d.get("volumeDst") or d.get("valueDst") or d.get("24h_volume") or 0)
             chg = float(d.get("dayChange") or 0)
             if sym_n and last > 0:
-                rows.append({"symbol": sym_n, "last": last, "vol24": vol, "change24": chg})
+                rows.append({"symbol": sym_n, "last": last, "vol24": vol,
+                             "change24": chg, "closed": bool(d.get("isClosed"))})
         rows.sort(key=lambda x: x["vol24"], reverse=True)
         _cached["universe"] = rows[:60]
+        closed = sorted(r["symbol"] for r in rows if r.get("closed"))
+        _cached["closed_markets"] = closed
+        _CACHE_CLOSED.clear()
+        _CACHE_CLOSED.update(closed)
+        try:
+            import paper_trading as _pt
+            _pt.market_closed_hook = lambda sym: norm(sym) in _CACHE_CLOSED
+        except Exception:  # noqa: BLE001 - the hook is optional
+            pass
+        if closed:
+            log.info("universe: %d market(s) reporting isClosed: %s", len(closed), ", ".join(closed[:6]))
         _cached["universe_ts"] = time.time()
         usdtirt = next((r for r in rows if r["symbol"] == "USDTIRT"), None)
         _cached["premium"] = usdtirt["last"] if usdtirt else None
@@ -1509,6 +1549,10 @@ async def risk_whatif(payload: dict, request: Request):
         risk_pct_cap=risk.cfg.risk_pct,
         halted=bool(br.halted or risk.halted),
         notional_usd=notional_usd, fee_usd=fee_usd, risk_usd=risk_usd,
+        # The same two documented exchange rules the broker applies, or the
+        # preview promises an order the exchange would refuse.
+        min_notional_usd=min_notional_usd(sym, fx),
+        market_closed=sym in _cached["closed_markets"],
     )
     out = pf.summary()
     audit("risk.whatif", actor="ui", detail={"symbol": sym, "side": side,

@@ -985,23 +985,15 @@
                  error: 'upstream_unavailable', message: NBX.UPSTREAM_MSG[DOC_LANG()],
                  warnings: [], blocked: true };
       }
-      const stopDist = entry * 0.036;
-      const isBuy = (side || 'buy') === 'buy';
-      const stop = isBuy ? entry - stopDist : entry + stopDist;
-      return {
-        symbol: sym,
-        side: side || 'buy',
-        action: 'open',
-        entry,
-        stop,
-        tp1: isBuy ? entry + stopDist * 1.5 : entry - stopDist * 1.5,
-        tp2: isBuy ? entry + stopDist * 2.5 : entry - stopDist * 2.5,
-        rr_ratio: 2.0,
-        size_quote: 18500,
-        risk_pct: 0.75,
-        warnings: [],
-        blocked: false,
-      };
+      // No local plan. This used to answer with `size_quote: 18500`, a 3.6%
+      // stop and `blocked: false` — numbers that came from nowhere and that the
+      // broker's ten gates had never seen. A ticket built on them promised an
+      // order the backend would refuse. If the backend cannot size the trade,
+      // the ticket must say so.
+      return { ok: false, unavailable: true, symbol: sym, side: side || 'buy',
+               error: 'risk_plan_unavailable',
+               message: NBX.UPSTREAM_MSG[DOC_LANG()],
+               warnings: [], blocked: true };
     }
 
     _authHeaders() {
@@ -1025,7 +1017,17 @@
           if (res.status === 401 || res.status === 403) {
             return { ok: false, error: (r && r.detail) || 'withheld by server policy (auth)', auth_error: true };
           }
-        } catch (e) {}
+          if (r && r.ok === false) return r;
+        } catch (e) {
+          // The order never reached the backend. Filling it in the browser
+          // produced a position that exists only in this tab — a fake fill,
+          // with two gates instead of the broker's ten. Say it failed.
+          return { ok: false, network_error: true,
+                   error: 'paper_order_unreachable',
+                   message: NBX.UPSTREAM_MSG[DOC_LANG()] };
+        }
+        return { ok: false, error: 'paper_order_failed',
+                 message: 'the server answered but did not place the order' };
       }
       return NBX.Paper.placeOrder(payload || {});
     }
