@@ -8,14 +8,56 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import os
+import tempfile
 from pathlib import Path
 
 import pandas as pd
 
 log = logging.getLogger("candle-cache")
 
-CACHE_ROOT = Path(__file__).parent / "candle_cache"
-CACHE_ROOT.mkdir(exist_ok=True)
+#: Where the Parquet files live.
+#:
+#: `NBX_CANDLE_CACHE` first, because the checkout is not always writable. The
+#: deployed unit runs with `ProtectSystem=strict` and a single writable path
+#: (`/srv/nobi-data`), so a `mkdir` next to this file was a `PermissionError`
+#: *at import time* — `nobitex_client` imports this module, so the whole
+#: application refused to start, three times, and then systemd gave up
+#: (`StartLimitBurst=3`). A cache directory is data, not code: it belongs on
+#: the data volume, where rebuilding the ابرک from an image does not delete it.
+#:
+#: `parents=True` keeps a nested `NBX_CANDLE_CACHE=/srv/nobi-data/candle-cache`
+#: working on a first run, when only the parent directory exists.
+def _prepare_cache_root() -> Path:
+    """The first writable cache directory, preferring the configured one.
+
+    A cache is an optimisation, not a prerequisite: an unwritable location must
+    cost speed, never a started process. Each fallback is logged with the reason
+    and the exact variable to set, so the degradation is visible instead of
+    silent.
+    """
+    configured = os.getenv("NBX_CANDLE_CACHE", "").strip()
+    checkout = Path(__file__).parent / "candle_cache"
+    scratch = Path(tempfile.gettempdir()) / "nobi-candle-cache"
+    candidates = [Path(configured), checkout, scratch] if configured else [checkout, scratch]
+    first = candidates[0]
+    for path in candidates:
+        try:
+            path.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            log.warning("candle cache: %s is not usable (%s)", path, exc)
+            continue
+        if path != first:
+            log.warning(
+                "candle cache: using %s instead of %s — put the cache on the data "
+                "volume (NBX_CANDLE_CACHE=/srv/nobi-data/candle-cache)", path, first,
+            )
+        return path
+    log.warning("candle cache: no writable directory; caching is disabled this run")
+    return scratch
+
+
+CACHE_ROOT = _prepare_cache_root()
 
 
 def _key(symbol: str, resolution: str, from_ts: int, to_ts: int) -> Path:
