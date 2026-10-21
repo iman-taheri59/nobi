@@ -2,6 +2,31 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 1.0.5
+
+- Trading fees have one home: `server/fees.py`. The `0.002` was typed into
+  `paper_trading.py`, `backtest.py`, `portfolio.py`'s default, the browser bundle
+  (`PAPER_FEE_PCT`) and `scripts/check_preflight_parity.py` — five copies with nothing
+  measuring that they agreed. One rate for maker and taker is deliberate: the
+  exchange's current schedule is not verified in this repository, and inventing a
+  split would be the fabricated number ADR-0014 forbids.
+- The paper account's starting equity is aligned: `deploy/nobi.env.example` and
+  `scripts/deploy_arvan.sh` shipped `10000` while the code, `server/.env.example` and
+  the Windows guide said `100000`, so a fresh ArvanCloud install sized every position
+  ten times smaller. All of them now come from one default
+  (`fees.DEFAULT_EQUITY_USD`); existing installs are untouched.
+- The dead `low-rr` gate now works: `_tp` hard-coded the take-profit levels, so the
+  ratio was always exactly 2.0 and `MIN_RR=1.5` could never be crossed. The levels
+  moved to `RiskConfig.rr_levels` (same default) so the warning can actually fire.
+- New gate `server/tests/test_single_source_constants.py` (5 tests): one fee across
+  broker/backtester/allocator, Python and JS agreeing on the fee, no new `0.002`
+  copy, one starting equity across every install sample, and a `low-rr` warning that
+  is reachable.
+- Two gaps deliberately left open, recorded in
+  `docs/reviews/2026-10-21-shared-constants-fa.md`: nothing feeds the backtest's best
+  RR (`1.5/2.5`) into the live plan (`1.2/2.0`), and the browser broker falls back to
+  percentage-based targets when there is no backend.
+
 ## 1.0.4
 
 - Documentation is bilingual where it matters. The root README, the documentation map,

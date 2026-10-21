@@ -2,7 +2,7 @@
 
 **فارسی** · [English](README.en.md)
 
-نسخهٔ جاری: **1.0.4**. راهنمای [نسخه‌بندی و انتشار GitHub](releases.md) ([English](releases.en.md)) و [تاریخچهٔ تغییرات](../CHANGELOG.md) ([English](../CHANGELOG.en.md)).
+نسخهٔ جاری: **1.0.5**. راهنمای [نسخه‌بندی و انتشار GitHub](releases.md) ([English](releases.en.md)) و [تاریخچهٔ تغییرات](../CHANGELOG.md) ([English](../CHANGELOG.en.md)).
 
 ## نقشهٔ مستندات
 
@@ -55,6 +55,7 @@
 | [`reviews/2026-10-20-js-broker-parity-fa.md`](reviews/2026-10-20-js-broker-parity-fa.md) | بروکر مرورگر: ۳ دروازه → ۱۰ دروازه، با تست هم‌ارزی Python/JS |
 | [`reviews/probe-live-2026-10-20.md`](reviews/probe-live-2026-10-20.md) | خروجی خام پروب با فید زنده (۴۴ پنل) |
 | [`reviews/probe-offline-2026-10-20.md`](reviews/probe-offline-2026-10-20.md) | خروجی خام پروب با صرافیِ قطع (۴۴ پنل) |
+| [`reviews/2026-10-21-shared-constants-fa.md`](reviews/2026-10-21-shared-constants-fa.md) | ثابت‌های مشترک: کارمزد، سرمایهٔ شروع و دروازهٔ مردهٔ `low-rr` — و دو شکافی که عمداً بسته نشد |
 | [`reviews/real-ic-2026-10-19.json`](reviews/real-ic-2026-10-19.json) | اندازه‌گیری IC روی دادهٔ واقعی |
 
 > **قاعده:** بازبینی‌ها عکس لحظه‌ای‌اند و بازنویسی نمی‌شوند. اگر بعداً چیزی

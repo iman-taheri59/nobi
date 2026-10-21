@@ -41,6 +41,12 @@ class RiskConfig:
     min_cash_pct: float = 10.0
     risk_k_multiplier: float = 2.0     # stop distance = k * ATR
     max_risk_pct: float = 2.0          # hard ceiling
+    #: Take-profit levels as multiples of the stop distance: (tp1, tp2). The
+    #: last one is the plan's reward-to-risk ratio, so this is the only number
+    #: that can put a plan below `MIN_RR`. It used to be a literal default in
+    #: `_tp`, which made the "low-rr" warning unreachable — a check that could
+    #: never fire is a comment pretending to be a gate.
+    rr_levels: tuple[float, ...] = (1.2, 2.0)
 
 
 @dataclass
@@ -199,11 +205,13 @@ class RiskEngine:
         self.daily_pnl: float = 0.0
         self.halted = False
 
-    def _tp(self, entry: float, stop: float, side: str, rr_levels=(1.2, 2.0)) -> tuple[float, float]:
+    def _tp(self, entry: float, stop: float, side: str,
+            rr_levels: tuple[float, ...] | None = None) -> tuple[float, float]:
+        levels = rr_levels if rr_levels is not None else self.cfg.rr_levels
         dist = abs(entry - stop)
         if side == "buy":
-            return entry + dist * rr_levels[0], entry + dist * rr_levels[1]
-        return entry - dist * rr_levels[0], entry - dist * rr_levels[1]
+            return entry + dist * levels[0], entry + dist * levels[-1]
+        return entry - dist * levels[0], entry - dist * levels[-1]
 
     def evaluate(self, symbol: str, side: str, entry: float, atr: float, exec_tf="15m",
                  equity_quote: float | None = None, preview: bool = False) -> RiskPlan:
@@ -268,6 +276,10 @@ class RiskEngine:
         tp1, tp2 = self._tp(entry, stop, side)
         rr = abs((tp2 - entry) / (entry - stop))
         if rr < MIN_RR:
+            # The token stays bare: the UI translates warnings by name and the
+            # plan already carries the measured ratio in `rr_ratio`. Reachable
+            # only through configuration — with `rr_levels` at its default 2.0
+            # this branch is dead, which is why it never fired.
             warnings.append("low-rr")
 
         if not preview:

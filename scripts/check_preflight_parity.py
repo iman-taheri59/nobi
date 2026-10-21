@@ -23,6 +23,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "server"))
 
+from fees import FEE_PCT
 from risk_engine import RiskConfig, preflight
 
 DEFAULTS = RiskConfig(equity=100_000.0)
@@ -96,7 +97,7 @@ def build_cases() -> list[dict]:
     for eq, notional in itertools.product((1_000.0, 100_000.0, 1e6),
                                           (100.0, 250.0, 250_000.0)):
         add(equity=eq, cash=eq, open_heat=0.0, open_positions=0,
-            notional_usd=notional, fee_usd=notional * 0.002, risk_usd=notional * 0.01)
+            notional_usd=notional, fee_usd=notional * FEE_PCT, risk_usd=notional * 0.01)
     return cases
 
 

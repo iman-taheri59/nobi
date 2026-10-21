@@ -22,6 +22,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
+from fees import FEE_PCT  # re-exported: callers import it from here
 from money import NoRate, Rate
 from nobitex_client import NobitexClient
 from risk_engine import Preflight, RiskEngine, preflight
@@ -41,8 +42,6 @@ def _backup_path(state_file: Path) -> Path:
     """
     return state_file.with_suffix(state_file.suffix + ".bak")
 
-# Paper maker/taker assumptions (Nobitex mid-tier retail default):
-FEE_PCT = 0.002  # 0.2% round-trip equivalent per leg
 
 #: How long a USDT/IRT rate stays usable. Short enough that a moving market
 #: cannot price an order off yesterday, long enough that marking every open
