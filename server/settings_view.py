@@ -20,6 +20,7 @@ import os
 import time
 from typing import Any
 
+import auth
 import fa_engine
 import journal
 import notify
@@ -148,6 +149,8 @@ def flags() -> list[dict[str, Any]]:
          "meaning": "where scheduled exports are written"},
         {"name": "NBX_JOURNAL_DB", "value": str(journal.DB_PATH),
          "meaning": "journal database (runtime artifact, git-ignored)"},
+        {"name": "NBX_AUTH_DB", "value": str(auth.AUTH_DB),
+         "meaning": "accounts and sessions (hashes only; back it up)"},
         {"name": "NBX_UPSTREAM_TTL_S", "value": float(os.getenv("NBX_UPSTREAM_TTL_S", "20")),
          "unit": "s", "meaning": "exchange probe freshness"},
         {"name": "NBX_SIGNALS_TTL_S", "value": float(os.getenv("NBX_SIGNALS_TTL_S", "90")),

@@ -74,8 +74,8 @@ MemoryDenyWriteExecute=yes
 SystemCallFilter=@system-service
 SystemCallErrorNumber=EPERM
 
-# The app writes the journal, the paper state and exports — the only writable
-# paths it needs. Everything else is read-only on disk.
+# The app writes the journal, the paper state, the accounts database and the
+# exports — the only writable paths it needs. Everything else is read-only.
 ReadWritePaths=/srv/nobi-data
 StateDirectory=nobi
 LogsDirectory=nobi

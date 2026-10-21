@@ -34,9 +34,12 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 import _env  # noqa: F401 — must precede every module that reads os.environ
+import auth
+import auth_api
 import devsuite
 import diagnostics
 import errorlog
+import identity
 import journal as signal_journal
 import notify
 import paper_trading
@@ -346,10 +349,64 @@ _CORS_ORIGINS = cors_origins()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_CORS_ORIGINS,
-    allow_credentials=False,
-    allow_methods=["GET", "POST", "PUT", "OPTIONS"],
-    allow_headers=["content-type", "x-api-token", "authorization"],
+    # Sessions travel in a cookie. A cross-origin front-end (an explicit
+    # NBX_CORS_ORIGINS list, never "*") therefore needs credentials allowed,
+    # and it needs the CSRF header to survive the preflight.
+    allow_credentials=bool(_CORS_ORIGINS),
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["content-type", "x-api-token", "x-csrf-token", "authorization"],
 )
+
+app.include_router(auth_api.router)
+
+#: Reachable without a session. `/api/health` stays open because uptime
+#: monitors cannot log in, and it is the endpoint a deployment is checked with.
+#: Everything under `/api/auth/` handles its own permissions (login must be
+#: open; the owner area checks the role itself). Static files stay open because
+#: the login screen is part of them.
+_PUBLIC_PATHS = {"/api/health"}
+_PUBLIC_PREFIXES = ("/api/auth/",)
+
+
+@app.middleware("http")
+async def require_login_for_api(request: Request, call_next):
+    """Close every API route once accounts exist.
+
+    `require_client` only guards mutations. Adding accounts and leaving the
+    reads open would produce the oddest possible deployment: a login screen in
+    front of a dashboard whose positions anyone can fetch with curl. So the gate
+    is the middleware, and it is keyed on "has anybody claimed this install?"
+    rather than on an address — a laptop with no accounts keeps working exactly
+    as before, which is also what keeps the existing tests honest.
+    """
+    path = request.url.path
+    if not (path.startswith("/api/") or path in ("/openapi.json", "/docs", "/redoc")):
+        return await call_next(request)
+    if path in _PUBLIC_PATHS or path.startswith(_PUBLIC_PREFIXES):
+        return await call_next(request)
+    if not auth.any_users():
+        return await call_next(request)
+
+    session = identity.session_of(request)
+    if session is not None:
+        request.state.user = session.user
+        request.state.auth_method = "session"
+        return await call_next(request)
+    if security_token_ok(request):
+        request.state.auth_method = "token"
+        return await call_next(request)
+    return JSONResponse(
+        {"detail": "برای دیدن این بخش باید وارد شوید", "auth": "login"},
+        status_code=401,
+        headers={"WWW-Authenticate": "Cookie"},
+    )
+
+
+def security_token_ok(request: Request) -> bool:
+    """Read the shared secret lazily so tests can set it after import."""
+    from security import token_valid
+    return token_valid(request)
+
 
 TIMEFRAMES = ["15m", "1h", "4h", "D"]
 client = NobitexClient()
@@ -654,7 +711,11 @@ async def health():
         "version": app.version,
         "ts": datetime.now(UTC).isoformat(),
         "upstream": _upstream_snapshot(),
-        "auth": {"mode": auth_mode(), "token_required": bool(API_TOKEN), "cors_origins": _CORS_ORIGINS},
+        "auth": {"mode": auth_mode(), "token_required": bool(API_TOKEN),
+                 "cors_origins": _CORS_ORIGINS,
+                 # Whether the install has accounts decides how the API behaves;
+                 # a monitor reading this should not have to guess.
+                 "accounts": auth.any_users()},
         "provenance": provenance(),
         "stats": {
             "total": client.stats.total,
@@ -1324,6 +1385,21 @@ async def journal_export(format: str = Query("csv", pattern="^(csv|json)$"),
     )
 
 
+def _innermost(exc: BaseException) -> BaseException:
+    """The exception a human wrote, out of any ExceptionGroup around it.
+
+    Middleware run in a task group re-raise the original error wrapped in an
+    `ExceptionGroup`. Logging the group buries the one line that matters
+    ("deliberate failure ...") under ~4 KB of wrapper frames and the 4000-char
+    truncation then cuts it off — the error log would show a 500 with no reason.
+    """
+    seen = 0
+    while isinstance(exc, BaseExceptionGroup) and exc.exceptions and seen < 10:
+        exc = exc.exceptions[0]
+        seen += 1
+    return exc
+
+
 @app.exception_handler(Exception)
 async def _unhandled(request: Request, exc: Exception):
     """Record every unhandled exception, then answer with a JSON error.
@@ -1332,9 +1408,13 @@ async def _unhandled(request: Request, exc: Exception):
     in the server's stdout — unreachable from the dashboard, which is exactly
     where someone notices the problem.
     """
+    leaf = _innermost(exc)
     row = errorlog.capture(
-        level="critical", source="http.unhandled", exc=exc,
-        message=f"{request.method} {request.url.path} failed",
+        level="critical", source="http.unhandled", exc=leaf,
+        # The message carries the cause, because the traceback is truncated and
+        # the list view shows the message first.
+        message=f"{request.method} {request.url.path} failed: "
+                f"{type(leaf).__name__}: {leaf}",
         context={"path": request.url.path, "method": request.method,
                  "query": str(request.url.query)[:300]},
         client=(request.client.host if request.client else None),

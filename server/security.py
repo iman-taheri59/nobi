@@ -23,6 +23,15 @@ Configuration
                         ``::1``, a Docker bridge, Arvan's LB). Without it the
                         header is ignored entirely.
 
+Accounts (ADR-0018)
+-------------------
+Once at least one account exists in `auth.db`, the loopback shortcut stops
+applying: a signed-in session is required for every mutating endpoint, and the
+shared token still works for scripts. The shortcut is what makes a laptop run
+without a password, and it is also the thing that must not survive into a
+deployment with people in it — so it is tied to "no accounts yet" instead of to
+an address.
+
 Why the proxy list exists
 -------------------------
 A reverse proxy on the same host makes **every** request look like it came from
@@ -48,6 +57,9 @@ import time
 from collections import deque
 
 from fastapi import HTTPException, Request, status
+
+import auth
+import identity
 
 log = logging.getLogger("nbx-security")
 
@@ -150,7 +162,7 @@ def startup_problem() -> str:
     return ""
 
 
-def _presented_token(request: Request) -> str:
+def presented_token(request: Request) -> str:
     token = request.headers.get("x-api-token", "")
     if token:
         return token
@@ -183,7 +195,13 @@ def reset_rate_limits() -> None:
 
 
 async def require_client(request: Request) -> None:
-    """FastAPI dependency guarding every state-changing endpoint."""
+    """FastAPI dependency guarding every state-changing endpoint.
+
+    Order matters. The token is checked first because it is a *machine*
+    credential with no session, no CSRF and no browser: a script that has it
+    should not be asked to log in. A session comes second, and with a session
+    the role and the CSRF header both have to be right.
+    """
     host = client_host(request)
     if not _rate_ok(f"{host}:{request.url.path}"):
         raise HTTPException(
@@ -191,14 +209,33 @@ async def require_client(request: Request) -> None:
             detail=f"rate limit: {_RATE_LIMIT} mutations/minute",
         )
 
-    if API_TOKEN:
-        presented = _presented_token(request)
-        if not presented or not secrets.compare_digest(presented, API_TOKEN):
+    if API_TOKEN and secrets.compare_digest(presented_token(request), API_TOKEN):
+        return
+
+    if auth.any_users():
+        session = identity.session_of(request)
+        if session is None:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="missing or invalid API token (X-API-Token)",
+                detail="برای این کار باید وارد شوید (ورود از /api/auth/login)",
+            )
+        if not session.user.can_mutate:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="نقش شما فقط خواندنی است (viewer)",
+            )
+        if not identity.csrf_ok(request, session):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="درخواست بدون نشانهٔ CSRF رد شد؛ صفحه را دوباره باز کنید",
             )
         return
+
+    if API_TOKEN:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="missing or invalid API token (X-API-Token)",
+        )
 
     if host not in LOOPBACK_HOSTS:
         raise HTTPException(
@@ -210,6 +247,13 @@ async def require_client(request: Request) -> None:
         )
 
 
+def token_valid(request: Request) -> bool:
+    """Is this request carrying the shared secret? Used by `/api/auth/me`."""
+    if not API_TOKEN:
+        return False
+    return secrets.compare_digest(presented_token(request), API_TOKEN)
+
+
 __all__ = ["API_TOKEN", "auth_mode", "client_host", "cors_origins",
-           "require_client", "reset_rate_limits", "startup_problem",
-           "trusted_proxies"]
+           "presented_token", "require_client", "reset_rate_limits",
+           "startup_problem", "token_valid", "trusted_proxies"]

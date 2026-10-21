@@ -150,6 +150,7 @@ def check_proxy() -> dict:
 
 def check_storage() -> dict:
     journal = _cfg("NBX_JOURNAL_DB") or str(SERVER / "journal.db")
+    auth_db = _cfg("NBX_AUTH_DB") or str(SERVER / "auth.db")
     paper = _cfg("NBX_PAPER_STATE") or str(SERVER / "paper_state.json")
     jp = Path(journal)
     inside_repo = str(jp.resolve()).startswith(str(ROOT))
@@ -173,16 +174,20 @@ def check_storage() -> dict:
                 best = m
         return best
 
+    if str(Path(auth_db).resolve()).startswith(str(ROOT)):
+        problems.append(f"accounts are inside the checkout ({auth_db}) — a service "
+                        "with ProtectSystem=strict cannot even create it")
     root_m = on_volume(jp)
     if problems:
-        hint = ("put the data on the attached volume: NBX_JOURNAL_DB=/srv/nobi-data/journal.db "
-                "and NBX_PAPER_STATE=/srv/nobi-data/paper.json")
+        hint = ("put the data on the attached volume: NBX_JOURNAL_DB=/srv/nobi-data/journal.db, "
+                "NBX_PAPER_STATE=/srv/nobi-data/paper.json and NBX_AUTH_DB=/srv/nobi-data/auth.db")
         return _row(FAIL, "storage", "; ".join(problems), hint)
     if root_m in ("/", ""):
         return _row(SKIP, "storage", f"{jp} is on the root filesystem ({root_m or '?'})",
                     "a rebuild of the ابرک loses it; attach a volume and point the two "
                     "variables at it")
-    return _row(OK, "storage", f"journal on {root_m}, paper state {paper}")
+    return _row(OK, "storage", f"journal on {root_m}, paper state {paper}, "
+                               f"accounts {auth_db}")
 
 
 def check_disk() -> dict:
@@ -200,6 +205,43 @@ def check_disk() -> dict:
         return _row(FAIL, "disk", f"{free_gb:.2f} GB free at {target}",
                     "the journal grows with every scan; free space or attach a volume")
     return _row(OK, "disk", f"{free_gb:.1f} GB free at {target}, {used_pct:.0f}% used")
+
+
+def check_accounts() -> dict:
+    """Who can get in: a named account, or only the shared token?
+
+    Both are legitimate. What is not legitimate is a half-configured install —
+    an auth database with no active owner cannot mint invites, so nobody new
+    can ever be added and the person who set it up may not be able to get back
+    in either.
+    """
+    path = Path(_cfg("NBX_AUTH_DB") or str(SERVER / "auth.db"))
+    if not path.is_file():
+        return _row(SKIP, "accounts", "no accounts yet — the API is in token/loopback mode",
+                    "create the first one: python scripts/manage_users.py create NAME --role owner")
+    try:
+        import sqlite3
+        conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+        try:
+            users = conn.execute("SELECT role, active FROM users").fetchall()
+        finally:
+            conn.close()
+    except Exception as e:
+        return _row(FAIL, "accounts", f"{path} is not readable: {type(e).__name__}",
+                    "check the file permissions and that the service can write to it")
+    owners = sum(1 for role, active in users if role == "owner" and active)
+    mode = path.stat().st_mode & 0o777
+    if mode & 0o077:
+        return _row(FAIL, "accounts", f"{path} is mode {mode:o} — password hashes are readable",
+                    f"chmod 600 {path} (the service creates it that way)")
+    if not users:
+        return _row(SKIP, "accounts", f"{path} exists but has no users",
+                    "python scripts/manage_users.py create NAME --role owner")
+    if owners == 0:
+        return _row(FAIL, "accounts", f"{len(users)} account(s) but no active owner",
+                    "nobody can create invites or change roles; restore one with "
+                    "python scripts/manage_users.py role NAME owner")
+    return _row(OK, "accounts", f"{len(users)} account(s), {owners} owner(s)")
 
 
 def check_exchange() -> dict:
@@ -369,7 +411,7 @@ def check_tls(public: str) -> dict:
 
 
 CHECKS = (check_config, check_python, check_packages, check_token, check_proxy,
-          check_storage, check_disk, check_exchange, check_bind)
+          check_storage, check_disk, check_accounts, check_exchange, check_bind)
 
 
 def run(public: str) -> list[dict]:

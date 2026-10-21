@@ -30,6 +30,12 @@ os.environ.setdefault("NBX_PAPER_STATE", str(_SCRATCH / "paper.json"))
 # path — pytest run against a fixture database still uses that one.
 os.environ.setdefault("NBX_JOURNAL_DB", str(_SCRATCH / "journal.db"))
 
+# And the accounts: a developer who ran `manage_users.py` on this checkout has a
+# real auth.db with real people in it. The suite must not read it (or add users
+# to it), because "does the API require a login?" is the question half of these
+# tests answer.
+os.environ.setdefault("NBX_AUTH_DB", str(_SCRATCH / "auth.db"))
+
 SERVER = Path(__file__).resolve().parents[1]
 if str(SERVER) not in sys.path:
     sys.path.insert(0, str(SERVER))
