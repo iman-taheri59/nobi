@@ -42,6 +42,7 @@ import diagnostics
 import errorlog
 import identity
 import journal as signal_journal
+import nobitex_metadata
 import notify
 import paper_trading
 from backtest import grid_search, run_and_save
@@ -310,6 +311,7 @@ async def lifespan(_app: FastAPI):
     # exchange for a book on every tick while the socket had just delivered it.
     paper_trading.hot_mid_hook = lambda sym: _hot_mid(sym)
 
+    options_task = _supervise("options", _options_loop())
     tasks = [
         _supervise("coin-metadata", coin_metadata.CACHE.run()),
         _supervise("universe", load_universe()),
@@ -318,7 +320,7 @@ async def lifespan(_app: FastAPI):
         _supervise("digest", _digest_loop()),
         # The exchange publishes its own minimums and tick sizes at /v2/options;
         # reading them once beats shipping a copy that can silently go stale.
-        _supervise("options", _load_options()),
+        options_task,
         # `auto` mode is a server-side executor, not a chip in the page: the
         # loop reads the same mode the UI writes and places paper orders
         # through the same ten gates as an approved queue row.
@@ -335,8 +337,8 @@ async def lifespan(_app: FastAPI):
     finally:
         for t in tasks:
             t.cancel()
-        # Let the metadata worker close its HTTP client before the event loop.
-        await asyncio.gather(tasks[0], return_exceptions=True)
+        # Finish both metadata workers before closing their HTTP clients.
+        await asyncio.gather(tasks[0], options_task, return_exceptions=True)
         await STREAM_EXECUTOR.close()
         await client.aclose()
 
@@ -743,13 +745,24 @@ async def _load_options() -> int:
     """Apply the exchange's documented minimums and precisions (best effort)."""
     try:
         body = await client.get("/v2/options", attempts=1)
+        nobitex_metadata.CACHE.ingest(body)
         n = apply_options(body)
         if n:
             log.info("options: %d precision/minimum override(s) applied", n)
         return n
     except Exception as e:  # defaults stay in force
+        nobitex_metadata.CACHE.failed()
         log.warning("options: could not read /v2/options (%s); using documented defaults", e)
         return 0
+
+
+async def _options_loop():
+    # Share the exchange's existing request with metadata; never fetch twice.
+    # Good snapshots refresh hourly, failures retry every five minutes.
+    while True:
+        await _load_options()
+        await asyncio.sleep(nobitex_metadata.RETRY if nobitex_metadata.CACHE.error
+                            else nobitex_metadata.TTL)
 
 
 async def _load_universe_locked():
@@ -2999,7 +3012,7 @@ async def backtest_promotion_gate():
 # Coin metadata is a display-only cache, never an alternative price feed.
 @app.get("/api/coins")
 async def coins_metadata():
-    return coin_metadata.CACHE.view()
+    return nobitex_metadata.CACHE.merge(coin_metadata.CACHE.view())
 
 
 @app.get("/api/coins/{coin_id}/logo")

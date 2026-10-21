@@ -24,6 +24,7 @@ import auth
 import coin_metadata
 import fa_engine
 import journal
+import nobitex_metadata
 import notify
 import risk_engine
 import ta_engine
@@ -189,10 +190,22 @@ def providers(upstream: dict[str, Any] | None = None) -> dict[str, Any]:
     fa = fa_engine.FA_ENGINE
     now = time.time()
     cov = getattr(fa, "last_coverage", None) or {}
+    exchange_meta = nobitex_metadata.CACHE.view()
     meta = coin_metadata.CACHE.view()
     cached = sum(bool(r["image_url"]) for r in meta["coins"])
     meta_stale = any(r["stale"] for r in meta["coins"])
     return {
+        "nobitex_metadata": {
+            "kind": f"exchange metadata ({len(exchange_meta['coins'])} currencies)",
+            "configured": True,
+            "ok": (None if exchange_meta["last_attempt"] is None and exchange_meta["updated_at"] is None
+                   else not exchange_meta["error"] and not exchange_meta["stale"]),
+            "partial": bool(exchange_meta["coins"] and (exchange_meta["error"] or exchange_meta["stale"])),
+            "stale": exchange_meta["stale"] if exchange_meta["updated_at"] is not None else None,
+            "error": exchange_meta["error"],
+            "age_s": (None if exchange_meta["updated_at"] is None
+                      else max(0, now - exchange_meta["updated_at"])),
+        },
         "coin_metadata": {
             "kind": f"display logos ({cached}/{len(meta['coins'])} cached)",
             "configured": meta["enabled"],

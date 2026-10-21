@@ -46,15 +46,16 @@
       origin = url.origin;
     } catch (_) { return; }
     for (const row of (Array.isArray(rows) ? rows : [])) {
-      if (!row || !/^[A-Z0-9]{1,24}$/.test(row.symbol)
-          || !/^[a-z0-9][a-z0-9-]{0,99}$/.test(row.id)
-          || row.image_url !== `/api/coins/${row.id}/logo`) continue;
+      if (!row || !/^[A-Z0-9]{1,24}$/.test(row.symbol)) continue;
+      const validLogo = typeof row.id === 'string'
+        && /^[a-z0-9][a-z0-9-]{0,99}$/.test(row.id)
+        && row.image_url === `/api/coins/${row.id}/logo`;
       metadata[row.symbol] = {
         name: typeof row.name === 'string' ? row.name.slice(0, 160) : row.symbol,
-        src: origin + row.image_url + '?v=' + encodeURIComponent(row.updated_at || 0),
+        src: validLogo ? origin + row.image_url + '?v=' + encodeURIComponent(row.updated_at || 0) : null,
       };
       // A successful hourly metadata probe permits one new image attempt.
-      broken.delete(metadata[row.symbol].src);
+      if (validLogo) broken.delete(metadata[row.symbol].src);
     }
     // Also upgrade placeholders already painted before the metadata arrived.
     document.querySelectorAll('[data-coin]').forEach((el) => {

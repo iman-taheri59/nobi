@@ -57,6 +57,15 @@ for (const file of ['index.html', 'nobitex-mobile.html']) {
   // A newly downloaded version is eligible again (different cache-busting URL).
   setMetadata([{id: 'bitcoin', symbol: 'BTC', name: 'Bitcoin', updated_at: 124, image_url: '/api/coins/bitcoin/logo'}], 'https://backend.test/api');
   assert.match(body.querySelector('[data-coin="BTC"]').src, /^https:\/\/backend.test\/api\//);
+  // Exchange-only symbols still get authoritative names without any CG ID.
+  setMetadata([
+    {id: null, symbol: 'XYZ', name: 'Exchange-only asset', image_url: null},
+    {id: 'bitcoin', symbol: 'BTC', name: 'نام نوبیتکس', updated_at: 124, image_url: '/api/coins/bitcoin/logo'},
+  ], '/api');
+  assert.equal(parse('XYZIRT').tagName, 'SPAN');
+  assert.equal(parse('XYZIRT').title, 'Exchange-only asset');
+  assert.equal(parse('BTCIRT').title, 'نام نوبیتکس');
+  assert.equal(parse('XYZIRT').querySelector('img'), null);
   setMetadata(null, 'javascript:bad'); // unsupported/malformed data is harmless
   console.log(`${file}: PASS (${svgCount} embedded logos, pairs, safe fallback, size limits)`);
 }
