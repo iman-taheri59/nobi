@@ -11,8 +11,8 @@
 بک‌اند را رعایت می‌کند و مرورگر واقعی با آن بالا می‌آید:
 
 ```
-python3 scripts/mock_upstream.py --port 8010
-python3 scripts/probe_live.py --url http://127.0.0.1:8010
+python scripts/mock_upstream.py --port 8010
+python scripts/probe_live.py --url http://127.0.0.1:8010
 ```
 
 `mock_upstream.py` هیچ‌جای اپ نیست و در باندل نمی‌رود؛ فقط برای اجرای نیمهٔ
@@ -61,8 +61,8 @@ python3 scripts/probe_live.py --url http://127.0.0.1:8010
 ## اجرا روی ماشین دارای دسترسی
 
 ```
-cd nobi
-python3 scripts/probe_live.py --json probe.json --md probe.md
+cd nobitrader
+python scripts/probe_live.py --json probe.json --md probe.md
 ```
 
 - کد خروج **۰**: مسیر زنده تأیید شد.

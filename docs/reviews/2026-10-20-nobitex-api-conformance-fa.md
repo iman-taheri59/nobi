@@ -185,8 +185,8 @@ p.filled_qty * (p.last_price or p.entry_price) / (self.usdt_irt if … else 1.0)
 
 ```
 pytest -q server/tests                     ⇒ 222 passed
-python3 scripts/probe_live.py --url :8022  ⇒ PASS — 45 panels, 3 cross-checked
-python3 scripts/layout_test.py --url :8022 ⇒ PASS — 3 viewports, 10 tabs
+python scripts/probe_live.py --url :8022  ⇒ PASS — 45 panels, 3 cross-checked
+python scripts/layout_test.py --url :8022 ⇒ PASS — 3 viewports, 10 tabs
 /api/risk/whatif (BTCIRT)                  ⇒ 10 gates, blocked_by=null, min-notional $2.95
 /api/paper/order size_quote=100000         ⇒ ok:false, "min-notional: $0.97 is below the exchange minimum ($2.95)"
 /api/paper/order size_quote=2000000        ⇒ ok:true, qty=0.000221 (۶ رقم اعشار، truncate)

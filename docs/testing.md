@@ -10,7 +10,7 @@ CI و بیشتر تست‌های این مخزن جایی اجرا می‌شون
 ## ۰) یک‌بار
 
 ```bash
-cd /path/to/nobi
+cd /path/to/nobitrader
 
 # پایتون (سرور + ابزار تست)
 pip install -r server/requirements-dev.txt

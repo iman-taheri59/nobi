@@ -1,0 +1,68 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v[0-9]*.[0-9]*.[0-9]*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: npm ci --no-audit --no-fund
+      - run: python -m pip install -r server/requirements-dev.txt
+      - run: npm run build
+      - name: Require a current generated dashboard
+        run: git diff --exit-code -- index.html nobitex-mobile.html assets/css/tailwind.css
+      - name: Validate tag and release notes
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: python scripts/release_notes.py --tag "$RELEASE_TAG"
+      - run: ruff check server scripts
+      - run: mypy
+      - run: python -m pytest -q server/tests
+      - run: npm run lint
+      - run: npm run lint:dashboard
+      - run: npm run test:js
+      - run: npm run test:icons
+      - run: python scripts/check_preflight_parity.py
+      - run: npm run test:display
+
+  publish:
+    name: Publish GitHub Release
+    needs: validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Publish notes and standalone mobile download
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          python scripts/release_notes.py --tag "$RELEASE_TAG" > "$RUNNER_TEMP/release-notes.md"
+          cp nobitex-mobile.html "$RUNNER_TEMP/nobitrader-mobile.html"
+          gh release create "$RELEASE_TAG" "$RUNNER_TEMP/nobitrader-mobile.html" \
+            --verify-tag --title "nobitrader $RELEASE_TAG" \
+            --notes-file "$RUNNER_TEMP/release-notes.md"

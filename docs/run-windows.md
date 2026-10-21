@@ -1,5 +1,7 @@
 # راه‌اندازی کامل روی ویندوز با Laragon
 
+> مثال‌ها برای نصب جدید در پوشهٔ `nobitrader` هستند. اگر نصب موجود شما پوشهٔ دیگری دارد، همان مسیر واقعی را استفاده کنید؛ تغییر نام پوشه الزامی نیست.
+
 این سند فرض می‌کند Laragon نصب است و می‌خواهی پروژه را از مخزن بگیری و کل
 سیستم را روی همان ماشین بالا بیاوری.
 
@@ -14,12 +16,12 @@
 | استفاده | لازم است؟ |
 |---|---|
 | ترمینال و پوشهٔ `C:\laragon\www` | راحت است، اختیاری |
-| دامنهٔ محلی مثل `http://nobi.test` (reverse proxy) | اختیاری |
+| دامنهٔ محلی مثل `http://nobitrader.test` (reverse proxy) | اختیاری |
 | Apache/Nginx برای سرو فایل‌ها | ❌ لازم نیست |
 | PHP / MySQL | ❌ لازم نیست |
 
 > ⚠️ **اشتباه رایج:** در لاراگون «Create pretty URL» بزنی تا
-> `C:\laragon\www\nobi` ریشهٔ سایت شود. آن‌وقت `index.html` از دیسک سرو می‌شود
+> `C:\laragon\www\nobitrader` ریشهٔ سایت شود. آن‌وقت `index.html` از دیسک سرو می‌شود
 > ولی `/api/health` و بقیهٔ مسیرها ۴۰۴ می‌دهند، چون API روی پورت ۸۰۰۰ است.
 > راه درست، بخش ۶ است.
 
@@ -52,8 +54,8 @@ PATH باز نشده (ترمینال را ببند و دوباره باز کن).
 
 ```bat
 cd C:\laragon\www
-git clone https://github.com/iman-taheri59/nobi.git
-cd nobi
+git clone https://github.com/iman-taheri59/nobi.git nobitrader
+cd nobitrader
 ```
 
 بدون git هم می‌شود: از گیت‌هاب `Code → Download ZIP` و اکسترکت در همان مسیر.
@@ -63,7 +65,7 @@ cd nobi
 ## ۳) محیط پایتون
 
 ```bat
-cd C:\laragon\www\nobi\server
+cd C:\laragon\www\nobitrader\server
 python -m venv .venv
 .venv\Scripts\activate
 python -m pip install --upgrade pip
@@ -91,7 +93,7 @@ python -c "import fastapi, pandas, pyarrow; print('ok')"
 ## ۴) تنظیمات
 
 ```bat
-cd C:\laragon\www\nobi\server
+cd C:\laragon\www\nobitrader\server
 copy .env.example .env
 notepad .env
 ```
@@ -120,7 +122,7 @@ notepad .env
 ## ۵) اجرا
 
 ```bat
-cd C:\laragon\www\nobi\server
+cd C:\laragon\www\nobitrader\server
 .venv\Scripts\activate
 python -m uvicorn main:app --host 127.0.0.1 --port 8000
 ```
@@ -145,18 +147,18 @@ INFO:nbx-app:rescan 15m: 17 symbols, FA 17/17
 
 ---
 
-## ۶) دامنهٔ محلی `nobi.test` (اختیاری، مخصوص لاراگون)
+## ۶) دامنهٔ محلی `nobitrader.test` (اختیاری، مخصوص لاراگون)
 
-هدف: `http://nobi.test` برود به همان اپ روی پورت ۸۰۰۰. این یک **reverse proxy**
+هدف: `http://nobitrader.test` برود به همان اپ روی پورت ۸۰۰۰. این یک **reverse proxy**
 است، نه سرو فایل از دیسک.
 
 ### اگر لاراگون روی Apache است
 
-فایل `C:\laragon\etc\apache2\sites-enabled\nobi.test.conf` را بساز:
+فایل `C:\laragon\etc\apache2\sites-enabled\nobitrader.test.conf` را بساز:
 
 ```apache
 <VirtualHost *:80>
-    ServerName nobi.test
+    ServerName nobitrader.test
     ProxyPreserveHost On
     ProxyPass        / http://127.0.0.1:8000/
     ProxyPassReverse / http://127.0.0.1:8000/
@@ -172,12 +174,12 @@ LoadModule proxy_http_module   modules/mod_proxy_http.so
 
 ### اگر لاراگون روی Nginx است
 
-فایل `C:\laragon\etc\nginx\sites-enabled\nobi.test.conf`:
+فایل `C:\laragon\etc\nginx\sites-enabled\nobitrader.test.conf`:
 
 ```nginx
 server {
     listen 80;
-    server_name nobi.test;
+    server_name nobitrader.test;
     location / {
         proxy_pass http://127.0.0.1:8000;
         proxy_set_header Host $host;
@@ -192,9 +194,9 @@ server {
 2. فایل `C:\Windows\System32\drivers\etc\hosts` را با Notepad (Run as
    administrator) باز کن و یک خط اضافه کن:
    ```
-   127.0.0.1  nobi.test
+   127.0.0.1  nobitrader.test
    ```
-3. `http://nobi.test` را باز کن.
+3. `http://nobitrader.test` را باز کن.
 
 چون صفحه و API هر دو از یک origin می‌آیند، **هیچ تنظیم CORS لازم نیست** و
 `request.client.host` هم `127.0.0.1` می‌ماند، پس نوشتن‌ها (سفارش کاغذی، توقف
@@ -202,7 +204,7 @@ server {
 
 اگر بدون پروکسی `index.html` را از Apache سرو کنی، API روی `:8000` یک origin
 دیگر است و باید در `.env` بگذاری:
-`NBX_CORS_ORIGINS=http://nobi.test`.
+`NBX_CORS_ORIGINS=http://nobitrader.test`.
 
 ---
 
@@ -226,7 +228,7 @@ curl http://127.0.0.1:8000/api/health
 سنجش ۴۵ پنل (به Stdlib نیاز دارد، نه مرورگر):
 
 ```bat
-cd C:\laragon\www\nobi
+cd C:\laragon\www\nobitrader
 python scripts\probe_live.py --url http://127.0.0.1:8000
 ```
 
@@ -245,11 +247,11 @@ npm run lint
 
 ## ۸) شروع خودکار با ویندوز (بدون لاراگون)
 
-لاراگون پردازهٔ پایتون را مدیریت نمی‌کند. یک فایل `C:\laragon\www\nobi\start.bat`:
+لاراگون پردازهٔ پایتون را مدیریت نمی‌کند. یک فایل `C:\laragon\www\nobitrader\start.bat`:
 
 ```bat
 @echo off
-cd /d C:\laragon\www\nobi\server
+cd /d C:\laragon\www\nobitrader\server
 call .venv\Scripts\activate
 python -m uvicorn main:app --host 127.0.0.1 --port 8000
 ```
@@ -261,7 +263,7 @@ python -m uvicorn main:app --host 127.0.0.1 --port 8000
 ## ۹) به‌روزرسانی
 
 ```bat
-cd C:\laragon\www\nobi
+cd C:\laragon\www\nobitrader
 git pull
 cd server
 .venv\Scripts\activate
@@ -271,7 +273,7 @@ pip install -r requirements.txt
 اگر `requirements.txt` یا فایل‌های UI عوض شده باشند:
 
 ```bat
-cd C:\laragon\www\nobi
+cd C:\laragon\www\nobitrader
 npm ci
 npm run css
 python scripts\build_standalone.py
@@ -304,7 +306,7 @@ NBX_CORS_ORIGINS=null
 | `[Errno 10048] bind failed` | پورت ۸۰۰۰ مشغول | `netstat -ano \| findstr :8000` و `taskkill /PID <pid> /F`، یا `--port 8001` |
 | پنجرهٔ Firewall هنگام اجرا | `--host 0.0.0.0` زده‌ای | همان `127.0.0.1` را بزن |
 | صفحه باز می‌شود، همه «—» | اسکن اول تمام نشده، یا upstream قطع است | ۲۰ ثانیه صبر؛ `curl .../api/health` |
-| `nobi.test` → 502 | پروکسی به :8000 نمی‌رسد | اول بدون پروکسی `127.0.0.1:8000` را چک کن؛ بعد `mod_proxy` |
+| `nobitrader.test` → 502 | پروکسی به :8000 نمی‌رسد | اول بدون پروکسی `127.0.0.1:8000` را چک کن؛ بعد `mod_proxy` |
 | سفارش کاغذی از گوشی/لن رد می‌شود | `loopback-only` است | از همان ماشین باز کن، یا `NBX_API_TOKEN` بگذار و هدر بفرست |
 | در تب لاگ، کارت «تست‌های پروژه» غیرفعال است | سرور از پوشهٔ کد منبع اجرا نشده، یا `NBX_DEV_TOOLS=0`، یا ابزارها نصب نیستند | دلیلش زیر همان کارت نوشته شده؛ `python -m pip install -r server\requirements-dev.txt` |
 | در تب لاگ، بررسی‌ها همه «نامعلوم» | پردازه هنوز با صرافی حرف نزده یا سوکت وصل نیست | «با صرافی» را بزن؛ اگر باز هم نامعلوم ماند، `/api/health` را چک کن |
@@ -317,7 +319,7 @@ NBX_CORS_ORIGINS=null
 ## ۱۲) خلاصهٔ چهار خطی
 
 ```bat
-cd C:\laragon\www\nobi\server
+cd C:\laragon\www\nobitrader\server
 python -m venv .venv && .venv\Scripts\activate
 pip install -r requirements.txt
 python -m uvicorn main:app --host 127.0.0.1 --port 8000

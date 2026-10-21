@@ -1,4 +1,6 @@
-# نصب و راه‌اندازی Nobi روی ابر آروان
+# نصب و راه‌اندازی nobitrader روی ابر آروان
+
+> نام محصول nobitrader است؛ نام سرویس و مسیرهای قدیمی استقرار، شناسه‌های فنی واقعی‌اند و تغییر نکرده‌اند. [توضیح نام‌های فنی و نسخه‌بندی](releases.md).
 
 این راهنما برای نصب داشبورد روی یک **ابرک اوبونتو ۲۴.۰۴** در آروان‌کلاد نوشته شده است.
 هر دستوری که در ادامه می‌بینید روی همان سرور قابل اجراست؛ هیچ‌جا فرض نشده که روی کامپیوتر
@@ -33,7 +35,7 @@
 | تصمیم | انتخاب | چرا |
 |---|---|---|
 | منطقه | نزدیک‌ترین ریجن به کاربران (تهران برای دسترسی از ایران) | تأخیر شبکه؛ مقررات هم مهم است |
-| سیستم‌عامل | Ubuntu 24.04 LTS | `python3.12` دارد و کد به ۳.۱۱+ نیاز دارد (`datetime.UTC`) |
+| سیستم‌عامل | Ubuntu 24.04 LTS | `python.12` دارد و کد به ۳.۱۱+ نیاز دارد (`datetime.UTC`) |
 | اندازه | ۲ vCPU / ۴ گیگ رم / ۴۰ گیگ دیسک، نوع «استاندارد» | pandas و backtest حافظه می‌خواهند؛ ۱ گیگ با swap جواب می‌دهد ولی کند است |
 | نوع پرداخت | ساعتی، مگر اینکه همیشه روشن باشد | — |
 | دیسک داده | یک دیسک جدا (SSD) که به ابرک متصل می‌شود | بازسازی ابرک از ایمیج، دیسک ریشه را پاک می‌کند و journal می‌رود |
@@ -75,7 +77,7 @@
    - **اسکریپت اولیه (cloud-init)**: می‌توانید همین اسکریپت نصب را در آن بگذارید تا سرور
      آماده بالا بیاید؛ برای بار اول توصیه نمی‌کنم چون اگر خطا بدهد سرور خاموش-به-نظر-سالم
      تحویل می‌گیرید. دستی در گام ۴ اجرا کنید تا خروجی را ببینید.
-8. **نام و تعداد** — نام `nobi`، تعداد ۱، روش پرداخت ساعتی.
+8. **نام و تعداد** — نام `nobitrader`، تعداد ۱، روش پرداخت ساعتی.
 9. **ساخت ابرک**. صفحهٔ بعد نام کاربری و رمز را نشان می‌دهد و به ایمیل هم می‌فرستد.
    **همان لحظه ذخیره کنید**؛ مستندات می‌گوید با بستن پنجره دیگر از پنل قابل بازیابی نیست.
    (با SSH Key، رمز فقط برای کنسول اضطراری است.)
@@ -91,14 +93,14 @@ IP عمومی ابرک را از پنل بردارید.
 **لینوکس / مک:**
 
 ```bash
-chmod 600 ~/nobi-key.pem
-ssh -i ~/nobi-key.pem ubuntu@203.0.113.10
+chmod 600 ~/nobitrader-key.pem
+ssh -i ~/nobitrader-key.pem ubuntu@203.0.113.10
 ```
 
 **ویندوز (PowerShell):** کلیدی که پنل می‌دهد `.pem` است؛ OpenSSH ویندوز آن را قبول می‌کند.
 
 ```powershell
-ssh -i $env:USERPROFILE\Downloads\nobi-key.pem ubuntu@203.0.113.10
+ssh -i $env:USERPROFILE\Downloads\nobitrader-key.pem ubuntu@203.0.113.10
 ```
 
 اگر از PuTTY استفاده می‌کنید فایل `.ppk` را از پنل بگیرید و در Connection → SSH → Auth بارگذاری کنید.
@@ -129,10 +131,10 @@ sudo apt-get update && sudo apt-get -y upgrade
 sudo git clone https://github.com/iman-taheri59/nobi /opt/nobi
 
 # ۲) نصب
-sudo bash /opt/nobi/scripts/deploy_arvan.sh --domain nobi.example.ir
+sudo bash /opt/nobi/scripts/deploy_arvan.sh --domain nobitrader.example.ir
 
 # یا همراه با گرفتن گواهی در همان اجرا:
-sudo bash /opt/nobi/scripts/deploy_arvan.sh --domain nobi.example.ir --tls you@example.com
+sudo bash /opt/nobi/scripts/deploy_arvan.sh --domain nobitrader.example.ir --tls you@example.com
 ```
 
 اگر مخزن خصوصی است و کلون با خطای احراز هویت می‌خورد، روی **سرور** یک کلید deploy بسازید
@@ -161,10 +163,10 @@ sudo bash /opt/nobi/scripts/deploy_arvan.sh --domain nobi.example.ir --tls you@e
 <summary>معادل دستی گام‌های اسکریپت</summary>
 
 ```bash
-sudo apt-get install -y python3-venv python3-dev git nginx
+sudo apt-get install -y python-venv python-dev git nginx
 sudo adduser --system --group --home /opt/nobi --shell /usr/sbin/nologin nobi
 sudo git clone https://github.com/iman-taheri59/nobi /opt/nobi
-sudo python3 -m venv /opt/nobi/.venv
+sudo python -m venv /opt/nobi/.venv
 sudo /opt/nobi/.venv/bin/pip install -r /opt/nobi/server/requirements.txt
 
 sudo mkdir -p /srv/nobi-data/exports /etc/nobi
@@ -172,7 +174,7 @@ sudo chown -R nobi:nobi /srv/nobi-data
 
 # توکن را تولید و مستقیم در فایل بنویسید (در ترمینال چاپ نشود)
 sudo sh -c 'umask 077; printf "NBX_API_TOKEN=%s\nNBX_TRUSTED_PROXIES=127.0.0.1\nNBX_JOURNAL_DB=/srv/nobi-data/journal.db\nNBX_PAPER_STATE=/srv/nobi-data/paper_state.json\nNBX_EXPORT_DIR=/srv/nobi-data/exports\n" \
-  "$(python3 -c "import secrets;print(secrets.token_urlsafe(32))")" > /etc/nobi/nobi.env'
+  "$(python -c "import secrets;print(secrets.token_urlsafe(32))")" > /etc/nobi/nobi.env'
 sudo chown root:nobi /etc/nobi/nobi.env && sudo chmod 640 /etc/nobi/nobi.env
 
 sudo cp /opt/nobi/deploy/nobi.service /etc/systemd/system/
@@ -240,15 +242,15 @@ HTTP-01 به سرور نمی‌رسد، و در حالت‌های خاص حلق�
 بعد:
 
 ```bash
-sudo apt-get install -y certbot python3-certbot-nginx
-sudo certbot --nginx -d nobi.example.ir --redirect
+sudo apt-get install -y certbot python-certbot-nginx
+sudo certbot --nginx -d nobitrader.example.ir --redirect
 sudo systemctl reload nginx
 ```
 
 چک کنید:
 
 ```bash
-curl -sI https://nobi.example.ir | head -1     # باید HTTP/2 200 باشد
+curl -sI https://nobitrader.example.ir | head -1     # باید HTTP/2 200 باشد
 ```
 
 اگر `--tls` را به اسکریپت داده بودید، این گام انجام شده است.
@@ -366,7 +368,7 @@ viewer همان داده را می‌بیند ولی هر تغییری ۴۰۳ م
 
 ```bash
 curl -H "X-API-Token: $(sudo grep NBX_API_TOKEN /etc/nobi/nobi.env | cut -d= -f2)" \
-     https://nobi.example.ir/api/paper/positions
+     https://nobitrader.example.ir/api/paper/positions
 ```
 
 دیگر لازم نیست کسی در Console مرورگر بنویسد `localStorage.setItem(...)`. اگر می‌خواهید
@@ -399,7 +401,7 @@ sudo -u nobi NBX_AUTH_DB=/srv/nobi-data/auth.db \
 
 ```bash
 sudo -u nobi /opt/nobi/.venv/bin/python /opt/nobi/scripts/check_deploy.py \
-    --public https://nobi.example.ir
+    --public https://nobitrader.example.ir
 ```
 
 این اسکریپت ۱۲ چیز را می‌سنجد و **اگر قفل باز باشد FAIL می‌دهد**. چیزی که باید ببینید
@@ -421,7 +423,7 @@ Nobi deployment preflight · /opt/nobi
   [ok  ] readonly  anonymous POST -> 401 (refused)
   [skip] reads     ok, auth mode=token; GET endpoints need no token, so positions
                    and equity are readable by anyone with the URL
-  [ok  ] tls       nobi.example.ir certificate valid until Mar 12 23:59:59 2026 GMT
+  [ok  ] tls       nobitrader.example.ir certificate valid until Mar 12 23:59:59 2026 GMT
 
 11 ok · 1 skip · 0 error · 0 fail   →  OK
 ```
@@ -486,7 +488,7 @@ sudo -u nobi sqlite3 /srv/nobi-data/auth.db \
 
 ```bash
 # از کامپیوتر خودتان
-scp -i nobi-key.pem -r ubuntu@203.0.113.10:/srv/nobi-data/backup ./nobi-backup-$(date +%F)
+scp -i nobitrader-key.pem -r ubuntu@203.0.113.10:/srv/nobi-data/backup ./nobitrader-backup-$(date +%F)
 ```
 
 اگر مقصد S3 دارید، آروان **Object Storage** سازگار با S3 دارد و `rclone` یا `aws s3 cp` کار می‌کند.
@@ -528,9 +530,9 @@ sudo systemctl restart nobi
 | `Application startup failed` + `RuntimeError: NBX_TRUSTED_PROXIES is set but NBX_API_TOKEN is not` | `.env` ناقص | توکن را در `/etc/nobi/nobi.env` بگذارید، `systemctl restart nobi` |
 | همه‌چیز ۴۰۳ | `NBX_TRUSTED_PROXIES` خالی است ولی nginx هدر `X-Forwarded-For` می‌فرستد | `NBX_TRUSTED_PROXIES=127.0.0.1` را ست کنید (این دقیقاً همان `readonly` در چک‌لیست است) |
 | دکمه‌ها ۴۰۱، صفحه لود می‌شود | توکن در `localStorage` نیست/غلط است | گام ۷ |
-| certbot: `Timeout during connect` | رکورد DNS هنوز به IP نرسیده، یا رکورد پشت CDN است، یا پورت ۸۰ در فایروال بسته است | `dig +short nobi.example.ir`، پروکسی رکورد را خاموش کنید، قانون ۸۰ را اضافه کنید |
+| certbot: `Timeout during connect` | رکورد DNS هنوز به IP نرسیده، یا رکورد پشت CDN است، یا پورت ۸۰ در فایروال بسته است | `dig +short nobitrader.example.ir`، پروکسی رکورد را خاموش کنید، قانون ۸۰ را اضافه کنید |
 | صفحه قدیمی می‌آید | کش مرورگر یا سرویس قدیمی | `Cache-Control: no-store` هست؛ hard reload و `systemctl restart nobi` |
-| `pandas` نصب نمی‌شود / `No matching distribution` | نسخهٔ پایتون خیلی قدیمی یا خیلی جدید برای wheelها | `python3 -V`؛ روی ۳.۱۱ تا ۳.۱۳ بمانید |
+| `pandas` نصب نمی‌شود / `No matching distribution` | نسخهٔ پایتون خیلی قدیمی یا خیلی جدید برای wheelها | `python -V`؛ روی ۳.۱۱ تا ۳.۱۳ بمانید |
 | سرویس بعد از ری‌استارت ابرک بالا نمی‌آید | `enable` نشده | `sudo systemctl enable nobi` |
 | `journal.db` صفر/گم می‌شود | `ReadWritePaths` اجازه نمی‌دهد، یا مسیر روی دیسک mount نشده | `ls -l /srv/nobi-data` و `journalctl -u nobi \| grep -i permission` |
 

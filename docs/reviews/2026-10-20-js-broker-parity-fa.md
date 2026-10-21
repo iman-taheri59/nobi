@@ -96,9 +96,9 @@ ok   stats keys become symbols and Rial becomes Toman — btc-rls→BTCIRT, glob
 ## ۷. شاهد
 
 ```
-python3 -m pytest server/tests -q          ⇒ 226 passed
-python3 scripts/check_preflight_parity.py  ⇒ PASS — 28 cases × 10 gates
+python -m pytest server/tests -q          ⇒ 226 passed
+python scripts/check_preflight_parity.py  ⇒ PASS — 28 cases × 10 gates
 node scripts/js_broker_test.js             ⇒ PASS — 9/9
-python3 scripts/probe_live.py --url :8022  ⇒ PASS — 45 panels
-python3 scripts/layout_test.py --url :8022 ⇒ PASS — 3 viewports, 10 tabs
+python scripts/probe_live.py --url :8022  ⇒ PASS — 45 panels
+python scripts/layout_test.py --url :8022 ⇒ PASS — 3 viewports, 10 tabs
 ```

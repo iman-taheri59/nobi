@@ -1,4 +1,8 @@
-# nobiTrader
+# nobitrader
+
+نسخهٔ جاری: **1.0.1** · تگ: **v1.0.1**
+
+راهنمای [نسخه‌بندی و GitHub Release](docs/releases.md) شامل قواعد افزایش نسخه، تگ و انتشار فایل موبایل است. [تاریخچهٔ تغییرات](CHANGELOG.md) را نیز ببینید.
 
 داشبورد دوزبانه (فارسی/انگلیسی) با موتور تحلیل تکنیکال، موتور فاندامنتال،
 مدیریت ریسک، معاملات کاغذی، بک‌تست Walk-Forward، ژورنال سیگنال و بک‌اند
@@ -41,7 +45,7 @@ python scripts/manage_users.py create YOURNAME --role owner
 
 ```bash
 cd server
-python3 -m venv ../.venv
+python -m venv ../.venv
 ../.venv/bin/pip install -r requirements.txt
 ../.venv/bin/uvicorn main:app --host 0.0.0.0 --port 8000
 ```
@@ -68,7 +72,7 @@ loopback مجاز است و از راه دور به `NBX_API_TOKEN` نیاز د�
 ```bash
 npm install                 # tailwind + jsdom
 npm run css                 # assets/css/tailwind.css را می‌سازد
-python3 scripts/build_standalone.py   # nobitex-mobile.html
+python scripts/build_standalone.py   # nobitex-mobile.html
 ```
 
 باندل تک‌فایلی از `index.html` ساخته می‌شود؛ اگر بعد از تغییر استایل، `npm run
@@ -80,13 +84,13 @@ css` را نزنی، `build_standalone.py` هشدار می‌دهد که CSS ا�
 
 | دستور | چه چیزی را |
 |---|---|
-| `python3 -m pytest server/tests -q` | منطق بک‌اند + قرارداد «هر پنل می‌تواند خودش را توضیح دهد» |
-| `python3 scripts/probe_live.py --selftest` | خودِ طبقه‌بند پنل‌ها (۸ حالت) |
-| `python3 scripts/probe_live.py --url http://127.0.0.1:8000` | حالت «داده نیست»: ۴۵ پنل باید خودشان را توضیح بدهند |
-| `python3 scripts/mock_upstream.py --port 8010` + پروب روی ۸۰۱۰ | حالت «داده هست»: ۴۵ پنل باید عدد واقعی نشان بدهند |
-| `python3 scripts/layout_test.py` | ۳ ویوپورت × ۱۰ تب: سرریز افقی، نمودارهای خالی |
-| `python3 scripts/ui_smoke_prep.py && node scripts/ui_smoke_test.js` | DOM و MSI بدون خطای JS |
-| `python3 scripts/check_preflight_parity.py` | ده دروازهٔ ریسک در Python و JS یکی باشند |
+| `python -m pytest server/tests -q` | منطق بک‌اند + قرارداد «هر پنل می‌تواند خودش را توضیح دهد» |
+| `python scripts/probe_live.py --selftest` | خودِ طبقه‌بند پنل‌ها (۸ حالت) |
+| `python scripts/probe_live.py --url http://127.0.0.1:8000` | حالت «داده نیست»: ۴۵ پنل باید خودشان را توضیح بدهند |
+| `python scripts/mock_upstream.py --port 8010` + پروب روی ۸۰۱۰ | حالت «داده هست»: ۴۵ پنل باید عدد واقعی نشان بدهند |
+| `python scripts/layout_test.py` | ۳ ویوپورت × ۱۰ تب: سرریز افقی، نمودارهای خالی |
+| `python scripts/ui_smoke_prep.py && node scripts/ui_smoke_test.js` | DOM و MSI بدون خطای JS |
+| `python scripts/check_preflight_parity.py` | ده دروازهٔ ریسک در Python و JS یکی باشند |
 | `node scripts/js_broker_test.js` | بروکر مرورگر: نرخ ارز، حداقل صرافی، بازار بسته، دقت |
 
 ### دروازه‌های ایستا (ADR-0016)
@@ -117,7 +121,7 @@ preflight + تازگی `nobitex-mobile.html`)، و `ui` (۴۵ پنل روی فی
 برای همین دو حالت را جدا می‌سنجد و کد خروج می‌دهد:
 
 ```bash
-python3 scripts/probe_live.py --json probe.json --md probe.md
+python scripts/probe_live.py --json probe.json --md probe.md
 ```
 
 | کد خروج | معنا |
@@ -130,8 +134,8 @@ python3 scripts/probe_live.py --json probe.json --md probe.md
 فیکسچر هم‌قرارداد است (`source: "mock"`، هیچ عددی از آن در باندل نیست):
 
 ```bash
-python3 scripts/mock_upstream.py --port 8010
-python3 scripts/probe_live.py --url http://127.0.0.1:8010
+python scripts/mock_upstream.py --port 8010
+python scripts/probe_live.py --url http://127.0.0.1:8010
 ```
 
 ---

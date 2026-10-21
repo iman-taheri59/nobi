@@ -1,4 +1,4 @@
-# nobiTrader — Backend (Phase 0 → Phase 1)
+# nobitrader — Backend (Phase 0 → Phase 1)
 
 Python 3.12+ implementation of the trading system design (ADR-0001..0013).
 This directory hosts the production-grade components the browser dashboard
@@ -28,7 +28,7 @@ pip install -r requirements.txt
 # CRITICAL: follow ADR-0003/0009 — no real TRADE keys here.
 # For Phase 1 we only need READ access considerations:
 export NBX_BASE_URL=https://apiv2.nobitex.ir      # optional override
-export NBX_UA=TraderBot/nobi-paper               # optional: name this process in the exchange's logs
+export NBX_UA=TraderBot/               # optional: name this process in the exchange's logs
 uvicorn main:app --reload --port 8000
 ```
 

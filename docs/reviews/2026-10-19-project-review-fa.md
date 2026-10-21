@@ -1,4 +1,4 @@
-# گزارش تثبیت (Stabilization) — پروژه Nobi
+# گزارش تثبیت (Stabilization) — پروژه nobitrader
 **تاریخ:** ۱۹ اکتبر ۲۰۲۶ · **مخزن:** `github.com/iman-taheri59/nobi` · **پایه:** `0e5788f`
 **وضعیت:** تغییرات در working tree (uncommitted) — ۱۶ فایل تغییر‌یافته + ۵ فایل/پوشه‌ی جدید، بدون commit.
 **این نسخه:** اسپرینت ۳ (امنیت، صداقت داده، استریم)، اسپرینت ۴ (ژورنال ADR-0012) و اسپرینت ۵ (قانون VOID + هشدار MSI) روی گزارش قبلی افزوده و اعداد بازآزمایی شده‌اند.
@@ -1271,11 +1271,11 @@ uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 cd server && python -m pytest -q
 
 # نسخه موبایل (فقط از این اسکریپت)
-python3 scripts/build_standalone.py
+python scripts/build_standalone.py
 
 # تست UI (jsdom + API زنده روی :8000)
 cd /tmp && npm i jsdom
-cd /home/user/nobi && python3 scripts/ui_smoke_prep.py && cd /tmp && node /home/user/nobi/scripts/ui_smoke_test.js
+cd /home/user/nobi && python scripts/ui_smoke_prep.py && cd /tmp && node /home/user/nobi/scripts/ui_smoke_test.js
 ```
 
 **API ژورنال/MSI:**
