@@ -294,58 +294,106 @@ curl -sI https://nobi.example.ir | head -1     # باید HTTP/2 200 باشد
 
 ---
 
-## ۷. توکن در مرورگر و اولین ورود
+## ۷. ساخت حساب و اولین ورود
 
-داشبورد **جایی برای نوشتن راز ندارد** — این عمدی است. توکن در `localStorage` مرورگر شما
-می‌ماند و در هر درخواست به‌صورت هدر `X-API-Token` فرستاده می‌شود. یعنی:
+داشبورد از این نسخه **حساب کاربری** دارد. سه چیز را باید بدانید:
 
-- در مخزن نوشته نمی‌شود؛
-- در URL نمی‌رود (پس در لاگ nginx و تاریخچه مرورگر نمی‌افتد)؛
-- روی سروری که کد اجرا می‌شود، داخل صفحه تزریق نمی‌شود.
+- **عضویت با دعوت است.** هیچ‌کس نمی‌تواند خودش حساب بسازد.
+- **حساب اول فقط از روی سرور ساخته می‌شود.** اگر فرم عمومی می‌بود، هر کسی که اول
+  آدرس را پیدا می‌کرد مالک می‌شد.
+- **توکن قدیمی کار می‌کند،** ولی برای اسکریپت — نه برای مرورگر.
 
-توکن را روی سرور بخوانید:
-
-```bash
-sudo grep NBX_API_TOKEN /etc/nobi/nobi.env
-```
-
-سپس در مرورگر `https://nobi.example.ir` را باز کنید، `F12` → Console:
-
-```js
-localStorage.setItem('nbx_api_token', 'THE_TOKEN_FROM_THE_FILE')
-location.reload()
-```
-
-در حالت عادی داشبورد باید داده نشان دهد و دکمه‌های تغییر (سفارش مقاله، توقف) کار کنند.
-اگر دکمه‌ها ۴۰۱ می‌دهند، توکن غلط یا جا نیفتاده است؛ در Console سرور:
+### ۷.۱ حساب مالک
 
 ```bash
-sudo journalctl -u nobi -n 20 --no-pager
+sudo -u nobi NBX_AUTH_DB=/srv/nobi-data/auth.db \
+  /opt/nobi/.venv/bin/python /opt/nobi/scripts/manage_users.py \
+  create YOURNAME --role owner
 ```
 
-### دربارهٔ خواندن‌ها
+رمز را در همان لحظه می‌پرسد (بدون نمایش). قواعدش: دست‌کم ۱۲ کاراکتر، نه بخشی از نام
+کاربری، و نه در فهرست رمزهای رایج.
 
-با `X-API-Token`، عملیات تغییردهنده قفل‌اند. ولی **خواندن‌ها** (موجودی، پوزیشن‌ها، لاگ)
-برای هر کسی که آدرس را بداند باز است. اگر داشبورد عمومی است و نمی‌خواهید کسی پوزیشن‌هایتان
-را ببیند، این کار را بکنید:
+خروجی موفق:
 
-1. **ساده‌ترین:** کل سایت را پشت basic auth بگذارید:
-   ```bash
-   sudo apt-get install -y apache2-utils
-   sudo htpasswd -c /etc/nginx/.htpasswd yourname
-   ```
-   و در بلوک `server` مربوط به 443، داخل `location /`:
-   ```nginx
-   auth_basic "nobi";
-   auth_basic_user_file /etc/nginx/.htpasswd;
-   ```
-2. **توجه:** ست کردن `NBX_API_TOKEN` این مشکل را حل **نمی‌کند**. توکن فقط اندپوینت‌های
-   تغییردهنده را می‌بندد (`require_client`)، و `GET`ها در همهٔ حالت‌ها بی‌احراز هویت
-   پاسخ می‌دهند. پس اگر پوزیشن‌هایتان نباید دیده شود، گزینهٔ ۱ (یا محدود کردن IP در
-   فایروال/nginx) تنها راه است. این را `check_deploy.py` هم در سطر `reads` با `skip`
-   می‌گوید، نه `ok`.
+```
+ساخته شد: YOURNAME (owner) — id=1
+این نخستین حساب است؛ از این به بعد API بدون ورود بسته است.
+```
 
----
+از این لحظه:
+
+| چه کسی | نتیجه |
+|---|---|
+| مرورگر ناشناس | صفحهٔ ورود؛ `/api/*` همه ۴۰۱ |
+| کاربر واردشده | به‌اندازهٔ نقشش |
+| `curl` با `X-API-Token` | کار می‌کند (برای اسکریپت) |
+| `curl` بی‌توکن از همان سرور | ۴۰۱ — مسیر لوکال دیگر «هویت» نیست |
+
+> **همین جملهٔ آخر مهم‌ترین تغییر است.** تا وقتی هیچ حسابی نبود، درخواست از
+> `127.0.0.1` مجاز بود (راحتی توسعه). با وجود حساب، این معافیت برداشته می‌شود؛ وگرنه
+> هر پردازه‌ای روی همان ماشین می‌توانست بی‌اجازه معامله کند.
+
+### ۷.۲ دعوت بقیه
+
+از داشبورد: **تنظیمات → کاربران و دسترسی** (فقط برای مالک) → «دعوت جدید» → نقش را
+انتخاب کنید → کد را کپی کنید. کد **فقط یک‌بار** نمایش داده می‌شود؛ در دیتابیس فقط
+هشِ آن هست.
+
+یا از روی سرور:
+
+```bash
+sudo -u nobi NBX_AUTH_DB=/srv/nobi-data/auth.db \
+  /opt/nobi/.venv/bin/python /opt/nobi/scripts/manage_users.py invite viewer --note "برای سارا"
+```
+
+کاربر در صفحهٔ ورود روی «کد دعوت دارم» می‌زند و کد + نام کاربری + رمز را وارد می‌کند.
+حساب با همان نقشی ساخته می‌شود که در دعوت تعیین شده بود — نه نقشی که در درخواست
+می‌نویسد.
+
+### ۷.۳ نقش‌ها
+
+| نقش | می‌خواند | معامله/توقف/تنظیم | مدیریت کاربران |
+|---|---|---|---|
+| `owner` | ✓ | ✓ | ✓ |
+| `operator` | ✓ | ✓ | ✗ |
+| `viewer` | ✓ | ✗ | ✗ |
+
+viewer همان داده را می‌بیند ولی هر تغییری ۴۰۳ می‌گیرد و در بالای صفحه نوشته می‌شود
+«نقش شما فقط‌خواندنی است».
+
+### ۷.۴ توکن، برای اسکریپت‌ها
+
+```bash
+curl -H "X-API-Token: $(sudo grep NBX_API_TOKEN /etc/nobi/nobi.env | cut -d= -f2)" \
+     https://nobi.example.ir/api/paper/positions
+```
+
+دیگر لازم نیست کسی در Console مرورگر بنویسد `localStorage.setItem(...)`. اگر می‌خواهید
+توکن را کامل بردارید، در `/etc/nobi/nobi.env` خالی کنید — ولی توجه: `NBX_TRUSTED_PROXIES`
+هم باید ست بماند و `NBX_API_TOKEN` خالی + پروکسی = سرویس بالا نمی‌آید (بخش ۴).
+
+### ۷.۵ مدیریت روزمره
+
+```bash
+M="sudo -u nobi NBX_AUTH_DB=/srv/nobi-data/auth.db /opt/nobi/.venv/bin/python /opt/nobi/scripts/manage_users.py"
+$M list                 # کاربران + شمارش نشست‌ها
+$M role sara operator   # تغییر نقش
+$M disable sara         # غیرفعال + بستن همهٔ نشست‌هایش
+$M passwd sara          # رمز جدید (همه دستگاه‌ها خارج می‌شوند)
+$M sessions sara        # فقط بستن نشست‌ها
+$M invites              # دعوت‌ها و وضعیتشان
+```
+
+### ۷.۶ اگر رمزتان را فراموش کردید
+
+```bash
+sudo -u nobi NBX_AUTH_DB=/srv/nobi-data/auth.db \
+  /opt/nobi/.venv/bin/python /opt/nobi/scripts/manage_users.py passwd YOURNAME
+```
+
+دسترسی به شل سرور = دسترسی به حساب. این طراحی است، نه نقص: بازیابی رمز از راه ایمیل
+یعنی یک کانال جدید برای حمله، برای نرم‌افزاری که یک نفر اداره می‌کند.
 
 ## ۸. تأیید استقرار — این گام را رد نکنید
 
@@ -369,6 +417,7 @@ Nobi deployment preflight · /opt/nobi
   [ok  ] disk      38.1 GB free at /srv/nobi-data, 21% used
   [ok  ] exchange  USDTIRT book answered, 25 bid level(s)
   [ok  ] bind      app on 127.0.0.1:8000 (loopback only)
+  [ok  ] accounts  3 account(s), 1 owner(s)
   [ok  ] readonly  anonymous POST -> 401 (refused)
   [skip] reads     ok, auth mode=token; GET endpoints need no token, so positions
                    and equity are readable by anyone with the URL
@@ -398,6 +447,8 @@ Nobi deployment preflight · /opt/nobi
   می‌سنجد.
 - **`bind`** — مطمئن می‌شود خودِ برنامه روی آدرس عمومی گوش نمی‌دهد.
 - **`storage`** — مطمئن می‌شود journal روی دیسک ریشه نیست (وگرنه با بازسازی ابرک می‌رود).
+- **`accounts`** — اگر حساب ساخته باشید، تعدادشان را نشان می‌دهد؛ اگر `auth.db` روی
+  دیسک داده نباشد یا مالک فعال نداشته باشد، `FAIL`.
 - **`reads`** — این یکی عمداً `skip` است، نه `ok`: توکن فقط اندپوینت‌های تغییردهنده را
   می‌بندد و `GET`ها بی‌احراز هویت‌اند. ابزاری که این را «سبز» نشان دهد، همان چیزی است
   که این پروژه از آن فرار می‌کند. اگر سایت را پشت basic auth بگذارید، این سطر `ok` می‌شود.
@@ -410,8 +461,9 @@ Nobi deployment preflight · /opt/nobi
 
 ## ۹. بکاپ
 
-سه چیز ارزش بکاپ دارد: `journal.db` (تاریخچه/دفتر)، `paper_state.json` (پوزیشن‌های مقاله)،
-و `/etc/nobi/nobi.env` (تنها جای توکن).
+چهار چیز ارزش بکاپ دارد: `journal.db` (تاریخچه/دفتر)، `paper_state.json` (پوزیشن‌های
+مقاله)، **`auth.db`** (کاربران و نشست‌ها — اگر برود هیچ‌کس نمی‌تواند وارد شود)، و
+`/etc/nobi/nobi.env` (توکن اسکریپت‌ها).
 
 **الف) بکاپ سازگار با SQLite** (کپی خام از یک دیتابیس در حال نوشتن، ممکن است خراب باشد):
 
@@ -420,6 +472,8 @@ sudo mkdir -p /srv/nobi-data/backup
 sudo -u nobi sqlite3 /srv/nobi-data/journal.db \
   ".backup '/srv/nobi-data/backup/journal-$(date +%F).db'"
 sudo cp /srv/nobi-data/paper_state.json /srv/nobi-data/backup/paper-$(date +%F).json
+sudo -u nobi sqlite3 /srv/nobi-data/auth.db \
+  ".backup '/srv/nobi-data/backup/auth-$(date +%F).db'"
 ```
 
 این را در یک تایمر روزانه بگذارید (`sudo crontab -e`):
@@ -513,7 +567,9 @@ sudo journalctl -u nobi -f
 - [ ] `https://دامنه` گواهی معتبر دارد و HTTP به HTTPS ریدایرکت می‌شود
 - [ ] فایروال آروان: ۲۲ از IP خودتان، ۸۰ و ۴۴۳ از همه، بقیه بسته؛ فایروال **متصل** به ابرک
 - [ ] `check_deploy.py --public https://دامنه` خروجی `12 ok · 0 fail` می‌دهد و مخصوصاً `readonly  anonymous POST -> 401`
-- [ ] توکن در `localStorage` مرورگر است و دکمه‌های تغییر کار می‌کنند (یک سفارش مقالهٔ کوچک و بعد لغو)
+- [ ] حداقل یک حساب `owner` ساخته شده و با آن در مرورگر وارد شده‌اید
+- [ ] یک حساب `viewer` با کد دعوت ساخته‌اید و دکمه‌های تغییر برایش ۴۰۳ می‌دهند
+- [ ] `auth.db` روی دیسک داده است (نه داخل `/opt/nobi`) و در بکاپ هست
 - [ ] بکاپ دستی یک‌بار گرفته و **بازیابی** شده است (بکاپ آزمایش‌نشده، بکاپ نیست)
 - [ ] `sudo certbot renew --dry-run` سبز است
 - [ ] هیچ توکنی در مخزن، در URL، یا در صفحهٔ داشبورد نیست

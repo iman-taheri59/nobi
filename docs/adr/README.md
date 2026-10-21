@@ -28,6 +28,8 @@
 | 0014 | **قرارداد صداقت داده** | پذیرفته — پیاده‌شده و تست‌شده | `probe_live.py`، `test_core.py` |
 | 0015 | **واحد پول، نماد و دروازه‌های صرافی در مرز API** | پذیرفته — پیاده‌شده و تست‌شده | `server/units.py`، `test_api_conformance.py` |
 | 0016 | **دروازه‌های ایستا (ruff/mypy/eslint) و CI** | پذیرفته — پیاده‌شده | `pyproject.toml`، `eslint.config.mjs`، `.github/workflows/ci.yml` |
+| 0017 | **تست و بررسی از داخل داشبورد** | پذیرفته — پیاده‌شده | `server/diagnostics.py`، `server/devsuite.py`، `test_diagnostics.py` |
+| 0018 | **حساب کاربری، ورود و عضویت با دعوت** | پذیرفته — پیاده‌شده و تست‌شده | `server/auth.py`، `auth_api.py`، `identity.py`، `test_auth*.py` |
 
 ## چطور این وضعیت‌ها تعیین شدند
 
