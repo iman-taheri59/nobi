@@ -34,6 +34,7 @@ Exit: 0 = ready, 1 = at least one `fail`, 2 = could not run (nothing to check).
 from __future__ import annotations
 
 import argparse
+import ipaddress
 import json
 import os
 import re
@@ -217,8 +218,33 @@ def check_exchange() -> dict:
                     "firewall already allows all outbound")
 
 
+def classify_bind(addr: str) -> str:
+    """What does it mean for uvicorn to listen on `addr`?
+
+    loopback  reachable only from this machine — the only correct answer
+    private   reachable from this VPC/subnet but not the internet: legitimate
+              when nginx runs on a second ابرک (see docs/deploy-arvan.md §VPC),
+              and then the firewall/security group is the perimeter instead
+    wildcard  0.0.0.0 / :: — every interface, including the public one
+    public    a specific public address
+    other     link-local, malformed, empty — not a deliberate choice
+    """
+    a = (addr or "").strip().strip("[]")
+    if a in ("0.0.0.0", "::", "*", ""):
+        return "wildcard"
+    try:
+        ip = ipaddress.ip_address(a)
+    except ValueError:
+        return "other"
+    if ip.is_loopback:
+        return "loopback"
+    if ip.is_link_local:
+        return "other"
+    return "private" if ip.is_private else "public"
+
+
 def check_bind() -> dict:
-    """Is the *app* reachable on a public interface? It must not be."""
+    """Is the *app* reachable from the internet? It must not be."""
     try:
         out = subprocess.run(["ss", "-lntp"], capture_output=True, text=True,
                              timeout=10, check=False).stdout
@@ -228,24 +254,34 @@ def check_bind() -> dict:
     if not rows:
         return _row(SKIP, "bind", "nothing is listening on :8000",
                     "start the service: systemctl start nobi")
-    exposed, ours, foreign = [], [], []
+    seen: list[tuple[str, str]] = []
     for f in rows:
-        addr = f[3].rsplit(":", 1)[0].strip("[]")
-        loopback = addr.startswith("127.") or addr in ("::1", "")
         mine = "python" in " ".join(f[5:]) or "uvicorn" in " ".join(f[5:])
-        (ours if mine else foreign).append(addr)
-        if not loopback and mine:
-            exposed.append(addr)
-    if exposed:
-        return _row(FAIL, "bind", f"the app itself listens on {', '.join(exposed)}:8000",
-                    "bind 127.0.0.1:8000 (--host 127.0.0.1) and let the reverse "
-                    "proxy face the internet; a public bind skips the proxy and "
-                    "the token header is plain HTTP")
-    if ours:
-        return _row(OK, "bind", f"app on {', '.join(ours)}:8000 (loopback only)")
-    return _row(SKIP, "bind", f":8000 is held by another process on {', '.join(foreign)}",
-                "no pid shown for that listener — find out what it is before opening "
-                "the firewall (sudo ss -lntp)")
+        if not mine:
+            continue
+        addr = f[3].rsplit(":", 1)[0]
+        seen.append((addr, classify_bind(addr)))
+    if not seen:
+        return _row(SKIP, "bind", ":8000 is held by a process that hides its pid (not uvicorn?)",
+                    "sudo ss -lntp — find out what it is before opening the firewall")
+    kinds = {k for _, k in seen}
+    addrs = ", ".join(a for a, _ in seen)
+    if "wildcard" in kinds or "public" in kinds:
+        return _row(FAIL, "bind", f"the app listens on {addrs} — reachable from the internet",
+                    "bind 127.0.0.1:8000 (or the private VPC address if nginx is on "
+                    "another ابرک) and let the proxy face the public side")
+    if "private" in kinds:
+        if _cfg("NBX_TRUSTED_PROXIES").strip():
+            return _row(OK, "bind", f"app on {addrs} (private) with a proxy configured",
+                        "")
+        return _row(SKIP, "bind", f"app on {addrs} (private address, reachable inside the VPC)",
+                    "fine only if nginx runs on another ابرک in this VPC and nothing else "
+                    "routes to this subnet; then set NBX_TRUSTED_PROXIES to that proxy's "
+                    "private IP (see docs/deploy-arvan.md §VPC)")
+    if "other" in kinds:
+        return _row(SKIP, "bind", f"app on {addrs} — neither loopback nor a private range",
+                    "an odd bind; make it explicit")
+    return _row(OK, "bind", f"app on {addrs} (loopback only)")
 
 
 # --------------------------------------------------------------------------- #

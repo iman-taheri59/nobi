@@ -195,3 +195,41 @@ def test_with_a_token_the_header_is_still_checked(monkeypatch: pytest.MonkeyPatc
 def test_with_the_right_token_the_mutation_is_allowed(monkeypatch: pytest.MonkeyPatch) -> None:
     _configure(monkeypatch, token="s3cret")
     _post("127.0.0.1", "203.0.113.9", token="s3cret")     # no exception = allowed
+
+
+# --------------------------------------------------------------------------- #
+# The VPC topology: nginx on one ابرک, the app on another (docs/deploy-arvan.md)
+#
+# Nothing here is loopback any more — the peer is a 10.x address — so these
+# tests exist to prove the rule is about *trust*, not about the address family
+# or the fact that 127.0.0.1 happens to be special-cased.
+# --------------------------------------------------------------------------- #
+def test_a_proxy_on_the_private_subnet_is_trusted(monkeypatch: pytest.MonkeyPatch) -> None:
+    """nginx at 10.0.20.4 forwarding a visitor at 203.0.113.9."""
+    _configure(monkeypatch, proxies="10.0.20.4", token="s3cret")
+    assert _call("10.0.20.4", "203.0.113.9") == "203.0.113.9"
+    _post("10.0.20.4", "203.0.113.9", token="s3cret")       # allowed
+    with pytest.raises(HTTPException) as caught:
+        _post("10.0.20.4", "203.0.113.9")                   # no token
+    assert caught.value.status_code == 401
+
+
+def test_a_neighbour_on_the_subnet_cannot_call_itself_localhost(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """The VPC-specific attack: a reached host inside the subnet spoofing XFF.
+
+    Only the configured proxy is believed. Any other private address is just
+    itself — so `X-Forwarded-For: 127.0.0.1` buys nothing.
+    """
+    _configure(monkeypatch, proxies="10.0.20.4")
+    assert _call("10.0.20.9", "127.0.0.1") == "10.0.20.9"
+    with pytest.raises(HTTPException) as caught:
+        _post("10.0.20.9", "127.0.0.1")
+    assert caught.value.status_code == 403
+
+
+def test_the_whole_proxy_subnet_can_be_trusted_at_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Two nginx boxes in a /24: one CIDR instead of two entries."""
+    _configure(monkeypatch, proxies="10.0.20.0/24")
+    assert _call("10.0.20.5", "198.51.100.7") == "198.51.100.7"
+    assert _call("10.0.20.6", "198.51.100.7, 10.0.20.5") == "198.51.100.7"

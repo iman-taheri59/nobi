@@ -13,6 +13,7 @@
 | بدانی موتورهای تحلیل امروز چه چیزی را واقعاً محاسبه می‌کنند | [`analysis/`](analysis) — کاتالوگ + جدول «پیاده‌شده / فقط کاتالوگ» |
 | سرور ارزان برای تست انتخاب کنی | [`ops/`](ops) |
 | پروژه را روی ابر آروان (ابرک اوبونتو) نصب کنی | [`deploy-arvan.md`](deploy-arvan.md) — گام‌به‌گام + `scripts/deploy_arvan.sh` + `scripts/check_deploy.py` |
+| تصمیم بگیری VPC لازم است یا نه | [`deploy-arvan-vpc.md`](deploy-arvan-vpc.md) — ایزوله‌سازی، هزینه، و معماری دو‌ابرکی |
 | ببینی مسیر قابلیت‌ها کجاست | [`roadmap/fa/capability-roadmap.md`](roadmap/fa/capability-roadmap.md) |
 
 ## ADRها (تصمیم‌های معماری)
