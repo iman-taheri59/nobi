@@ -11,6 +11,7 @@ Features:
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import os
@@ -29,6 +30,16 @@ from units import min_notional_usd, round_price, truncate_amount
 log = logging.getLogger("paper-trading")
 
 STATE_FILE = Path(os.getenv("NBX_PAPER_STATE", "paper_state.json"))
+
+
+def _backup_path(state_file: Path) -> Path:
+    """The previous good document, next to the one currently configured.
+
+    Derived at call time, not captured at import: the tests point `STATE_FILE`
+    at a temporary directory per test, and a backup path frozen to the original
+    file would let one test's account leak into the next one's.
+    """
+    return state_file.with_suffix(state_file.suffix + ".bak")
 
 # Paper maker/taker assumptions (Nobitex mid-tier retail default):
 FEE_PCT = 0.002  # 0.2% round-trip equivalent per leg
@@ -125,25 +136,94 @@ class PaperBroker:
         #: The gate breakdown from the last order attempt, for the what-if panel.
         self.last_preflight: Preflight | None = None
         self.last_error: str | None = None
+        #: What `load()` had to do about a damaged state file, or None.
+        #: `/api/paper/state` publishes it, because "the account restarted from
+        #: zero" is a fact the person holding the account must be told, not a
+        #: line in a logfile nobody reads.
+        self.state_recovery: dict | None = None
         self.load()
 
     # --------- persistence ----------
+    def _apply_state(self, raw: dict) -> None:
+        """Copy a decoded state document into this broker."""
+        self.start_equity = float(raw.get("start_equity", self.start_equity))
+        self.equity = raw.get("equity", self.equity)
+        self.cash = raw.get("cash", self.cash)
+        self.equity_curve = [tuple(x) for x in raw.get("equity_curve", [])]
+        self.positions = {k: Position(**v) for k, v in raw.get("positions", {}).items()}
+        self.orders = [OrderEvent(**e) for e in raw.get("orders", [])]
+
     def load(self):
+        """Read the persisted account, and never lose it quietly.
+
+        `write_text` is not atomic: a power loss, a `SIGKILL` from
+        `MemoryMax=2G`, or a full disk in the middle of the write leaves a
+        half-written JSON document. The old code caught every exception and said
+        "starting fresh" — which meant a torn file silently produced an account
+        with the starting equity, no positions and an empty equity curve. The
+        numbers on screen looked normal; the record of what happened was gone.
+
+        Three rules now:
+
+        1. a good `.bak` from the previous save is preferred over starting over;
+        2. a file that cannot be parsed is **moved aside**, never overwritten, so
+           the trading record can still be recovered by hand;
+        3. every branch that loses state records `state_recovery`, which the API
+           surfaces and `diagnostics` can report.
+        """
+        if not STATE_FILE.exists():
+            if _backup_path(STATE_FILE).exists():
+                self._recover(_backup_path(STATE_FILE), "state file was missing; restored the backup")
+            return
         try:
-            if STATE_FILE.exists():
-                raw = json.loads(STATE_FILE.read_text())
-                self.start_equity = float(raw.get("start_equity", self.start_equity))
-                self.equity = raw.get("equity", self.equity)
-                self.cash = raw.get("cash", self.cash)
-                self.equity_curve = [tuple(x) for x in raw.get("equity_curve", [])]
-                self.positions = {k: Position(**v) for k, v in raw.get("positions", {}).items()}
-                self.orders = [OrderEvent(**e) for e in raw.get("orders", [])]
-                log.info("loaded paper state: %d positions, equity=%s", len(self.positions), self.equity)
-        except Exception as e:
-            log.warning("failed to load paper state, starting fresh: %s", e)
+            self._apply_state(json.loads(STATE_FILE.read_text()))
+            log.info("loaded paper state: %d positions, equity=%s",
+                     len(self.positions), self.equity)
+            return
+        except Exception as exc:
+            problem = exc
+
+        if _backup_path(STATE_FILE).exists():
+            try:
+                self._recover(_backup_path(STATE_FILE), "state file was unreadable; restored the backup")
+                self.state_recovery = {**(self.state_recovery or {}), "error": str(problem)}
+                return
+            except Exception as exc:
+                problem = exc
+
+        quarantine = STATE_FILE.with_suffix(f".corrupt-{int(time.time())}.json")
+        try:
+            STATE_FILE.replace(quarantine)
+            kept = str(quarantine)
+        except OSError:
+            kept = "could not be moved aside"
+        self.state_recovery = {
+            "at": int(time.time()),
+            "reason": "state file and backup were both unreadable",
+            "quarantined": kept,
+            "error": str(problem),
+        }
+        log.error(
+            "paper state could not be read (%s). The account starts from the "
+            "configured equity with no positions. The damaged file was kept as "
+            "%s — do not delete it before checking the trading record.", problem, kept)
+
+    def _recover(self, path: Path, why: str) -> None:
+        raw = json.loads(path.read_text())
+        self._apply_state(raw)
+        self.state_recovery = {"at": int(time.time()), "reason": why, "recovered_from": str(path)}
+        log.warning("paper state: %s (%s)", why, path)
 
     def save(self):
-        STATE_FILE.write_text(json.dumps({
+        """Write the account atomically: temp file, fsync, rename.
+
+        `os.replace` is the only step that changes what a reader sees, and it is
+        atomic on POSIX, so a crash leaves either the old document or the new
+        one — never a truncated one. The previous good document is kept as
+        `.bak`, which is what makes recovery possible when the filesystem does
+        not honour the rename ordering after a power cut.
+        """
+        payload = json.dumps({
             "ts": datetime.now(UTC).isoformat(),
             "start_equity": self.start_equity,
             "equity": self.equity,
@@ -151,7 +231,17 @@ class PaperBroker:
             "equity_curve": [list(x) for x in self.equity_curve[-500:]],
             "positions": {k: v.__dict__ for k, v in self.positions.items()},
             "orders": [e.__dict__ for e in self.orders[-400:]],
-        }, ensure_ascii=False, indent=1))
+        }, ensure_ascii=False, indent=1)
+        tmp = STATE_FILE.with_suffix(STATE_FILE.suffix + ".tmp")
+        tmp.parent.mkdir(parents=True, exist_ok=True)
+        with open(tmp, "w", encoding="utf-8") as fh:
+            fh.write(payload)
+            fh.flush()
+            os.fsync(fh.fileno())
+        if STATE_FILE.exists():
+            with contextlib.suppress(OSError):
+                os.replace(STATE_FILE, _backup_path(STATE_FILE))
+        os.replace(tmp, STATE_FILE)
 
     # --------- market helpers ----------
     def _pos_rate(self, pos: Position) -> float:
