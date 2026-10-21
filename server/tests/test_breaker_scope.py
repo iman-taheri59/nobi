@@ -112,6 +112,14 @@ def test_the_stable_pair_is_not_scanned_for_technical_analysis(monkeypatch):
         {"symbol": "BTCIRT", "last": 1.0, "vol24": 1e9, "change24": 0.0, "closed": False},
         {"symbol": "USDTIRT", "last": 1.0, "vol24": 1e9, "change24": 0.0, "closed": False},
     ])
+    # `rescan()` writes into these three caches in place. Without swapping them
+    # for fresh dicts, the snapshot a fake candle produced for BTCIRT survived
+    # this test — and `_signal_lookup()` prefers `signals_by_tf` over
+    # `signals`, so a later test that set only `signals` got no price at all.
+    # It passed in the full suite purely because another file replaced the dict
+    # wholesale on the way past: a test-order dependency is not a passing test.
+    for key in ("signals", "signals_by_tf", "signals_ts"):
+        monkeypatch.setitem(main._cached, key, {})
 
     async def fake_candles(symbol, tf, count):
         scanned.append(symbol)
