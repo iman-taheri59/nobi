@@ -6,7 +6,9 @@ produces a per-trade risk plan. Same math is used by paper + live brokers.
 """
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
+from itertools import pairwise
 
 
 @dataclass
@@ -30,6 +32,40 @@ class RiskPlan:
 #: it warns about.
 MIN_RR = 1.5
 
+#: Take-profit levels as multiples of the stop distance: (tp1, tp2). The last one
+#: is the plan's reward-to-risk ratio. This is the **live plan's** default and it
+#: is deliberately not the backtester's (`tp1_r=1.5, tp2_r=2.5`): the backtest
+#: searches that space, the live engine applies one policy until an operator
+#: chooses another. `NBX_RR_LEVELS` is how they choose — see ADR-0008 §6.
+DEFAULT_RR_LEVELS: tuple[float, ...] = (1.2, 2.0)
+
+
+def parse_rr_levels(raw: str | None) -> tuple[float, ...]:
+    """`"1.5,2.5"` → `(1.5, 2.5)`; anything unusable raises.
+
+    A wrong take-profit ladder is a silent change in trading behaviour, so this
+    refuses rather than guesses: two or more levels, all positive, strictly
+    increasing. The caller decides whether a bad value is fatal (the server logs
+    it and keeps the default) — the parser never returns a half-understood
+    ladder.
+    """
+    if raw is None or not str(raw).strip():
+        return DEFAULT_RR_LEVELS
+    parts = [p.strip() for p in str(raw).replace(";", ",").split(",") if p.strip()]
+    try:
+        levels = tuple(float(p) for p in parts)
+    except ValueError as exc:
+        raise ValueError(f"NBX_RR_LEVELS is not a list of numbers: {raw!r}") from exc
+    if len(levels) < 2:
+        raise ValueError(f"NBX_RR_LEVELS needs at least two levels, got {raw!r}")
+    if any(not math.isfinite(v) or v <= 0 for v in levels):
+        # `nan` slips past every comparison, which is exactly the value a
+        # broken config would produce quietly.
+        raise ValueError(f"NBX_RR_LEVELS must be finite and positive, got {raw!r}")
+    if any(b <= a for a, b in pairwise(levels)):
+        raise ValueError(f"NBX_RR_LEVELS must be strictly increasing, got {raw!r}")
+    return levels
+
 
 @dataclass
 class RiskConfig:
@@ -46,7 +82,7 @@ class RiskConfig:
     #: that can put a plan below `MIN_RR`. It used to be a literal default in
     #: `_tp`, which made the "low-rr" warning unreachable — a check that could
     #: never fire is a comment pretending to be a gate.
-    rr_levels: tuple[float, ...] = (1.2, 2.0)
+    rr_levels: tuple[float, ...] = DEFAULT_RR_LEVELS
 
 
 @dataclass

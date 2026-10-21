@@ -60,7 +60,14 @@ from paper_trading import FEE_PCT as PAPER_FEE_PCT
 from paper_trading import get_broker
 from portfolio import Candidate, Limits, aligned_closes, log_returns
 from portfolio import allocate as allocate_portfolio
-from risk_engine import MIN_RR, RiskConfig, RiskEngine, preflight
+from risk_engine import (
+    DEFAULT_RR_LEVELS,
+    MIN_RR,
+    RiskConfig,
+    RiskEngine,
+    parse_rr_levels,
+    preflight,
+)
 from security import (
     API_TOKEN,
     auth_mode,
@@ -350,7 +357,7 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(
     title="nobiTrader",
-    version="1.0.5",
+    version="1.0.6",
     lifespan=lifespan,
 )
 
@@ -422,7 +429,27 @@ def security_token_ok(request: Request) -> bool:
 TIMEFRAMES = ["15m", "1h", "4h", "D"]
 client = NobitexClient()
 EQUITY = float(os.getenv("NBX_EQUITY_USD", str(DEFAULT_EQUITY_USD)))  # 1.0.5: one default, from fees.py
-risk = RiskEngine(RiskConfig(equity=EQUITY))
+
+
+def risk_config_from_env() -> RiskConfig:
+    """The live risk policy, including the take-profit ladder.
+
+    `NBX_RR_LEVELS` exists so the operator can hand the backtest's winning ladder
+    to the live plan on purpose. It is not automatic: the backtester searches
+    `tp1_r/tp2_r` and the live engine applies one policy until someone chooses
+    another (ADR-0008 §6). A value that cannot be understood keeps the default and
+    says so in the log — quietly running a different ladder is worse than running
+    the documented one.
+    """
+    try:
+        levels = parse_rr_levels(os.getenv("NBX_RR_LEVELS"))
+    except ValueError as exc:
+        log.warning("%s — keeping the default take-profit ladder %s", exc, DEFAULT_RR_LEVELS)
+        levels = DEFAULT_RR_LEVELS
+    return RiskConfig(equity=EQUITY, rr_levels=levels)
+
+
+risk = RiskEngine(risk_config_from_env())
 
 # Freshness budgets (seconds). The dashboard polls every 2 minutes; keeping the
 # server cache a little shorter than that is enough to keep it honest without
@@ -2285,6 +2312,10 @@ async def risk_state():
             # Policy, not an account setting: the ticket's R:R warning reads it
             # from here instead of carrying a copy of 1.5.
             "minRR": MIN_RR,
+            # The ladder the live plan actually applies. Published for the same
+            # reason as `minRR`: a page (or an operator) that wants to compare it
+            # with the backtest's best must not keep a private copy.
+            "rrLevels": list(risk.cfg.rr_levels),
         },
         **provenance(),
     }

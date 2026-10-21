@@ -2,6 +2,26 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 1.0.6
+
+- The live take-profit ladder is no longer hidden: `GET /api/risk/state` publishes
+  `caps.rrLevels` — the same rule we set for `minRR`, because a number a page warns
+  about must come from the engine, not from a local copy.
+- `NBX_RR_LEVELS` (e.g. `1.5,2.5`) lets an operator hand the backtest's winning ladder
+  to the live plan deliberately. An unusable value (fewer than two levels,
+  non-increasing, zero/negative or `nan`) is refused, the service keeps the documented
+  default `1.2,2.0` and says so in the log; a wrong ladder is a wrong trade.
+- In the no-backend case the browser broker now derives its default targets from that
+  same ladder and the stop distance (`1.2R`, `2.0R`); it used to use three percentages
+  (`1.045`/`1.075`) that landed near those ratios by luck.
+- An ADR-0008 amendment (Persian and English) records why the live ladder and the
+  backtest ladder are deliberately not the same, how to connect them operationally, and
+  why automating that transfer is overfitting one step removed.
+- Three new tests in `server/tests/test_single_source_constants.py` (the parser, reading
+  it from the environment, and publishing it in `caps`) plus one in
+  `scripts/js_broker_test.js` asserting the fallback targets are exactly `1.2R` and
+  `2.0R` on both sides.
+
 ## 1.0.5
 
 - Trading fees have one home: `server/fees.py`. The `0.002` was typed into
