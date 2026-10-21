@@ -32,6 +32,28 @@ vc.on('error', (m) => errors.push('console.error: ' + m));
 // an override lets the empty-journal case be exercised without touching it.
 const origin = process.env.SMOKE_ORIGIN || 'http://localhost:8000/';
 
+// The page polls in the background (ws status every five seconds) and jsdom has
+// no WebSocket, so a timer could throw *after* the verdict was printed — which
+// once killed a green run with a stack trace, not with evidence about the page.
+// Rejections and exceptions are therefore reported by their own exit code, and
+// the window is torn down before exiting so nothing fires afterwards.
+let reported = false;
+function finish(code) {
+  reported = true;
+  try { dom.window.close(); } catch (e) {}
+  process.exit(code);
+}
+process.on('uncaughtException', (e) => {
+  if (reported) return;
+  console.error('harness crash:', (e && e.stack) || e);
+  finish(2);
+});
+process.on('unhandledRejection', (e) => {
+  if (reported) return;
+  console.error('harness crash:', (e && e.stack) || e);
+  finish(2);
+});
+
 const dom = new JSDOM(html, {
   url: origin,
   runScripts: 'dangerously',
@@ -156,7 +178,11 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   if (!report.auditRows) problems.push('#auBody has no audit rows');
   if (report.settingsRows < 5) problems.push(`settings flags table has ${report.settingsRows} rows`);
   if (report.settingsWeights !== 4) problems.push(`TA weights rendered ${report.settingsWeights}/4`);
-  if (report.settingsSecrets !== 5) problems.push(`secrets cards ${report.settingsSecrets}/5`);
+  // The secrets list grows every time a credential is added; pinning a count
+  // here turned each addition into a red CI run that said nothing about the
+  // page. The floor catches a render that drops the section, and the pairing
+  // below is the part that actually has to hold.
+  if (report.settingsSecrets < 5) problems.push(`secrets cards ${report.settingsSecrets}/5 at least`);
   if (report.settingsProviders < 4) problems.push(`provider cards ${report.settingsProviders}`);
   if (!/config [0-9a-f]{6,}/.test(report.settingsHash)) problems.push(`config hash not shown: "${report.settingsHash}"`);
   if (report.settingsLeak) problems.push('a secret leaked into the page');
@@ -177,7 +203,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   // whether the server actually read that file — otherwise "token set" and
   // "token ignored" look identical.
   if (!/server\/\.env/.test(report.envLine)) problems.push(`env status line missing: "${report.envLine}"`);
-  if (report.secretWhere !== 5) problems.push(`secrets show ${report.secretWhere}/5 file hints`);
+  if (report.secretWhere !== report.settingsSecrets) {
+    problems.push(`secrets show ${report.secretWhere}/${report.settingsSecrets} file hints`);
+  }
   if (!report.tgButton) problems.push('Telegram test button missing');
 
   const want = ['scanSec', 'numFmt', 'motion', 'lang'];
@@ -268,5 +296,5 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   }
   if (errors.length) problems.push(`${errors.length} JS error(s): ` + errors.slice(0, 2).join(' | ').slice(0, 300));
   console.log(problems.length ? '\nFAIL:\n- ' + problems.join('\n- ') : '\nPASS');
-  process.exit(problems.length ? 1 : 0);
-})().catch((e) => { console.error('harness crash:', e); process.exit(2); });
+  finish(problems.length ? 1 : 0);
+})().catch((e) => { console.error('harness crash:', e); finish(2); });

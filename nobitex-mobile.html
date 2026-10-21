@@ -680,7 +680,7 @@ html[dir="ltr"] .live-badge { right: auto; left: 14px; }
       </button>
     </div>
     <span class="hidden 2xl:inline-flex chip shrink-0"><span class="dot bg-emerald-400"></span> <span data-i18n="hdr.kill"></span></span>
-    <span id="buildChip" class="hidden lg:inline-flex chip num text-violet-300 border-violet-400/30 shrink-0" title="نسخه واقعی از /api/health">v1.0.2 · core</span>
+    <span id="buildChip" class="hidden lg:inline-flex chip num text-violet-300 border-violet-400/30 shrink-0" title="نسخه واقعی از /api/health">v1.0.3 · core</span>
     <div class="ms-auto flex items-center gap-1.5 shrink-0">
       <span class="hidden xl:inline-flex chip num" id="clock">--:--:--</span>
       <span id="apiChip" class="hidden 2xl:inline-flex chip num text-zinc-400 border-white/10" title=""><i data-lucide="wifi-off" class="w-3.5 h-3.5"></i> <span>API: —</span></span>
@@ -9586,7 +9586,10 @@ window.addEventListener('resize', resizeCharts);
      worse than a missing feature — it answers questions it never asked. */
   let wsPollTimer = null;
   async function wsPoll() {
-    if (!NBX.core || !NBX.core.api || typeof NBX.core.api.getWsStatus !== 'function') return;
+    // The guard has to survive `NBX` itself being absent: if nbx-core.js never
+    // loaded, `!NBX.core` is not false, it is a TypeError — thrown from a timer,
+    // so nothing the page owns can catch it and the whole bundle looks dead.
+    if (!(window.NBX && NBX.core && NBX.core.api && typeof NBX.core.api.getWsStatus === 'function')) return;
     try {
       const st = await NBX.core.api.getWsStatus();
       if (st && st.enabled) {

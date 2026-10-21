@@ -63,6 +63,22 @@ jobs:
         run: |
           python scripts/release_notes.py --tag "$RELEASE_TAG" > "$RUNNER_TEMP/release-notes.md"
           cp nobitex-mobile.html "$RUNNER_TEMP/nobitrader-mobile.html"
-          gh release create "$RELEASE_TAG" "$RUNNER_TEMP/nobitrader-mobile.html" \
-            --verify-tag --title "nobitrader $RELEASE_TAG" \
-            --notes-file "$RUNNER_TEMP/release-notes.md"
+          # Publishing has to converge, not collide. A re-run of this workflow —
+          # or a release already created by hand — used to die on "already
+          # exists", which turned a recoverable GitHub hiccup into a permanent
+          # red run. The tag is still verified either way: the release may only
+          # describe a tag that already points at this commit.
+          # `gh release edit` has no --verify-tag, so the check is done here and
+          # applies to both paths: the release may only describe a tag that
+          # already points at the commit this run checked out.
+          git tag --points-at HEAD | grep -qx "$RELEASE_TAG" || {
+            echo "::error::tag $RELEASE_TAG does not point at HEAD"; exit 1; }
+          if gh release view "$RELEASE_TAG" > /dev/null 2>&1; then
+            gh release edit "$RELEASE_TAG" --title "nobitrader $RELEASE_TAG" \
+              --notes-file "$RUNNER_TEMP/release-notes.md"
+            gh release upload "$RELEASE_TAG" "$RUNNER_TEMP/nobitrader-mobile.html" --clobber
+          else
+            gh release create "$RELEASE_TAG" "$RUNNER_TEMP/nobitrader-mobile.html" \
+              --verify-tag --title "nobitrader $RELEASE_TAG" \
+              --notes-file "$RUNNER_TEMP/release-notes.md"
+          fi
