@@ -39,3 +39,6 @@ node_modules/
 .coverage.*
 coverage.xml
 htmlcov/
+
+# Display-only provider metadata and downloaded logos
+server/coin_cache/

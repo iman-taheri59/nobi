@@ -12,3 +12,6 @@ server/.env
 .env
 nobitex-trader-robat.zip
 docs
+
+# Runtime provider assets are downloaded into the cache volume, not the image.
+server/coin_cache

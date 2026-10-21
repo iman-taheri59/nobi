@@ -35,6 +35,8 @@ os.environ.setdefault("NBX_JOURNAL_DB", str(_SCRATCH / "journal.db"))
 # to it), because "does the API require a login?" is the question half of these
 # tests answer.
 os.environ.setdefault("NBX_AUTH_DB", str(_SCRATCH / "auth.db"))
+os.environ.setdefault("NBX_COIN_CACHE", str(_SCRATCH / "coin-cache"))
+os.environ.setdefault("NBX_COIN_METADATA_ENABLED", "0")
 
 SERVER = Path(__file__).resolve().parents[1]
 if str(SERVER) not in sys.path:

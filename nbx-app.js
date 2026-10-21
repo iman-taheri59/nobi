@@ -1504,6 +1504,16 @@
     });
   }
 
+  async function loadCoinMetadata() {
+    // Never block market data on a cosmetic provider. The server endpoint is
+    // disk-only; credentials stay in the existing authenticated API wrapper.
+    try {
+      if (!NBX.core || !NBX.core.api || !window.setCoinMetadata) return;
+      const data = await NBX.core.api.get(NBX.config.pythonApi + '/coins', 1);
+      window.setCoinMetadata(data.coins, NBX.config.pythonApi);
+    } catch (_) { /* bundled logos remain available, including offline */ }
+  }
+
   async function start() {
     addLiveStylesOnce();
     injectMobileNavAndDownload();
@@ -1530,6 +1540,8 @@
 
     try {
       await NBX.boot();
+      loadCoinMetadata();
+      setInterval(loadCoinMetadata, 60 * 60 * 1000);
       bindApiHealth();
       await scanNow(true);
       schedule();

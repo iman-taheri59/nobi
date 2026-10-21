@@ -7,7 +7,8 @@ const { JSDOM } = require('jsdom');
 for (const file of ['index.html', 'nobitex-mobile.html']) {
   const html = fs.readFileSync(file, 'utf8');
   const code = html.match(/<script id="nbx-coin-icons">([\s\S]*?)<\/script>/)[1];
-  const context = { window: {} };
+  const dom = new JSDOM('', { url: 'https://dashboard.test/' });
+  const context = { window: {}, document: dom.window.document, URL };
   vm.runInNewContext(code, context);
   const icon = context.window.coinIcon;
   const parse = (symbol, size) => new JSDOM(icon(symbol, size)).window.document.body.firstElementChild;
@@ -35,6 +36,28 @@ for (const file of ['index.html', 'nobitex-mobile.html']) {
   assert.equal(parse('BTCIRT', 'oops').width, 24);
   const svgCount = fs.readdirSync('assets/coins').filter(x => x.endsWith('.svg')).length;
   assert.equal((code.match(/data:image\/svg\+xml;base64,/g) || []).length, svgCount);
+  const body = dom.window.document.body;
+  body.innerHTML = icon('BTCIRT') + icon('TONIRT');
+  const setMetadata = context.window.setCoinMetadata;
+  setMetadata([
+    {id: 'bitcoin', symbol: 'BTC', name: 'Bitcoin', updated_at: 123, image_url: '/api/coins/bitcoin/logo'},
+    {id: 'the-open-network', symbol: 'TON', name: '<img onerror=bad>', updated_at: 123, image_url: '/api/coins/the-open-network/logo'},
+    {id: 'bad', symbol: 'BAD', name: 'bad', image_url: 'https://evil.test/image.png'},
+  ], '/api');
+  assert.match(body.querySelector('[data-coin="BTC"]').src, /^https:\/\/dashboard.test\/api\/coins\/bitcoin\/logo\?v=123$/);
+  assert.equal(body.querySelector('[data-coin="TON"]').tagName, 'IMG');
+  assert.equal(body.querySelector('[data-coin="TON"]').getAttribute('title'), '<img onerror=bad>');
+  assert.equal(body.querySelectorAll('[onerror]').length, 0);
+  assert.equal(parse('BADIRT').tagName, 'SPAN');
+  // Remote failure -> bundled image -> text if even the bundled image fails.
+  body.querySelector('[data-coin="BTC"]').dispatchEvent(new dom.window.Event('error'));
+  assert.match(body.querySelector('[data-coin="BTC"]').src, /^data:image/);
+  body.querySelector('[data-coin="BTC"]').dispatchEvent(new dom.window.Event('error'));
+  assert.equal(body.querySelector('[data-coin="BTC"]').tagName, 'SPAN');
+  // A newly downloaded version is eligible again (different cache-busting URL).
+  setMetadata([{id: 'bitcoin', symbol: 'BTC', name: 'Bitcoin', updated_at: 124, image_url: '/api/coins/bitcoin/logo'}], 'https://backend.test/api');
+  assert.match(body.querySelector('[data-coin="BTC"]').src, /^https:\/\/backend.test\/api\//);
+  setMetadata(null, 'javascript:bad'); // unsupported/malformed data is harmless
   console.log(`${file}: PASS (${svgCount} embedded logos, pairs, safe fallback, size limits)`);
 }
 const app = fs.readFileSync('nbx-app.js', 'utf8');

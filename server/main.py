@@ -36,6 +36,7 @@ from fastapi.staticfiles import StaticFiles
 import _env  # noqa: F401 — must precede every module that reads os.environ
 import auth
 import auth_api
+import coin_metadata
 import devsuite
 import diagnostics
 import errorlog
@@ -310,6 +311,7 @@ async def lifespan(_app: FastAPI):
     paper_trading.hot_mid_hook = lambda sym: _hot_mid(sym)
 
     tasks = [
+        _supervise("coin-metadata", coin_metadata.CACHE.run()),
         _supervise("universe", load_universe()),
         _supervise("rescan", rescan("15m")),
         _supervise("position-tick", _position_tick_loop()),
@@ -333,6 +335,8 @@ async def lifespan(_app: FastAPI):
     finally:
         for t in tasks:
             t.cancel()
+        # Let the metadata worker close its HTTP client before the event loop.
+        await asyncio.gather(tasks[0], return_exceptions=True)
         await STREAM_EXECUTOR.close()
         await client.aclose()
 
@@ -2990,6 +2994,29 @@ async def backtest_promotion_gate():
         "checks": checks,
         "note": "Legacy report (no embedded gate). Paper-trading evidence is still required before any live deployment (ADR-0009).",
     }
+
+
+# Coin metadata is a display-only cache, never an alternative price feed.
+@app.get("/api/coins")
+async def coins_metadata():
+    return coin_metadata.CACHE.view()
+
+
+@app.get("/api/coins/{coin_id}/logo")
+async def coin_logo(coin_id: str):
+    path = coin_metadata.CACHE.logo_path(coin_id)
+    if path is None:
+        raise HTTPException(404, "لوگوی ذخیره‌شده‌ای برای این ارز وجود ندارد")
+    try:
+        data = path.read_bytes()
+    except OSError:
+        raise HTTPException(404, "لوگوی ذخیره‌شده در دسترس نیست") from None
+    media_type = coin_metadata.image_type(data)
+    if media_type is None:
+        raise HTTPException(404, "لوگوی ذخیره‌شده معتبر نیست")
+    return Response(data, media_type=media_type,
+                    headers={"Cache-Control": "private, max-age=3600",
+                             "X-Content-Type-Options": "nosniff"})
 
 
 # ---------------- Static Frontend Hosting ----------------

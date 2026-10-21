@@ -60,3 +60,7 @@
 | فایل | موضوع |
 |---|---|
 | [`ops/fa/free-server-options-for-testing-and-development.md`](ops/fa/free-server-options-for-testing-and-development.md) | گزینه‌های سرور رایگان/ارزان برای تست (نسخهٔ انگلیسی هم موجود است) |
+
+## مشخصات و لوگوی نمادها
+
+[`coin-metadata.md`](coin-metadata.md) — دریافت CoinGecko در سرور، کش پایدار، نگاشت صریح هویت ارزها، تنظیم کلید Demo و مسیر داده، وضعیت پوشش و جایگزین آفلاین.

@@ -14,6 +14,11 @@ services:
       # Empty token keeps mutations loopback-only; set it before exposing ports.
       NBX_API_TOKEN: ${NBX_API_TOKEN:-}
       NBX_CORS_ORIGINS: ${NBX_CORS_ORIGINS:-}
+      NBX_COINGECKO_API_KEY: ${NBX_COINGECKO_API_KEY:-}
+      NBX_COIN_METADATA_ENABLED: ${NBX_COIN_METADATA_ENABLED:-1}
+      NBX_COIN_CACHE: /var/lib/nobi/coin-cache
+    volumes:
+      - coin-cache:/var/lib/nobi/coin-cache
     ports:
       - "8000:8000"
     restart: unless-stopped
@@ -26,3 +31,6 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
+
+volumes:
+  coin-cache:

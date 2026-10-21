@@ -146,6 +146,7 @@ NBX_TRUSTED_PROXIES=127.0.0.1
 NBX_JOURNAL_DB=$DATA_DIR/journal.db
 NBX_PAPER_STATE=$DATA_DIR/paper_state.json
 NBX_AUTH_DB=$DATA_DIR/auth.db
+NBX_COIN_CACHE=$DATA_DIR/coin-cache
 NBX_EXPORT_DIR=$DATA_DIR/exports
 NBX_BASE_URL=https://apiv2.nobitex.ir
 NBX_EQUITY_USD=10000
@@ -154,6 +155,10 @@ NBX_CORS_ORIGINS=
 EOF
   unset TOKEN
   printf '    created (32 random bytes)\n'
+fi
+# Upgrade existing env files without touching any existing key or secret.
+if ! grep -q '^NBX_COIN_CACHE=' "$ENV_FILE"; then
+  printf '\nNBX_COIN_CACHE=%s/coin-cache\n' "$DATA_DIR" >> "$ENV_FILE"
 fi
 chown root:"$SERVICE_USER" "$ENV_FILE"
 chmod 640 "$ENV_FILE"

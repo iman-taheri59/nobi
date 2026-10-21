@@ -21,6 +21,7 @@ import time
 from typing import Any
 
 import auth
+import coin_metadata
 import fa_engine
 import journal
 import notify
@@ -164,6 +165,8 @@ def secrets() -> list[dict[str, Any]]:
     return [
         {**_secret("NBX_API_TOKEN"), "purpose": "shared secret for mutating endpoints",
          "scope": "mutations only; reads stay open"},
+        {**_secret("NBX_COINGECKO_API_KEY"), "purpose": "CoinGecko Demo metadata key",
+         "scope": "server-only; display metadata, never trading prices"},
         {**_secret("NBX_TELEGRAM_TOKEN"), "purpose": "Telegram bot token",
          "scope": "sendMessage only"},
         {**_secret("NBX_TELEGRAM_CHAT_ID"), "purpose": "Telegram destination",
@@ -186,7 +189,21 @@ def providers(upstream: dict[str, Any] | None = None) -> dict[str, Any]:
     fa = fa_engine.FA_ENGINE
     now = time.time()
     cov = getattr(fa, "last_coverage", None) or {}
+    meta = coin_metadata.CACHE.view()
+    cached = sum(bool(r["image_url"]) for r in meta["coins"])
+    meta_stale = any(r["stale"] for r in meta["coins"])
     return {
+        "coin_metadata": {
+            "kind": f"display logos ({cached}/{len(meta['coins'])} cached)",
+            "configured": meta["enabled"],
+            "partial": bool(cached and (meta["error"] or meta_stale)),
+            "ok": (None if meta["last_attempt"] is None and not cached
+                   else not meta["error"] and not meta_stale),
+            "stale": (meta_stale if cached else None),
+            "error": meta["error"],
+            "age_s": (None if meta["last_success"] is None
+                      else max(0, now - meta["last_success"])),
+        },
         "nobitex": {
             "kind": "market data", "configured": True,
             "ok": up.get("ok"), "latency_ms": up.get("latency_ms"),

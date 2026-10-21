@@ -599,3 +599,9 @@ sudo journalctl -u nobi -f
 - دیسک و mount: `https://docs.arvancloud.ir/fa/cloud-server/volume/` و `…/volume/partition/`
 - اتصال و کاربر پیش‌فرض هر تصویر: `https://docs.arvancloud.ir/fa/cloud-server/instance/connection/`
 - API و Terraform (اگر خواستید ساخت را خودکار کنید): `https://docs.arvancloud.ir/fa/developer-tools/`
+
+### کش مشخصات و لوگوی نمادها
+
+برای این قابلیت، `NBX_COIN_CACHE=/srv/nobi-data/coin-cache` را در `/etc/nobi/nobi.env` نگه دارید؛ مسیر داخل checkout با `ProtectSystem=strict` قابل نوشتن نیست. اسکریپت نصب، این متغیر را به env قدیمی هم اضافه می‌کند و به رازهای موجود دست نمی‌زند. `NBX_COINGECKO_API_KEY` اختیاری و مخصوص کلید Demo است؛ فقط در env سرور تنظیم شود، نه UI یا مخزن. بعد از تغییر env، سرویس را restart کنید.
+
+این کش قابل بازسازی است و بخشی از اطلاعات حساب/معامله نیست. خطای دریافت آن نباید مانع کار بازار شود؛ کش قبلی، سپس لوگوهای همراه برنامه و در آخر متن نماد نمایش داده می‌شوند. کارت `coin_metadata` در تنظیمات وضعیت واقعی پوشش را نشان می‌دهد. راهنمای کامل: [مشخصات و لوگوی نمادها](coin-metadata.md).
