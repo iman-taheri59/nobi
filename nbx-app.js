@@ -11,18 +11,11 @@
   window.__NBX_APP_LOADED = true;
 
   const $ = (id) => document.getElementById(id);
-  const numLocale = () => (typeof window.numLocale === 'function'
-    ? window.numLocale()
-    : (LANG === 'fa' ? 'fa-IR' : 'en-US'));
-  const faNum = (n, d = 0) =>
-    Number(n || 0).toLocaleString(numLocale(), {
-      minimumFractionDigits: d,
-      maximumFractionDigits: d,
-    });
+  const faNum = (n, d = 0) => window.NBXDisplay.number(n, d);
   const clamp = (v, a, b) => Math.min(Math.max(v, a), b);
-  const inFa = (k) => (T[LANG] && T[LANG][k]) || T.fa[k] || k;
-  const goodPct = (v, d = 1) => (v >= 0 ? '+' : '') + faNum(v, d) + '%';
-  const fmtPrice = (v, sym) => (sym && sym.endsWith('USDT') && v < 100 ? faNum(v, 3) : faNum(Math.round(v)));
+  const inFa = (k) => window.NBXDisplay.text((T[LANG] && T[LANG][k]) || T.fa[k] || k);
+  const goodPct = (v, d = 1) => window.NBXDisplay.percent(v, d);
+  const fmtPrice = (v, sym) => window.NBXDisplay.price(v, sym);
 
   let live = {
     mode: 'ONLINE', // ONLINE | MOBILE | DEGRADED | OFFLINE
@@ -368,7 +361,7 @@
       api.className = 'hidden 2xl:inline-flex chip num shrink-0 ' +
         (ok ? 'text-emerald-300 border-emerald-300/30' : 'text-red-300 border-red-300/40');
       api.innerHTML = `<i data-lucide="${ok ? 'wifi' : 'wifi-off'}" class="w-3.5 h-3.5"></i> `
-        + `<span>${ok ? 'API: ' + Math.round(live.latency) + 'ms' : (LANG === 'fa' ? 'API: بدون پاسخ' : 'API: no reply')}</span>`;
+        + `<span>${ok ? (LANG==='fa'?'ارتباط: ':'API: ') + faNum(live.latency) + (LANG==='fa'?' میلی‌ثانیه':' ms') : (LANG === 'fa' ? 'ارتباط: بدون پاسخ' : 'API: no reply')}</span>`;
     }
     const chip = document.querySelector('[data-i18n-scope="chip.live"]');
     if (chip) {
@@ -395,7 +388,7 @@
         (tf) => `
       <button data-tf="${tf}" class="tfSel px-2.5 py-1 rounded-lg text-[10px] font-bold border transition ${
           tf === '15m' ? 'bg-emerald-400/15 text-emerald-300 border-emerald-300/30' : 'bg-white/5 text-zinc-400 border-white/10'
-        }">${tf}</button>
+        }">${window.NBXDisplay.timeframe(tf)}</button>
     `
       )
       .join('');
@@ -411,6 +404,7 @@
     );
   }
 
+  let paperSnapshot = null;
   async function refreshPaperState() {
     const api = NBX.core.api;
     let posRes = null;
@@ -419,7 +413,11 @@
     try { posRes = await api.getPaperPositions(); } catch (e) {}
     try { metRes = await api.getPaperMetrics(); } catch (e) {}
     try { riskRes = await api.getBackendRiskState(); } catch (e) {}
+    paperSnapshot = [posRes, metRes, riskRes];
+    paintPaperState(...paperSnapshot);
+  }
 
+  function paintPaperState(posRes, metRes, riskRes) {
     const rows = (posRes && posRes.positions) || [];
     const list = rows
       .filter((p) => p.state !== 'CLOSED')
@@ -436,11 +434,11 @@
           label: { fa: p.symbol.replace('IRT', '/تومان'), en: p.symbol },
           entry: p.entry_price,
           price: mark,
-          size: String(+(p.filled_qty || p.qty || 0).toFixed(4)),
-          sl: '\u2212' + faNum(p.stop_pct || 0, 1) + '%',
-          tp1: '+' + faNum(p.tp1 && p.entry_price ? ((p.tp1 - p.entry_price) / p.entry_price) * 100 : 0, 1) + '%',
+          size: p.filled_qty ?? p.qty,
+          sl: window.NBXDisplay.percent(p.stop_pct == null ? null : -Math.abs(p.stop_pct), 1),
+          tp1: window.NBXDisplay.percent(p.tp1 && p.entry_price ? ((p.tp1 - p.entry_price) / p.entry_price) * 100 : 0, 1),
           state: {
-            fa: p.state === 'PARTIAL' ? 'TP1 زده شد' : 'باز',
+            fa: p.state === 'PARTIAL' ? 'هدف اول محقق شد' : 'باز',
             en: p.state === 'PARTIAL' ? 'TP1 filled' : 'Open',
           },
           hot: !!p.tp1_filled,
@@ -456,19 +454,19 @@
 
     const m = (metRes && metRes.metrics) || (posRes && posRes.metrics) || null;
     const rs = riskRes || window.__NBX_RISK_STATE || null;
-    const eq = m && Number.isFinite(Number(m.equity)) ? Number(m.equity) : null;
-    const startEq = m && Number.isFinite(Number(m.start_equity)) ? Number(m.start_equity) : null;
+    const eq = m && m.equity != null && m.equity !== '' && typeof m.equity !== 'boolean' && Number.isFinite(Number(m.equity)) ? Number(m.equity) : null;
+    const startEq = m && m.start_equity != null && m.start_equity !== '' && typeof m.start_equity !== 'boolean' && Number.isFinite(Number(m.start_equity)) ? Number(m.start_equity) : null;
     const pct = eq !== null && startEq ? ((eq - startEq) / startEq) * 100 : null;
 
-    if ($('kEquity')) $('kEquity').textContent = eq !== null ? faNum(eq, 0) : '\u2014';
+    if ($('kEquity')) $('kEquity').textContent = eq !== null ? window.NBXDisplay.money(eq, 'USD') : '\u2014';
     if ($('kToday')) {
-      $('kToday').textContent = pct !== null ? (pct >= 0 ? '+' : '') + faNum(pct, 2) + '%' : '\u2014';
+      $('kToday').textContent = pct !== null ? window.NBXDisplay.percent(pct, 2) : '\u2014';
       $('kToday').className = 'num kpi-num ' + (pct !== null && pct < 0 ? 'text-red-400' : 'text-emerald-400');
     }
     if ($('kTodayV')) {
-      $('kTodayV').textContent = eq !== null && startEq !== null ? faNum(eq - startEq, 0) + ' USD' : '';
+      $('kTodayV').textContent = eq !== null && startEq !== null ? window.NBXDisplay.money(eq - startEq, 'USD', 2, true) : '';
     }
-    if ($('kRisk')) $('kRisk').textContent = rs ? faNum(rs.openHeat || 0, 2) + '%' : '\u2014';
+    if ($('kRisk')) $('kRisk').textContent = rs ? window.NBXDisplay.percent(rs.openHeat, 2, false) : '\u2014';
 
     // The header badge must reflect the version the backend actually reports,
     // not a hard-coded marketing string.
@@ -542,19 +540,19 @@
       const rows = [
         {
           name: { fa: 'پوزیشن‌های همزمان', en: 'Concurrent positions' },
-          val: { fa: `${faNum(openCount)} / ${faNum(c.maxConcurrent || 0)}`, en: `${openCount} / ${c.maxConcurrent || 0}` },
+          val: { fa: `${faNum(openCount)} / ${faNum(c.maxConcurrent || 0)}`, en: `${faNum(openCount)} / ${faNum(c.maxConcurrent || 0)}` },
           pct: c.maxConcurrent ? (openCount / c.maxConcurrent) * 100 : 0,
           tone: 'sky',
         },
         {
           name: { fa: 'دمای کل سبد', en: 'Portfolio heat' },
-          val: { fa: `${faNum(rs.openHeat || 0, 2)}٪ / ${faNum(c.maxHeatPct || 0)}٪`, en: `${rs.openHeat || 0}% / ${c.maxHeatPct || 0}%` },
+          val: { fa: `${faNum(rs.openHeat || 0, 2)}٪ / ${faNum(c.maxHeatPct || 0)}٪`, en: `${goodPct(rs.openHeat || 0,2)} / ${goodPct(c.maxHeatPct || 0)}` },
           pct: c.maxHeatPct ? ((rs.openHeat || 0) / c.maxHeatPct) * 100 : 0,
           tone: 'amber',
         },
         {
           name: { fa: 'سقف تک‌دارایی', en: 'Single-asset cap' },
-          val: { fa: `${faNum(c.maxSingleAssetPct || 0)}٪`, en: `${c.maxSingleAssetPct || 0}%` },
+          val: { fa: `${faNum(c.maxSingleAssetPct || 0)}٪`, en: `${goodPct(c.maxSingleAssetPct || 0)}` },
           pct: Math.min(100, c.maxSingleAssetPct || 0),
           tone: 'indigo',
         },
@@ -562,7 +560,7 @@
           name: { fa: 'بافر نقد', en: 'Cash buffer' },
           val: {
             fa: cashPct !== null ? `${faNum(cashPct, 1)}٪ (حداقل ${faNum(c.minCashPct || 0)}٪)` : '—',
-            en: cashPct !== null ? `${cashPct.toFixed(1)}% (min ${c.minCashPct || 0}%)` : '—',
+            en: cashPct !== null ? `${goodPct(cashPct,1)} (min ${goodPct(c.minCashPct || 0)})` : '—',
           },
           pct: cashPct !== null ? Math.min(100, Math.max(0, cashPct)) : 0,
           tone: 'emerald',
@@ -583,7 +581,7 @@
         },
         {
           n: { fa: 'زیان روزانه', en: 'Daily P&L' },
-          v: { fa: `${faNum(rs.dailyPnl || 0, 2)}٪ / −۳٪`, en: `${rs.dailyPnl || 0}% / -3%` },
+          v: { fa: `${faNum(rs.dailyPnl || 0, 2)}٪ / −۳٪`, en: `${goodPct(rs.dailyPnl || 0,2)} / ${goodPct(-3)}` },
           ok: (rs.dailyPnl || 0) > -3,
         },
         {
@@ -768,7 +766,7 @@
     }
     set('[data-i18n="sg.scanned"]', inFa('sg.scanned').replace('{ranked}', faNum(live.ranked.length)),
         'chip num');
-    set('[data-i18n="sg.cycle"]', inFa('sg.cycle').replace('{tf}', live.timeframe).replace('{m}', '2'), 'chip');
+    set('[data-i18n="sg.cycle"]', inFa('sg.cycle').replace('{tf}', window.NBXDisplay.timeframe(live.timeframe)).replace('{m}', faNum(2)), 'chip');
     set('[data-i18n="sg.last"]',
         inFa('sg.last').replace('{s}', live.lastScanAt ? faNum(Math.round((Date.now() - live.lastScanAt) / 1000)) : '—'),
         'text-[10px] sm:text-[11px] text-zinc-500 self-center');
@@ -809,7 +807,7 @@
       const scannedEl = shdr.querySelector('[data-i18n="sg.scanned"]');
       if (scannedEl) scannedEl.textContent = inFa('sg.scanned').replace('{ranked}', faNum(ranked.length));
       const cycleEl = shdr.querySelector('[data-i18n="sg.cycle"]');
-      if (cycleEl) cycleEl.textContent = inFa('sg.cycle').replace('{tf}', live.timeframe).replace('{m}', '2');
+      if (cycleEl) cycleEl.textContent = inFa('sg.cycle').replace('{tf}', window.NBXDisplay.timeframe(live.timeframe)).replace('{m}', faNum(2));
       const lastEl = shdr.querySelector('[data-i18n="sg.last"]');
       if (lastEl) lastEl.textContent = inFa('sg.last').replace('{s}', live.lastScanAt ? faNum(Math.round((Date.now() - live.lastScanAt) / 1000)) : '—');
       const faEl = shdr.querySelector('#sgFaCoverage') || shdr.querySelector('[data-i18n="sg.faCoverage"]');
@@ -862,13 +860,13 @@
             : ''
         }><span class="dot ${
           s.direction === 'LONG' ? 'bg-emerald-400' : s.direction === 'EXIT' ? 'bg-red-400' : 'bg-zinc-400'
-        }"></span> ${s.direction}</span>${
+        }"></span> ${window.NBXDisplay.label(s.direction)}</span>${
           s.direction_raw && s.direction_raw !== s.direction
             ? `<span class="chip text-[9px] text-amber-300 border-amber-300/30 ms-1">${LANG === 'fa' ? 'وتو' : 'veto'}</span>`
             : ''
         }
           </div>
-          <span class="text-[10px] text-zinc-500 ms-auto md:hidden">${s.regime || ''}</span>
+          <span class="text-[10px] text-zinc-500 ms-auto md:hidden">${window.NBXDisplay.label(s.regime || '')}</span>
         </div>
         <div class="flex-1 min-w-0">
           <div class="flex items-center gap-2 sm:gap-3 mb-1.5">
@@ -880,13 +878,13 @@
               : ''}
           </div>
           <div class="flex flex-wrap items-center gap-1.5 text-[10px]">
-            <span class="chip">TA <b class="num">${faNum(+(s.score || 0).toFixed(0))}</b></span>
+            <span class="chip">${LANG==='fa'?'تکنیکال':'TA'} <b class="num">${faNum(+(s.score || 0).toFixed(0))}</b></span>
             <span class="chip${s.fa_score == null ? ' text-zinc-500' : ''}" title="${s.composite_basis || ''}">${inFa('sg.faN')} <b class="num">${s.fa_score == null ? '—' : faNum(Math.round(s.fa_score))}</b></span>
             <span class="chip">${inFa('sg.liq')} <b class="num">${faNum(s.liquidity_score)}</b></span>
-            <span class="chip">ترند <b class="num">${faNum(+(comp.trend || 0))}</b></span>
-            <span class="chip">مومنتوم <b class="num">${faNum(+(comp.momentum || 0))}</b></span>
-            <span class="chip ${s.regime === 'TREND' ? 'text-emerald-300' : 'text-zinc-500'}">${s.regime || ''}</span>
-            ${s.risk && s.risk.stopPct ? `<span class="chip">Stop <b class="num">${faNum(+s.risk.stopPct.toFixed(2), 2)}%</b></span>` : ''}
+            <span class="chip">${window.NBXDisplay.label('trend')} <b class="num">${faNum(+(comp.trend || 0))}</b></span>
+            <span class="chip">${window.NBXDisplay.label('momentum')} <b class="num">${faNum(+(comp.momentum || 0))}</b></span>
+            <span class="chip ${s.regime === 'TREND' ? 'text-emerald-300' : 'text-zinc-500'}">${window.NBXDisplay.label(s.regime || '')}</span>
+            ${s.risk && s.risk.stopPct ? `<span class="chip">${window.NBXDisplay.label('stop')} <b class="num">${window.NBXDisplay.percent(s.risk.stopPct, 2, false)}</b></span>` : ''}
           </div>
         </div>
         <div class="w-full md:w-48 lg:w-60 xl:w-72 2xl:w-80 shrink-0">
@@ -1011,7 +1009,7 @@
       const pp = NBX.core.engine.premium_pct;
       const known = typeof pp === 'number' && Number.isFinite(pp);
       $('faPrem').textContent = known
-        ? (pp >= 0 ? '+' : '') + faNum(pp, 2) + '%'
+        ? window.NBXDisplay.percent(pp, 2)
         : LANG === 'fa' ? 'محاسبه‌نشدنی' : 'not available';
       // A dash here reads as "zero" or "loading". The premium needs all three
       // of BTCIRT, BTCUSDT and USDTIRT to be quoted; say that instead.
@@ -1042,8 +1040,8 @@
             f.profile === 'fallback' || (f.evidence || {}).profile === 'fallback');
           const extra =
             f && f.evidence && f.evidence.tvl
-              ? 'TVL ' + (f.evidence.tvl / 1e9).toFixed(1) + 'B'
-              : x.direction + ' · ADX ' + faNum(+((x.diagnostics?.adx || 24).toFixed(0)));
+              ? (LANG==='fa'?'ارزش قفل‌شده ':'TVL ') + window.NBXDisplay.money(f.evidence.tvl, 'USD', 0)
+              : window.NBXDisplay.label(x.direction) + (LANG==='fa'?' · قدرت روند ':' · ADX ') + faNum(+((x.diagnostics?.adx || 24).toFixed(0)));
           const fallbackChip = isFallback
             ? `<span class="chip text-[9px] text-amber-300 border-amber-300/30 ms-1">${LANG === 'fa' ? 'پروفایل ثابت' : 'static profile'}</span>`
             : '';
@@ -1226,7 +1224,7 @@
     const api = NBX.core.api;
     api.onHealth(({ ok, latency }) => {
       const el = document.querySelector('[data-i18n="hdr.api"]');
-      if (el) el.textContent = 'API: ' + (ok ? Math.round(latency) + 'ms' : 'local');
+      if (el) el.textContent = (LANG==='fa'?'ارتباط: ':'API: ') + (ok ? faNum(latency) + (LANG==='fa'?' میلی‌ثانیه':' ms') : (LANG==='fa'?'محلی':'local'));
     });
   }
 
@@ -1447,7 +1445,7 @@
           ${invites.map((i) => `<div class="flex items-center gap-2 text-[10px] text-zinc-500">
             <span class="num">#${i.id}</span>
             <span>${inFa('auth.role.' + i.role)}</span>
-            <span class="chip text-[9px] ${i.state === 'open' ? 'text-emerald-300 border-emerald-300/30' : 'text-zinc-500 border-white/10'}">${i.state}</span>
+            <span class="chip text-[9px] ${i.state === 'open' ? 'text-emerald-300 border-emerald-300/30' : 'text-zinc-500 border-white/10'}">${window.NBXDisplay.label(i.state)}</span>
             <span class="truncate">${i.note || ''}</span>
             ${i.state === 'open' ? `<button data-revoke="${i.id}" class="ms-auto text-red-300">${inFa('set.inviteRevoke')}</button>` : ''}
           </div>`).join('')}
@@ -1553,6 +1551,11 @@
   }
 
   window.NBX_APP = {
+    refreshDisplay() {
+      if(paperSnapshot) paintPaperState(...paperSnapshot);
+      if(live.ranked.length) { renderSignalsLive(); updateFaPreview(); }
+      if(typeof lastCandle!=='undefined' && lastCandle && $('lastPrice')) $('lastPrice').textContent = fmtPrice(lastCandle.close, live.activeSymbol);
+    },
     setScanInterval(sec) {
       if (!Number.isFinite(Number(sec))) return null;
       schedule();

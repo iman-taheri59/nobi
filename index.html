@@ -542,7 +542,7 @@
       <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
         <div class="glass p-4 sm:p-5">
           <div class="text-[11px] sm:text-xs text-zinc-400 mb-1 flex items-center gap-2"><i data-lucide="gauge" class="w-4 h-4"></i> <span data-i18n="fa.avg"></span></div>
-          <div class="num kpi-num"><span id="faAvg"></span><span class="text-sm text-zinc-500">/100</span></div>
+          <div class="num kpi-num"><span id="faAvg"></span><span class="text-sm text-zinc-500" data-local-digits="/100">/100</span></div>
           <div id="faAvgSub" class="text-[10px] text-zinc-500 leading-5 mt-0.5"></div>
           <div class="bar-wrap mt-3"><div class="bar-fill bg-gradient-to-l from-sky-400 to-sky-300/50" data-w="0"></div></div>
         </div>
@@ -586,7 +586,7 @@
           <span class="chip"><span class="dot bg-amber-400"></span> OPEN</span>
           <span class="chip"><span class="dot bg-emerald-400"></span> FILLED</span>
           <span class="chip"><span class="dot bg-zinc-400"></span> CLOSED</span>
-          <span class="chip text-sky-300 hidden sm:inline-flex"><i data-lucide="fingerprint" class="w-3.5 h-3.5"></i> idempotent</span>
+          <span class="chip text-sky-300 hidden sm:inline-flex"><i data-lucide="fingerprint" class="w-3.5 h-3.5"></i><span data-ui-label="idempotent">idempotent</span></span>
         </div>
       </div>
       <div class="glass p-4 sm:p-5">
@@ -688,7 +688,7 @@
           <svg id="calChart" viewBox="0 0 320 200" class="w-full h-48 sm:h-56"></svg>
           <div class="mt-2 flex gap-3 text-[10px] text-zinc-500">
             <span class="inline-flex items-center gap-1.5"><span class="dot bg-emerald-400"></span><span data-i18n="perf.hit"></span></span>
-            <span class="inline-flex items-center gap-1.5"><span class="dot bg-zinc-500"></span><span>Ideal</span></span>
+            <span class="inline-flex items-center gap-1.5"><span class="dot bg-zinc-500"></span><span data-ui-label="Ideal">Ideal</span></span>
           </div>
         </div>
         <div class="glass p-4 sm:p-5">
@@ -775,13 +775,13 @@
             <label class="block">
               <span class="text-zinc-500" data-i18n="col.type"></span>
               <select id="mType" class="mt-1 w-full rounded-lg bg-white/5 border border-white/10 px-2.5 py-2 text-xs outline-none focus:border-emerald-300/40">
-                <option value="limit">Limit</option><option value="market">Market</option>
+                <option value="limit" data-ui-label="limit">Limit</option><option value="market" data-ui-label="market">Market</option>
               </select>
             </label>
-            <label class="block"><span class="text-zinc-500" data-i18n="dk.price"></span><input id="mPrice" dir="ltr" type="number" step="any" class="mt-1 w-full rounded-lg bg-white/5 border border-white/10 px-2.5 py-2 num text-xs outline-none focus:border-emerald-300/40"></label>
-            <label class="block"><span class="text-zinc-500" data-i18n="dk.amount"></span><input id="mAmt" dir="ltr" type="number" step="any" class="mt-1 w-full rounded-lg bg-white/5 border border-white/10 px-2.5 py-2 num text-xs outline-none focus:border-emerald-300/40"></label>
-            <label class="block"><span class="text-zinc-500" data-i18n="dk.stop"></span><input id="mStop" dir="ltr" type="number" step="any" class="mt-1 w-full rounded-lg bg-white/5 border border-white/10 px-2.5 py-2 num text-xs outline-none focus:border-emerald-300/40"></label>
-            <label class="block"><span class="text-zinc-500" data-i18n="col.tp1"></span><input id="mTp" dir="ltr" type="number" step="any" class="mt-1 w-full rounded-lg bg-white/5 border border-white/10 px-2.5 py-2 num text-xs outline-none focus:border-emerald-300/40"></label>
+            <label class="block"><span class="text-zinc-500" data-i18n="dk.price"></span><input id="mPrice" dir="ltr" type="number" step="any" class="mt-1 w-full rounded-lg bg-white/5 border border-white/10 px-2.5 py-2 num text-xs outline-none focus:border-emerald-300/40"><span class="input-unit text-zinc-500" data-unit-for="mPrice"></span></label>
+            <label class="block"><span class="text-zinc-500" data-i18n="dk.amount"></span><input id="mAmt" dir="ltr" type="number" step="any" class="mt-1 w-full rounded-lg bg-white/5 border border-white/10 px-2.5 py-2 num text-xs outline-none focus:border-emerald-300/40"><span class="input-unit text-zinc-500" data-unit-for="mAmt"></span></label>
+            <label class="block"><span class="text-zinc-500" data-i18n="dk.stop"></span><input id="mStop" dir="ltr" type="number" step="any" class="mt-1 w-full rounded-lg bg-white/5 border border-white/10 px-2.5 py-2 num text-xs outline-none focus:border-emerald-300/40"><span class="input-unit text-zinc-500" data-unit-for="mStop"></span></label>
+            <label class="block"><span class="text-zinc-500" data-i18n="col.tp1"></span><input id="mTp" dir="ltr" type="number" step="any" class="mt-1 w-full rounded-lg bg-white/5 border border-white/10 px-2.5 py-2 num text-xs outline-none focus:border-emerald-300/40"><span class="input-unit text-zinc-500" data-unit-for="mTp"></span></label>
           </div>
 
           <!-- live risk preview -->
@@ -1160,7 +1160,7 @@
               <option value="1h" selected>1h</option><option value="15m">15m</option><option value="4h">4h</option><option value="D">1D</option>
             </select>
           </label>
-          <label class="block"><span class="text-zinc-500" data-i18n="bt.equity"></span><input id="btEq" type="number" value="50000" class="mt-1 w-full rounded-lg bg-white/5 border border-white/10 px-2.5 py-2 num text-xs outline-none focus:border-indigo-300/40"></label>
+          <label class="block"><span class="text-zinc-500" data-i18n="bt.equity"></span><input id="btEq" type="number" value="50000" class="mt-1 w-full rounded-lg bg-white/5 border border-white/10 px-2.5 py-2 num text-xs outline-none focus:border-indigo-300/40"><span class="input-unit text-zinc-500" data-unit-for="btEq"></span></label>
           <label class="block"><span class="text-zinc-500" data-i18n="rk.rpt">%</span><input id="btRisk" type="number" step="0.05" value="0.75" class="mt-1 w-full rounded-lg bg-white/5 border border-white/10 px-2.5 py-2 num text-xs outline-none focus:border-indigo-300/40"></label>
           <label class="block"><span class="text-zinc-500" data-i18n="bt.stopK"></span><input id="btStopK" type="number" step="0.25" value="2" class="mt-1 w-full rounded-lg bg-white/5 border border-white/10 px-2.5 py-2 num text-xs outline-none focus:border-indigo-300/40"></label>
           <label class="block"><span class="text-zinc-500" data-i18n="ov.positions"></span><input id="btMax" type="number" value="5" class="mt-1 w-full rounded-lg bg-white/5 border border-white/10 px-2.5 py-2 num text-xs outline-none focus:border-indigo-300/40"></label>
@@ -1180,7 +1180,7 @@
       <div class="glass p-3.5 sm:p-4 flex flex-wrap items-center gap-2 text-[11px]" id="btGateBar">
         <span class="font-bold text-zinc-300" data-i18n="bt.gateTitle"></span>
         <span class="chip" id="btGate">—</span>
-        <span class="chip text-violet-300 border-violet-300/30" id="btOosChip">OOS</span>
+        <span class="chip text-violet-300 border-violet-300/30" id="btOosChip" data-ui-label="OOS">OOS</span>
         <span class="text-zinc-500 leading-5" id="btGateMsg"></span>
         <span class="ms-auto text-[10px] text-zinc-500 num" id="btMeta"></span>
       </div>
@@ -1210,7 +1210,7 @@
         <div class="table-scroll">
           <table class="w-full min-w-[900px]">
             <thead><tr>
-              <th>#</th><th data-i18n="bt.window"></th><th data-i18n="bt.params"></th><th data-i18n="bt.isR"></th><th data-i18n="bt.trades"></th><th data-i18n="bt.win"></th><th>PF</th><th data-i18n="bt.exp"></th><th>MDD</th>
+              <th>#</th><th data-i18n="bt.window"></th><th data-i18n="bt.params"></th><th data-i18n="bt.isR"></th><th data-i18n="bt.trades"></th><th data-i18n="bt.win"></th><th data-ui-label="PF">PF</th><th data-i18n="bt.exp"></th><th data-ui-label="MDD">MDD</th>
             </tr></thead>
             <tbody id="btBody"></tbody>
           </table>
@@ -1241,7 +1241,7 @@
         </div>
         <div class="table-scroll">
           <table class="w-full min-w-[640px]">
-            <thead><tr><th data-i18n="col.symbol"></th><th data-i18n="rk.rpt"></th><th>stop k</th><th>PF</th><th data-i18n="bt.trades"></th><th>Score</th><th data-i18n="col.state"></th></tr></thead>
+            <thead><tr><th data-i18n="col.symbol"></th><th data-i18n="rk.rpt"></th><th data-ui-label="stop k">stop k</th><th data-ui-label="PF">PF</th><th data-i18n="bt.trades"></th><th data-ui-label="Score">Score</th><th data-i18n="col.state"></th></tr></thead>
             <tbody id="multiGridBody"></tbody>
           </table>
         </div>
@@ -1252,7 +1252,7 @@
         <div class="font-bold text-[13px] sm:text-sm mb-3" data-i18n="bt.sample"></div>
         <div class="table-scroll">
           <table class="w-full min-w-[560px]">
-            <thead><tr><th data-i18n="col.entry"></th><th data-i18n="col.price"></th><th data-i18n="bt.exit"></th><th data-i18n="col.state"></th><th>PnL</th><th>R</th></tr></thead>
+            <thead><tr><th data-i18n="col.entry"></th><th data-i18n="col.price"></th><th data-i18n="bt.exit"></th><th data-i18n="col.state"></th><th data-ui-label="PnL">PnL</th><th>R</th></tr></thead>
             <tbody id="btTradesBody"></tbody>
           </table>
         </div>
@@ -1333,13 +1333,13 @@ const T = {
   fa: {
     'app.title':'nobiTrader', 'app.sub':'فاز ۲ — موتور سیگنال، ریسک و بک‌تست', 'nav.title':'ناوبری',
     'mode.paper':'کاغذی', 'mode.live':'زنده', 'mode.halted':'متوقف', 'mode.paperS':'کاغذی', 'mode.liveS':'زنده',
-    'hdr.kill':'کلید اضطراری مسلح', 'hdr.api':'API: {v}ms', 'chip.live':'به‌روزرسانی زنده', 'm.lang':'زبان / Language',
+    'hdr.kill':'کلید اضطراری مسلح', 'hdr.api':'ارتباط: {v} میلی‌ثانیه', 'chip.live':'به‌روزرسانی زنده', 'm.lang':'زبان / Language',
     'page.overview.title':'نمای کلی', 'page.overview.desc':'وضعیت سرمایه، پوزیشن‌ها و بازار در یک نگاه',
     'page.signals.title':'کاوشگر سیگنال', 'page.signals.desc':'رتبه‌بندی کاندیداها و تفکیک شواهد امتیاز',
     'page.fa.title':'فاندامنتال', 'page.fa.desc':'امتیاز بنیادی، وتوها و جریان رویدادها',
     'page.orders.title':'سفارش‌ها', 'page.orders.desc':'چرخه‌حیات زنده سفارش‌ها و پرشدگی‌ها',
     'page.risk.title':'ریسک و کنترل', 'page.risk.desc':'سقف‌های سبد، کلیدهای اضطراری و توقف اضطراری',
-    'page.backtest.title':'آزمایشگاه بک‌تست', 'page.backtest.desc':'ارزیابی کانفیگ‌ها با Walk-Forward و نمونه‌خارجی',
+    'page.backtest.title':'آزمایشگاه بک‌تست', 'page.backtest.desc':'ارزیابی تنظیمات با آزمون پیش‌رونده و خارج از نمونه',
     'ov.kpi1':'ارزش سرمایه', 'ov.kpi1sub':'نسبت به سرمایه اولیه', 'ov.kpi2':'سود/زیان امروز',
     'ov.kpi3':'دمای ریسک باز', 'ov.kpi3cap':'از سقف ۶٪', 'ov.kpi4':'عملکرد کاغذی ۳۰ روز', 'ov.kpi4sub':'از معاملات کاغذی',
     'ov.eqTitle':'منحنی سرمایه', 'ov.eqSub':'(داده زنده — حالت کاغذی)', 'ov.alloc':'تخصیص سرمایه',
@@ -1347,7 +1347,7 @@ const T = {
     'ov.allocNote':'بافر نقد بالاتر از حداقل ۱۰٪ — انطباق با ADR-0008', 'ov.allocOk':'تایید',
     'ov.tf':'تایم‌فریم ۱۵ دقیقه', 'ov.ob':'دفتر سفارش (عمق میانی)', 'ov.spread':'اسپرد', 'ov.depth':'عمق ±۱٪', 'ov.imb':'عدم‌توازن',
     'ov.positions':'پوزیشن‌های باز', 'ov.recon':'تطابق با صرافی',
-    'col.symbol':'نماد','col.entry':'ورود','col.price':'قیمت فعلی','col.size':'حجم','col.pnl':'سود/زیان','col.r':'R جاری','col.stop':'استاپ','col.tp1':'TP1','col.state':'وضعیت',
+    'col.symbol':'نماد','col.entry':'ورود','col.price':'قیمت فعلی','col.size':'حجم','col.pnl':'سود/زیان','col.r':'بازده به ریسک جاری','col.stop':'استاپ','col.tp1':'هدف اول','col.state':'وضعیت',
     'col.side':'جهت','col.type':'نوع','col.amount':'مقدار','col.filled':'پرشدگی','col.slip':'لغزش','col.time':'زمان',
     'sg.expand':'برای نمودار کندلی کلیک کن', 'sg.candles':'کندل',
     'sg.synthetic':'داده شبیه‌سازی‌شده', 'sg.liveData':'داده زنده',
@@ -1360,14 +1360,14 @@ const T = {
     'sg.whyFa':'فاندامنتال', 'sg.whyFaD':'آنلاک توکن، TVL و نسبت حجم به ارزش‌بازار؛ اگر این منبع در دسترس نباشد این جزء چیزی به امتیاز اضافه نمی‌کند و امتیاز نهایی خالی می‌ماند.',
     'sg.whyLq':'نقدشوندگی', 'sg.whyLqD':'اسپرد، عمق دفتر سفارش و لغزش مدل‌شده — از دفتر زندهٔ نوبیتکس خوانده می‌شود، نه از یک عدد ثابت.',
     'sg.long':'خرید','sg.exit':'خروج','sg.neutral':'خنثی','sg.ta':'تکنیکال','sg.faN':'بنیادی','sg.liq':'نقد','sg.htf':'بالادست','sg.exec':'اجرا','sg.score':'امتیاز ترکیبی',
-    'fa.avg':'میانگین FA بازار', 'fa.vetoes':'وتوهای فعال', 'fa.vetoesSub':'شمار وتوها فقط از ارزیابی زندهٔ سرور می‌آید؛ بدون آن عددی ساخته نمی‌شود.',
+    'fa.avg':'میانگین بنیادی بازار', 'fa.vetoes':'وتوهای فعال', 'fa.vetoesSub':'شمار وتوها فقط از ارزیابی زندهٔ سرور می‌آید؛ بدون آن عددی ساخته نمی‌شود.',
     'fa.prem':'پرمیوم USDTIRT', 'fa.premSub':'اختلاف USDTIRT با مرجع دلاری؛ اگر سرور پاسخ ندهد مقدار نمایش داده نمی‌شود.',
     'fa.list':'امتیاز بنیادی دارایی‌های برتر', 'fa.news':'جریان رویدادها',
     'or.hdr':'چرخه‌حیات سفارش‌ها',
     'ov.sub.loc':'تومان', 'ov.pnl.loc':'تومان',
-    'rk.kills':'کلیدهای اضطراری', 'rk.size':'پیش‌نمای حجم‌دهی (ATR-محور)', 'rk.eq':'سرمایه', 'rk.rpt':'ریسک هر معامله',
+    'rk.kills':'کلیدهای اضطراری', 'rk.size':'پیش‌نمای حجم‌دهی بر پایه دامنه واقعی', 'rk.eq':'سرمایه', 'rk.rpt':'ریسک هر معامله',
     'rk.stopdist':'فاصله استاپ (k=۲×ATR)', 'rk.suggest':'حجم پیشنهادی پوزیشن', 'rk.suggestNote':'(زیر سقف تک‌دارایی ۲۵٪ ✓)',
-    'rk.panic':'توقف اضطراری (Panic)', 'rk.panicSub':'لغو همه سفارش‌ها + فلت اختیاری + غیرفعال‌سازی ربات — نگه‌داشتن ۳ ثانیه', 'rk.panicBtn':'توقف اضطراری',
+    'rk.panic':'توقف اضطراری', 'rk.panicSub':'لغو همه سفارش‌ها + فلت اختیاری + غیرفعال‌سازی ربات — نگه‌داشتن ۳ ثانیه', 'rk.panicBtn':'توقف اضطراری',
     'bt.pf':'ضریب سود','bt.mdd':'حداکثر افت','bt.sharpe':'شارپ','bt.win':'نرخ موفقیت','bt.exp':'امیدریاضی',
     'bt.runs':'اجراها (هش کانفیگ)','bt.modeled':'کارمزد + لغزش مدل‌شده','bt.config':'کانفیگ','bt.window':'پنجره','bt.trades':'معاملات','bt.best':'منحنی بهترین اجرا','bt.run':'اجرای بک‌تست',
     'bt.cfg':'پیکربندی بک‌تست','bt.equity':'سرمایه اولیه','bt.stopK':'ضریب استاپ (k×ATR)','bt.train':'پنجره آموزش (کندل)','bt.eval':'پنجره آزمون (کندل)',
@@ -1380,11 +1380,11 @@ const T = {
     'pn.title':'تأیید توقف اضطراری', 'pn.sub':'ثبت در لاگ حسابرسی می‌شود',
     'pn.l1':'لغو فوری ۲ سفارش باز روی صرافی', 'pn.l2':'توقف موتور تصمیم‌گیری تا راه‌اندازی دستی', 'pn.l3':'فلت همه پوزیشن‌ها با سفارش بازار (گارد لغزش ۰٫۵٪)',
     'pn.hold':'برای تأیید، ۳ ثانیه نگه دارید', 'pn.cancel':'انصراف',
-    'page.performance.title':'گزارش عملکرد', 'page.performance.desc':'ارزیابی کیفیت سیگنال‌های پیش‌بینی‌شده: Hit-Rate، بازده افق‌ها و Attribution',
-    'perf.hit':'نرخ موفقیت (Hit-Rate)','perf.exp':'امیدریاضی (R)','perf.pf':'ضریب سود مجازی','perf.ic':'ضریب اطلاعات (IC)','perf.signals':'سیگنال‌های بررسی‌شده','perf.resolved':'نتیجه‌رسیده',
+    'page.performance.title':'گزارش عملکرد', 'page.performance.desc':'ارزیابی کیفیت سیگنال‌های پیش‌بینی‌شده: نرخ موفقیت، بازده افق‌ها و سهم عوامل',
+    'perf.hit':'نرخ موفقیت','perf.exp':'امیدریاضی (R)','perf.pf':'ضریب سود مجازی','perf.ic':'ضریب اطلاعات (IC)','perf.signals':'سیگنال‌های بررسی‌شده','perf.resolved':'نتیجه‌رسیده',
     'perf.sub1':'از میان {n} سیگنال جهت‌دار','perf.sub2':'میانگین R به‌ازای سیگنال','perf.sub3':'ΣR+ / ΣR−','perf.sub4':'همبستگی امتیاز↔بازده','perf.sub5':'در بازه انتخابی','perf.sub6':'% از سیگنال‌ها',
-    'perf.cal':'منحنی درستی‌سنجی (Calibration)','perf.calSub':'اتساق امتیاز اولیه با نرخ موفقیت واقعی',
-    'perf.horizon':'نتیجه به‌ازای افق پایش','perf.faml':'سهم موفقیت خانواده‌ها (Attribution)','perf.family':'خانواده','perf.avgR':'میانگین R','perf.share':'سهم',
+    'perf.cal':'منحنی درستی‌سنجی','perf.calSub':'اتساق امتیاز اولیه با نرخ موفقیت واقعی',
+    'perf.horizon':'نتیجه به‌ازای افق پایش','perf.faml':'سهم موفقیت خانواده‌ها','perf.family':'خانواده','perf.avgR':'میانگین R','perf.share':'سهم',
     'perf.table':'جدول سیگنال‌های اخیر','perf.dir':'جهت','perf.score':'امتیاز','perf.rank':'رتبه','perf.h1':'H1 (+۱س)','perf.h2':'H2 (+۱ر)','perf.h3':'H3 (+۷ر)','perf.r':'R نهایی','perf.status':'وضعیت',
     'perf.stResolved':'نتیجه‌رسیده','perf.stInP':'در جریان','perf.stPend':'در انتظار','perf.stVoid':'ابطال',
     'perf.noCal':'داده‌ی کافی برای منحنی درستی‌سنجی نیست','perf.noCalSub':'پس از رسیدن افق H2 سیگنال‌ها پر می‌شود',
@@ -1502,7 +1502,7 @@ const T = {
     'set.refresh':'به‌روزرسانی','set.source':'منبع','set.unavailable':'تنظیمات در دسترس نیست',
     'set.partial':'پوشش ناقص/قدیمی','set.up':'سالم','set.down':'قطع','set.unknown':'نامعلوم','set.off':'خاموش','set.set':'تنظیم‌شده','set.unset':'تنظیم‌نشده',
     'set.stop':'حد ضرر','set.tp1':'هدف ۱','set.tp2':'هدف ۲','set.trail':'حد ضرر متحرک',
-    'set.tLong':'آستانه LONG','set.tNeutral':'آستانه NEUTRAL','set.tAdx':'ADX روند','set.tGate':'ضریب رژیم رِنج',
+    'set.tLong':'آستانه خرید','set.tNeutral':'آستانه خنثی','set.tAdx':'ADX روند','set.tGate':'ضریب رژیم رِنج',
     'set.msiCorrupt':'نسبت «مخدوش» (MSI)','set.msiDegraded':'نسبت «افت‌کرده» (MSI)','set.msiMin':'حداقل نمونه (MSI)',
     'perf.pathSimulated':'مسیر قیمت نمایش داده نمی‌شود: کندل‌های شبیه‌سازی‌شده در هر درخواست از نو ساخته می‌شوند و با مسیری که این نتیجه را ساخته یکی نیستند. سطوح و اجزا مستقیماً از ردیف ژورنال خوانده شده‌اند و معتبرند.',
     'perf.levels':'سطوح معامله',
@@ -1531,7 +1531,7 @@ const T = {
     'dk.semiD':'ربات پلن می‌سازد، اجرا فقط با تأیید شما در صف پایین انجام می‌شود.',
     'dk.manualD':'هیچ سفارشی خودکار صادر نمی‌شود؛ فقط سفارش‌های دستی فرم پایین.',
     'dk.blockedD':'نمادهای دارای وتو یا مسدودسازی، در هیچ حالتی اجرا نمی‌شوند.',
-    'dk.queue':'صف تأیید','dk.queueSub':'پیشنهادها پس از انقضای TTL خودکار باطل می‌شوند','ob.unavailable':'دفتر سفارش در دسترس نیست','dk.price':'قیمت ورود','dk.amount':'حجم','dk.notional':'ارزش معامله','dk.riskAmt':'مبلغ ریسک','dk.riskPct':'ریسک/سرمایه','dk.audit':'ردپای حسابرسی','dk.actor':'عامل','dk.action':'اقدام','dk.detail':'جزئیات',
+    'dk.queue':'صف تأیید','dk.queueSub':'پیشنهادها پس از پایان مهلت خودکار باطل می‌شوند','ob.unavailable':'دفتر سفارش در دسترس نیست','dk.price':'قیمت ورود','dk.amount':'حجم','dk.notional':'ارزش معامله','dk.riskAmt':'مبلغ ریسک','dk.riskPct':'ریسک/سرمایه','dk.audit':'ردپای حسابرسی','dk.actor':'عامل','dk.action':'اقدام','dk.detail':'جزئیات',
     'dk.approve':'تأیید و ارسال','dk.reject':'رد','dk.expired':'منقضی',
     'dk.ok':'حد مجاز — انطباق با سقف‌های ریسک','dk.warn1':'ریسک هر معامله از سقف {p}٪ بیشتر است','dk.warn2':'مواجهه با این دارایی از سقف {p}٪ عبور می‌کند','dk.warn3':'نسبت R:TP کمتر از {r} است — سودآوری مشکوک','dk.needInput':'قیمت، حجم و حد ضرر را پر کنید','dk.limitsUnknown':'سقف‌های ریسک از سرور نرسیده — این عددها بررسی نشده‌اند',
     'dk.stop':'قیمت استاپ',
@@ -1557,9 +1557,9 @@ const T = {
     'bm.summary':'میانگین تابلویی','bm.beating':'نمادِ جلوتر از معیار','bm.noServer':'سرور پاسخ نداد — عددی نمایش داده نمی‌شود.','bm.empty':'داده‌ای برای مقایسه نیست.',
     'bm.note':'آلفا = (میانگین بازده نماد − بتا × میانگین بازده معیار) × تعداد دوره در سال','bm.n':'دوره',
     'al.hdr':'سبد پیشنهادی (با همبستگی)','al.run':'محاسبه','al.working':'در حال محاسبه…',
-    'al.sub':'حرارت سبد بین کاندیداهای LONG تقسیم می‌شود، با احتساب همبستگی بازده‌ها. هر ردیف همان دروازه‌هایی را می‌گذراند که بروکر بعداً اجرا می‌کند؛ تا وقتی «استفاده» را نزنید هیچ سفارشی ثبت نمی‌شود.',
+    'al.sub':'حرارت سبد بین کاندیداهای خرید تقسیم می‌شود، با احتساب همبستگی بازده‌ها. هر ردیف همان دروازه‌هایی را می‌گذراند که بروکر بعداً اجرا می‌کند؛ تا وقتی «استفاده» را نزنید هیچ سفارشی ثبت نمی‌شود.',
     'al.risk':'ریسک','al.notional':'نامینال','al.stop':'فاصلهٔ استاپ','al.corr':'بیشترین همبستگی','al.why':'محدودکننده','al.use':'استفاده',
-    'al.totals':'جمع','al.noServer':'سرور پاسخ نداد — تخصیصی نمایش داده نمی‌شود.','al.empty':'امروز کاندیدای LONG برای تخصیص نیست.',
+    'al.totals':'جمع','al.noServer':'سرور پاسخ نداد — تخصیصی نمایش داده نمی‌شود.','al.empty':'امروز کاندیدای خرید برای تخصیص نیست.',
     'al.fromServer':'از سرور','al.heat':'حرارت بعد از سبد','al.cash':'نقد بعد از سبد','al.slots':'جای خالی',
     'al.bound.erc-share':'وزن همبستگی','al.bound.cash':'کف نقدینگی','al.bound.single-asset-cap':'سقف تک‌دارایی','al.bound.per-trade-cap':'سقف ریسک هر معامله',
     'al.applied':'اندازه و استاپ در بلیت گذاشته شد؛ پیش از ثبت، پیش‌نمایش را ببینید.','al.dropped':'کنار گذاشته شد',
@@ -1571,7 +1571,7 @@ const T = {
     'a.bot':'ربات','a.human':'اپراتور','a.sys':'سیستم',
     'sg.mode':'حالت',
     't.connect':'اتصال برقرار شد','t.connectM':'موتور تحلیل در حال بارگذاری داده بازار است.',
-    't.lang':'زبان به فارسی تغییر کرد','t.langM':'جهت صفحه راست‌به‌چپ و اعداد فارسی فعال شدند.',
+    't.lang':'زبان به فارسی تغییر کرد','t.langM':'جهت صفحه راست‌به‌چپ شد؛ ارقام از تنظیم قالب عدد پیروی می‌کنند.',
     't.refresh':'رتبه‌بندی تازه شد','t.refreshM':'کاندیدهای برتر بر اساس آخرین بستن کندل ۱۵ دقیقه محاسبه شدند.',
     't.liveLocked':'حالت زنده قفل است','t.liveLockedM':'فعال‌سازی نیازمند دروازه‌های ارتقاست: بک‌تست PF≥۱٫۳، ۳۰ روز کاغذی موفق و تأیید دستی (ADR-0009).',
     't.paperM':'همه سفارش‌ها روی دفتر سفارش زنده شبیه‌سازی می‌شوند؛ هیچ سرمایه واقعی درگیر نیست.',
@@ -1582,7 +1582,7 @@ const T = {
   en: {
     'app.title':'nobiTrader', 'app.sub':'Phase 2 — signals, risk, backtest', 'nav.title':'Navigation',
     'mode.paper':'Paper', 'mode.live':'Live', 'mode.halted':'Halted', 'mode.paperS':'Paper', 'mode.liveS':'Live',
-    'hdr.kill':'Kill switch armed', 'hdr.api':'API: {v}ms', 'chip.live':'Live updates', 'm.lang':'Language / زبان',
+    'hdr.kill':'Kill switch armed', 'hdr.api':'API: {v} ms', 'chip.live':'Live updates', 'm.lang':'Language / زبان',
     'page.overview.title':'Overview', 'page.overview.desc':'Equity, positions and market state at a glance',
     'page.signals.title':'Signals Explorer', 'page.signals.desc':'Candidate ranking and score evidence',
     'page.fa.title':'Fundamentals', 'page.fa.desc':'FA scores, vetoes and the event stream',
@@ -1819,7 +1819,7 @@ const T = {
     'a.bot':'Bot','a.human':'Operator','a.sys':'System',
     'sg.mode':'Mode',
     't.connect':'Connected','t.connectM':'Analysis engine loaded with market data — paper mode.',
-    't.lang':'Language switched to English','t.langM':'Layout is now LTR with latin numerals.',
+    't.lang':'Language switched to English','t.langM':'Layout is now LTR; digits follow your number-format preference.',
     't.refresh':'Ranking refreshed','t.refreshM':'Top candidates recomputed on the latest 15m candle close.',
     't.liveLocked':'Live mode is locked','t.liveLockedM':'Requires promotion gates: backtest PF≥1.3, 30 days of paper trading and manual approval (ADR-0009).',
     't.paperM':'All orders are simulated on the live orderbook; no real capital is involved.',
@@ -1828,19 +1828,153 @@ const T = {
     'sec':'sec...'
   }
 };
-const t = k => (T[LANG] && T[LANG][k]) || T.fa[k] || k;
+const t = k => localizeText((T[LANG] && T[LANG][k]) || T.fa[k] || k);
 
-function fmtNum(n, dec=0){
-  // Backend payloads legitimately carry nulls (unresolved horizons, missing
-  // ranks). A number formatter must never be the thing that blanks a page.
-  if (n === null || n === undefined || Number.isNaN(n)) return '—';
-  const v = typeof n === 'string' ? Number(n) : n;
-  if (Number.isNaN(v)) return '—';
-  const opts = { minimumFractionDigits: dec, maximumFractionDigits: dec };
-  return v.toLocaleString(numLocale(), opts);
+/* DISPLAY-FORMAT-START: display-only, never convert monetary values. */
+function localizeText(value){
+  const targetFa = numLocale().startsWith('fa');
+  return String(value ?? '').replace(/ADR-\d+|https?:\/\/[^\s]+|[0-9۰-۹٠-٩]/g, token => {
+    if (token.length !== 1) return token;
+    const code = token.charCodeAt(0);
+    const n = code >= 0x6f0 ? code - 0x6f0 : code >= 0x660 ? code - 0x660 : code - 48;
+    return targetFa ? String.fromCharCode(0x6f0 + n) : String(n);
+  });
 }
-function PC(n, dec=1, sign=true){ return (sign && n>0?'+':'') + fmtNum(n,dec) + (LANG==='fa' ? '٪' : '%'); }
-const L = o => (typeof o === 'object' && o !== null) ? (o[LANG] ?? o.fa ?? '') : o;
+function dateLocale(){ return (LANG==='fa'?'fa-IR':'en-US') + '-u-nu-' + (numLocale().startsWith('fa')?'arabext':'latn'); }
+function parseInputNumber(value){
+  const normalized = String(value ?? '').replace(/[۰-۹٠-٩]/g, d =>
+    String(d.charCodeAt(0) - (d >= '۰' ? 0x6f0 : 0x660)))
+    .replace(/[\u2066-\u2069\u200e\u200f\u061c]/g, '')
+    .replace(/[٬,\s]/g, '').replace(/٫/g, '.').replace(/−/g, '-');
+  return /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(normalized) && Number.isFinite(Number(normalized)) ? Number(normalized) : NaN;
+}
+function fmtNum(n, dec=0){
+  if ((typeof n !== 'number' && typeof n !== 'string') || (typeof n === 'string' && !n.trim())) return '—';
+  const v = Number(n);
+  if (!Number.isFinite(v)) return '—';
+  const d = Math.max(0, Math.min(20, Number(dec) || 0));
+  return v.toLocaleString(numLocale(), { minimumFractionDigits:d, maximumFractionDigits:d });
+}
+function quoteUnit(sym){
+  const s = String(sym || '').toUpperCase();
+  if (/(IRT|TMN)$/.test(s)) return 'IRT';
+  if (/(IRR|RLS)$/.test(s)) return 'IRR';
+  if (/USDT$/.test(s)) return 'USDT';
+  if (/USDC$/.test(s)) return 'USDC';
+  return null; // Never guess a quote for an unknown market.
+}
+function baseUnit(sym){
+  return String(sym || '').toUpperCase().replace(/(USDT|USDC|IRT|IRR|RLS|TMN)$/, '').split(/[/_-]/)[0];
+}
+function unitLabel(unit){
+  const labels = {
+    USD:['دلار','USD'], USDT:['تتر','USDT'], USDC:['یو‌اس‌دی‌کوین','USDC'],
+    IRT:['تومان','toman'], IRR:['ریال','IRR'], RLS:['ریال','IRR'],
+    BTC:['بیت‌کوین','BTC'], ETH:['اتر','ETH'],
+  };
+  return labels[unit] ? labels[unit][LANG==='fa'?0:1] : (/^[A-Z0-9]{1,24}$/.test(unit || '') ? unit : '—');
+}
+function fmtMoney(value, unit, dec=2, signed=false){
+  const number = fmtNum(value, dec);
+  if (number === '—' || !unit) return '—';
+  // Outer direction isolates the whole amount from surrounding prose; the
+  // inner LTR run keeps the minus/plus attached to the numeric value in RTL.
+  return (LANG==='fa'?'\u2067':'\u2066') + '\u2066' +
+    (signed && Number(value)>0 ? '+' : '') + number + '\u2069\u00a0\u2068' + unitLabel(unit) + '\u2069\u2069';
+}
+function fmtMarketPrice(value, sym, dec){
+  const n = Math.abs(Number(value));
+  const digits = dec === undefined ? (n>0 && n<1 ? Math.min(20, Math.max(6, Math.ceil(-Math.log10(n))+4)) : n>=1000 && ['IRT','IRR'].includes(quoteUnit(sym)) ? 0 : 2) : dec;
+  return fmtMoney(value, quoteUnit(sym), digits);
+}
+function fmtQty(value, sym, dec){
+  const n = Math.abs(Number(value));
+  const digits = dec === undefined ? (n>0 && n<1 ? Math.min(20,Math.max(6,Math.ceil(-Math.log10(n))+4)) : 6) : dec;
+  return fmtMoney(value, baseUnit(sym), digits);
+}
+function PC(value, dec=1, sign=true){
+  const number = fmtNum(value, dec);
+  if (number === '—') return number;
+  return '\u2066' + (sign && value>0?'+':'') + number + (LANG==='fa'?'٪':'%') + '\u2069';
+}
+function uiLabel(value){
+  const labels = {
+    LONG:['خرید','Long'], EXIT:['خروج','Exit'], NEUTRAL:['خنثی','Neutral'],
+    PLANNED:['برنامه‌ریزی‌شده','Planned'], SUBMITTED:['ارسال‌شده','Submitted'],
+    OPEN:['باز','Open'], FILLED:['تکمیل‌شده','Filled'], CLOSED:['بسته','Closed'], PARTIAL:['تکمیل جزئی','Partial'],
+    market:['بازار','Market'], limit:['محدود','Limit'],
+    entry:['ورود','Entry'], stop:['حد ضرر','Stop'], tp1:['هدف اول','TP1'], tp2:['هدف دوم','TP2'],
+    sl:['حد ضرر','Stop loss'], timeout:['پایان مهلت','Timeout'],
+    trend:['روند','Trend'], momentum:['شتاب','Momentum'],
+    open:['باز','Open'], used:['استفاده‌شده','Used'], revoked:['باطل‌شده','Revoked'], expired:['منقضی','Expired'], REJECTED:['رد‌شده','Rejected'],
+    TREND:['روندی','Trend'], RANGE:['خنثی','Range'], VOLATILE:['پرتلاطم','Volatile'],
+    critical:['بحرانی','Critical'], error:['خطا','Error'], warning:['هشدار','Warning'], info:['اطلاع','Info'],
+    PnL:['سود و زیان','PnL'], PF:['ضریب سود','PF'], MDD:['بیشینه افت','MDD'],
+    OOS:['خارج از نمونه','OOS'], Score:['امتیاز','Score'], 'stop k':['ضریب حد ضرر','Stop multiplier'], Ideal:['مطلوب','Ideal'], idempotent:['بدون ثبت تکراری','Idempotent'],
+    owner:['مالک','Owner'], operator:['اپراتور','Operator'], viewer:['ناظر','Viewer'],
+  };
+  const key = String(value ?? '');
+  return labels[key] ? labels[key][LANG==='fa'?0:1] : localizeText(key);
+}
+function tfLabel(value){
+  const m = /^(\d+)?([mhdD])$/.exec(String(value));
+  if (!m) return localizeText(value);
+  const names = LANG==='fa' ? {m:'دقیقه',h:'ساعت',d:'روز',D:'روز'} : {m:'min',h:'h',d:'d',D:'d'};
+  return fmtNum(m[1] || 1) + ' ' + names[m[2]];
+}
+function prepareNumericInputs(root=document){
+  root.querySelectorAll('input[type="number"],input[data-number-input],input.qIn').forEach(el=>{
+    if (!el.dataset.numberInput) {
+      el.dataset.numberInput = '1'; el.type = 'text'; el.inputMode = 'decimal'; el.dir = 'ltr';
+      const normalize = event => {
+        if (event.isComposing) return;
+        const next = localizeText(el.value);
+        if (next !== el.value) {
+          const { selectionStart, selectionEnd, selectionDirection } = el;
+          el.value = next;
+          if (selectionStart !== null) el.setSelectionRange(selectionStart, selectionEnd, selectionDirection);
+        }
+        el.setCustomValidity('');
+      };
+      el.addEventListener('input', normalize, true);
+      el.addEventListener('compositionend', normalize);
+      el.addEventListener('blur', ()=>{
+        const number = parseInputNumber(el.value);
+        const step = Number(el.getAttribute('step'));
+        const ratio = (number - Number(el.min || 0)) / step;
+        const offStep = step>0 && Math.abs(ratio-Math.round(ratio)) > Math.max(1e-7,Math.abs(ratio)*Number.EPSILON*8);
+        const bad = el.value.trim() && (!Number.isFinite(number) || offStep
+          || (el.min!=='' && number<Number(el.min)) || (el.max!=='' && number>Number(el.max)));
+        el.setCustomValidity(bad ? (LANG==='fa'?'عدد معتبر وارد کنید':'Enter a valid number') : '');
+      });
+    }
+    // Do not touch the active field during a live refresh/caret edit.
+    if (el !== document.activeElement) el.value = localizeText(el.value);
+  });
+}
+function localizeDisplayControls(){
+  prepareNumericInputs();
+  document.querySelectorAll('[data-local-digits]').forEach(el=>{ el.textContent = localizeText(el.dataset.localDigits); });
+  document.querySelectorAll('[data-ui-label]').forEach(el=>{ el.textContent = uiLabel(el.dataset.uiLabel); });
+  document.querySelectorAll('#btTf option,.tfSel').forEach(el=>{
+    el.textContent = tfLabel(el.dataset.tf || el.value);
+  });
+  document.querySelectorAll('#eqRange button').forEach(el=>{
+    el.textContent = fmtNum(el.dataset.r) + (LANG==='fa'?' روز':' d');
+  });
+  document.querySelectorAll('[data-unit-for]').forEach(el=>{
+    const id = el.dataset.unitFor;
+    const select = document.getElementById(id==='btEq'?'btSym':'mSym');
+    const sym = select && select.value || 'BTCIRT';
+    el.textContent = ' (' + unitLabel(id==='mAmt'?baseUnit(sym):quoteUnit(sym)) + ')';
+    el.dir = LANG==='fa'?'rtl':'ltr';
+  });
+}
+window.NBXDisplay = { dateLocale, money:fmtMoney, price:fmtMarketPrice, qty:fmtQty, number:fmtNum,
+  percent:PC, quote:quoteUnit, base:baseUnit, unit:unitLabel, text:localizeText, label:uiLabel, timeframe:tfLabel, parse:parseInputNumber };
+/* DISPLAY-FORMAT-END */
+
+const L = o => localizeText((typeof o === 'object' && o !== null) ? (o[LANG] ?? o.fa ?? '') : o);
 
 const OFFLINE_ICONS = {
   'activity': "<path d='M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2'/>",
@@ -1940,6 +2074,7 @@ function applyStaticI18n(){
     const n=+el.dataset.num, d=+(el.dataset.dec||0);
     el.textContent = (el.dataset.pre||'') + fmtNum(n,d) + (LANG==='fa' ? (el.dataset.suf==='%'?'٪':el.dataset.suf||'') : (el.dataset.suf||''));
   });
+  localizeDisplayControls();
   document.title = t('app.title');
   /* No placeholder numbers here. Every KPI is either filled by live data or
    * left as an em dash — the previous block wrote 1,274,509,000 / 1.2% / PF 1.47
@@ -1980,7 +2115,7 @@ function toast(title, msg, kind='ok'){
 /* =========================================================
    Clock
 ========================================================= */
-setInterval(()=>{ const c=byId('clock'); if(c) c.textContent = new Date().toLocaleTimeString(LANG==='fa'?'fa-IR':'en-US'); }, 1000);
+setInterval(()=>{ const c=byId('clock'); if(c) c.textContent = new Date().toLocaleTimeString(dateLocale()); }, 1000);
 
 /* =========================================================
    Sidebar / Tabs + language switch
@@ -2062,6 +2197,9 @@ function refreshLangBtns(){
   refreshLangBtns();
   applyStaticI18n();
   buildChartsLocale();
+  if(window.NBX_APP && NBX_APP.refreshDisplay) NBX_APP.refreshDisplay();
+  if(lastSettings) renderSettings(lastSettings);
+  if(bookAllocRan) renderBookAlloc();
   syncSideCls();
   if(inited.bt) drawBt();
   if(inited.perf) drawCal();
@@ -2087,7 +2225,7 @@ if (typeof window.LightweightCharts === 'undefined') {
         if (!container || !currentData.length) return;
         const W = Math.max(container.clientWidth || 320, 260);
         const H = Math.max(container.clientHeight || 220, 180);
-        const pad = { l: 8, r: 54, t: 12, b: 20 };
+        const pad = { l: 8, r: 100, t: 12, b: 20 };
         const plotW = W - pad.l - pad.r;
         const plotH = H - pad.t - pad.b;
         const slice = currentData.slice(-90);
@@ -2107,7 +2245,7 @@ if (typeof window.LightweightCharts === 'undefined') {
           const y = pad.t + f * plotH;
           const val = maxV - f * span;
           return `<line x1="${pad.l}" y1="${y.toFixed(1)}" x2="${W - pad.r}" y2="${y.toFixed(1)}" stroke="rgba(255,255,255,0.05)" stroke-dasharray="3 3"/>
-                  <text x="${W - pad.r + 4}" y="${(y + 3).toFixed(1)}" fill="#71717a" font-size="9">${val >= 1000 ? Math.round(val).toLocaleString() : val.toFixed(2)}</text>`;
+                  <text x="${W - pad.r + 4}" y="${(y + 3).toFixed(1)}" fill="#71717a" font-size="9">${opts.localization && opts.localization.priceFormatter ? opts.localization.priceFormatter(val) : fmtNum(val,2)}</text>`;
         }).join('');
 
         let bodySvg = '';
@@ -2160,19 +2298,16 @@ if (typeof window.LightweightCharts === 'undefined') {
   };
 }
 let charts = [];
-function baseOpts(){ return {
+function baseOpts(unit='USD'){ return {
   autoSize:true,
   layout:{ background:{type:'solid', color:'transparent'}, textColor:'#a1a1aa', fontFamily: LANG==='fa'?'Vazirmatn':'system-ui', fontSize:11 },
   grid:{ vertLines:{color:'rgba(255,255,255,.04)'}, horzLines:{color:'rgba(255,255,255,.04)'} },
-  rightPriceScale:{ borderColor:'rgba(255,255,255,.08)' },
+  rightPriceScale:{ minimumWidth:110, borderColor:'rgba(255,255,255,.08)' },
   timeScale:{ borderColor:'rgba(255,255,255,.08)', timeVisible:true, secondsVisible:false },
   crosshair:{ horzLine:{color:'rgba(52,211,153,.3)'}, vertLine:{color:'rgba(52,211,153,.3)'} },
-  localization:{ locale: LANG==='fa'?'fa-IR':'en-US' }
+  localization:{ locale:numLocale(), priceFormatter:v=>fmtMoney(v,typeof unit==='function'?unit():unit, Math.abs(v)>=1000?0:2) }
 }; }
-function buildChartsLocale(){
-  /* re-apply locale on language change */
-  charts.forEach(c=>{ try{ c.applyOptions({ localization:{ locale: LANG==='fa'?'fa-IR':'en-US' } }); }catch(e){} });
-}
+function buildChartsLocale(){ charts.forEach(c=>{ try{ c.applyOptions({localization:{locale:numLocale()}}); }catch(e){} }); }
 function resizeCharts(){ requestAnimationFrame(()=> charts.forEach(c=>{ try{ c.timeScale().fitContent(); }catch(e){} })); }
 
 let equitySeries;
@@ -2215,15 +2350,15 @@ function candleChart(symbol){
   const grid = [0, 0.25, 0.5, 0.75, 1].map(f => {
     const v = lo + span * f, yy = y(v);
     return `<line x1="${padL}" y1="${yy.toFixed(1)}" x2="${W - padR}" y2="${yy.toFixed(1)}" stroke="rgba(255,255,255,.05)" stroke-width="1"/>
-            <text x="${W - padR + 6}" y="${(yy + 3.5).toFixed(1)}" fill="#71717a" font-size="10" font-family="ui-monospace,monospace">${fmtNum(v, v < 10 ? 3 : 0)}</text>`;
+            <text x="${W - padR + 6}" y="${(yy + 3.5).toFixed(1)}" fill="#71717a" font-size="10" font-family="ui-monospace,monospace">${fmtMarketPrice(v, symbol)}</text>`;
   }).join('');
 
   const first = bars[0].t, last = bars[bars.length - 1].t;
-  const label = (ts) => new Date(ts * 1000).toLocaleString(LANG === 'fa' ? 'fa-IR' : 'en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  const label = (ts) => new Date(ts * 1000).toLocaleString(dateLocale(), { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 
   return `<div class="relative">
     <div class="flex items-center gap-2 flex-wrap mb-2 text-[10px] text-zinc-500">
-      <span class="chip num">${tf}</span>
+      <span class="chip num">${tfLabel(tf)}</span>
       <span class="num">${fmtNum(bars.length)} ${t('sg.candles')}</span>
       <span class="num">${label(first)} → ${label(last)}</span>
       <span class="chip ${synth ? 'text-zinc-400 border-zinc-400/20' : 'text-emerald-300 border-emerald-300/30'} ms-auto">${synth ? t('sg.synthetic') : t('sg.liveData')}</span>
@@ -2341,7 +2476,7 @@ document.querySelectorAll('#eqRange button').forEach(b=>b.onclick=()=>{
 let candleSeries, lastCandle;
 function drawCandles(){
   const el=byId('candleChart'); el.innerHTML='';
-  const ch=LightweightCharts.createChart(el, baseOpts()); charts.push(ch);
+  const ch=LightweightCharts.createChart(el, baseOpts(()=>quoteUnit((window.live && live.activeSymbol) || 'BTCIRT'))); charts.push(ch);
   candleSeries=ch.addCandlestickSeries({ upColor:'#34d399', downColor:'#f87171', wickUpColor:'#34d399', wickDownColor:'#f87171', borderVisible:false, priceLineVisible:true });
   // Data arrives from the backend / browser engine; start empty rather than
   // drawing invented candles.
@@ -2356,7 +2491,9 @@ function btUnavailableHTML(){
   </div>`;
 }
 function drawBt(){
-  const el=byId('btChart'); if(!el) return; el.innerHTML='';
+  const el=byId('btChart'); if(!el) return;
+  if(BT.lastReport){btRender({report:BT.lastReport});return;}
+  el.innerHTML='';
   // No live candles -> no equity curve. Painting axes with an empty series
   // would look like a result, so the slot carries the sentence instead.
   if(window.live && (window.live.unavailable || !window.live.ranked.length)){
@@ -2391,7 +2528,7 @@ function drawBt(){
     if (typeof refreshIcons === 'function') refreshIcons();
     return;
   }
-  const ch=LightweightCharts.createChart(el, baseOpts()); charts.push(ch);
+  const ch=LightweightCharts.createChart(el, baseOpts(quoteUnit(document.getElementById('btSym').value || 'BTCIRT'))); charts.push(ch);
   const s=ch.addAreaSeries({ lineColor:'#38bdf8', lineWidth:2, topColor:'rgba(56,189,248,.22)', bottomColor:'rgba(56,189,248,0)', priceLineVisible:false });
   s.setData([]); ch.timeScale().fitContent();
 }
@@ -2458,12 +2595,12 @@ async function fillRiskSizing(){
     // without the rate gives a position size a million times too small.
     const fx = fxOf('BTCIRT') || 1;
     const riskIrt = riskAmt * fx;
-    document.getElementById('rkAtr').textContent = fmtNum(atr);
-    document.getElementById('rkDist').textContent = fmtNum(stopDist);
+    document.getElementById('rkAtr').textContent = fmtMarketPrice(atr, 'BTCIRT');
+    document.getElementById('rkDist').textContent = fmtMarketPrice(stopDist, 'BTCIRT');
     const rp = document.getElementById('rkRpt');
-    if (rp) rp.textContent = fmtNum(riskAmt);
+    if (rp) rp.textContent = fmtMoney(riskAmt, 'USD');
     const su = document.getElementById('rkSug');
-    if (su) su.textContent = fmtNum(riskIrt / stopDist, 3);
+    if (su) su.textContent = fmtQty(riskIrt / stopDist, 'BTCIRT');
   } catch (e) { /* a sizing tile must never break the page */ }
   finally { rkSizingBusy = false; }
 }
@@ -2476,7 +2613,7 @@ window.addEventListener('nbx:scan', ()=>{
     const eqEl = document.getElementById('rkEq');
     if (eqEl) {
       eqEl.textContent = (typeof EQUITY === 'number' && Number.isFinite(EQUITY) && EQUITY > 0)
-        ? fmtNum(EQUITY) : '—';
+        ? fmtMoney(EQUITY, 'USD') : '—';
     }
     if (!gone) fillRiskSizing();
   }catch(e){}
@@ -2548,18 +2685,19 @@ function renderOB(book){
   const asks = clean(book.asks);
   if (!bids.length && !asks.length) { showUnavailable(); return; }
 
-  const fx = v => (v >= 1000 ? fmtNum(v) : fmtNum(v, 2));
+  const sym = book.symbol || (window.live && live.activeSymbol);
+  const fx = v => fmtMarketPrice(v, sym);
   // Size precision follows magnitude: 3 BTC and 3 DOGE do not deserve the same
   // number of decimals.
   const qtyDecimals = v => (Math.abs(v) >= 100 ? 1 : Math.abs(v) >= 1 ? 3 : 5);
-  const qty = v => fmtNum(v, qtyDecimals(v));
+  const qty = v => fmtQty(v, sym, qtyDecimals(v));
   const row = (l, side) => `
     <div class="flex items-center gap-2">
-      <span class="w-14 text-${side === 'ask' ? 'red' : 'emerald'}-300/80">${fx(l.p)}</span>
+      <span class="min-w-0 text-${side === 'ask' ? 'red' : 'emerald'}-300/80">${fx(l.p)}</span>
       <div class="flex-1 h-1.5 rounded bg-white/5 overflow-hidden">
         <div class="h-full ${side === 'ask' ? 'bg-red-400/50' : 'bg-emerald-400/50'}" style="width:${Math.min(100, l.pct)}%"></div>
       </div>
-      <span class="w-16 text-end text-zinc-400">${qty(l.q)}</span>
+      <span class="min-w-0 text-end text-zinc-400">${qty(l.q)}</span>
     </div>`;
 
   // Bar width is relative to the largest level shown, so the shape of the book
@@ -2572,7 +2710,7 @@ function renderOB(book){
   el.innerHTML = `
     ${askRows}
     <div class="flex items-center justify-between border-y border-white/5 my-1 py-1.5">
-      <span class="text-emerald-300 font-bold">${book.mid != null ? fmtNum(book.mid) : '—'}</span>
+      <span class="text-emerald-300 font-bold">${book.mid != null ? fmtMarketPrice(book.mid, sym) : '—'}</span>
       <span class="text-[9px] text-zinc-500">${LANG === 'fa' ? 'میانه' : 'mid'}</span>
     </div>
     ${bidRows}`;
@@ -2582,7 +2720,7 @@ function renderOB(book){
     const sp = byId('obSpread'), dp = byId('obDepth'), im = byId('obImb');
     if (sp) sp.textContent = book.spread_pct != null ? PC(book.spread_pct, 3, false) : '—';
     const depth = (book.bid_depth || 0) + (book.ask_depth || 0);
-    if (dp) dp.textContent = depth ? fmtNum(depth) : '—';
+    if (dp) dp.textContent = depth ? fmtMarketPrice(depth, sym) : '—';
     if (im) {
       const v = book.imbalance;
       im.textContent = v == null ? '—' : PC(v, 1);   // PC already signs positives
@@ -2619,9 +2757,9 @@ async function updatePaperPositions(){
           label:{fa:p.symbol.replace('IRT','/تومان'),en:p.symbol},
           entry:p.entry_price,
           price:p.last_price || p.entry_price,
-          size:String(+(p.filled_qty || p.qty || 0).toFixed(4)),
-          sl:'-'+fmtNum(p.stop_pct,1)+'%',
-          tp1:'+'+fmtNum(+((p.tp1-p.entry_price)/p.entry_price*100).toFixed(1),1)+'%',
+          size:p.filled_qty ?? p.qty,
+          sl:PC(p.stop_pct == null ? null : -Math.abs(p.stop_pct),1,false),
+          tp1:'+'+fmtNum(+((p.tp1-p.entry_price)/p.entry_price*100).toFixed(1),1)+(LANG==='fa'?'٪':'%'),
           state:{fa:p.state==='CLOSED'?'بسته شده':'در حال انجام',en:p.state==='CLOSED'?'Closed':'Open'},
           hot:!!p.tp1_filled
         });
@@ -2640,12 +2778,12 @@ function renderPositions(){
   }
   byId('posBody').innerHTML = positions.map(p=>{
     const pnl=(p.price/p.entry-1)*100, pos=pnl>=0, r=(pnl/(p.stop_pct||3.8)).toFixed(2);
-    const fmtPx = v => p.entry<1000 ? fmtNum(v,2) : fmtNum(v);
+    const fmtPx = v => fmtMarketPrice(v, p.sym);
     return `<tr>
       <td><span class="font-bold">${window.coinIcon(p.sym, 20)}${L(p.label)}</span><div class="text-[10px] text-zinc-500">${p.sym}</div></td>
       <td class="num text-zinc-400">${fmtPx(p.entry)}</td>
       <td class="num ${pos?'text-emerald-300':'text-red-300'}">${fmtPx(p.price)}</td>
-      <td class="num">${p.size}</td>
+      <td class="num">${fmtQty(p.size, p.sym)}</td>
       <td class="num font-bold ${pos?'text-emerald-400':'text-red-400'}">${PC(pnl,2)}</td>
       <td class="num ${pos?'text-emerald-400':'text-red-400'}">${(pos?'+':'')+fmtNum(+r,2)}R</td>
       <td class="num text-zinc-400">${p.sl}</td>
@@ -2854,7 +2992,7 @@ function orderStateChip(state){
                 FILLED:['sky','پر شده'], SUBMITTED:['indigo','ارسال'],
                 CLOSED:['zinc','بسته'], REJECTED:['red','رد شد'] };
   const [c, fa] = map[state] || ['zinc', state];
-  return `<span class="chip text-${c}-300"><span class="dot bg-${c}-400"></span>${LANG==='fa'?fa:state}</span>`;
+  return `<span class="chip text-${c}-300"><span class="dot bg-${c}-400"></span>${LANG==='fa'?fa:uiLabel(state)}</span>`;
 }
 function renderOrders(){
   const body = byId('ordBody');
@@ -2878,10 +3016,9 @@ function renderOrders(){
       : 'nothing placed yet; every paper order lands here with its id, fill price and exit reason.');
     return;
   }
-  const px = v => v >= 1000 ? fmtNum(v) : fmtNum(v, 2);
-  body.innerHTML = orders.map(o=>{
+    body.innerHTML = orders.map(o=>{
     const when = o.opened_at_iso
-      ? new Date(o.opened_at_iso).toLocaleString(LANG==='fa'?'fa-IR':'en-US',
+      ? new Date(o.opened_at_iso).toLocaleString(dateLocale(),
           { month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' })
       : '—';
     // Slippage is printed only where it was measured; a "0.0" nobody measured
@@ -2895,10 +3032,10 @@ function renderOrders(){
       <td class="num text-zinc-500 text-[10px]">${id}</td>
       <td class="font-bold">${window.coinIcon(o.symbol, 20)}${o.symbol}</td>
       <td class="${o.side==='buy'?'text-emerald-300':'text-red-300'}">${o.side==='buy'?t('sg.long'):(LANG==='fa'?'فروش':'Sell')}</td>
-      <td class="text-zinc-400">${o.type==='market'?(LANG==='fa'?'مارکت':'Market'):(LANG==='fa'?'لیمیت':'Limit')}</td>
-      <td class="num">${px(o.price)}</td>
-      <td class="num">${fmtNum(o.amount, 6)}</td>
-      <td class="num">${fmtNum(o.filled, 6)}</td>
+      <td class="text-zinc-400">${o.type==='market'?uiLabel('market'):uiLabel('limit')}</td>
+      <td class="num">${fmtMarketPrice(o.price, o.symbol)}</td>
+      <td class="num">${fmtQty(o.amount, o.symbol)}</td>
+      <td class="num">${fmtQty(o.filled, o.symbol)}</td>
       <td class="num text-zinc-400">${slip}</td>
       <td>${orderStateChip(o.state)}${o.reason?`<div class="text-[10px] text-red-300/80 mt-0.5">${o.reason}</div>`:''}</td>
       <td class="num text-zinc-500">${when}</td>
@@ -3399,7 +3536,7 @@ function fmtWhen(ts){
   const d = new Date(ts * 1000);
   try {
     // fa-IR gives the Jalali calendar and Persian digits for free.
-    return d.toLocaleString(LANG === 'fa' ? 'fa-IR' : 'en-US', {
+    return d.toLocaleString(dateLocale(), {
       month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false,
     });
   } catch (e) {
@@ -3462,18 +3599,14 @@ if (_perfBackfillBtn) _perfBackfillBtn.addEventListener('click', backfillPerf);
 /* ============ Signal detail: price path + TP/SL (ADR-0012) ============ */
 const sigDetailCache = {};
 
-function fmtPx(v){
-  if (v === null || v === undefined || Number.isNaN(v)) return '—';
-  return Math.abs(v) >= 1000 ? Math.round(v).toLocaleString(LANG === 'fa' ? 'fa-IR' : 'en-US')
-                             : Number(v).toFixed(2);
-}
+function fmtPx(v, sym){ return fmtMarketPrice(v, sym); }
 
 /* Inline SVG, no chart library: the panel must render in the standalone file
    and in the jsdom smoke test, where CDN scripts never load. */
 function pricePathSvg(d){
   const bars = d.path || [];
   if (!bars.length) return '';
-  const W = 640, H = 220, padL = 6, padR = 54, padT = 10, padB = 14;
+  const W = 640, H = 220, padL = 6, padR = 110, padT = 10, padB = 14;
   const levels = [
     { k: 'tp2', v: d.signal.tp2, c: '#34d399', dash: '4 4' },
     { k: 'tp1', v: d.signal.tp1, c: '#10b981', dash: '' },
@@ -3500,9 +3633,9 @@ function pricePathSvg(d){
     <line x1="${padL}" y1="${y(l.v).toFixed(1)}" x2="${W - padR}" y2="${y(l.v).toFixed(1)}"
           stroke="${l.c}" stroke-width="1" ${l.dash ? `stroke-dasharray="${l.dash}"` : ''} opacity=".85"/>
     <text x="${W - padR + 4}" y="${(y(l.v) + 3).toFixed(1)}" fill="${l.c}" font-size="9"
-          font-family="ui-monospace,monospace">${l.k}</text>
+          font-family="ui-monospace,monospace">${uiLabel(l.k)}</text>
     <text x="${W - padR + 4}" y="${(y(l.v) + 12).toFixed(1)}" fill="${l.c}" font-size="8"
-          opacity=".7" font-family="ui-monospace,monospace">${fmtPx(l.v)}</text>`).join('');
+          opacity=".7" font-family="ui-monospace,monospace">${fmtPx(l.v, d.signal.symbol)}</text>`).join('');
 
   const entryMark = ei == null ? '' : `
     <line x1="${x(ei).toFixed(1)}" y1="${padT}" x2="${x(ei).toFixed(1)}" y2="${H - padB}"
@@ -3544,9 +3677,9 @@ function levelBarsSvg(d){
     <line x1="${pad}" y1="${y(l.v).toFixed(1)}" x2="${W - 120}" y2="${y(l.v).toFixed(1)}"
           stroke="${l.c}" stroke-width="1.5" opacity=".85"/>
     <text x="${pad}" y="${(y(l.v) - 4).toFixed(1)}" fill="${l.c}" font-size="9"
-          font-family="ui-monospace,monospace">${l.k}</text>
+          font-family="ui-monospace,monospace">${uiLabel(l.k)}</text>
     <text x="${W - 116}" y="${(y(l.v) + 3).toFixed(1)}" fill="${l.c}" font-size="9"
-          font-family="ui-monospace,monospace">${fmtPx(l.v)}</text>`).join('');
+          font-family="ui-monospace,monospace">${fmtPx(l.v, d.signal.symbol)}</text>`).join('');
   return `<svg viewBox="0 0 ${W} ${H}" class="w-full h-auto" role="img"
                aria-label="${t('perf.levels')}">${rows}</svg>`;
 }
@@ -3573,10 +3706,10 @@ function detailHtml(d){
     ? `<div class="text-[10px] text-amber-300/90 mb-2 leading-5">${t('perf.pathSimulated')}</div>`
     : (!hasPath ? `<div class="text-[10px] text-amber-300/80 mb-2">${t('perf.pathNone')}: ${d.path_reason}</div>` : '');
   const rows = [
-    ['perf.entry', fmtPx(s.entry)], ['perf.stop', fmtPx(s.stop)],
-    ['perf.tp1', fmtPx(s.tp1)], ['perf.tp2', fmtPx(s.tp2)],
-    ['perf.atr', fmtPx(s.atr)], ['perf.regime', s.regime || '—'],
-    ['perf.source', s.source || '—'], ['perf.origin', s.origin || '—'],
+    ['perf.entry', fmtPx(s.entry, s.symbol)], ['perf.stop', fmtPx(s.stop, s.symbol)],
+    ['perf.tp1', fmtPx(s.tp1, s.symbol)], ['perf.tp2', fmtPx(s.tp2, s.symbol)],
+    ['perf.atr', fmtPx(s.atr, s.symbol)], ['perf.regime', uiLabel(s.regime || '—')],
+    ['perf.source', uiLabel(s.source || '—')], ['perf.origin', uiLabel(s.origin || '—')],
     ['perf.hash', s.config_hash || '—'],
   ].map(([k,v])=>`<div class="flex justify-between gap-3"><span class="text-zinc-500">${t(k)}</span><span class="num text-zinc-300">${v}</span></div>`).join('');
 
@@ -3584,7 +3717,7 @@ function detailHtml(d){
     const x = o[k];
     if (!x) return `<div class="text-zinc-600">${k} · —</div>`;
     const good = Number(x.r_multiple) >= 0;
-    return `<div class="${good?'text-emerald-300':'text-red-300'}">${k} · ${good?'+':''}${fmtNum(x.r_multiple,2)}R · ${Number(x.hit_tp1)?'TP1':Number(x.hit_sl)?'SL':'timeout'}</div>`;
+    return `<div class="${good?'text-emerald-300':'text-red-300'}">${k} · ${good?'+':''}${fmtNum(x.r_multiple,2)}R · ${uiLabel(Number(x.hit_tp1)?'tp1':Number(x.hit_sl)?'sl':'timeout')}</div>`;
   }).join('');
 
   return `<div class="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4">
@@ -3734,7 +3867,9 @@ function renderPrefs(){
   });
 }
 
+let lastSettings = null;
 function renderSettings(d){
+  lastSettings = d;
   if (!d || d.error || d.standalone) {
     const el = byId('setReadonly');
     if (el) el.textContent = t('set.unavailable');
@@ -3753,7 +3888,7 @@ function renderSettings(d){
     ['set.stop', fmtNum(rm.stop_atr_multiple, 1) + '×ATR'],
     ['set.tp1', fmtNum(rm.tp1_r, 1) + 'R'],
     ['set.tp2', fmtNum(rm.tp2_r, 1) + 'R'],
-    ['set.trail', fmtNum((rm.trail_after_tp1_r || 0) * 100, 2) + '%'],
+    ['set.trail', fmtNum((rm.trail_after_tp1_r || 0) * 100, 2) + (LANG==='fa'?'٪':'%')],
   ].map(([k, v]) => `<div class="rounded-xl bg-white/[.03] border border-white/5 p-3">
       <div class="text-zinc-500 mb-1">${t(k)}</div><div class="num font-bold">${v}</div></div>`).join('');
 
@@ -3775,7 +3910,7 @@ function renderSettings(d){
   const rl = (d.risk_limits || {}).values || {};
   byId('setRiskLimits').innerHTML = Object.entries(rl).map(([k, v]) =>
     `<div class="flex justify-between gap-3"><span class="text-zinc-500 num">${k}</span>
-     <span class="num text-zinc-300">${fmtNum(v, 2)}</span></div>`).join('') +
+     <span class="num text-zinc-300">${k.endsWith('_pct')?PC(v,2,false):fmtNum(v,2)}</span></div>`).join('') +
     srcLine((d.risk_limits || {}).source || '—');
 
   const prov = d.providers || {};
@@ -3910,8 +4045,8 @@ const ERR_STYLE = {
 function errWhen(ts){
   if (!ts) return '—';
   const d = new Date(ts * 1000);
-  const hm = d.toLocaleTimeString(LANG === 'fa' ? 'fa-IR' : 'en-US', { hour: '2-digit', minute: '2-digit' });
-  const md = d.toLocaleDateString(LANG === 'fa' ? 'fa-IR' : 'en-US', { month: '2-digit', day: '2-digit' });
+  const hm = d.toLocaleTimeString(dateLocale(), { hour: '2-digit', minute: '2-digit' });
+  const md = d.toLocaleDateString(dateLocale(), { month: '2-digit', day: '2-digit' });
   return md + ' ' + hm;
 }
 
@@ -4566,7 +4701,7 @@ function renderExecSeg(){
   const honest = execMode==='auto'
     ? `<div class="mt-1 text-emerald-300/90">${t('dk.autoPaper')}</div>
        <div class="mt-0.5 text-zinc-500">${autoOn && execModeState.auto.last_tick_at
-          ? `${t('dk.autoLast')}: ${new Date(execModeState.auto.last_tick_at*1000).toLocaleTimeString(LANG==='fa'?'fa-IR':'en-US')} · ${t('dk.autoPlaced')} ${fmtNum(execModeState.auto.placed)}`
+          ? `${t('dk.autoLast')}: ${new Date(execModeState.auto.last_tick_at*1000).toLocaleTimeString(dateLocale())} · ${t('dk.autoPlaced')} ${fmtNum(execModeState.auto.placed)}`
           : t('dk.autoWaiting')}</div>`
     : '';
   const err = execModeState.error === 'no-backend'
@@ -4614,7 +4749,7 @@ async function setExecMode(m){
     symMode = r.symbols || {};
     execModeState = { loaded:true, error:null, auto:r.auto || null };
   }catch(e){ toast(t('dk.tMode'), t('dk.modeNoServer'), 'err'); execMode = prev; return; }
-  audit.unshift({ t:new Date().toLocaleTimeString('fa-IR'), a:'human', act:{fa:'تغییر حالت اجرا',en:'Execution mode change'}, sym:'—', d:{fa:'حالت جدید: '+t('dk.'+execMode),en:'New mode: '+t('dk.'+execMode)} });
+  audit.unshift({ t:new Date().toLocaleTimeString(dateLocale()), a:'human', act:{fa:'تغییر حالت اجرا',en:'Execution mode change'}, sym:'—', d:{fa:'حالت جدید: '+t('dk.'+execMode),en:'New mode: '+t('dk.'+execMode)} });
   renderExecSeg(); renderAudit(); refreshQueue();
   toast(t('dk.tMode'), t('dk.tModeM'), 'warn');
 }
@@ -4625,7 +4760,7 @@ async function setSymbolMode(sym, m){
     const r = await api.postExecMode({ symbol:sym, mode:m });
     if(!r || r.ok === false){ toast(t('dk.tMode'), (r && r.error) || t('dk.modeNoServer'), 'err'); return; }
     symMode = r.symbols || {}; execModeState.auto = r.auto || execModeState.auto;
-    audit.unshift({ t:new Date().toLocaleTimeString('fa-IR'), a:'human', act:{fa:'تغییر حالت نماد',en:'Symbol mode change'}, sym,
+    audit.unshift({ t:new Date().toLocaleTimeString(dateLocale()), a:'human', act:{fa:'تغییر حالت نماد',en:'Symbol mode change'}, sym,
       d:{fa:'حالت جدید: '+t('dk.'+(m||execMode)),en:'New mode: '+t('dk.'+(m||execMode))} });
   }catch(e){ toast(t('dk.tMode'), t('dk.modeNoServer'), 'err'); return; }
   renderExecSeg(); renderAudit(); refreshQueue();
@@ -4673,7 +4808,7 @@ async function refreshQueue(){
       sym: s.symbol, dir: 'long',
       score: +(s.composite ?? s.score ?? 0),
       rank: rows.indexOf(s) + 1,
-      ts: lastT ? new Date(lastT * 1000).toLocaleTimeString(LANG === 'fa' ? 'fa-IR' : 'en-US',
+      ts: lastT ? new Date(lastT * 1000).toLocaleTimeString(dateLocale(),
             { hour: '2-digit', minute: '2-digit' }) : '—',
       entry: +plan.entry, stop: +plan.stop, tp1: +plan.tp1, tp2: +plan.tp2,
       // The plan's own risk is the server's number, in the quote currency of
@@ -4742,21 +4877,21 @@ function renderQueue(){
         <span class="ms-auto chip num ${q.ttl!=null && q.ttl<60?'text-red-300':'text-zinc-400'}">${icon('timer','w-3 h-3')} ${q.ttl==null?'—':fmtNum(Math.max(0,q.ttl))+(LANG==='fa'?'ث':'s')}</span>
       </div>
       <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] mb-3">
-        <div class="rounded-lg bg-white/[.02] border border-white/5 p-2"><div class="text-zinc-500 text-[10px]">${t('dk.price')}</div><div class="num font-bold">${fmtNum(q.entry, q.entry<1000?2:0)}</div></div>
-        <div class="rounded-lg bg-white/[.02] border border-white/5 p-2"><div class="text-zinc-500 text-[10px]">${t('col.stop')}</div><div class="num font-bold text-red-300">${fmtNum(q.stop, q.stop<1000?2:0)}</div></div>
-        <div class="rounded-lg bg-white/[.02] border border-white/5 p-2"><div class="text-zinc-500 text-[10px]">${t('col.tp1')}</div><div class="num font-bold text-emerald-300">${fmtNum(q.tp1, q.tp1<1000?2:0)}</div></div>
+        <div class="rounded-lg bg-white/[.02] border border-white/5 p-2"><div class="text-zinc-500 text-[10px]">${t('dk.price')}</div><div class="num font-bold">${fmtMarketPrice(q.entry, q.sym)}</div></div>
+        <div class="rounded-lg bg-white/[.02] border border-white/5 p-2"><div class="text-zinc-500 text-[10px]">${t('col.stop')}</div><div class="num font-bold text-red-300">${fmtMarketPrice(q.stop, q.sym)}</div></div>
+        <div class="rounded-lg bg-white/[.02] border border-white/5 p-2"><div class="text-zinc-500 text-[10px]">${t('col.tp1')}</div><div class="num font-bold text-emerald-300">${fmtMarketPrice(q.tp1, q.sym)}</div></div>
         <div class="rounded-lg bg-white/[.02] border border-white/5 p-2"><div class="text-zinc-500 text-[10px]">${t('dk.riskPct')}</div><div data-qrisk="${q.id}" class="num font-bold ${q.risk>0.75?'text-red-300':'text-emerald-300'}">${PC(q.risk,2,false)}</div></div>
       </div>
       <div data-qeditor="${q.id}" class="${q.edit&&q.edit.on?'':'hidden'} mt-2 mb-3 rounded-lg border border-amber-300/20 bg-amber-300/[.03] p-2.5">
         <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px]">
           <label class="block"><span class="text-zinc-500">${t('dk.notional')}</span>
-            <input data-id="${q.id}" data-field="sizeQ" class="qIn num w-full mt-1 bg-black/30 border border-white/10 rounded-md px-2 py-1.5" value="${q.edit?q.edit.sizeQ:q.sizeQ}"></label>
+            <input data-id="${q.id}" data-field="sizeQ" class="qIn num w-full mt-1 bg-black/30 border border-white/10 rounded-md px-2 py-1.5" value="${q.edit?q.edit.sizeQ:q.sizeQ}"><span class="text-zinc-500"> (${unitLabel(quoteUnit(q.sym))}) </span></label>
           <label class="block"><span class="text-zinc-500">${t('col.stop')}</span>
-            <input data-id="${q.id}" data-field="stop" class="qIn num w-full mt-1 bg-black/30 border border-white/10 rounded-md px-2 py-1.5" value="${q.edit?q.edit.stop:q.stop}"></label>
+            <input data-id="${q.id}" data-field="stop" class="qIn num w-full mt-1 bg-black/30 border border-white/10 rounded-md px-2 py-1.5" value="${q.edit?q.edit.stop:q.stop}"><span class="text-zinc-500"> (${unitLabel(quoteUnit(q.sym))}) </span></label>
           <label class="block"><span class="text-zinc-500">${t('col.tp1')}</span>
-            <input data-id="${q.id}" data-field="tp1" class="qIn num w-full mt-1 bg-black/30 border border-white/10 rounded-md px-2 py-1.5" value="${q.edit?q.edit.tp1:q.tp1}"></label>
+            <input data-id="${q.id}" data-field="tp1" class="qIn num w-full mt-1 bg-black/30 border border-white/10 rounded-md px-2 py-1.5" value="${q.edit?q.edit.tp1:q.tp1}"><span class="text-zinc-500"> (${unitLabel(quoteUnit(q.sym))}) </span></label>
           <label class="block"><span class="text-zinc-500">${t('col.tp2')}</span>
-            <input data-id="${q.id}" data-field="tp2" class="qIn num w-full mt-1 bg-black/30 border border-white/10 rounded-md px-2 py-1.5" value="${q.edit?q.edit.tp2:q.tp2}"></label>
+            <input data-id="${q.id}" data-field="tp2" class="qIn num w-full mt-1 bg-black/30 border border-white/10 rounded-md px-2 py-1.5" value="${q.edit?q.edit.tp2:q.tp2}"><span class="text-zinc-500"> (${unitLabel(quoteUnit(q.sym))}) </span></label>
         </div>
         <div class="flex items-center gap-2 mt-1.5">
           <span class="text-[10px] text-zinc-500">${t('dk.editServer')}</span>
@@ -4765,7 +4900,7 @@ function renderQueue(){
         <div data-qgate="${q.id}" class="mt-1 text-[10px] leading-5 ${q.edit&&q.edit.blocked?'text-red-300':'text-zinc-500'}">${q.edit&&q.edit.gate?q.edit.gate:t('dk.editHint')}</div>
       </div>
       <div class="flex flex-wrap items-center gap-2">
-        <span class="text-[10px] text-zinc-500 num">${t('dk.amount')}: ${fmtNum(q.sizeQ)} · R:TP <span class="text-${col}-300 font-bold">${fmtNum(rr,2)}</span></span>
+        <span class="text-[10px] text-zinc-500 num">${t('dk.amount')}: ${fmtMarketPrice(q.sizeQ, q.sym)} · R:TP <span class="text-${col}-300 font-bold">${fmtNum(rr,2)}</span></span>
         <div class="flex gap-2 ms-auto w-full sm:w-auto">
           <button data-edit="${q.id}" class="qEditBtn flex-1 sm:flex-none px-3 py-2 rounded-xl text-[11px] font-bold bg-white/5 border border-white/10 text-amber-200/90">${t('dk.edit')}</button>
           <button data-reject="${q.id}" class="qRej flex-1 sm:flex-none px-3.5 py-2 rounded-xl text-[11px] font-bold bg-white/5 border border-white/10 text-zinc-300">${t('dk.reject')}</button>
@@ -4782,12 +4917,14 @@ function renderQueue(){
   document.querySelectorAll('.qMode').forEach(sel=> sel.onchange = ()=> setSymbolMode(sel.dataset.symmode, sel.value));
   document.querySelectorAll('.qEditBtn').forEach(b=> b.onclick = ()=> toggleRowEdit(b.dataset.edit));
   document.querySelectorAll('.qReset').forEach(b=> b.onclick = ()=> resetRowEdit(b.dataset.qreset));
+  prepareNumericInputs();
   document.querySelectorAll('.qIn').forEach(inp=> inp.oninput = ()=> {
     const q = queue.find(x=>x.id===inp.dataset.id); if(!q || !q.edit) return;
-    const v = parseFloat(inp.value);
+    const v = parseInputNumber(inp.value);
     q.edit[inp.dataset.field] = Number.isFinite(v) ? v : 0;
     scheduleRowWhatIf(q);
   });
+  localizeDisplayControls();
   refreshIcons();
 }
 /* --- Editing a queued proposal -------------------------------------------
@@ -4868,7 +5005,7 @@ function resolveQ(id, approve){
   if (!approve) {
     queueDismissed.add(q.sym);
     queue = queue.filter(x=>x.id!==id);
-    audit.unshift({ t:new Date().toLocaleTimeString('fa-IR'), a:'human',
+    audit.unshift({ t:new Date().toLocaleTimeString(dateLocale()), a:'human',
       act:{fa:'رد سیگنال',en:'Signal rejected'}, sym:q.sym,
       d:{fa:`امتیاز ${fmtNum(q.score)} · ریسک ${PC(q.risk,2,false)}`,en:`score ${fmtNum(q.score)} · risk ${PC(q.risk,2,false)}`} });
     renderQueue(); renderAudit();
@@ -4901,9 +5038,9 @@ function resolveQ(id, approve){
     }
     queueDismissed.add(q.sym);
     queue = queue.filter(x=>x.id!==id);
-    audit.unshift({ t:new Date().toLocaleTimeString('fa-IR'), a:'human',
+    audit.unshift({ t:new Date().toLocaleTimeString(dateLocale()), a:'human',
       act:{fa:'تأیید و ارسال',en:'Approved & sent'}, sym:q.sym,
-      d:{fa:`امتیاز ${fmtNum(q.score)} · ارزش ${fmtNum(q.sizeQ)}`,en:`score ${fmtNum(q.score)} · notional ${fmtNum(q.sizeQ)}`} });
+      d:{fa:`امتیاز ${fmtNum(q.score)} · ارزش ${fmtMarketPrice(q.sizeQ, q.sym)}`,en:`score ${fmtNum(q.score)} · notional ${fmtMarketPrice(q.sizeQ, q.sym)}`} });
     renderQueue(); renderAudit();
     toast(t('dk.tApproved'), t('dk.tApprovedM'), 'ok');
     if (updatePaperPositions) updatePaperPositions();
@@ -4932,6 +5069,7 @@ function fillTicketFromLive(){
   byId('mPrice').value = px || '';
   byId('mStop').value = manual.stop || '';
   byId('mTp').value = manual.tp || '';
+  localizeDisplayControls();
   updateTicket();
 }
 window.fillTicketFromLive = fillTicketFromLive;
@@ -4944,15 +5082,16 @@ function initTicket(){
   byId('mAmt').value = manual.amount;
   fillTicketFromLive();
   byId('mSym').onchange = e=>{ manual.sym=e.target.value; fillTicketFromLive(); };
-  byId('mPrice').oninput = e=>{ manual.price=+e.target.value; updateTicket(); };
-  byId('mAmt').oninput  = e=>{ manual.amount=+e.target.value; updateTicket(); };
-  byId('mStop').oninput = e=>{ manual.stop=+e.target.value; updateTicket(); };
-  byId('mTp').oninput   = e=>{ manual.tp=+e.target.value; updateTicket(); };
+  byId('mPrice').oninput = e=>{ manual.price=parseInputNumber(e.target.value); updateTicket(); };
+  byId('mAmt').oninput  = e=>{ manual.amount=parseInputNumber(e.target.value); updateTicket(); };
+  byId('mStop').oninput = e=>{ manual.stop=parseInputNumber(e.target.value); updateTicket(); };
+  byId('mTp').oninput   = e=>{ manual.tp=parseInputNumber(e.target.value); updateTicket(); };
   document.querySelectorAll('.mSide').forEach(b=> b.onclick = ()=>{
     manual.side=b.dataset.side;
     document.querySelectorAll('.mSide').forEach(x=>x.className='mSide px-2 py-1.5 rounded-md text-[11px] font-bold text-zinc-400');
     b.className='mSide px-2 py-1.5 rounded-md text-[11px] font-bold '+(b.dataset.side==='buy'?'bg-emerald-400/15 text-emerald-300':'bg-red-400/15 text-red-300');
   });
+  localizeDisplayControls();
   updateTicket();
 }
 function fxOf(sym){
@@ -5013,7 +5152,7 @@ async function refreshWhatIf(seq){
     bar.style.background = after > max ? 'linear-gradient(90deg,#f87171,#ef4444)'
                           : after > max*0.75 ? 'linear-gradient(90deg,#fbbf24,#f59e0b)'
                           : 'linear-gradient(90deg,#34d399,#10b981)';
-    byId('whatifWorst').textContent = `${PC(p.loss_at_stop_pct_of_equity,2,false)} (${fmtNum(p.loss_at_stop_usd)} ${LANG==='fa'?'دلار':'USD'})`;
+    byId('whatifWorst').textContent = `${PC(p.loss_at_stop_pct_of_equity,2,false)} (${fmtMoney(p.loss_at_stop_usd, 'USD')})`;
     byId('whatifSlots').textContent = fmtNum(p.slots_left,0) + ' / ' + fmtNum(p.max_concurrent,0);
     if(p.blocked){
       gate.className = 'mt-2 text-[10px] leading-5 text-red-300';
@@ -5074,14 +5213,14 @@ function renderMarketOverview(){
         <div class="num font-bold">${PC(c.vol_weighted_24h,2)}</div></div>
       <div class="rounded-lg bg-white/[.03] border border-white/5 p-2.5">
         <div class="text-zinc-500 text-[10px] mb-1">${t('mk.disp')}</div>
-        <div class="num font-bold">${fmtNum(c.dispersion_24h,2)}</div></div>
+        <div class="num font-bold">${PC(c.dispersion_24h,2,false)}</div></div>
       <div class="rounded-lg bg-white/[.03] border border-white/5 p-2.5">
         <div class="text-zinc-500 text-[10px] mb-1">${t('mk.conc')}</div>
         <div class="num font-bold">${PC(tn.top3_share_pct,1,false)}</div></div>
       <div class="rounded-lg bg-white/[.03] border border-white/5 p-2.5">
         <div class="text-zinc-500 text-[10px] mb-1">${t('mk.prem')}</div>
         <div class="num font-bold">${d.premium_pct == null ? '—' : PC(d.premium_pct,2)}</div>
-        <div class="text-[10px] text-zinc-500 num mt-0.5">${d.fx && d.fx.last != null ? fmtNum(d.fx.last) : '—'}</div></div>
+        <div class="text-[10px] text-zinc-500 num mt-0.5">${d.fx && d.fx.last != null ? fmtMoney(d.fx.last, 'IRT') : '—'}</div></div>
     </div>
     <div class="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3 text-[11px]">
       <div><div class="text-[10px] text-zinc-500 mb-1.5">${t('mk.leaders')}${d.all_down ? ` · <span class="text-red-300">${t('mk.allDown')}</span>` : ''}</div>${mini(d.leaders) || '<span class="text-zinc-600">—</span>'}</div>
@@ -5089,7 +5228,7 @@ function renderMarketOverview(){
       <div>
         <div class="text-[10px] text-zinc-500 mb-1.5">${t('mk.mix')}${sig.avg_composite != null ? ` · ${t('mk.avgComp')} ${fmtNum(sig.avg_composite,1)}` : ''}</div>
         ${Object.entries(sig.directions || {}).map(([k,v])=>`<div class="flex items-center justify-between gap-2">
-            <span class="text-[11px]">${k}</span><span class="num text-[11px] font-bold">${fmtNum(v,0)}</span></div>`).join('') || '<span class="text-zinc-600">—</span>'}
+            <span class="text-[11px]">${uiLabel(k)}</span><span class="num text-[11px] font-bold">${fmtNum(v,0)}</span></div>`).join('') || '<span class="text-zinc-600">—</span>'}
       </div>
     </div>
     <div class="mt-2.5 text-[10px] text-zinc-600 leading-5">${d.note || ''}</div>`;
@@ -5128,7 +5267,7 @@ function renderBenchmark(){
   const num = (v, dec) => v == null ? '—' : fmtNum(v, dec);
   const tr = rows.map(r=>{
     const cap = (r.up_capture_pct == null && r.down_capture_pct == null) ? '—'
-      : `${fmtNum(r.up_capture_pct,0)}% / ${fmtNum(r.down_capture_pct,0)}%`;
+      : `${PC(r.up_capture_pct,0,false)} / ${PC(r.down_capture_pct,0,false)}`;
     const col = r.alpha_annual_pct > 0 ? 'text-emerald-300' : 'text-red-300';
     return `<tr>
       <td class="num font-bold">${window.coinIcon(r.symbol, 20)}${r.symbol}</td>
@@ -5197,7 +5336,7 @@ function renderBookAlloc(){
   const body = rows.map(a=>`<tr>
       <td class="num font-bold">${window.coinIcon(a.symbol, 20)}${a.symbol}</td>
       <td class="num">${PC(a.risk_pct, 2, false)}</td>
-      <td class="num">${fmtNum(a.notional_usd)} <span class="text-zinc-500">USD</span></td>
+      <td class="num">${fmtMoney(a.notional_usd, 'USD')}</td>
       <td class="num">${PC(a.stop_pct, 2, false)}</td>
       <td class="num">${a.corr_max == null ? '—' : fmtNum(a.corr_max, 2)}</td>
       <td class="text-[10px] text-zinc-400">${t('al.bound.' + a.bound_by) || a.bound_by}</td>
@@ -5213,8 +5352,8 @@ function renderBookAlloc(){
       </tr></thead><tbody>${body}</tbody></table></div>
     <div class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-zinc-500">
       <span>${t('al.heat')}: <b class="num text-zinc-300">${PC(tot.heat_after_pct, 2, false)}</b></span>
-      <span>${t('al.notional')}: <b class="num text-zinc-300">${fmtNum(tot.invested_usd)} USD</b></span>
-      <span>${t('al.cash')}: <b class="num text-zinc-300">${fmtNum(tot.cash_after_usd)} USD</b></span>
+      <span>${t('al.notional')}: <b class="num text-zinc-300">${fmtMoney(tot.invested_usd, 'USD')}</b></span>
+      <span>${t('al.cash')}: <b class="num text-zinc-300">${fmtMoney(tot.cash_after_usd, 'USD')}</b></span>
       <span>${t('al.slots')}: <b class="num text-zinc-300">${fmtNum(tot.slots_left, 0)}</b></span>
     </div>
     ${dropped.length ? `<div class="mt-1.5 text-[10px] text-amber-300/90">${t('al.dropped')}: ${dropped.map(x=>`${x.symbol} (${x.reason})`).join(' · ')}</div>` : ''}`;
@@ -5238,6 +5377,7 @@ function applyBookAlloc(sym, qty, stop){
   toast(t('al.hdr'), t('al.applied'), 'ok');
 }
 function updateTicket(){
+  localizeDisplayControls();
   const {sym,price,amount,stop,tp} = manual;
   const w0 = byId('capWarn');
   if(!price){
@@ -5255,8 +5395,8 @@ function updateTicket(){
   const riskPct = riskAmt/fx/EQUITY*100;
   const rr = Math.abs(tp-price)/Math.abs(price-stop);
   const exposure = notional/fx/EQUITY*100;
-  byId('pNotional').textContent = fmtNum(notional);
-  byId('pRisk').textContent = fmtNum(riskAmt);
+  byId('pNotional').textContent = fmtMarketPrice(notional, sym);
+  byId('pRisk').textContent = fmtMarketPrice(riskAmt, sym);
   byId('pRiskPct').textContent = PC(riskPct,2);
   byId('pRR').textContent = fmtNum(rr,2);
   const warns=[];
@@ -5298,9 +5438,9 @@ function submitManual(){
   // same gate with the account's real numbers and names the one that failed.
   // Two implementations of one rule drift, and the one in the browser wins
   // silently because it answers first.
-  audit.unshift({ t:new Date().toLocaleTimeString('fa-IR'), a:'human', act:{fa:'سفارش دستی',en:'Manual order'}, sym,
-    d:{fa:`${side==='buy'?t('sg.long'):(LANG==='fa'?'فروش':'Sell')} · نامینال ${fmtNum(price*amount)} · ریسک ${PC(riskPct,2)}`,
-       en:`${side==='buy'?'Long':'Sell'} · notional ${fmtNum(price*amount)} · risk ${PC(riskPct,2)}`} });
+  audit.unshift({ t:new Date().toLocaleTimeString(dateLocale()), a:'human', act:{fa:'سفارش دستی',en:'Manual order'}, sym,
+    d:{fa:`${side==='buy'?t('sg.long'):(LANG==='fa'?'فروش':'Sell')} · نامینال ${fmtMarketPrice(price*amount, sym)} · ریسک ${PC(riskPct,2)}`,
+       en:`${side==='buy'?'Long':'Sell'} · notional ${fmtMarketPrice(price*amount, sym)} · risk ${PC(riskPct,2)}`} });
   if (!(window.NBX && NBX.core && NBX.core.api)) {
     toast(LANG==='fa'?'سرور در دسترس نیست':'Server unreachable',
           LANG==='fa'?'سفارش ثبت نشد؛ چیزی جای‌گزین نمی‌شود.':'The order was not placed; nothing is substituted.', 'err');
@@ -5321,9 +5461,9 @@ function submitManual(){
       return;
     }
     // Only a confirmed fill earns a journal row and a success toast.
-    audit.unshift({ t:new Date().toLocaleTimeString('fa-IR'), a:'human', act:{fa:'سفارش دستی',en:'Manual order'}, sym,
-      d:{fa:`${side==='buy'?t('sg.long'):(LANG==='fa'?'فروش':'Sell')} · نامینال ${fmtNum(price*amount)} · ریسک ${PC(riskPct,2)}`,
-         en:`${side==='buy'?'Long':'Sell'} · notional ${fmtNum(price*amount)} · risk ${PC(riskPct,2)}`} });
+    audit.unshift({ t:new Date().toLocaleTimeString(dateLocale()), a:'human', act:{fa:'سفارش دستی',en:'Manual order'}, sym,
+      d:{fa:`${side==='buy'?t('sg.long'):(LANG==='fa'?'فروش':'Sell')} · نامینال ${fmtMarketPrice(price*amount, sym)} · ریسک ${PC(riskPct,2)}`,
+         en:`${side==='buy'?'Long':'Sell'} · notional ${fmtMarketPrice(price*amount, sym)} · risk ${PC(riskPct,2)}`} });
     renderAudit();
     toast(t('dk.tManual'), t('dk.tManualM'), 'ok');
     if (updatePaperPositions) updatePaperPositions();
@@ -5369,6 +5509,8 @@ function btFillSymbols(){
   sel.innerHTML = uniq.map(s=>`<option value="${s}">${s}</option>`).join('');
   const def = uniq.find(s=>/BTC/.test(s)) || uniq[0];
   if (def) sel.value = def;
+  sel.onchange = localizeDisplayControls;
+  localizeDisplayControls();
   BT.symbolsLoaded = true;
 }
 function btReadCfg(){
@@ -5376,13 +5518,13 @@ function btReadCfg(){
   return {
     symbol: g('btSym').value || 'BTCIRT',
     tf: g('btTf').value || '1h',
-    equity: +g('btEq').value || 50000,
-    risk_pct: +g('btRisk').value || 0.75,
-    atr_stop_k: +g('btStopK').value || 2,
-    max_concurrent: +g('btMax').value || 5,
-    bars: Math.max(200, Math.min(+g('btBars').value || 600, 2000)),
-    train_bars: +g('btTrain').value || 240,
-    eval_bars: +g('btEval').value || 120,
+    equity: parseInputNumber(g('btEq').value) || 50000,
+    risk_pct: parseInputNumber(g('btRisk').value) || 0.75,
+    atr_stop_k: parseInputNumber(g('btStopK').value) || 2,
+    max_concurrent: parseInputNumber(g('btMax').value) || 5,
+    bars: Math.max(200, Math.min(parseInputNumber(g('btBars').value) || 600, 2000)),
+    train_bars: parseInputNumber(g('btTrain').value) || 240,
+    eval_bars: parseInputNumber(g('btEval').value) || 120,
   };
 }
 const BT_GATE_STYLE = {
@@ -5403,7 +5545,16 @@ function btRenderGate(rep){
   const oos = document.getElementById('btOosChip');
   if (oos) oos.textContent = t('bt.oos');
   const msg = document.getElementById('btGateMsg');
-  if (msg) msg.textContent = g.message || '';
+  if (msg) {
+    const names = {windows_ge_3:'تعداد پنجره‌ها',oos_trades_ge_min:'تعداد معاملات خارج از نمونه',
+      profit_factor_ge_1_3:'ضریب سود',max_drawdown_lt_15:'بیشینه افت',expectancy_r_positive:'امید ریاضی مثبت',
+      is_oos_degradation_ok:'حفظ عملکرد خارج از نمونه',profitable_windows_ge_50:'سهم پنجره‌های سودده'};
+    const fa = g.state==='PASS'?'نتایج خارج از نمونه تمام بررسی‌های ADR-0009 را گذرانده‌اند.':
+      g.state==='SYNTHETIC_DATA'?'داده شبیه‌سازی‌شده است؛ این نتیجه مبنای ارتقا نیست.':
+      g.state==='INSUFFICIENT_DATA'?`شواهد کافی نیست؛ حدود ${fmtNum(g.bars_needed)} کندل تاریخچه لازم است.`:
+      g.state==='FAIL'?'بررسی‌های ناموفق: '+(g.failed||[]).map(k=>names[k]||k).join('، '):g.message||'';
+    msg.textContent = localizeText(LANG==='fa'?fa:g.message||'');
+  }
   const meta = document.getElementById('btMeta');
   if (meta && rep){
     const bits = [];
@@ -5418,13 +5569,14 @@ function btRenderGate(rep){
 function btRender(r){
   window.__btRan = true;          // a real report exists; the empty state is over
   const rep = (r && r.report) || {};
+  BT.lastReport = rep;
   const a = rep.aggregate || {};
   const set = (id,v)=>{ const el=document.getElementById(id); if(el) el.textContent=v; };
   const signed = (v, d=2) => (v>0?'+':'') + fmtNum(v||0, d);
   set('btPf', a.trades ? fmtNum(a.profit_factor||0, 2) : '—');
-  set('btMdd', a.trades ? '-'+fmtNum(a.max_drawdown||0,1)+'%' : '—');
+  set('btMdd', a.trades ? '-'+fmtNum(a.max_drawdown||0,1)+(LANG==='fa'?'٪':'%') : '—');
   set('btTrades', fmtNum(a.trades||0));
-  set('btWin', a.trades ? fmtNum(a.hit_rate||0,1)+'%' : '—');
+  set('btWin', a.trades ? fmtNum(a.hit_rate||0,1)+(LANG==='fa'?'٪':'%') : '—');
   set('btExp', a.trades ? signed(a.expectancy_r,2)+'R' : '—');
   const expEl = document.getElementById('btExp');
   if (expEl) expEl.className = 'num font-extrabold text-lg sm:text-xl ' + ((a.expectancy_r||0)>=0?'text-emerald-400':'text-red-400');
@@ -5433,7 +5585,7 @@ function btRender(r){
   btRenderGate(rep);
 
   const sum = document.getElementById('btSummary');
-  if (sum) sum.textContent = `${fmtNum(a.windows||0)} OOS windows · train ${fmtNum(rep.train_bars||0)} / eval ${fmtNum(rep.eval_bars||0)} · ${new Date().toLocaleTimeString(LANG==='fa'?'fa-IR':'en-US')}`;
+  if (sum) sum.textContent = `${fmtNum(a.windows||0)} ${LANG==='fa'?'پنجره خارج از نمونه · آموزش':'OOS windows · train'} ${fmtNum(rep.train_bars||0)} / ${LANG==='fa'?'آزمون':'eval'} ${fmtNum(rep.eval_bars||0)} · ${new Date().toLocaleTimeString(dateLocale())}`;
 
   /* windows table: OOS numbers with the params chosen on that train slice */
   const body = document.getElementById('btBody');
@@ -5453,10 +5605,10 @@ function btRender(r){
         <td class="num text-[10px] text-sky-300">${pTxt}</td>
         <td class="num ${isR>=0?'text-zinc-300':'text-zinc-500'}">${signed(isR,2)}R</td>
         <td class="num">${fmtNum(w.trades||0)}</td>
-        <td class="num">${fmtNum(w.hit_rate||0,1)}%</td>
+        <td class="num">${PC(w.hit_rate,1,false)}</td>
         <td class="num font-bold ${((w.profit_factor)||0)>=1.3?'text-emerald-300':'text-zinc-300'}">${fmtNum(w.profit_factor||0,2)}</td>
         <td class="num ${oosR>=0?'text-emerald-400':'text-red-400'}">${signed(oosR,2)}R</td>
-        <td class="num text-amber-300">${fmtNum(w.max_drawdown||0,1)}%</td>
+        <td class="num text-amber-300">${PC(w.max_drawdown,1,false)}</td>
       </tr>`;
     }).join('')
       : `<tr><td colspan="9" class="text-center text-zinc-500 text-xs py-6">—</td></tr>`;
@@ -5469,11 +5621,11 @@ function btRender(r){
     const trs = (last && last.sample_trades) || [];
     tb.innerHTML = trs.length ? trs.map(x=>`
       <tr>
-        <td class="num text-zinc-400">${fmtNum(x.entry, x.entry<1000?3:0)}</td>
-        <td class="num text-zinc-400">${fmtNum(x.entry, x.entry<1000?3:0)}</td>
-        <td class="num">${fmtNum(x.exit||0, (x.exit||0)<1000?3:0)}</td>
-        <td><span class="chip ${x.reason==='tp1'||x.reason==='tp2'?'text-emerald-300':(x.reason||'').indexOf('sl')===0?'text-red-300':'text-zinc-300'}">${x.reason||'—'}${x.ambiguous?' ⚠':''}</span></td>
-        <td class="num font-bold ${(x.pnl||0)>=0?'text-emerald-400':'text-red-400'}">${signed(x.pnl||0,1)}</td>
+        <td class="num text-zinc-400">${fmtMarketPrice(x.entry, rep.symbol)}</td>
+        <td class="num text-zinc-400">${fmtMarketPrice(x.entry, rep.symbol)}</td>
+        <td class="num">${fmtMarketPrice(x.exit, rep.symbol)}</td>
+        <td><span class="chip ${x.reason==='tp1'||x.reason==='tp2'?'text-emerald-300':(x.reason||'').indexOf('sl')===0?'text-red-300':'text-zinc-300'}">${uiLabel(x.reason||'—')}${x.ambiguous?' ⚠':''}</span></td>
+        <td class="num font-bold ${(x.pnl||0)>=0?'text-emerald-400':'text-red-400'}">${fmtMoney(x.pnl, quoteUnit(rep.symbol), 2, true)}</td>
         <td class="num ${(x.r||0)>=0?'text-emerald-400':'text-red-400'}">${signed(x.r||0,2)}R</td>
       </tr>`).join('')
       : `<tr><td colspan="6" class="text-center text-zinc-500 text-xs py-6">—</td></tr>`;
@@ -5486,7 +5638,7 @@ function btRender(r){
   const el2 = document.getElementById('btChart');
   if (el2 && curve.length) {
     el2.innerHTML='';
-    const ch2 = LightweightCharts.createChart(el2, baseOpts()); charts.push(ch2);
+    const ch2 = LightweightCharts.createChart(el2, baseOpts(quoteUnit(rep.symbol))); charts.push(ch2);
     const s2 = ch2.addAreaSeries({ lineColor:'#818cf8', lineWidth:2, topColor:'rgba(129,140,248,.22)', bottomColor:'rgba(129,140,248,0)', priceLineVisible:false });
     try {
       s2.setData(seriesData(curve));
@@ -5584,7 +5736,7 @@ function renderGrid(result){
         <span class="font-extrabold text-emerald-300 text-sm">${t('bt.gridBest')}</span>
         <div class="mt-1.5 grid grid-cols-2 sm:grid-cols-3 gap-1.5 text-[10px]">
           <div class="rounded bg-white/[.03] p-1.5"><span class="text-zinc-500">${t('rk.rpt')}:</span> <b class="num">${fmtNum(b.params?.risk_pct||0,2)}%</b></div>
-          <div class="rounded bg-white/[.03] p-1.5"><span class="text-zinc-500">stop k:</span> <b class="num">${fmtNum(b.params?.atr_stop_k||0,2)}</b></div>
+          <div class="rounded bg-white/[.03] p-1.5"><span class="text-zinc-500">${uiLabel('stop k')}:</span> <b class="num">${fmtNum(b.params?.atr_stop_k||0,2)}</b></div>
           <div class="rounded bg-white/[.03] p-1.5"><span class="text-zinc-500">PF:</span> <b class="text-emerald-300">${fmtNum(b.aggregate?.profit_factor||0,2)}</b></div>
         </div>
       </div>`;
@@ -5608,16 +5760,16 @@ function renderGrid(result){
     refreshIcons();
     try {
       const barsEl = document.getElementById('btBars');
-      const r = await NBX.core.api.runGridSearch(sym, tf, undefined, barsEl ? +barsEl.value : 600);
+      const r = await NBX.core.api.runGridSearch(sym, tf, undefined, barsEl ? parseInputNumber(barsEl.value) : 600);
       if (r && r.ok) {
         renderGrid(r);
-        toast && toast(r.fallback ? (LANG==='fa'?'گرید محلی':'Local grid') : 'grid done',
+        toast && toast(r.fallback ? (LANG==='fa'?'گرید محلی':'Local grid') : (LANG==='fa'?'جست‌وجو تمام شد':'Grid done'),
           `${fmtNum(r.combo_count)} ${LANG==='fa'?'ترکیب':'combos'}` +
           (r.fallback ? ' — ' + String(r.fallback_reason||'').slice(0,80) : ''), r.fallback ? 'warn' : 'ok');
       }
       else {
         reportCaught({ message: 'grid rejected: ' + String(r && r.error || 'no result') }, 'grid');
-        toast && toast('grid error', errLine(r), 'err');
+        toast && toast(LANG==='fa'?'خطای جست‌وجو':'Grid error', errLine(r), 'err');
       }
     } catch(e) {
       reportCaught(e, 'grid');
@@ -5645,7 +5797,7 @@ function renderMulti(res){
     if (r.error) return `<tr><td class="font-bold">${window.coinIcon(r.sym, 20)}${r.sym}</td><td colspan="6" class="text-red-300 text-[11px]">${String(r.error).slice(0,120)}</td></tr>`;
     return `<tr>
       <td class="font-bold">${window.coinIcon(r.sym, 20)}${r.sym}</td>
-      <td class="num">${fmtNum(r.risk,2)}%</td>
+      <td class="num">${PC(r.risk,2,false)}</td>
       <td class="num">${fmtNum(r.k,2)}</td>
       <td class="num font-bold ${r.pf>=1.3?'text-emerald-300':'text-amber-300'}">${fmtNum(r.pf,2)}</td>
       <td class="num">${fmtNum(r.trades)}</td>
@@ -5785,7 +5937,7 @@ if (window.NBX && NBX.core && NBX.core.engine && typeof NBX.core.engine.subscrib
 setInterval(()=>{
   let expired=false;
   queue.forEach(q=>{ if(q.state!=='expired' && q.ttl!=null){ q.ttl--; if(q.ttl<=0){ q.state='expired'; expired=true; } } });
-  if(expired){ audit.unshift({t:new Date().toLocaleTimeString('fa-IR'), a:'sys', act:{fa:'انقضای پیشنهاد',en:'Proposal expired'}, sym:'—', d:{fa:'TTL تمام شد؛ از صف حذف شد',en:'TTL elapsed; removed from queue'}});
+  if(expired){ audit.unshift({t:new Date().toLocaleTimeString(dateLocale()), a:'sys', act:{fa:'انقضای پیشنهاد',en:'Proposal expired'}, sym:'—', d:{fa:'TTL تمام شد؛ از صف حذف شد',en:'TTL elapsed; removed from queue'}});
     renderAudit(); toast(t('dk.tExpired'), t('dk.tExpiredM'), 'warn'); }
   const pend=queue.filter(q=>q.state!=='expired');
   const pg=byId('page-desk');

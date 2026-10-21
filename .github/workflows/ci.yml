@@ -57,6 +57,8 @@ jobs:
         run: npm run lint:dashboard
       - name: broker parity — python vs javascript
         run: node scripts/js_broker_test.js
+      - name: financial display and localization (offline jsdom)
+        run: npm run test:display
       - name: preflight parity — 28 cases × 10 gates
         run: python3 scripts/check_preflight_parity.py
       - name: generated mobile file is current

@@ -9,6 +9,7 @@
     "lint:dashboard": "node scripts/lint_dashboard.mjs",
     "test:js": "node scripts/js_broker_test.js",
     "build": "python scripts/build_coin_icons.py && npm run css && python scripts/build_standalone.py",
+    "test:display": "node scripts/test_display.cjs",
     "test:icons": "node scripts/test_coin_icons.cjs"
   },
   "devDependencies": {

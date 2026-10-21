@@ -43,8 +43,12 @@ body {
 /* ---------- Typography helpers ---------- */
 .num {
   font-variant-numeric: tabular-nums;
+  unicode-bidi: isolate;
   letter-spacing: 0.01em;
 }
+input[data-number-input] { direction: ltr; unicode-bidi: isolate; text-align: end; }
+[data-unit-for] { unicode-bidi: isolate; white-space: nowrap; }
+td.num { white-space: nowrap; }
 .kpi-num {
   font-weight: 800;
   font-size: clamp(1.05rem, 4.5vw, 1.5rem);
