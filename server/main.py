@@ -52,6 +52,7 @@ from benchmark import relative as relative_to
 from benchmark import summarise as summarise_relative
 from exec_mode import EXEC_MODE, InvalidMode
 from fa_engine import FA_ENGINE, FAResult
+from fees import DEFAULT_EQUITY_USD
 from market_overview import overview as market_overview
 from money import Rate, toman, usd
 from nobitex_client import ClientError, NobitexClient, UpstreamUnavailable
@@ -349,7 +350,7 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(
     title="nobiTrader",
-    version="1.0.4",
+    version="1.0.5",
     lifespan=lifespan,
 )
 
@@ -420,7 +421,7 @@ def security_token_ok(request: Request) -> bool:
 
 TIMEFRAMES = ["15m", "1h", "4h", "D"]
 client = NobitexClient()
-EQUITY = float(os.getenv("NBX_EQUITY_USD", "100000"))  # default: 100k USD test capital
+EQUITY = float(os.getenv("NBX_EQUITY_USD", str(DEFAULT_EQUITY_USD)))  # 1.0.5: one default, from fees.py
 risk = RiskEngine(RiskConfig(equity=EQUITY))
 
 # Freshness budgets (seconds). The dashboard polls every 2 minutes; keeping the

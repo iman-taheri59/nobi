@@ -28,6 +28,7 @@ from typing import Any
 
 import pandas as pd
 
+from fees import FEE_PCT
 from storage import writable_dir
 from ta_engine import candles_to_df, ta_score_series
 
@@ -37,7 +38,6 @@ from ta_engine import candles_to_df, ta_score_series
 REPORTS = writable_dir("NBX_BT_DIR", Path(__file__).parent / "backtest_reports",
                        label="backtest-reports")
 
-FEE_PCT = 0.002
 SLIP_BPS = 6
 MIN_WARMUP = 60
 

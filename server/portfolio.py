@@ -35,6 +35,7 @@ import itertools
 import math
 from dataclasses import dataclass, field
 
+from fees import FEE_PCT
 from risk_engine import preflight
 
 #: Aligned returns needed before a correlation is reported at all. Thirty is
@@ -201,7 +202,7 @@ class Limits:
     min_cash_pct: float = 10.0
     max_single_asset_pct: float = 25.0
     per_trade_risk_pct: float = 0.75
-    fee_pct: float = 0.002
+    fee_pct: float = FEE_PCT
     halted: bool = False
     shrinkage: float = DEFAULT_SHRINKAGE
 
