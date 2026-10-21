@@ -1,5 +1,7 @@
 # ADR-0014: Data Honesty Contract — the three states of every panel
 
+[فارسی](../fa/ADR-0014-قرارداد-صداقت-داده.md) · **English**
+
 - **Status:** Accepted (implemented)
 - **Date:** 2026-10-20
 - **Deciders:** technical architect, quant lead

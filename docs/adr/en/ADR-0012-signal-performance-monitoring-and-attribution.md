@@ -1,5 +1,7 @@
 # ADR-0012: Signal Performance Monitoring, Attribution and Prediction Reporting
 
+[فارسی](../fa/ADR-0012-پایش-و-گزارش-عملکرد-سیگنال-ها.md) · **English**
+
 - **Status:** Accepted (partially implemented)
 - **Date:** 2026-02-14
 - **Deciders:** Technical Architect, Quant Lead

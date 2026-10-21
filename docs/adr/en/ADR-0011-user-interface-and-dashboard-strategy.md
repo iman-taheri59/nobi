@@ -1,5 +1,7 @@
 # ADR-0011: User Interface and Dashboard Strategy
 
+[فارسی](../fa/ADR-0011-راهبرد-رابط-کاربری-و-داشبورد.md) · **English**
+
 - **Status:** Accepted (amended)
 - **Date:** 2026-02-14
 - **Deciders:** Technical Architect, Product Owner

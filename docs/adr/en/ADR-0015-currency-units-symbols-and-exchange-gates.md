@@ -1,5 +1,7 @@
 # ADR-0015: Currency units, market symbols and exchange gates at the API boundary
 
+[فارسی](../fa/ADR-0015-واحد-پول-نماد-و-دروازه‌های-صرافی.md) · **English**
+
 - **Status:** Accepted and implemented
 - **Date:** 2026-10-20
 - **Decision owner:** technical architect

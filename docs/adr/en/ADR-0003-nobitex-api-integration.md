@@ -1,5 +1,7 @@
 # ADR-0003: Nobitex API Integration and Exchange Client Design
 
+[فارسی](../fa/ADR-0003-اتصال-به-API-نوبیتکس.md) · **English**
+
 - **Status:** Accepted (read-only path implemented)
 - **Date:** 2026-02-14
 - **Deciders:** Technical Architect

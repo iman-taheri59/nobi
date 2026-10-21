@@ -1,5 +1,7 @@
 # ADR-0010: Hardware and Server Infrastructure Requirements
 
+[فارسی](../fa/ADR-0010-نیازمندی-زیرساخت-سخت‌افزاری-و-سرور.md) · **English**
+
 - **Status:** Proposed
 - **Date:** 2026-02-14
 - **Deciders:** Technical Architect, Ops Owner

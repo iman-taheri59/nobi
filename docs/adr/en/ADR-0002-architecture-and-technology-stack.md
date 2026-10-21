@@ -1,5 +1,7 @@
 # ADR-0002: High-Level Architecture and Technology Stack
 
+[فارسی](../fa/ADR-0002-معماری-و-پشته-فناوری.md) · **English**
+
 - **Status:** Accepted (amended)
 - **Date:** 2026-02-14
 - **Deciders:** Technical Architect

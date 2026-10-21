@@ -1,5 +1,7 @@
 # ADR-0008: Risk Management, Position Sizing, and Drawdown Controls
 
+[فارسی](../fa/ADR-0008-مدیریت-ریسک-و-حجم-دهی-پوزیشن.md) · **English**
+
 - **Status:** Accepted (implemented)
 - **Date:** 2026-02-14
 - **Deciders:** Technical Architect, Risk Owner

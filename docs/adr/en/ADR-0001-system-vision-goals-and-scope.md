@@ -1,5 +1,7 @@
 # ADR-0001: System Vision, Goals, and Scope
 
+[فارسی](../fa/ADR-0001-چشم‌انداز-اهداف-و-دامنه-سیستم.md) · **English**
+
 - **Status:** Accepted (charter)
 - **Date:** 2026-02-14
 - **Deciders:** Project Owner, Technical Architect

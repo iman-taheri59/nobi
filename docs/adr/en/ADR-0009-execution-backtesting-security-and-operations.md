@@ -1,5 +1,7 @@
 # ADR-0009: Execution, Backtesting, Security, and Operations
 
+[فارسی](../fa/ADR-0009-اجرا-بک‌تست-امنیت-و-عملیات.md) · **English**
+
 - **Status:** Accepted — backtest and security implemented; live execution deliberately off
 - **Date:** 2026-02-14
 - **Deciders:** Technical Architect, Ops Owner

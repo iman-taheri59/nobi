@@ -1,5 +1,7 @@
 # ADR-0018: Accounts, sign-in, and invite-only registration
 
+[فارسی](../fa/ADR-0018-حساب-کاربری-و-ورود.md) · **English**
+
 - **Status:** Accepted and implemented
 - **Date:** 2026-10-21
 - **Decision owner:** technical architect

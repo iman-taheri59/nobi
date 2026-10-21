@@ -1,5 +1,7 @@
 # ADR-0007: Decision Engine — Signal Fusion, Composite Scoring, and Asset Selection
 
+[فارسی](../fa/ADR-0007-موتور-تصمیم-گیری-تلفیق-سیگنال-و-انتخاب.md) · **English**
+
 - **Status:** Accepted (implemented)
 - **Date:** 2026-02-14
 - **Deciders:** Technical Architect, Quant Lead
