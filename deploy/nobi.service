@@ -1,6 +1,6 @@
 # /etc/systemd/system/nobi.service
 #
-# systemd unit for the Nobi dashboard on an ArvanCloud ابرک (Ubuntu 24.04).
+# systemd unit for the nobiTrader dashboard on an ArvanCloud ابرک (Ubuntu 24.04).
 #
 # Two settings here are security, not convenience:
 #
@@ -18,7 +18,7 @@
 # Check:    systemctl status nobi --no-pager ; journalctl -u nobi -n 50 --no-pager
 
 [Unit]
-Description=Nobi trading dashboard (FastAPI)
+Description=nobiTrader trading dashboard (FastAPI)
 Documentation=file:///opt/nobi/docs/deploy-arvan.md
 After=network-online.target
 Wants=network-online.target

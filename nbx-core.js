@@ -1,5 +1,5 @@
 /* ============================================================
- * Nobitex Trader Bot — Core (Phase 1–2 + Standalone Mobile Engine)
+ * nobiTrader — Core (Phase 1–2 + Standalone Mobile Engine)
  * Implements per ADRs: 0003 API client, 0004 data store,
  * 0005 TA engine, 0006 FA engine, 0007 decision scoring,
  * 0008 risk engine, 0009 paper broker & walk-forward backtester.

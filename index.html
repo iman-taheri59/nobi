@@ -7,8 +7,9 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Nobitex Bot">
-<title>اتاق فرمان — ربات معامله‌گر نوبیتکس</title>
+<meta name="apple-mobile-web-app-title" content="nobiTrader">
+<title>nobiTrader</title>
+<meta name="application-name" content="nobiTrader">
 <!-- COIN-ICONS-START -->
 <script id="nbx-coin-icons">
 // Vendored cryptocurrency-icons (CC0); see assets/coins/README.md.
@@ -1330,7 +1331,7 @@ window.pref = pref;
 let LANG = store.get('lang') || 'fa';
 const T = {
   fa: {
-    'app.title':'اتاق فرمان نوبیتکس', 'app.sub':'فاز ۲ — موتور سیگنال، ریسک و بک‌تست', 'nav.title':'ناوبری',
+    'app.title':'nobiTrader', 'app.sub':'فاز ۲ — موتور سیگنال، ریسک و بک‌تست', 'nav.title':'ناوبری',
     'mode.paper':'کاغذی', 'mode.live':'زنده', 'mode.halted':'متوقف', 'mode.paperS':'کاغذی', 'mode.liveS':'زنده',
     'hdr.kill':'کلید اضطراری مسلح', 'hdr.api':'API: {v}ms', 'chip.live':'به‌روزرسانی زنده', 'm.lang':'زبان / Language',
     'page.overview.title':'نمای کلی', 'page.overview.desc':'وضعیت سرمایه، پوزیشن‌ها و بازار در یک نگاه',
@@ -1444,7 +1445,7 @@ const T = {
     'set.accessKill':'بستن نشست‌ها',
     'set.inviteNew':'دعوت کاربر جدید','set.inviteNote':'یادداشت (اختیاری)','set.inviteMake':'ساخت کد',
     'set.inviteOnce':'این کد فقط همین یک بار دیده می‌شود؛ همین حالا کپی کنید:','set.inviteRevoke':'باطل',
-    'auth.title':'ورود به داشبورد','auth.sub':'این نصب حساب کاربری دارد؛ برای دیدن پوزیشن‌ها و تغییر تنظیمات وارد شوید.',
+    'auth.title':'ورود به nobiTrader','auth.sub':'این نصب حساب کاربری دارد؛ برای دیدن پوزیشن‌ها و تغییر تنظیمات وارد شوید.',
     'auth.user':'نام کاربری','auth.pass':'رمز عبور','auth.login':'ورود',
     'auth.code':'کد دعوت','auth.newuser':'نام کاربری دلخواه','auth.newpass':'رمز عبور (دست‌کم ۱۲ کاراکتر)',
     'auth.register':'ساخت حساب','auth.back':'بازگشت','auth.haveCode':'کد دعوت دارم',
@@ -1579,7 +1580,7 @@ const T = {
     'sec':'ثانیه...'
   },
   en: {
-    'app.title':'Nobitex Command Center', 'app.sub':'Phase 2 — signals, risk, backtest', 'nav.title':'Navigation',
+    'app.title':'nobiTrader', 'app.sub':'Phase 2 — signals, risk, backtest', 'nav.title':'Navigation',
     'mode.paper':'Paper', 'mode.live':'Live', 'mode.halted':'Halted', 'mode.paperS':'Paper', 'mode.liveS':'Live',
     'hdr.kill':'Kill switch armed', 'hdr.api':'API: {v}ms', 'chip.live':'Live updates', 'm.lang':'Language / زبان',
     'page.overview.title':'Overview', 'page.overview.desc':'Equity, positions and market state at a glance',
@@ -1693,7 +1694,7 @@ const T = {
     'set.accessKill':'End sessions',
     'set.inviteNew':'Invite someone','set.inviteNote':'Note (optional)','set.inviteMake':'Create code',
     'set.inviteOnce':'This code is shown once — copy it now:','set.inviteRevoke':'Revoke',
-    'auth.title':'Sign in','auth.sub':'This installation has accounts; sign in to see positions and change settings.',
+    'auth.title':'Sign in to nobiTrader','auth.sub':'This installation has accounts; sign in to see positions and change settings.',
     'auth.user':'Username','auth.pass':'Password','auth.login':'Sign in',
     'auth.code':'Invite code','auth.newuser':'Choose a username','auth.newpass':'Password (at least 12 characters)',
     'auth.register':'Create account','auth.back':'Back','auth.haveCode':'I have an invite code',

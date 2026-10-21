@@ -1,4 +1,4 @@
-# Nobitex Trader Bot — Backend (Phase 0 → Phase 1)
+# nobiTrader — Backend (Phase 0 → Phase 1)
 
 Python 3.12+ implementation of the trading system design (ADR-0001..0013).
 This directory hosts the production-grade components the browser dashboard

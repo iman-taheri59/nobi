@@ -344,7 +344,7 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(
-    title="Nobitex Trader Bot — Phase 2 (FA + Risk)",
+    title="nobiTrader",
     version="2.2.0",
     lifespan=lifespan,
 )
@@ -3131,7 +3131,7 @@ async def download_mobile_html():
     return FileResponse(
         target if target.exists() else REPO_ROOT / "index.html",
         media_type="text/html",
-        filename="nobitex-mobile.html",
+        filename="nobiTrader-mobile.html",
     )
 
 

@@ -1,5 +1,5 @@
 /* ============================================================
- * Nobitex Trader Bot — Application Layer (Phase 1–2 + Mobile Ready)
+ * nobiTrader — Application Layer (Phase 1–2 + Mobile Ready)
  * Binds the dashboard to real/standalone data via NBX.core.
  * Features: live stats, real TA/FA scoring, universe ranking,
  * mobile bottom navigation bar, mobile package downloader, health badges.
@@ -266,7 +266,7 @@
         </div>
 
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-          <a id="dlSingleHtmlBtn" href="${isServer ? '/download/nobitex-mobile.html' : '#'}" download="nobitex-mobile.html"
+          <a id="dlSingleHtmlBtn" href="${isServer ? '/download/nobitex-mobile.html' : '#'}" download="nobiTrader-mobile.html"
              class="flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-xs font-bold bg-emerald-400/15 border border-emerald-300/40 text-emerald-300 hover:bg-emerald-400/25 transition text-center">
             <i data-lucide="download" class="w-4 h-4"></i>
             <span>${LANG === 'fa' ? 'دانلود تک‌فایل موبایل (.html)' : 'Download Single-File (.html)'}</span>
@@ -305,7 +305,7 @@
         const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
         const a = document.createElement('a');
         a.href = URL.createObjectURL(blob);
-        a.download = 'nobitex-mobile.html';
+        a.download = 'nobiTrader-mobile.html';
         a.click();
       };
       if ($('dlSingleHtmlBtn')) $('dlSingleHtmlBtn').onclick = saveFn;
@@ -316,7 +316,7 @@
   /* ---------- index.html i18n augmentation ---------- */
   const extraI18n = {
     fa: {
-      'app.title': 'اتاق فرمان نوبیتکس (نسخه کامل موبایل و وب)',
+      'app.title': 'nobiTrader',
       'page.overview.desc': 'وضعیت سرمایه، پوزیشن‌ها و بازار — آماده اجرا روی موبایل و دسکتاپ',
       'page.signals.desc': 'رتبه‌بندی زنده دنیای نوبیتکس با موتور TA و FA',
       'sg.hdr': 'اسکنر زنده نوبیتکس',
@@ -335,7 +335,7 @@
       't.degradedM': 'موتور تحلیل تکنیکال، فاندامنتال، ریسک و بک‌تست به‌صورت مستقیم روی مرورگر گوشی فعال است.',
     },
     en: {
-      'app.title': 'Nobitex Command Center (Mobile & Web)',
+      'app.title': 'nobiTrader',
       'page.overview.desc': 'Equity, positions and market state — mobile & desktop ready',
       'page.signals.desc': 'Nobitex universe ranking with TA & FA engines',
       'sg.hdr': 'Live Nobitex Scanner',

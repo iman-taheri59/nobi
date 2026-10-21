@@ -1,7 +1,7 @@
 {
-  "name": "اتاق فرمان — ربات معامله‌گر نوبیتکس",
-  "short_name": "Nobitex Bot",
-  "description": "داشبورد و پیش‌نمایش ربات معامله‌گر خودکار و دستی نوبیتکس (موبایل و وب)",
+  "name": "nobiTrader",
+  "short_name": "nobiTrader",
+  "description": "nobiTrader — داشبورد تحلیل و معاملات نوبیتکس (موبایل و وب)",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#09090b",
