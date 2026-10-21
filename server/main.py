@@ -55,7 +55,14 @@ from paper_trading import get_broker
 from portfolio import Candidate, Limits, aligned_closes, log_returns
 from portfolio import allocate as allocate_portfolio
 from risk_engine import MIN_RR, RiskConfig, RiskEngine, preflight
-from security import API_TOKEN, auth_mode, cors_origins, require_client
+from security import (
+    API_TOKEN,
+    auth_mode,
+    cors_origins,
+    require_client,
+    startup_problem,
+    trusted_proxies,
+)
 from ta_engine import RISK_K, candles_to_df, ta_score, ta_score_series
 from units import apply_options, market_symbol, min_notional_usd
 from ws_execution import STREAM_EXECUTOR, streams_start
@@ -264,8 +271,15 @@ async def lifespan(_app: FastAPI):
     # Any ERROR/FATAL record from any logger now also lands in the error log,
     # which is what the dashboard's Diagnostics page reads.
     errorlog.install()
+    # Fail closed and loudly. A process that starts with a configuration its
+    # guard rails cannot describe is worse than one that refuses to start.
+    problem = startup_problem()
+    if problem:
+        raise RuntimeError(problem)
     await client.connect()
-    log.info("security: auth mode=%s, cors=%s", auth_mode(), _CORS_ORIGINS or "same-origin")
+    log.info("security: auth mode=%s, cors=%s, trusted proxies=%s",
+             auth_mode(), _CORS_ORIGINS or "same-origin",
+             ", ".join(str(n) for n in trusted_proxies()) or "none")
     # A background task that dies silently is invisible: the dashboard simply
     # stops updating and nobody knows why. Wrap each one so the death is logged
     # and the other loops keep running.
