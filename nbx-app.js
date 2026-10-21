@@ -1201,7 +1201,10 @@
      worse than a missing feature — it answers questions it never asked. */
   let wsPollTimer = null;
   async function wsPoll() {
-    if (!NBX.core || !NBX.core.api || typeof NBX.core.api.getWsStatus !== 'function') return;
+    // The guard has to survive `NBX` itself being absent: if nbx-core.js never
+    // loaded, `!NBX.core` is not false, it is a TypeError — thrown from a timer,
+    // so nothing the page owns can catch it and the whole bundle looks dead.
+    if (!(window.NBX && NBX.core && NBX.core.api && typeof NBX.core.api.getWsStatus === 'function')) return;
     try {
       const st = await NBX.core.api.getWsStatus();
       if (st && st.enabled) {
