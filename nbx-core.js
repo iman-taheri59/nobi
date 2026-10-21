@@ -74,6 +74,15 @@
   );
   NBX.config = cfg;
 
+  /* Cookies are how the server remembers a signed-in person; the CSRF token has
+   * to be echoed in a header because the session cookie itself is HttpOnly. */
+  function readCookie(name) {
+    try {
+      const m = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
+      return m ? decodeURIComponent(m[1]) : '';
+    } catch (e) { return ''; }
+  }
+
   const clamp = (v, a, b) => Math.min(Math.max(v, a), b);
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const nowMs = () => Date.now();
@@ -1273,6 +1282,8 @@
     _authHeaders() {
       const h = { 'Content-Type': 'application/json' };
       if (cfg.apiToken) h['X-API-Token'] = cfg.apiToken;
+      const csrf = readCookie('nbx_csrf');
+      if (csrf) h['X-CSRF-Token'] = csrf;
       return h;
     }
 
@@ -1690,7 +1701,7 @@
         try {
           const res = await fetch(cfg.pythonApi + '/backtest/run', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: this._authHeaders(),
             body: JSON.stringify({ symbol, tf, ...btCfg }),
           });
           const r = await res.json().catch(() => ({}));
@@ -1718,7 +1729,7 @@
         try {
           const res = await fetch(cfg.pythonApi + '/backtest/grid', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: this._authHeaders(),
             body: JSON.stringify({ symbol, tf, grid: grid || undefined }),
           });
           const r = await res.json().catch(() => ({}));
@@ -1746,7 +1757,7 @@
         try {
           const res = await fetch(cfg.pythonApi + '/grid-multi', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: this._authHeaders(),
             body: JSON.stringify({ symbols, tf, grid: grid || undefined }),
           });
           const r = await res.json().catch(() => ({}));

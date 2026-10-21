@@ -112,10 +112,77 @@
   }
 
 }
+
+/* ---------- sign-in gate ----------
+   Plain CSS on purpose: Tailwind only emits classes it saw at build time, and
+   this screen must look right even if nobody ran `npm run css` after pulling.
+   Colours match the dashboard palette, not a second design language. */
+.auth-wrap{position:fixed;inset:0;z-index:80;display:flex;align-items:center;justify-content:center;
+  padding:1rem;background:radial-gradient(1200px 600px at 50% -10%,rgba(16,185,129,.10),transparent 60%),#09090b;}
+.auth-card{width:100%;max-width:26rem;border:1px solid rgba(255,255,255,.08);border-radius:1rem;
+  background:rgba(18,18,21,.92);backdrop-filter:blur(14px);padding:1.6rem 1.5rem 1.4rem;box-shadow:0 24px 60px rgba(0,0,0,.5);}
+.auth-card h1{font-size:1.05rem;font-weight:800;margin:0 0 .25rem;color:#f4f4f5;}
+.auth-card p.sub{font-size:.72rem;color:#71717a;margin:0 0 1.15rem;line-height:1.6;}
+.auth-field{display:block;margin-bottom:.7rem;}
+.auth-field span{display:block;font-size:.7rem;color:#a1a1aa;margin-bottom:.3rem;}
+.auth-field input{width:100%;box-sizing:border-box;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);
+  border-radius:.6rem;padding:.62rem .7rem;color:#f4f4f5;font-size:.85rem;outline:none;direction:ltr;text-align:left;}
+.auth-field input:focus{border-color:rgba(52,211,153,.55);box-shadow:0 0 0 3px rgba(16,185,129,.12);}
+.auth-actions{display:flex;gap:.5rem;margin-top:.9rem;}
+.auth-btn{flex:1;border:0;border-radius:.6rem;padding:.68rem .8rem;font-size:.82rem;font-weight:800;cursor:pointer;
+  background:linear-gradient(180deg,#34d399,#10b981);color:#052e22;}
+.auth-btn[disabled]{opacity:.55;cursor:progress;}
+.auth-btn.ghost{background:rgba(255,255,255,.05);color:#d4d4d8;border:1px solid rgba(255,255,255,.1);}
+.auth-msg{font-size:.72rem;line-height:1.7;margin-top:.75rem;padding:.55rem .65rem;border-radius:.55rem;display:none;}
+.auth-msg.bad{display:block;background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.3);color:#fca5a5;}
+.auth-msg.info{display:block;background:rgba(56,189,248,.08);border:1px solid rgba(56,189,248,.25);color:#7dd3fc;}
+.auth-alt{font-size:.7rem;color:#71717a;text-align:center;margin-top:.9rem;}
+.auth-alt button{background:none;border:0;color:#34d399;font-weight:700;cursor:pointer;font-size:.7rem;padding:0 .15rem;}
 </style>
 </head>
 <body class="min-h-screen">
 <div class="bg-scene"><div class="bg-grid"></div></div>
+<!-- ---------- sign-in gate (hidden until /api/auth/me says it is needed) ---------- -->
+<div id="authGate" class="auth-wrap" hidden>
+  <div class="auth-card" role="dialog" aria-modal="true" aria-labelledby="authTitle">
+    <h1 id="authTitle" data-i18n="auth.title"></h1>
+    <p class="sub" data-i18n="auth.sub"></p>
+
+    <form id="authLoginForm" autocomplete="on">
+      <label class="auth-field"><span data-i18n="auth.user"></span>
+        <input id="authUser" name="username" autocomplete="username" required maxlength="64" spellcheck="false">
+      </label>
+      <label class="auth-field"><span data-i18n="auth.pass"></span>
+        <input id="authPass" name="password" type="password" autocomplete="current-password" required maxlength="200">
+      </label>
+      <div class="auth-actions">
+        <button id="authLoginBtn" class="auth-btn" type="submit" data-i18n="auth.login"></button>
+      </div>
+    </form>
+
+    <form id="authRegisterForm" autocomplete="on" hidden>
+      <label class="auth-field"><span data-i18n="auth.code"></span>
+        <input id="authCode" name="code" autocomplete="off" required maxlength="128" spellcheck="false">
+      </label>
+      <label class="auth-field"><span data-i18n="auth.newuser"></span>
+        <input id="authNewUser" name="username" autocomplete="username" required maxlength="64" spellcheck="false">
+      </label>
+      <label class="auth-field"><span data-i18n="auth.newpass"></span>
+        <input id="authNewPass" name="password" type="password" autocomplete="new-password" required maxlength="200">
+      </label>
+      <div class="auth-actions">
+        <button id="authRegBtn" class="auth-btn" type="submit" data-i18n="auth.register"></button>
+        <button id="authBackBtn" class="auth-btn ghost" type="button" data-i18n="auth.back"></button>
+      </div>
+    </form>
+
+    <div id="authMsg" class="auth-msg" role="status"></div>
+    <div class="auth-alt">
+      <button id="authToRegister" type="button" data-i18n="auth.haveCode"></button>
+    </div>
+  </div>
+</div>
+
 
 <!-- ---------- safelist (dynamic color classes) ---------- -->
 <div class="hidden text-emerald-300 text-emerald-400 text-red-300 text-red-400 text-amber-300 text-amber-200 text-sky-300 text-sky-200 text-indigo-400 text-violet-300 text-orange-300 bg-emerald-400 bg-red-400 bg-amber-400 bg-sky-400 bg-indigo-400 bg-zinc-400 bg-zinc-300 text-zinc-300 border-emerald-300/30 border-emerald-400/30 border-amber-400/30 border-amber-300/40 border-red-400/30 border-sky-400/30 border-sky-400/40 border-violet-400/30 border-orange-400/40 from-emerald-400 to-emerald-400/50 from-amber-400 to-amber-300/50 from-red-400 to-red-300/50 from-sky-400 to-sky-300/50 from-indigo-400 to-indigo-400/50 from-amber-400 to-orange-400/40 from-violet-400 to-fuchsia-400/40 border-zinc-400/30"></div>
@@ -156,6 +223,14 @@
         <button id="langFa" class="num px-2.5 py-1.5 rounded-lg text-[11px] font-bold border border-transparent transition">فا</button>
         <button id="langEn" class="num px-2.5 py-1.5 rounded-lg text-[11px] font-bold border border-transparent text-zinc-400 transition">EN</button>
       </div>
+      <span id="userChip" class="hidden items-center gap-1.5 chip shrink-0" title="">
+        <i data-lucide="user-round" class="w-3.5 h-3.5 text-emerald-300"></i>
+        <span id="userName" class="num max-w-[100px] truncate"></span>
+        <span id="userRole" class="text-zinc-500"></span>
+      </span>
+      <button id="logoutBtn" class="hidden p-2 rounded-lg hover:bg-white/5 shrink-0" aria-label="logout" title="">
+        <i data-lucide="log-out" class="w-4.5 h-4.5 text-zinc-400"></i>
+      </button>
       <button class="p-2 rounded-lg hover:bg-white/5 relative shrink-0" aria-label="alerts">
         <i data-lucide="bell" class="w-4.5 h-4.5 text-zinc-300"></i>
         <span class="absolute top-1.5 end-1.5 w-2 h-2 rounded-full bg-red-400"></span>
@@ -796,6 +871,18 @@
 
       <div id="setReadonly" class="glass px-3.5 py-2.5 border-zinc-400/20 text-[10px] sm:text-[11px] text-zinc-400 leading-5" data-i18n="set.readonly"></div>
 
+      <!-- ===== accounts and access (owner only; filled by nbx-app.js) ===== -->
+      <div id="setAccess" class="glass p-4 sm:p-5" hidden>
+        <div class="flex items-center gap-2 mb-1 flex-wrap">
+          <i data-lucide="users-round" class="w-4 h-4 text-violet-300"></i>
+          <span class="font-bold text-[13px] sm:text-sm" data-i18n="set.accessTitle"></span>
+          <span id="setAccessWho" class="chip num text-[9px] text-violet-300 border-violet-400/30 ms-auto"></span>
+        </div>
+        <p class="text-[10px] text-zinc-500 leading-5 mb-3" data-i18n="set.accessHint"></p>
+        <div id="setAccessBody" class="space-y-3"></div>
+      </div>
+
+
       <!-- ===== preferences you can actually change ===== -->
       <div class="glass p-4 sm:p-5">
         <div class="flex items-center gap-2 mb-1 flex-wrap">
@@ -1289,6 +1376,22 @@ const T = {
     'suite.raw':'خروجی قابل خلاصه‌شدن نبود — متن خام را ببین',
     'suite.allPassed':'همهٔ دروازه‌ها سبز', 'suite.someFailed':'{n} دروازه قرمز شد',
     'page.settings.title':'تنظیمات','page.settings.desc':'پیکربندی واقعیِ در حال اجرا — فقط‌خواندنی، با ذکر منبع هر مقدار',
+    'set.accessTitle':'کاربران و دسترسی','set.accessHint':'هر کس حساب خودش را دارد و همان حساب معاملاتی مشترک را می‌بیند؛ نقش تعیین می‌کند چه کسی می‌تواند تغییر بدهد.',
+    'set.accessNotOwner':'فقط مالک می‌تواند کاربران را ببیند و نقش‌ها را تغییر دهد.',
+    'set.accessOff':'غیرفعال','set.accessDisable':'غیرفعال کن','set.accessEnable':'فعال کن',
+    'set.accessKill':'بستن نشست‌ها',
+    'set.inviteNew':'دعوت کاربر جدید','set.inviteNote':'یادداشت (اختیاری)','set.inviteMake':'ساخت کد',
+    'set.inviteOnce':'این کد فقط همین یک بار دیده می‌شود؛ همین حالا کپی کنید:','set.inviteRevoke':'باطل',
+    'auth.title':'ورود به داشبورد','auth.sub':'این نصب حساب کاربری دارد؛ برای دیدن پوزیشن‌ها و تغییر تنظیمات وارد شوید.',
+    'auth.user':'نام کاربری','auth.pass':'رمز عبور','auth.login':'ورود',
+    'auth.code':'کد دعوت','auth.newuser':'نام کاربری دلخواه','auth.newpass':'رمز عبور (دست‌کم ۱۲ کاراکتر)',
+    'auth.register':'ساخت حساب','auth.back':'بازگشت','auth.haveCode':'کد دعوت دارم',
+    'auth.logout':'خروج','auth.err.bad':'نام کاربری یا رمز عبور درست نیست',
+    'auth.err.net':'سرور پاسخ نداد؛ اتصال یا وضعیت سرویس را بررسی کنید',
+    'auth.err.invite':'کد دعوت معتبر نیست یا منقضی شده است',
+    'auth.err.noowner':'این نصب هنوز مالک ندارد؛ روی سرور scripts/manage_users.py را اجرا کنید',
+    'auth.role.owner':'مالک','auth.role.operator':'اپراتور','auth.role.viewer':'فقط‌خواندنی',
+    'auth.readonly':'نقش شما فقط‌خواندنی است؛ تغییرات ذخیره نمی‌شوند',
     'set.readonly':'دو نوع چیز در این صفحه هست: تنظیمات همین مرورگر که می‌توانی عوض کنی (پایین)، و پارامترهای موتور که فقط نمایش داده می‌شوند و در config_hash قفل‌اند.',
     'set.editTitle':'تنظیمات این مرورگر',
     'set.editScope':'ذخیره در همین دستگاه',
@@ -1522,6 +1625,22 @@ const T = {
     'suite.raw':'output could not be summarised — read the raw text',
     'suite.allPassed':'all gates green', 'suite.someFailed':'{n} gate(s) red',
     'page.settings.title':'Settings','page.settings.desc':'What the engine is actually running — read-only, with the source of every value',
+    'set.accessTitle':'Users and access','set.accessHint':'Everyone signs in with their own account but sees the same trading account; the role decides who may change things.',
+    'set.accessNotOwner':'Only the owner can see users and change roles.',
+    'set.accessOff':'disabled','set.accessDisable':'Disable','set.accessEnable':'Enable',
+    'set.accessKill':'End sessions',
+    'set.inviteNew':'Invite someone','set.inviteNote':'Note (optional)','set.inviteMake':'Create code',
+    'set.inviteOnce':'This code is shown once — copy it now:','set.inviteRevoke':'Revoke',
+    'auth.title':'Sign in','auth.sub':'This installation has accounts; sign in to see positions and change settings.',
+    'auth.user':'Username','auth.pass':'Password','auth.login':'Sign in',
+    'auth.code':'Invite code','auth.newuser':'Choose a username','auth.newpass':'Password (at least 12 characters)',
+    'auth.register':'Create account','auth.back':'Back','auth.haveCode':'I have an invite code',
+    'auth.logout':'Sign out','auth.err.bad':'Wrong username or password',
+    'auth.err.net':'The server did not answer; check the connection or the service',
+    'auth.err.invite':'That invite is not valid, or it expired',
+    'auth.err.noowner':'This install has no owner yet; run scripts/manage_users.py on the server',
+    'auth.role.owner':'owner','auth.role.operator':'operator','auth.role.viewer':'read-only',
+    'auth.readonly':'Your role is read-only; changes will not be saved',
     'set.readonly':'Two kinds of things live here: preferences for this browser, which you can change (below), and engine parameters, which are display-only and sealed into config_hash.',
     'set.editTitle':'This browser',
     'set.editScope':'stored on this device',

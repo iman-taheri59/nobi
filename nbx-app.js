@@ -1230,9 +1230,304 @@
     });
   }
 
+
+  /* ============================================================
+   * Accounts (ADR-0018)
+   *
+   * The page asks "who am I?" before it asks for anything else. If the server
+   * says accounts exist and there is no session, the dashboard is not booted at
+   * all — a half-loaded dashboard behind a login form would still be polling
+   * and still showing an empty shell, which reads as "broken" rather than
+   * "signed out".
+   *
+   * Every mutation carries X-CSRF-Token (see `_authHeaders` in nbx-core.js).
+   * ============================================================ */
+  const AUTH = {
+    cookie(name) {
+      try {
+        const m = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
+        return m ? decodeURIComponent(m[1]) : '';
+      } catch (e) { return ''; }
+    },
+    async call(path, body, method) {
+      const headers = { 'Content-Type': 'application/json' };
+      const csrf = this.cookie('nbx_csrf');
+      if (csrf) headers['X-CSRF-Token'] = csrf;
+      try {
+        const res = await fetch(NBX.config.pythonApi + path, {
+          method: method || 'POST', headers, credentials: 'same-origin',
+          ...((method === 'DELETE' || method === 'GET')
+            ? {} : { body: JSON.stringify(body || {}) }),
+        });
+        let data = null;
+        try { data = await res.json(); } catch (e) {}
+        return { ok: res.ok, status: res.status, data: data || {} };
+      } catch (e) {
+        return { ok: false, status: 0, data: {} };
+      }
+    },
+    async me() {
+      try {
+        const res = await fetch(NBX.config.pythonApi + '/auth/me', { credentials: 'same-origin' });
+        if (!res.ok) return null;
+        return await res.json();
+      } catch (e) { return null; }
+    },
+    async logout() {
+      await this.call('/auth/logout');
+      location.reload();
+    },
+  };
+
+  function authSay(kind, text) {
+    const el = $('authMsg');
+    if (!el) return;
+    el.className = 'auth-msg ' + kind;
+    el.textContent = text;
+  }
+
+  function roleLabel(role) {
+    return inFa('auth.role.' + role);
+  }
+
+  function paintUser(state) {
+    const chip = $('userChip'), name = $('userName'), role = $('userRole'), out = $('logoutBtn');
+    if (!state || !chip) return;
+    if (state.user) {
+      name.textContent = state.user.username;
+      role.textContent = '· ' + roleLabel(state.user.role);
+      chip.classList.remove('hidden');
+      chip.classList.add('inline-flex');
+      chip.title = state.user.username + ' — ' + roleLabel(state.user.role);
+      if (out) {
+        out.classList.remove('hidden');
+        out.title = inFa('auth.logout');
+      }
+      if (!state.can_mutate) {
+        // Say it once, in the banner the app already uses for "something is
+        // different about this session" — silently ignoring a click is worse.
+        const banner = $('upBanner'), msg = $('upBannerMsg');
+        if (banner && msg) {
+          banner.classList.remove('hidden');
+          msg.textContent = inFa('auth.readonly');
+        }
+      }
+    } else if (state.token) {
+      name.textContent = 'token';
+      role.textContent = '';
+      chip.classList.remove('hidden');
+      chip.classList.add('inline-flex');
+    }
+  }
+
+  function showAuthGate(state) {
+    const gate = $('authGate');
+    if (!gate) return;
+    gate.hidden = false;
+    const loginForm = $('authLoginForm'), regForm = $('authRegisterForm');
+    const toReg = $('authToRegister'), back = $('authBackBtn');
+
+    function mode(kind) {
+      const register = kind === 'register';
+      if (loginForm) loginForm.hidden = register;
+      if (regForm) regForm.hidden = !register;
+      if (toReg) toReg.parentElement.style.display = register ? 'none' : '';
+      authSay('info', '');
+      const focus = $(register ? 'authCode' : 'authUser');
+      if (focus) setTimeout(() => focus.focus(), 30);
+    }
+    if (toReg) toReg.onclick = () => mode('register');
+    if (back) back.onclick = () => mode('login');
+    mode('login');
+
+    if (!state.auth_required || state.auth_required === false) {
+      authSay('info', inFa('auth.err.noowner'));
+    }
+
+    if (loginForm) {
+      loginForm.onsubmit = async (ev) => {
+        ev.preventDefault();
+        const btn = $('authLoginBtn');
+        if (btn) btn.disabled = true;
+        const r = await AUTH.call('/auth/login', {
+          username: $('authUser').value.trim(),
+          password: $('authPass').value,
+        });
+        if (r.ok) { location.reload(); return; }
+        if (btn) btn.disabled = false;
+        if (r.status === 401) authSay('bad', (r.data && r.data.detail) || inFa('auth.err.bad'));
+        else if (r.status === 429) authSay('bad', (r.data && r.data.detail) || inFa('auth.err.bad'));
+        else authSay('bad', (r.data && r.data.detail) || inFa('auth.err.net'));
+      };
+    }
+
+    if (regForm) {
+      regForm.onsubmit = async (ev) => {
+        ev.preventDefault();
+        const btn = $('authRegBtn');
+        if (btn) btn.disabled = true;
+        const r = await AUTH.call('/auth/register', {
+          code: $('authCode').value.trim(),
+          username: $('authNewUser').value.trim(),
+          password: $('authNewPass').value,
+        });
+        if (r.ok) { location.reload(); return; }
+        if (btn) btn.disabled = false;
+        authSay('bad', (r.data && r.data.detail) || inFa('auth.err.invite'));
+      };
+    }
+  }
+
+
+  /* ============================================================
+   * Settings → users and access.
+   *
+   * Only the owner sees the controls; everyone sees who they are and what
+   * their role allows. The invite code is shown once and is not recoverable —
+   * the server keeps a hash, so "show it again" is not an option and the UI
+   * must not pretend otherwise.
+   * ============================================================ */
+  async function renderAccess() {
+    const box = $('setAccess');
+    const body = $('setAccessBody');
+    const who = $('setAccessWho');
+    if (!box || !body) return;
+    const st = await AUTH.me();
+    if (!st || !st.user) { box.hidden = true; return; }
+    box.hidden = false;
+    if (who) who.textContent = st.user.username + ' · ' + roleLabel(st.user.role);
+
+    if (!st.is_owner) {
+      body.innerHTML = `<div class="text-[10px] sm:text-[11px] text-zinc-400 leading-6">${
+        inFa('set.accessNotOwner')}</div>`;
+      return;
+    }
+
+    const [usersRes, invRes] = await Promise.all([
+      AUTH.call('/auth/users', null, 'GET') || Promise.resolve({ data: { users: [] } }),
+      fetch(NBX.config.pythonApi + '/auth/invites', { credentials: 'same-origin' })
+        .then((r) => (r.ok ? r.json() : { invites: [] })).catch(() => ({ invites: [] })),
+    ]);
+    const users = (usersRes && usersRes.data && usersRes.data.users) || [];
+    const invites = invRes.invites || [];
+
+    const roleOptions = ['viewer', 'operator', 'owner']
+      .map((r) => `<option value="${r}">${inFa('auth.role.' + r)}</option>`).join('');
+
+    body.innerHTML = `
+      <div class="space-y-1.5">
+        ${users.map((u) => `
+          <div class="flex flex-wrap items-center gap-2 rounded-xl bg-white/[.03] border border-white/10 px-3 py-2">
+            <span class="num text-[11px] font-bold text-zinc-200">${u.username}</span>
+            ${u.active ? '' : `<span class="chip text-[9px] text-red-300 border-red-400/30">${inFa('set.accessOff')}</span>`}
+            <select data-role="${u.id}" class="ms-auto text-[10px] bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-zinc-300">
+              ${['viewer', 'operator', 'owner'].map((r) =>
+                `<option value="${r}" ${r === u.role ? 'selected' : ''}>${inFa('auth.role.' + r)}</option>`).join('')}
+            </select>
+            <button data-toggle="${u.id}" data-active="${u.active ? 1 : 0}"
+              class="text-[10px] px-2 py-1 rounded-lg bg-white/5 border border-white/10 text-zinc-300">
+              ${u.active ? inFa('set.accessDisable') : inFa('set.accessEnable')}</button>
+            <button data-kill="${u.id}"
+              class="text-[10px] px-2 py-1 rounded-lg bg-amber-400/10 border border-amber-300/30 text-amber-200">
+              ${inFa('set.accessKill')}</button>
+          </div>`).join('')}
+      </div>
+
+      <div class="rounded-xl bg-white/[.03] border border-white/10 p-3 space-y-2">
+        <div class="text-[11px] font-bold text-zinc-200">${inFa('set.inviteNew')}</div>
+        <div class="flex flex-wrap items-center gap-2">
+          <select id="invRole" class="text-[10px] bg-white/5 border border-white/10 rounded-lg px-2 py-1.5 text-zinc-300">${roleOptions}</select>
+          <input id="invNote" maxlength="120" placeholder="${inFa('set.inviteNote')}"
+                 class="flex-1 min-w-[8rem] text-[10px] bg-white/5 border border-white/10 rounded-lg px-2 py-1.5 text-zinc-200">
+          <button id="invGo" class="text-[10px] font-bold px-2.5 py-1.5 rounded-lg bg-violet-400/15 text-violet-200 border border-violet-300/30">
+            ${inFa('set.inviteMake')}</button>
+        </div>
+        <div id="invOut" class="text-[10px] leading-6 text-zinc-400"></div>
+        ${invites.length ? `<div class="border-t border-white/5 pt-2 space-y-1">
+          ${invites.map((i) => `<div class="flex items-center gap-2 text-[10px] text-zinc-500">
+            <span class="num">#${i.id}</span>
+            <span>${inFa('auth.role.' + i.role)}</span>
+            <span class="chip text-[9px] ${i.state === 'open' ? 'text-emerald-300 border-emerald-300/30' : 'text-zinc-500 border-white/10'}">${i.state}</span>
+            <span class="truncate">${i.note || ''}</span>
+            ${i.state === 'open' ? `<button data-revoke="${i.id}" class="ms-auto text-red-300">${inFa('set.inviteRevoke')}</button>` : ''}
+          </div>`).join('')}
+        </div>` : ''}
+      </div>`;
+
+    body.querySelectorAll('select[data-role]').forEach((el) => {
+      el.onchange = async () => {
+        const r = await AUTH.call('/auth/users/' + el.dataset.role, { role: el.value }, 'PATCH');
+        if (!r.ok) el.value = el.dataset.prev || el.value;
+        renderAccess();
+      };
+    });
+    body.querySelectorAll('button[data-toggle]').forEach((el) => {
+      el.onclick = async () => {
+        await AUTH.call('/auth/users/' + el.dataset.toggle,
+                        { active: el.dataset.active !== '1' }, 'PATCH');
+        renderAccess();
+      };
+    });
+    body.querySelectorAll('button[data-kill]').forEach((el) => {
+      el.onclick = async () => { await AUTH.call('/auth/users/' + el.dataset.kill + '/logout'); };
+    });
+    body.querySelectorAll('button[data-revoke]').forEach((el) => {
+      el.onclick = async () => {
+        await AUTH.call('/auth/invites/' + el.dataset.revoke, null, 'DELETE');
+        renderAccess();
+      };
+    });
+    const go = $('invGo');
+    if (go) {
+      go.onclick = async () => {
+        go.disabled = true;
+        const r = await AUTH.call('/auth/invites', {
+          role: ($('invRole') || {}).value || 'viewer',
+          note: ($('invNote') || {}).value || '',
+        });
+        go.disabled = false;
+        const out = $('invOut');
+        if (!out) return;
+        out.innerHTML = r.ok
+          ? `<div class="text-zinc-400">${inFa('set.inviteOnce')}</div>
+             <code class="block mt-1 select-all break-all text-emerald-300">${r.data.code}</code>`
+          : `<div class="text-red-300">${(r.data && r.data.detail) || inFa('auth.err.net')}</div>`;
+      };
+    }
+  }
+
+  function bindLogout() {
+    const out = $('logoutBtn');
+    if (out) out.onclick = () => AUTH.logout();
+    document.querySelectorAll('.navbtn[data-tab="settings"]').forEach((b) => {
+      b.addEventListener('click', () => setTimeout(renderAccess, 120));
+    });
+  }
+
   async function start() {
     addLiveStylesOnce();
     injectMobileNavAndDownload();
+    bindLogout();
+
+    // Ask before booting. `null` means the question could not be asked (server
+    // down, older build) — in that case carry on: the app has its own offline
+    // handling, and blocking on a failed probe would turn a blip into a wall.
+    const authState = await AUTH.me();
+    if (authState && authState.auth_required && !authState.user && !authState.token) {
+      showAuthGate(authState);
+      return;
+    }
+    paintUser(authState);
+    if (authState && authState.user) renderAccess();
+
+    // A session can end while the tab is open (expired, revoked, password
+    // changed elsewhere). Re-ask every few minutes; reload only when the server
+    // *says* nobody is signed in, never on a network error.
+    setInterval(async () => {
+      const now = await AUTH.me();
+      if (now && now.auth_required && !now.user && !now.token) location.reload();
+    }, 5 * 60 * 1000);
+
     try {
       await NBX.boot();
       bindApiHealth();
