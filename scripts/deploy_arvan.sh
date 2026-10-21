@@ -145,6 +145,7 @@ NBX_API_TOKEN=$TOKEN
 NBX_TRUSTED_PROXIES=127.0.0.1
 NBX_JOURNAL_DB=$DATA_DIR/journal.db
 NBX_PAPER_STATE=$DATA_DIR/paper_state.json
+NBX_AUTH_DB=$DATA_DIR/auth.db
 NBX_EXPORT_DIR=$DATA_DIR/exports
 NBX_BASE_URL=https://apiv2.nobitex.ir
 NBX_EQUITY_USD=10000
@@ -220,14 +221,26 @@ TXT
 
 step "next steps"
 cat <<TXT
-    1. Log in once at https://$DOMAIN  — reads work, but every change will be
-       refused until the browser knows the token. In the browser console:
-         localStorage.setItem('nbx_api_token', '<contents of $ENV_FILE>')
-       Then reload. The token never goes into the page, a URL, or the repo.
-         sudo grep NBX_API_TOKEN $ENV_FILE
-    2. Prove the door is closed:
-         sudo -u $SERVICE_USER $APP_DIR/.venv/bin/python $APP_DIR/scripts/check_deploy.py \\
+    1. Create the first account. The web form cannot do it: on a fresh install
+       whoever found the URL first would become the owner. The password is
+       typed at the prompt, never echoed and never in your shell history:
+         sudo -u $SERVICE_USER NBX_AUTH_DB=$DATA_DIR/auth.db \
+             $APP_DIR/.venv/bin/python $APP_DIR/scripts/manage_users.py \
+             create YOURNAME --role owner
+       From then on the API is closed to anonymous visitors and the dashboard
+       asks for a login. Invite everyone else:
+         sudo -u $SERVICE_USER NBX_AUTH_DB=$DATA_DIR/auth.db \
+             $APP_DIR/.venv/bin/python $APP_DIR/scripts/manage_users.py invite viewer
+    2. Sign in at https://$DOMAIN with that account. Nobody needs to paste a
+       token into a browser console any more. NBX_API_TOKEN still works, but
+       only for scripts:
+         curl -H "X-API-Token: \$(sudo grep NBX_API_TOKEN $ENV_FILE | cut -d= -f2)" \
+             https://$DOMAIN/api/paper/positions
+    3. Prove the door is closed:
+         sudo -u $SERVICE_USER $APP_DIR/.venv/bin/python $APP_DIR/scripts/check_deploy.py \
              --public https://$DOMAIN
-       Exit code 0 and "readonly: anonymous POST -> 401" is the result you want.
-    3. Put a copy of the data somewhere else (see docs/deploy-arvan.md §بکاپ).
+       Exit code 0, "accounts: 1 account(s), 1 owner(s)" and
+       "readonly: anonymous POST -> 401" is the result you want.
+    4. Copy the data somewhere else (docs/deploy-arvan.md §بکاپ). That now
+       includes auth.db: lose it and nobody can sign in.
 TXT
