@@ -154,5 +154,29 @@ check('stats keys become symbols and Rial becomes Toman', () => {
   return 'btc-rls→BTCIRT, global→null';
 });
 
+/* 9. Without a backend the exits come from the same ladder the live plan uses.
+ *    They used to be three percentages (1.045 / 1.075) that happened to sit near
+ *    1.2R and 2.0R against a 3.8 % stop; now the relationship is the definition,
+ *    so this test can state it instead of approximating it. */
+check('fallback exits are the live RR ladder against the stop distance', () => {
+  const seen = [];
+  for (const side of ['buy', 'sell']) {
+    const P = reset();
+    withFx(1);
+    const px = 73_040;
+    const r = P.placeOrder({ symbol: 'BTCUSDT', side, qty: 0.01, price: px });
+    assert(r.ok, `placeOrder(${side}) refused: ${r.error || ''} ${r.blocked_by || ''}`);
+    const pos = P.positions[0];
+    assert(pos, `no position for ${side}`);
+    const dist = Math.abs(px - pos.stop);
+    assert(dist > 0, 'the fallback stop equals the entry price');
+    const rr = (x) => Math.abs(x - px) / dist;
+    assert(near(rr(pos.tp1), 1.2, 1e-9), `${side} tp1 is ${rr(pos.tp1).toFixed(4)}R, expected 1.2R`);
+    assert(near(rr(pos.tp2), 2.0, 1e-9), `${side} tp2 is ${rr(pos.tp2).toFixed(4)}R, expected 2.0R`);
+    seen.push(`${side}: tp1 ${rr(pos.tp1).toFixed(2)}R tp2 ${rr(pos.tp2).toFixed(2)}R`);
+  }
+  return seen.join(', ');
+});
+
 console.log(failures ? `\n${failures} failure(s)` : '\nPASS — standalone broker behaves like the server');
 process.exit(failures ? 1 : 0);

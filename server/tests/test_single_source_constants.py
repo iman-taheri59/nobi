@@ -113,3 +113,52 @@ def test_the_risk_engine_can_actually_warn_about_a_low_rr():
     low = plan((0.5, 1.0))
     assert low.rr_ratio == pytest.approx(1.0)
     assert "low-rr" in low.warnings
+
+
+# ---------------------------------------------------------------------------
+# The take-profit ladder: one default, one published number, one way to change it
+# ---------------------------------------------------------------------------
+
+def test_the_ladder_is_parsed_or_refused():
+    """`NBX_RR_LEVELS` is a trading policy, so a half-understood value is worse
+    than the documented default: the parser refuses instead of guessing."""
+    from risk_engine import DEFAULT_RR_LEVELS, parse_rr_levels
+
+    assert parse_rr_levels(None) == DEFAULT_RR_LEVELS
+    assert parse_rr_levels("") == DEFAULT_RR_LEVELS
+    assert parse_rr_levels("1.5,2.5") == (1.5, 2.5)
+    assert parse_rr_levels(" 1.5 ; 2.5 ") == (1.5, 2.5)
+
+    for bad in ("1.5", "2,1", "abc", "1.5,0", "1.5,-2", "nan,2"):
+        with pytest.raises(ValueError):
+            parse_rr_levels(bad)
+
+
+def test_the_server_reads_the_ladder_from_the_environment(monkeypatch):
+    """Setting the variable has to reach the live plan, and a broken value has to
+    leave it alone (the server logs and keeps the default)."""
+    import main
+    from risk_engine import DEFAULT_RR_LEVELS
+
+    monkeypatch.setenv("NBX_RR_LEVELS", "1.5,2.5")
+    assert main.risk_config_from_env().rr_levels == (1.5, 2.5)
+
+    monkeypatch.setenv("NBX_RR_LEVELS", "2,1")
+    assert main.risk_config_from_env().rr_levels == DEFAULT_RR_LEVELS
+
+
+def test_the_page_can_read_the_ladder_it_is_judged_by():
+    """The live ladder is published with the caps, like `minRR`: a client that
+    wants to compare it with the backtest's best must not keep a copy."""
+    from fastapi.testclient import TestClient
+
+    import main
+    from risk_engine import RiskConfig, RiskEngine
+
+    mp = pytest.MonkeyPatch()
+    mp.setattr(main, "risk", RiskEngine(RiskConfig(equity=1_000.0, rr_levels=(1.5, 2.5))))
+    caps = TestClient(main.app).get("/api/risk/state").json()["caps"]
+    mp.undo()
+
+    assert caps["rrLevels"] == [1.5, 2.5]
+    assert caps["minRR"] == pytest.approx(1.5)

@@ -63,3 +63,48 @@ Dashboards expose: equity curve, open risk heatmap, per-trade R multiples, hit r
 ## 5. Consequences
 **Positive:** bounded worst days; anti-revenge design; survivable tail risks.
 **Negative:** lower maximum theoretical upside; occasional missed trades due to caps — accepted by design.
+
+---
+
+## Implementation amendment — 2026-10-21: the live ladder versus the backtest ladder
+
+### What was seen
+
+The live engine fixed its take-profit levels at `(1.2, 2.0)` (hard-coded inside
+`_tp` until 1.0.5), while the backtest simulator defaults to `tp1_r=1.5, tp2_r=2.5`
+and the search grid sweeps `(1.0,2.0) / (1.5,2.5) / (2.0,3.5)`. The "best parameter
+the backtest finds" and "what the live bot applies" were therefore two different
+numbers, and nothing anywhere said so.
+
+### Decision
+
+1. **The difference stays, deliberately.** The backtest ladder is a search space; the
+   live ladder is a policy. Automatically feeding the winner of the first into the
+   second means an optimisation over past data silently changes future trading
+   behaviour — that is overfitting one step removed.
+2. **But it is no longer hidden.** The live ladder now:
+   - comes from `RiskConfig.rr_levels` (not from a literal inside `_tp`),
+   - is published in `GET /api/risk/state` under `caps.rrLevels` — the same rule we
+     set for `minRR`: the number a page warns about must come from the engine itself,
+   - can be set with `NBX_RR_LEVELS=1.5,2.5`. Any unusable value (fewer than two
+     levels, non-increasing, zero, negative or `nan`) is refused and the service keeps
+     the documented default and says so in the log; a wrong ladder is a wrong trade.
+3. **The browser broker** (the no-backend path) now derives its default targets from
+   the same ladder and the stop distance (`1.2R` and `2.0R`); it used to use three
+   percentages (`1.045 / 1.075`) that happened to land near those ratios.
+
+### Operating it
+
+```bash
+# 1) read the winning ladder from the backtest report (best_params in /api/backtest)
+# 2) write it deliberately into the service env and restart
+NBX_RR_LEVELS=1.5,2.5
+# 3) confirm it actually applied
+curl -s http://127.0.0.1:8000/api/risk/state | python -m json.tool | grep -A3 rrLevels
+```
+
+### What this amendment does not say
+
+It does **not** recommend that the backtest ladder is better. If a backtest over a
+short window says `(2.0, 3.5)` is best, that number says nothing about the future.
+The bridge exists for a deliberate choice, not as a substitute for judgement.

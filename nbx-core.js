@@ -506,6 +506,26 @@
   /** Per-leg fee, same 0.2 % the Python broker charges (FEE_PCT). */
   const PAPER_FEE_PCT = 0.002;
 
+  /*: The ladder used when a payload names no stop/targets — i.e. the page is
+   * running without a backend, because with one the server always sends all
+   * three. These are the live plan's multiples (`rr_levels` in
+   * server/risk_engine.py), not the backtester's: the same numbers the Python
+   * engine applies, expressed against the same 3.8 % stop, instead of the three
+   * percentages that happened to approximate them. */
+  const PAPER_STOP_PCT = 0.038;
+  const PAPER_RR_LEVELS = [1.2, 2.0];
+
+  /** Stop and take-profits for a side, derived from the stop distance. */
+  function fallbackExits(px, side) {
+    const dir = side === 'buy' ? 1 : -1;
+    const dist = px * PAPER_STOP_PCT;
+    return {
+      stop: px - dir * dist,
+      tp1: px + dir * dist * PAPER_RR_LEVELS[0],
+      tp2: px + dir * dist * PAPER_RR_LEVELS[PAPER_RR_LEVELS.length - 1],
+    };
+  }
+
   /*: Quote units per USD, exactly like `PaperBroker._quote_rate`: 1 for USDT
    * pairs, USDTIRT for IRT pairs. Everything the gates see is then in USD, so
    * a 9-billion-Toman BTC order is compared with a 100,000-dollar balance
@@ -612,7 +632,7 @@
       const notionalQuote = px * qty;
       const notionalUsd = notionalQuote / rate;
       const feeUsd = notionalQuote * PAPER_FEE_PCT / rate;
-      const stop = +(payload.stop || (side === 'buy' ? px * 0.962 : px * 1.038));
+      const stop = +(payload.stop || fallbackExits(px, side).stop);
       const riskUsd = Math.abs(px - stop) * qty / rate;
       const pf = preflight({
         equity: this.equity, cash: this.cash,
@@ -660,9 +680,10 @@
       const px = pf.price;
       const qty = pf.qty;
       const notional = pf.notional_quote;
-      const stop = +(payload.stop || (side === 'buy' ? px * 0.962 : px * 1.038));
-      const tp1 = +(payload.tp1 || (side === 'buy' ? px * 1.045 : px * 0.955));
-      const tp2 = +(payload.tp2 || (side === 'buy' ? px * 1.075 : px * 0.925));
+      const exits = fallbackExits(px, side);
+      const stop = +(payload.stop || exits.stop);
+      const tp1 = +(payload.tp1 || exits.tp1);
+      const tp2 = +(payload.tp2 || exits.tp2);
       const pos = {
         id: 'pp-' + Date.now() + '-' + sym,
         symbol: sym,
