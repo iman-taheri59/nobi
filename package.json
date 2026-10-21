@@ -8,7 +8,8 @@
     "lint": "eslint nbx-core.js nbx-app.js \"scripts/**/*.js\" \"scripts/**/*.mjs\" eslint.config.mjs",
     "lint:dashboard": "node scripts/lint_dashboard.mjs",
     "test:js": "node scripts/js_broker_test.js",
-    "build": "npm run css && python3 scripts/build_standalone.py"
+    "build": "python scripts/build_coin_icons.py && npm run css && python scripts/build_standalone.py",
+    "test:icons": "node scripts/test_coin_icons.cjs"
   },
   "devDependencies": {
     "@tailwindcss/cli": "^4.3.3",

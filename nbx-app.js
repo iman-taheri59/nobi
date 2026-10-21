@@ -853,7 +853,7 @@
           <div class="w-8 h-8 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center font-extrabold text-sm num ${
             i < 3 ? 'text-emerald-300' : 'text-zinc-500'
           }">${faNum(i + 1)}</div>
-          <div class="min-w-0"><div class="font-bold text-[13px] sm:text-sm">${symLabel}</div>
+          <div class="min-w-0"><div class="font-bold text-[13px] sm:text-sm">${window.coinIcon(s.symbol)}${symLabel}</div>
             <span class="chip ${dir}"${
           s.direction_raw && s.direction_raw !== s.direction
             ? ` title="${LANG === 'fa'
@@ -1032,7 +1032,7 @@
           const sc = f && typeof f.score === 'number' ? f.score : null;
           if (sc === null) {
             return `<div class="flex items-center gap-2.5 sm:gap-3">
-              <span class="w-10 sm:w-14 font-bold text-[13px] sm:text-sm shrink-0">${x.symbol.replace(/IRT|USDT/g, '')}</span>
+              <span class="font-bold text-[13px] sm:text-sm shrink-0">${window.coinIcon(x.symbol, 20)}${x.symbol.replace(/IRT|USDT/g, '')}</span>
               <span class="flex-1 text-[10px] text-red-200/80">${LANG === 'fa'
                 ? 'دادهٔ فاندامنتال در دسترس نیست — سرور تحلیل پاسخ نداد'
                 : 'fundamentals unavailable — the analysis server did not answer'}</span>
@@ -1049,7 +1049,7 @@
             : '';
           return `
         <div class="flex items-center gap-2.5 sm:gap-3">
-          <span class="w-10 sm:w-14 font-bold text-[13px] sm:text-sm shrink-0">${x.symbol.replace(/IRT|USDT/g, '')}</span>
+          <span class="font-bold text-[13px] sm:text-sm shrink-0">${window.coinIcon(x.symbol, 20)}${x.symbol.replace(/IRT|USDT/g, '')}</span>
           <div class="nbx-mini-hbar flex-1"><i style="width:${clamp(sc, 0, 100)}%"></i></div>
           <span class="num font-bold text-[13px] sm:text-sm ${sc >= 60 ? 'text-sky-300' : sc >= 45 ? 'text-amber-300' : 'text-red-300'}">${faNum(
             +sc.toFixed(0)
