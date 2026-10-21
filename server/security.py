@@ -176,18 +176,52 @@ def presented_token(request: Request) -> str:
 # Rate limiting (per client, per minute, in-process)
 # --------------------------------------------------------------------------- #
 _RATE_LIMIT = max(1, int(os.getenv("NBX_RATE_LIMIT", "60")))
+
+#: Login attempts allowed per address per minute, counted **across usernames**.
+#:
+#: `/api/auth/login` was the one unguarded route: it is public by necessity, and
+#: the throttle in `auth.authenticate` is keyed by `(address, username)`. Two
+#: consequences, both measured against the code rather than imagined:
+#:
+#: * a spray of *different* usernames never reaches that limit, and every
+#:   attempt pays for one scrypt comparison (~40 ms of CPU and 16 MB, see
+#:   `auth.hash_password`) — under `MemoryMax=2G` a few dozen concurrent
+#:   requests are enough to squeeze the process;
+#: * ten wrong guesses against *one* username still lock that person out for
+#:   `NBX_LOGIN_WINDOW_S` (15 minutes), which is a denial of service aimed at a
+#:   named user rather than at the process.
+#:
+#: A per-address ceiling closes the first and makes the second expensive to keep
+#: up: one office or carrier NAT shares the budget, so `NBX_LOGIN_RATE_LIMIT`
+#: exists for the deployment where several people sign in from one address.
+LOGIN_RATE_LIMIT = max(1, int(os.getenv("NBX_LOGIN_RATE_LIMIT", "20")))
+
 _hits: dict[str, deque[float]] = {}
 
 
-def _rate_ok(key: str) -> bool:
+def _within(key: str, limit: int) -> bool:
+    """Sliding one-minute window. One counter per key, in this process."""
     now = time.monotonic()
     window = _hits.setdefault(key, deque())
     while window and now - window[0] > 60:
         window.popleft()
-    if len(window) >= _RATE_LIMIT:
+    if len(window) >= limit:
         return False
     window.append(now)
     return True
+
+
+def _rate_ok(key: str) -> bool:
+    return _within(key, _RATE_LIMIT)
+
+
+def login_rate_ok(host: str) -> bool:
+    """Is this address allowed another sign-in attempt this minute?
+
+    Counted before the password is checked, because the cost being protected is
+    the scrypt comparison itself.
+    """
+    return _within(f"login:{host}", LOGIN_RATE_LIMIT)
 
 
 def reset_rate_limits() -> None:
@@ -254,6 +288,6 @@ def token_valid(request: Request) -> bool:
     return secrets.compare_digest(presented_token(request), API_TOKEN)
 
 
-__all__ = ["API_TOKEN", "auth_mode", "client_host", "cors_origins",
-           "presented_token", "require_client", "reset_rate_limits",
+__all__ = ["API_TOKEN", "LOGIN_RATE_LIMIT", "auth_mode", "client_host", "cors_origins",
+           "login_rate_ok", "presented_token", "require_client", "reset_rate_limits",
            "startup_problem", "token_valid", "trusted_proxies"]
