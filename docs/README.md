@@ -20,6 +20,7 @@
 | سرور ارزان برای تست انتخاب کنی | [`ops/`](ops) |
 | پروژه را روی ابر آروان (ابرک اوبونتو) نصب کنی | [`deploy-arvan.md`](deploy-arvan.md) — گام‌به‌گام + `scripts/deploy_arvan.sh` + `scripts/check_deploy.py` |
 | تصمیم بگیری VPC لازم است یا نه | [`deploy-arvan-vpc.md`](deploy-arvan-vpc.md) — ایزوله‌سازی، هزینه، و معماری دو‌ابرکی |
+| تصمیم بگیری نردبان سود زنده چه باشد | [`rr-ladder-tuning.md`](rr-ladder-tuning.md) — روش، دروازهٔ ADR-0009 و قاعدهٔ بازگشت |
 | ببینی مسیر قابلیت‌ها کجاست | [`roadmap/fa/capability-roadmap.md`](roadmap/fa/capability-roadmap.md) |
 
 ## ADRها (تصمیم‌های معماری)
@@ -87,6 +88,7 @@
 | راهنمای تست | [`testing.md`](testing.md) | [`testing.en.md`](testing.en.md) |
 | مشخصات و لوگوی نمادها | [`coin-metadata.md`](coin-metadata.md) | [`coin-metadata.en.md`](coin-metadata.en.md) |
 | نمایش مالی | [`financial-display.md`](financial-display.md) | [`financial-display.en.md`](financial-display.en.md) |
+| تنظیم نردبان سود (`NBX_RR_LEVELS`) | [`rr-ladder-tuning.md`](rr-ladder-tuning.md) | [`rr-ladder-tuning.en.md`](rr-ladder-tuning.en.md) |
 | نقشهٔ قابلیت‌ها | [`roadmap/fa/`](roadmap/fa) | **در انتظار** |
 | کاتالوگ موتورها | [`analysis/`](analysis) | **در انتظار** |
 | بازبینی‌ها (تاریخ‌دار) | [`reviews/`](reviews) | فقط عکس لحظه‌ای — عمداً ترجمه نمی‌شود |

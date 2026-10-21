@@ -22,6 +22,7 @@ This file is only a way to find things; the content lives in the folders beside 
 | Pick a cheap server for testing | [`ops/`](ops) — [English](ops/en/free-server-options-for-testing-and-development.md) · [Persian](ops/fa/free-server-options-for-testing-and-development.md) |
 | Install the project on ArvanCloud (Ubuntu cloud server) | [`deploy-arvan.md`](deploy-arvan.md) — step by step + `scripts/deploy_arvan.sh` + `scripts/check_deploy.py` (Persian) |
 | Decide whether a VPC is needed | [`deploy-arvan-vpc.md`](deploy-arvan-vpc.md) — isolation, cost, two-server topology (Persian) |
+| Decide the live take-profit ladder | [`rr-ladder-tuning.en.md`](rr-ladder-tuning.en.md) |
 | Understand coin metadata and logos | [`coin-metadata.en.md`](coin-metadata.en.md) |
 | See where the capabilities are heading | [`roadmap/fa/capability-roadmap.md`](roadmap/fa/capability-roadmap.md) (Persian) |
 
@@ -92,6 +93,7 @@ What is written twice, what is written once, and what is pending. The gate in
 | Testing guide | [`testing.md`](testing.md) | [`testing.en.md`](testing.en.md) |
 | Coin metadata and logos | [`coin-metadata.md`](coin-metadata.md) | [`coin-metadata.en.md`](coin-metadata.en.md) |
 | Financial display | [`financial-display.md`](financial-display.md) | [`financial-display.en.md`](financial-display.en.md) |
+| Tuning the take-profit ladder (`NBX_RR_LEVELS`) | [`rr-ladder-tuning.md`](rr-ladder-tuning.md) | [`rr-ladder-tuning.en.md`](rr-ladder-tuning.en.md) |
 | Roadmap | [`roadmap/fa/`](roadmap/fa) | **pending** |
 | Analysis catalogues | [`analysis/`](analysis) | **pending** |
 | Reviews (date-stamped) | [`reviews/`](reviews) | snapshot only — not translated by design |

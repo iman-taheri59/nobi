@@ -17,6 +17,12 @@
 - An ADR-0008 amendment (Persian and English) records why the live ladder and the
   backtest ladder are deliberately not the same, how to connect them operationally, and
   why automating that transfer is overfitting one step removed.
+- Added `docs/rr-ladder-tuning.md` (Persian) and its English twin: how to tell whether one
+  ladder really is better — the standard-error arithmetic (with 100 trades a gap under
+  0.3R is noise), the data horizon per timeframe (2000-candle cap: `4h` ≈ 333 days,
+  `15m` ≈ 21 days), the three fields that must be read together (`gate.state`,
+  `param_stability`, the out-of-sample `aggregate`), the cross-market agreement rule,
+  "a plateau, not a peak", and the revert rule to write before changing anything.
 - Three new tests in `server/tests/test_single_source_constants.py` (the parser, reading
   it from the environment, and publishing it in `caps`) plus one in
   `scripts/js_broker_test.js` asserting the fallback targets are exactly `1.2R` and
