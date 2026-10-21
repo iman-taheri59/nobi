@@ -42,50 +42,69 @@ REPO_ROOT = SERVER_DIR.parent
 
 
 # --------------------------------------------------------------------------- #
-# 1. The cache directory
+# 1. Output directories
 # --------------------------------------------------------------------------- #
-def _import_cache_in_subprocess(env: dict, cwd: Path) -> str:
-    """Import `candle_cache` in a fresh process and print its root."""
-    code = "import candle_cache; print(candle_cache.CACHE_ROOT)"
+#: The two modules that used to create a directory beside themselves at import
+#: time, each of which is imported (directly or through `nobitex_client`) by
+#: `main`. Both are listed so a third one cannot appear unnoticed.
+OUTPUT_DIRS = ("candle_cache", "backtest")
+
+
+def _import_in_subprocess(modules: tuple[str, ...], env: dict, cwd: Path) -> str:
+    """Import modules in a fresh process and print where they decided to write."""
+    names = ", ".join(f'"{m}"' for m in modules)
+    code = (
+        f"import {', '.join(modules)}\n"
+        f"for m in ({names},):\n"
+        "    mod = __import__(m)\n"
+        "    print(m, getattr(mod, 'CACHE_ROOT', getattr(mod, 'REPORTS', None)))\n"
+    )
     out = subprocess.run([sys.executable, "-c", code], cwd=str(cwd), env=env,
-                         capture_output=True, text=True, timeout=60)
+                         capture_output=True, text=True, timeout=120)
     assert out.returncode == 0, out.stderr[-2000:]
     return out.stdout.strip()
 
 
-def test_the_cache_root_is_configurable(tmp_path):
-    """`NBX_CANDLE_CACHE` wins, and a nested path is created on the first run."""
-    target = tmp_path / "data" / "candle-cache"
+def test_output_directories_are_configurable(tmp_path):
+    """Both paths come from the environment, and nested paths are created."""
+    cache, reports = tmp_path / "data" / "candle-cache", tmp_path / "data" / "reports"
     env = {**os.environ, "PYTHONPATH": str(SERVER_DIR),
-           "NBX_CANDLE_CACHE": str(target)}
-    assert _import_cache_in_subprocess(env, REPO_ROOT) == str(target)
-    assert target.is_dir(), "a nested NBX_CANDLE_CACHE must be created, not assumed"
+           "NBX_CANDLE_CACHE": str(cache), "NBX_BT_DIR": str(reports)}
+    printed = _import_in_subprocess(OUTPUT_DIRS, env, REPO_ROOT)
+
+    assert str(cache) in printed and str(reports) in printed, printed
+    assert cache.is_dir() and reports.is_dir(), "a nested path must be created, not assumed"
 
 
 @pytest.mark.skipif(os.geteuid() == 0, reason="root ignores directory permissions")
-def test_an_unwritable_checkout_still_imports(tmp_path):
-    """The P0: a read-only checkout must degrade, not crash at import.
+def test_a_read_only_checkout_still_imports(tmp_path):
+    """The P0: read-only sources must degrade, not crash at import.
 
-    This is the deployment, reproduced: the module sits in a directory the
+    This is the deployment, reproduced: the modules sit in a directory the
     service user cannot write to (what `ProtectSystem=strict` does to
     `/opt/nobi`), no environment variable is set, and the import must still
-    succeed — falling back to a writable path with a warning.
+    succeed — falling back to a writable path with a warning. Two modules are
+    covered because the first fix missed the second one.
     """
     checkout = tmp_path / "readonly"
     checkout.mkdir()
-    (checkout / "candle_cache.py").write_text(
-        (SERVER_DIR / "candle_cache.py").read_text(encoding="utf-8"), encoding="utf-8")
+    for name in ("storage.py", "candle_cache.py", "backtest.py"):
+        (checkout / name).write_text(
+            (SERVER_DIR / name).read_text(encoding="utf-8"), encoding="utf-8")
+    # `backtest` imports the analysis engine; the real one is fine to reuse.
     checkout.chmod(0o555)
     try:
-        env = {**os.environ, "PYTHONPATH": str(checkout)}
+        env = {**os.environ, "PYTHONPATH": f"{checkout}:{SERVER_DIR}"}
         env.pop("NBX_CANDLE_CACHE", None)
-        root = _import_cache_in_subprocess(env, checkout)
+        env.pop("NBX_BT_DIR", None)
+        printed = _import_in_subprocess(OUTPUT_DIRS, env, checkout)
     finally:
         checkout.chmod(0o755)
 
-    assert not root.startswith(str(checkout)), (
-        "the cache fell back to a directory inside the read-only checkout")
-    assert Path(root).is_dir()
+    for line in printed.splitlines():
+        module, path = line.split(" ", 1)
+        assert not path.startswith(str(checkout)), (
+            f"{module} fell back to a directory inside the read-only checkout: {path}")
 
 
 # --------------------------------------------------------------------------- #
