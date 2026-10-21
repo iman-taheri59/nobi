@@ -1,8 +1,10 @@
 # nobitrader
 
-نسخهٔ جاری: **1.0.3** · تگ: **v1.0.3**
+**فارسی** · [English](README.en.md)
 
-راهنمای [نسخه‌بندی و GitHub Release](docs/releases.md) شامل قواعد افزایش نسخه، تگ و انتشار فایل موبایل است. [تاریخچهٔ تغییرات](CHANGELOG.md) را نیز ببینید.
+نسخهٔ جاری: **1.0.4** · تگ: **v1.0.4**
+
+راهنمای [نسخه‌بندی و GitHub Release](docs/releases.md) شامل قواعد افزایش نسخه، تگ و انتشار فایل موبایل است. [تاریخچهٔ تغییرات](CHANGELOG.md) را نیز ببینید ([English](CHANGELOG.en.md)).
 
 داشبورد دوزبانه (فارسی/انگلیسی) با موتور تحلیل تکنیکال، موتور فاندامنتال،
 مدیریت ریسک، معاملات کاغذی، بک‌تست Walk-Forward، ژورنال سیگنال و بک‌اند
@@ -99,7 +101,7 @@ css` را نزنی، `build_standalone.py` هشدار می‌دهد که CSS ا�
 
 ```bash
 ruff check server scripts        # → All checks passed
-mypy                             # → Success: no issues found in 35 source files
+mypy                             # → Success: no issues found in 58 source files
 npm run lint                     # bundles + scripts
 npm run lint:dashboard           # بلوک درون‌خطی index.html
 ```
@@ -191,9 +193,10 @@ docs/                   ADR، تحلیل، ops، بازبینی‌ها
 
 ## مستندات
 
-- [`docs/README.md`](docs/README.md) — نقشهٔ مستندات (از کجا شروع کنم)
-- [`docs/adr/`](docs/adr) — ۱۵ ADR دوزبانه (قرارداد داده ADR-0014، مرز واحد ADR-0015)
+- [`docs/README.md`](docs/README.md) — نقشهٔ مستندات (از کجا شروع کنم) · [English](docs/README.en.md)
+- [`docs/adr/`](docs/adr) — ۱۸ ADR دوزبانه (قرارداد داده ADR-0014، مرز واحد ADR-0015)
 - [`docs/adr/README.md`](docs/adr/README.md) — کدام ADR پیاده شده و شاهدش کجاست
+- [`docs/releases.en.md`](docs/releases.en.md) — نسخه‌بندی و انتشار (انگلیسی) · [`docs/releases.md`](docs/releases.md) (فارسی)
 - [`docs/reviews/2026-10-20-live-path-verification-fa.md`](docs/reviews/2026-10-20-live-path-verification-fa.md)
   — تأیید مسیر زنده: ۲۰ باگ، فیکسچر، و آنچه هنوز اثبات نشده
 - [`docs/reviews/2026-10-20-nobitex-api-conformance-fa.md`](docs/reviews/2026-10-20-nobitex-api-conformance-fa.md)

@@ -1,5 +1,7 @@
 # ADR-0004: Market Data Pipeline, Storage, and Data Quality
 
+[فارسی](../fa/ADR-0004-پایپ‌لاین-و-ذخیره‌سازی-داده-بازار.md) · **English**
+
 - **Status:** Accepted (partially implemented)
 - **Date:** 2026-02-14
 - **Deciders:** Technical Architect

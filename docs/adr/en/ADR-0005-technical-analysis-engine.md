@@ -1,5 +1,7 @@
 # ADR-0005: Technical Analysis Engine — Architecture and Design
 
+[فارسی](../fa/ADR-0005-موتور-تحلیل-تکنیکال.md) · **English**
+
 - **Status:** Accepted (implemented)
 - **Date:** 2026-02-14
 - **Deciders:** Technical Architect, Quant Lead

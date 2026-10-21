@@ -1,6 +1,8 @@
 # مستندات nobitrader
 
-نسخهٔ جاری: **1.0.3**. راهنمای [نسخه‌بندی و انتشار GitHub](releases.md) و [تاریخچهٔ تغییرات](../CHANGELOG.md).
+**فارسی** · [English](README.en.md)
+
+نسخهٔ جاری: **1.0.4**. راهنمای [نسخه‌بندی و انتشار GitHub](releases.md) ([English](releases.en.md)) و [تاریخچهٔ تغییرات](../CHANGELOG.md) ([English](../CHANGELOG.en.md)).
 
 ## نقشهٔ مستندات
 
@@ -64,6 +66,32 @@
 | فایل | موضوع |
 |---|---|
 | [`ops/fa/free-server-options-for-testing-and-development.md`](ops/fa/free-server-options-for-testing-and-development.md) | گزینه‌های سرور رایگان/ارزان برای تست (نسخهٔ انگلیسی هم موجود است) |
+
+## چه چیزی دوزبانه است، چه چیزی نه
+
+هر جفت دوزبانه یک سوییچ زبان در خط اول دارد. دروازهٔ `server/tests/test_docs_bilingual.py`
+جفت‌بودن ADRها و سوییچ زبان و شمارهٔ نسخه را بررسی می‌کند.
+
+| سند | فارسی | انگلیسی |
+|---|---|---|
+| README ریشه | [`../README.md`](../README.md) | [`../README.en.md`](../README.en.md) |
+| نقشهٔ مستندات | همین فایل | [`README.en.md`](README.en.md) |
+| نسخه‌بندی و انتشار | [`releases.md`](releases.md) | [`releases.en.md`](releases.en.md) |
+| تاریخچهٔ تغییرات | [`../CHANGELOG.md`](../CHANGELOG.md) | [`../CHANGELOG.en.md`](../CHANGELOG.en.md) |
+| ADR-0001 … ADR-0018 | [`adr/fa/`](adr/fa) | [`adr/en/`](adr/en) |
+| سرور رایگان تست | [`ops/fa/`](ops/fa) | [`ops/en/`](ops/en) |
+| استقرار آروان | [`deploy-arvan.md`](deploy-arvan.md) | **در انتظار** |
+| VPC آروان | [`deploy-arvan-vpc.md`](deploy-arvan-vpc.md) | **در انتظار** |
+| اجرا روی ویندوز | [`run-windows.md`](run-windows.md) | **در انتظار** |
+| راهنمای تست | [`testing.md`](testing.md) | [`testing.en.md`](testing.en.md) |
+| مشخصات و لوگوی نمادها | [`coin-metadata.md`](coin-metadata.md) | [`coin-metadata.en.md`](coin-metadata.en.md) |
+| نمایش مالی | [`financial-display.md`](financial-display.md) | [`financial-display.en.md`](financial-display.en.md) |
+| نقشهٔ قابلیت‌ها | [`roadmap/fa/`](roadmap/fa) | **در انتظار** |
+| کاتالوگ موتورها | [`analysis/`](analysis) | **در انتظار** |
+| بازبینی‌ها (تاریخ‌دار) | [`reviews/`](reviews) | فقط عکس لحظه‌ای — عمداً ترجمه نمی‌شود |
+
+«در انتظار» یک وضعیت صادقانه است، نه یک وعده: این سندها امروز فقط فارسی‌اند و ترجمه‌ای
+که از منبعش جلو بزند از نبودنش بدتر است.
 
 ## مشخصات و لوگوی نمادها
 

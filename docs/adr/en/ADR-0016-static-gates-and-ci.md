@@ -1,5 +1,7 @@
 # ADR-0016: Static gates (ruff, mypy, eslint) and CI
 
+[فارسی](../fa/ADR-0016-دروازه‌های-ایستا-و-CI.md) · **English**
+
 - **Status:** Accepted and implemented
 - **Date:** 2026-10-20
 - **Decision owner:** technical architect
