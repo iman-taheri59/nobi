@@ -276,6 +276,10 @@ async def lifespan(_app: FastAPI):
     # Any ERROR/FATAL record from any logger now also lands in the error log,
     # which is what the dashboard's Diagnostics page reads.
     errorlog.install()
+    # A stale inlined page is a deploy-time problem. Rebuild it here — once,
+    # before the first request — when the checkout asks for it; `GET /` must
+    # never wait for `npm`.
+    _build_page_once()
     # Fail closed and loudly. A process that starts with a configuration its
     # guard rails cannot describe is worse than one that refuses to start.
     problem = startup_problem()
@@ -345,7 +349,7 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(
     title="nobiTrader",
-    version="1.0.1",
+    version="1.0.2",
     lifespan=lifespan,
 )
 
@@ -2548,6 +2552,10 @@ async def paper_metrics():
         "metrics": broker.metrics(),
         "curve": [list(x) for x in broker.equity_curve[-200:]],
         "equity_quote": "USD",
+        # Non-null only when `load()` had to restore a backup or quarantine a
+        # damaged state file. Silence here would mean the account quietly
+        # restarted from the configured equity.
+        "state_recovery": broker.state_recovery,
         **provenance(),
     }
 
@@ -3034,12 +3042,69 @@ async def coin_logo(coin_id: str):
 
 # ---------------- Static Frontend Hosting ----------------
 REPO_ROOT = Path(__file__).resolve().parent.parent
+#: One build attempt per process, and one warning per process — not one per request.
+_build_attempted = False
+_stale_page_logged = False
 if (REPO_ROOT / "assets").is_dir():
     app.mount("/assets", StaticFiles(directory=str(REPO_ROOT / "assets")), name="assets")
 
 
+def _page_is_stale() -> bool:
+    """Is the inlined build older than the markup or the stylesheets?"""
+    standalone = REPO_ROOT / "nobitex-mobile.html"
+    markup = [REPO_ROOT / "index.html", REPO_ROOT / "nbx-core.js", REPO_ROOT / "nbx-app.js"]
+    css = sorted((REPO_ROOT / "assets" / "css").glob("*.css"))
+    newest = max((p.stat().st_mtime for p in [*markup, *css] if p.exists()), default=0)
+    return (not standalone.exists()) or standalone.stat().st_mtime < newest
+
+
+def _build_page_once() -> None:
+    """Rebuild the inlined page **outside** the request path.
+
+    The old code rebuilt on demand while answering `GET /`, which meant a
+    request could run `npm run css` (up to 60 s) and `build_standalone.py`.
+    `uvicorn --workers 1` serves every other request from the same event loop,
+    so one visitor with a stale checkout froze the whole dashboard — the health
+    check included — for as long as the build took.
+
+    A page build is a deploy-time step, not a request-time one: CI already fails
+    a pull request whose `nobitex-mobile.html` is behind (`git diff --exit-code`
+    in the `js` job). This function exists only for a source checkout that asks
+    for the old behaviour with `NBX_AUTOBUILD_PAGE=1`, and it runs at most once
+    per process, before the first request.
+    """
+    global _build_attempted
+    if _build_attempted or os.getenv("NBX_AUTOBUILD_PAGE", "0") != "1":
+        return
+    if not (REPO_ROOT / "scripts" / "build_standalone.py").exists():
+        return                      # a deployed tree: nothing to build with
+    _build_attempted = True
+    import subprocess
+
+    css = sorted((REPO_ROOT / "assets" / "css").glob("*.css"))
+    markup = [REPO_ROOT / "index.html", REPO_ROOT / "nbx-core.js", REPO_ROOT / "nbx-app.js"]
+    # build_standalone.py refuses to inline a stylesheet older than the markup
+    # (classes added since the last CSS build would be missing), so rebuild the
+    # CSS first when the toolchain is present.
+    stylesheet_behind = bool(css) and any(
+        p.stat().st_mtime > max(c.stat().st_mtime for c in css) for p in markup if p.exists())
+    if stylesheet_behind and (REPO_ROOT / "node_modules" / ".bin" / "tailwindcss").exists():
+        try:
+            subprocess.run(["npm", "run", "css"], cwd=str(REPO_ROOT),
+                           check=True, capture_output=True, timeout=60)
+        except Exception as exc:          # report, then try the build anyway
+            log.warning("css build failed: %s", _short_proc_error(exc))
+    try:
+        subprocess.run([sys.executable, str(REPO_ROOT / "scripts" / "build_standalone.py")],
+                       cwd=str(REPO_ROOT), check=True, capture_output=True, timeout=30)
+        log.info("inlined dashboard rebuilt (NBX_AUTOBUILD_PAGE=1)")
+    except Exception as exc:
+        log.warning("standalone build failed (%s); serving the previous build",
+                    _short_proc_error(exc))
+
+
 def _self_contained_page() -> Path:
-    """The dashboard as one file, built on demand.
+    """The dashboard as one file. Never built while answering a request.
 
     `index.html` links `assets/css/*.css` and `nbx-*.js`. That is right for
     development and wrong for every context that blocks subresources: a
@@ -3047,44 +3112,24 @@ def _self_contained_page() -> Path:
     an air-gapped host. In those contexts the page arrives with no stylesheet
     and no JavaScript at all — no charts, no data, just unstyled markup.
 
-    So `/` serves the inlined build. It is rebuilt whenever a source file is
-    newer, and `NBX_SERVE_INLINE=0` restores the plain file for anyone who
-    wants to edit and reload.
+    So `/` serves the inlined build that `npm run build` produced. When it is
+    missing or older than its sources, the last good build is served and the
+    reason is logged once — a stale-but-complete page beats a fresh-but-empty
+    one, and neither is worth freezing the event loop for.
+    `NBX_SERVE_INLINE=0` restores the plain file for anyone who wants to edit
+    and reload; `NBX_AUTOBUILD_PAGE=1` rebuilds once at startup instead.
     """
     standalone = REPO_ROOT / "nobitex-mobile.html"
     if os.getenv("NBX_SERVE_INLINE", "1") == "0":
         return REPO_ROOT / "index.html"
-
-    markup = [REPO_ROOT / "index.html", REPO_ROOT / "nbx-core.js", REPO_ROOT / "nbx-app.js"]
-    css = sorted((REPO_ROOT / "assets" / "css").glob("*.css"))
-    newest = max((p.stat().st_mtime for p in [*markup, *css] if p.exists()), default=0)
-    stale = (not standalone.exists()) or standalone.stat().st_mtime < newest
-    if stale:
-        import subprocess
-
-        # build_standalone.py refuses to inline a stylesheet older than the
-        # markup (classes added since the last CSS build would be missing).
-        # Rebuild the CSS first when the toolchain is present; otherwise the
-        # page would keep serving yesterday's bundle with no explanation.
-        if css and any(p.stat().st_mtime > max(c.stat().st_mtime for c in css)
-                       for p in markup if p.exists()):
-            tailwind = REPO_ROOT / "node_modules" / ".bin" / "tailwindcss"
-            if tailwind.exists():
-                try:
-                    subprocess.run(["npm", "run", "css"], cwd=str(REPO_ROOT),
-                                   check=True, capture_output=True, timeout=60)
-                except Exception as exc:  # report, then try the build
-                    log.warning("css build failed: %s", _short_proc_error(exc))
-        try:
-            subprocess.run([sys.executable, str(REPO_ROOT / "scripts" / "build_standalone.py")],
-                           cwd=str(REPO_ROOT), check=True, capture_output=True, timeout=30)
-        except Exception as exc:                       # never fail the request
-            # A stale-but-complete page beats a fresh-but-empty one: index.html
-            # outside the server's file tree would arrive with no CSS or JS at
-            # all. Prefer the last good build — and say why, not just "exit 1".
-            log.warning("standalone build failed (%s); serving the previous build",
-                        _short_proc_error(exc))
-            return standalone if standalone.exists() else REPO_ROOT / "index.html"
+    if _page_is_stale():
+        global _stale_page_logged
+        if not _stale_page_logged:
+            _stale_page_logged = True
+            log.warning(
+                "inlined dashboard is older than its sources; serving the previous "
+                "build. Run `npm run build` (or set NBX_AUTOBUILD_PAGE=1 to build "
+                "once at startup).")
     return standalone if standalone.exists() else REPO_ROOT / "index.html"
 
 

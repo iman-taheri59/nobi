@@ -120,7 +120,8 @@ chown -R "$SERVICE_USER:$SERVICE_USER" "$APP_DIR/.venv"
 # 3. Data directory (survives a rebuild only if it is a mounted volume)
 # --------------------------------------------------------------------------- #
 step "preparing $DATA_DIR"
-mkdir -p "$DATA_DIR/exports"
+mkdir -p "$DATA_DIR/exports" "$DATA_DIR/coin-cache" "$DATA_DIR/candle-cache" \
+         "$DATA_DIR/backtest-reports"
 chown -R "$SERVICE_USER:$SERVICE_USER" "$DATA_DIR"
 chmod 750 "$DATA_DIR"
 if ! findmnt -no TARGET "$DATA_DIR" >/dev/null 2>&1; then
@@ -147,6 +148,8 @@ NBX_JOURNAL_DB=$DATA_DIR/journal.db
 NBX_PAPER_STATE=$DATA_DIR/paper_state.json
 NBX_AUTH_DB=$DATA_DIR/auth.db
 NBX_COIN_CACHE=$DATA_DIR/coin-cache
+NBX_CANDLE_CACHE=$DATA_DIR/candle-cache
+NBX_BT_DIR=$DATA_DIR/backtest-reports
 NBX_EXPORT_DIR=$DATA_DIR/exports
 NBX_BASE_URL=https://apiv2.nobitex.ir
 NBX_EQUITY_USD=10000
@@ -159,6 +162,15 @@ fi
 # Upgrade existing env files without touching any existing key or secret.
 if ! grep -q '^NBX_COIN_CACHE=' "$ENV_FILE"; then
   printf '\nNBX_COIN_CACHE=%s/coin-cache\n' "$DATA_DIR" >> "$ENV_FILE"
+fi
+# The candle cache used to live beside its own source, which `ProtectSystem=strict`
+# makes read-only — and `mkdir()` ran at import time, so the service refused to
+# start. It belongs on the volume with the rest of the data.
+if ! grep -q '^NBX_CANDLE_CACHE=' "$ENV_FILE"; then
+  printf 'NBX_CANDLE_CACHE=%s/candle-cache\n' "$DATA_DIR" >> "$ENV_FILE"
+fi
+if ! grep -q '^NBX_BT_DIR=' "$ENV_FILE"; then
+  printf 'NBX_BT_DIR=%s/backtest-reports\n' "$DATA_DIR" >> "$ENV_FILE"
 fi
 chown root:"$SERVICE_USER" "$ENV_FILE"
 chmod 640 "$ENV_FILE"

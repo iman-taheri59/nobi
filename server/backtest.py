@@ -20,7 +20,6 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-import os
 import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -29,10 +28,14 @@ from typing import Any
 
 import pandas as pd
 
+from storage import writable_dir
 from ta_engine import candles_to_df, ta_score_series
 
-REPORTS = Path(os.getenv("NBX_BT_DIR", str(Path(__file__).parent / "backtest_reports")))
-REPORTS.mkdir(exist_ok=True)
+#: Where walk-forward reports are written. Outside the checkout on purpose: the
+#: deployed unit has a read-only source tree, and `mkdir` at import time turned
+#: that into a startup failure (see `storage.py`).
+REPORTS = writable_dir("NBX_BT_DIR", Path(__file__).parent / "backtest_reports",
+                       label="backtest-reports")
 
 FEE_PCT = 0.002
 SLIP_BPS = 6

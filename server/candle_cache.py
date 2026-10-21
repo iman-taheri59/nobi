@@ -12,10 +12,15 @@ from pathlib import Path
 
 import pandas as pd
 
+from storage import writable_dir
+
 log = logging.getLogger("candle-cache")
 
-CACHE_ROOT = Path(__file__).parent / "candle_cache"
-CACHE_ROOT.mkdir(exist_ok=True)
+#: Where the Parquet files live: `NBX_CANDLE_CACHE`, or a writable fallback.
+#: The cache is data, not code — keeping it in the checkout made a read-only
+#: deployment fail at import time (see `storage.py`).
+CACHE_ROOT = writable_dir("NBX_CANDLE_CACHE", Path(__file__).parent / "candle_cache",
+                          label="candle-cache")
 
 
 def _key(symbol: str, resolution: str, from_ts: int, to_ts: int) -> Path:

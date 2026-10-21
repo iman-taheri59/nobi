@@ -78,6 +78,23 @@ def _bearer_ok(request: Request) -> bool:
     return security.token_valid(request)
 
 
+def _login_budget(request: Request) -> Response | None:
+    """Refuse before hashing when one address is spending the whole CPU.
+
+    Placed in front of `auth.authenticate` on purpose: the expensive step is the
+    scrypt comparison, and a throttle that runs after it protects nothing. The
+    counter is per address, not per `(address, username)`, so cycling usernames
+    does not reset it (see `security.LOGIN_RATE_LIMIT`).
+    """
+    if security.login_rate_ok(_client_ip(request)):
+        return None
+    return _refuse(
+        429,
+        f"تلاش‌های ورود از این آدرس بیش از حد مجاز است "
+        f"({security.LOGIN_RATE_LIMIT} در دقیقه)؛ یک دقیقه بعد دوباره امتحان کنید",
+    )
+
+
 def _me(request: Request) -> dict:
     session = identity.session_of(request)
     if session is not None:
@@ -101,6 +118,8 @@ def _me(request: Request) -> dict:
 # --------------------------------------------------------------------------- #
 @router.post("/login")
 def login(body: LoginBody, request: Request, response: Response):
+    if (denied := _login_budget(request)) is not None:
+        return denied
     ip = _client_ip(request)
     try:
         user = auth.authenticate(body.username, body.password, ip=ip)
@@ -136,6 +155,8 @@ def me(request: Request):
 @router.post("/register")
 def register(body: RegisterBody, request: Request, response: Response):
     """Redeem an invite. The account's role is whatever the invite says."""
+    if (denied := _login_budget(request)) is not None:
+        return denied
     if not auth.any_users():
         # A fresh install with no accounts would let the first visitor create
         # one — and whoever finds the URL first would be the owner. Refuse, and
@@ -163,6 +184,8 @@ def register(body: RegisterBody, request: Request, response: Response):
 # --------------------------------------------------------------------------- #
 @router.post("/password")
 def change_own_password(body: PasswordBody, request: Request, response: Response):
+    if (denied := _login_budget(request)) is not None:
+        return denied
     session = identity.session_of(request)
     if session is None:
         return _refuse(401, "برای این کار باید وارد شوید")
