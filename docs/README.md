@@ -83,9 +83,9 @@
 | استقرار آروان | [`deploy-arvan.md`](deploy-arvan.md) | **در انتظار** |
 | VPC آروان | [`deploy-arvan-vpc.md`](deploy-arvan-vpc.md) | **در انتظار** |
 | اجرا روی ویندوز | [`run-windows.md`](run-windows.md) | **در انتظار** |
-| راهنمای تست | [`testing.md`](testing.md) | **در انتظار** |
-| مشخصات و لوگوی نمادها | [`coin-metadata.md`](coin-metadata.md) | **در انتظار** |
-| نمایش مالی | [`financial-display.md`](financial-display.md) | **در انتظار** |
+| راهنمای تست | [`testing.md`](testing.md) | [`testing.en.md`](testing.en.md) |
+| مشخصات و لوگوی نمادها | [`coin-metadata.md`](coin-metadata.md) | [`coin-metadata.en.md`](coin-metadata.en.md) |
+| نمایش مالی | [`financial-display.md`](financial-display.md) | [`financial-display.en.md`](financial-display.en.md) |
 | نقشهٔ قابلیت‌ها | [`roadmap/fa/`](roadmap/fa) | **در انتظار** |
 | کاتالوگ موتورها | [`analysis/`](analysis) | **در انتظار** |
 | بازبینی‌ها (تاریخ‌دار) | [`reviews/`](reviews) | فقط عکس لحظه‌ای — عمداً ترجمه نمی‌شود |

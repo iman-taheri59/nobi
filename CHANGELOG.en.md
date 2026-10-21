@@ -18,6 +18,11 @@
   files in one language (the 0013 duplicate could not happen silently again), when a
   documented pair is missing, when a pair does not link to its other language, or when
   either side of a release-facing document stops carrying the current version number.
+- The three guides an English-speaking operator actually needs are translated too:
+  `docs/testing.en.md` (measuring against a machine that reaches Nobitex, the 45-panel
+  probe, the browser fallbacks), `docs/coin-metadata.en.md` (where specifications come
+  from, the logo cache, the security ceilings) and `docs/financial-display.en.md` (the
+  display-unit contract). The stale "321 passed" in the testing guide is now 591.
 - The documentation map now lists a bilingual coverage table: which documents exist in
   both languages and which are Persian-only today ("pending"), instead of leaving it to
   guesswork.

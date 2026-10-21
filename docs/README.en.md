@@ -18,9 +18,11 @@ This file is only a way to find things; the content lives in the folders beside 
 | See which decision is actually implemented | [`adr/README.md`](adr/README.md) — status table with code evidence (Persian) |
 | Know what was last verified, and what was not | [`reviews/`](reviews) (Persian) |
 | Know what the analysis engines actually compute today | [`analysis/`](analysis) — catalogue plus an "implemented / catalogue only" table (Persian) |
+| Run the tests against a live exchange | [`testing.en.md`](testing.en.md) |
 | Pick a cheap server for testing | [`ops/`](ops) — [English](ops/en/free-server-options-for-testing-and-development.md) · [Persian](ops/fa/free-server-options-for-testing-and-development.md) |
 | Install the project on ArvanCloud (Ubuntu cloud server) | [`deploy-arvan.md`](deploy-arvan.md) — step by step + `scripts/deploy_arvan.sh` + `scripts/check_deploy.py` (Persian) |
 | Decide whether a VPC is needed | [`deploy-arvan-vpc.md`](deploy-arvan-vpc.md) — isolation, cost, two-server topology (Persian) |
+| Understand coin metadata and logos | [`coin-metadata.en.md`](coin-metadata.en.md) |
 | See where the capabilities are heading | [`roadmap/fa/capability-roadmap.md`](roadmap/fa/capability-roadmap.md) (Persian) |
 
 ## ADRs (architecture decisions)
@@ -87,9 +89,9 @@ What is written twice, what is written once, and what is pending. The gate in
 | ArvanCloud deployment | [`deploy-arvan.md`](deploy-arvan.md) | **pending** |
 | ArvanCloud VPC | [`deploy-arvan-vpc.md`](deploy-arvan-vpc.md) | **pending** |
 | Running on Windows | [`run-windows.md`](run-windows.md) | **pending** |
-| Testing guide | [`testing.md`](testing.md) | **pending** |
-| Coin metadata and logos | [`coin-metadata.md`](coin-metadata.md) | **pending** |
-| Financial display | [`financial-display.md`](financial-display.md) | **pending** |
+| Testing guide | [`testing.md`](testing.md) | [`testing.en.md`](testing.en.md) |
+| Coin metadata and logos | [`coin-metadata.md`](coin-metadata.md) | [`coin-metadata.en.md`](coin-metadata.en.md) |
+| Financial display | [`financial-display.md`](financial-display.md) | [`financial-display.en.md`](financial-display.en.md) |
 | Roadmap | [`roadmap/fa/`](roadmap/fa) | **pending** |
 | Analysis catalogues | [`analysis/`](analysis) | **pending** |
 | Reviews (date-stamped) | [`reviews/`](reviews) | snapshot only — not translated by design |
