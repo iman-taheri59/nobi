@@ -12,6 +12,7 @@
 | بدانی آخرین بار چه چیزی تأیید شد و چه چیزی نه | [`reviews/`](reviews) |
 | بدانی موتورهای تحلیل امروز چه چیزی را واقعاً محاسبه می‌کنند | [`analysis/`](analysis) — کاتالوگ + جدول «پیاده‌شده / فقط کاتالوگ» |
 | سرور ارزان برای تست انتخاب کنی | [`ops/`](ops) |
+| پروژه را روی ابر آروان (ابرک اوبونتو) نصب کنی | [`deploy-arvan.md`](deploy-arvan.md) — گام‌به‌گام + `scripts/deploy_arvan.sh` + `scripts/check_deploy.py` |
 | ببینی مسیر قابلیت‌ها کجاست | [`roadmap/fa/capability-roadmap.md`](roadmap/fa/capability-roadmap.md) |
 
 ## ADRها (تصمیم‌های معماری)

@@ -1,0 +1,89 @@
+# /etc/systemd/system/nobi.service
+#
+# systemd unit for the Nobi dashboard on an ArvanCloud ابرک (Ubuntu 24.04).
+#
+# Two settings here are security, not convenience:
+#
+#   EnvironmentFile  — systemd's environment outranks server/.env (see
+#                      server/_env.py: "a value exported in the shell outranks
+#                      the file"). Keeping the secret here means a checkout
+#                      without .env still runs correctly.
+#   --host 127.0.0.1 — uvicorn must never face the internet. nginx terminates
+#                      TLS and forwards; if this said 0.0.0.0 the X-API-Token
+#                      header would travel in clear text and the loopback rule
+#                      would be protecting nothing.
+#
+# Install:  sudo cp deploy/nobi.service /etc/systemd/system/
+#           sudo systemctl daemon-reload && sudo systemctl enable --now nobi
+# Check:    systemctl status nobi --no-pager ; journalctl -u nobi -n 50 --no-pager
+
+[Unit]
+Description=Nobi trading dashboard (FastAPI)
+Documentation=file:///opt/nobi/docs/deploy-arvan.md
+After=network-online.target
+Wants=network-online.target
+
+# A startup failure here is usually the NBX_TRUSTED_PROXIES/NBX_API_TOKEN guard
+# refusing to run unprotected. That is a bug report, not a flake: after 3
+# attempts systemd stops retrying instead of looping forever.
+# (Both keys belong to [Unit] — systemd ignores them under [Service].)
+StartLimitBurst=3
+StartLimitIntervalSec=120
+
+[Service]
+Type=simple
+User=nobi
+Group=nobi
+WorkingDirectory=/opt/nobi/server
+
+# Secrets. mode 600, owner nobi. See deploy/nobi.env.example.
+# Lines here override server/.env, which is what you want: the unit is the
+# source of truth for "this machine is a deployment, not a dev box".
+EnvironmentFile=/etc/nobi/nobi.env
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+
+# --workers 1 is deliberate: the paper broker keeps positions, the rate limiter
+# keeps counters, and the journal cache keeps state in this process. More
+# workers would mean several independent copies of trading state. Scale with
+# threads, not processes.
+ExecStart=/opt/nobi/.venv/bin/python -m uvicorn main:app \
+    --host 127.0.0.1 \
+    --port 8000 \
+    --workers 1 \
+    --proxy-headers \
+    --forwarded-allow-ips=127.0.0.1 \
+    --timeout-keep-alive 30
+
+Restart=on-failure
+RestartSec=5s
+
+# --- hardening -----------------------------------------------------------
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+
+# The app writes the journal, the paper state and exports — the only writable
+# paths it needs. Everything else is read-only on disk.
+ReadWritePaths=/srv/nobi-data
+StateDirectory=nobi
+LogsDirectory=nobi
+
+# Modest, explicit limits: a runaway backtest should be killed, not take the
+# box down. Raise MemoryMax if you run long backtests on purpose.
+MemoryMax=2G
+TasksMax=512
+
+[Install]
+WantedBy=multi-user.target
