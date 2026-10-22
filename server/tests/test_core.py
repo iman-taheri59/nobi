@@ -246,8 +246,11 @@ def test_stop_wins_when_one_candle_touches_both_levels():
     df = _frame(prices)
     df.loc[31, "h"] = 110.0
     df.loc[31, "l"] = 90.0
+    # Target arithmetic only: slippage is declared off so the assertion is about
+    # where TP1/TP2 sit, not about the cost model. The default (6 bps) is
+    # asserted in test_backtest_costs.py.
     bt = EventBacktester({"initial_equity": 100_000, "risk_pct": 1.0, "atr_stop_k": 2.0,
-                          "tp1_r": 1.5, "tp2_r": 2.5})
+                          "tp1_r": 1.5, "tp2_r": 2.5, "slippage_bps": 0})
     res = bt.run_symbol(df, "XUSDT", "1h", signals=_long_signal(), start=30, end=33)
     assert res.trades == 1
     assert bt.closed[0].reason == "sl-ambiguous"
@@ -263,8 +266,9 @@ def test_tp1_takes_half_then_tp2_closes_the_rest():
     df.loc[31, "l"] = 99.5
     df.loc[32, "h"] = 110.0   # >= tp2 (105)
     df.loc[32, "l"] = 100.5
+    # Target arithmetic only — costs are asserted separately (test_backtest_costs).
     bt = EventBacktester({"initial_equity": 100_000, "risk_pct": 1.0, "atr_stop_k": 2.0,
-                          "tp1_r": 1.5, "tp2_r": 2.5})
+                          "tp1_r": 1.5, "tp2_r": 2.5, "slippage_bps": 0})
     res = bt.run_symbol(df, "XUSDT", "1h", signals=_long_signal(), start=30, end=33)
     assert res.trades == 1
     tr = bt.closed[0]

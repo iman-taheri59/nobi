@@ -49,3 +49,49 @@ This ADR makes the path Backtest → Paper → Live auditable and safe, defines 
 ## 6. Consequences
 **Positive:** no live capital before evidence; honest economics (fees/slippage); safe automation posture; reversible at every step (cancel-all, paper fallback).
 **Negative:** operational weight (monitoring, runbooks) is non-trivial — necessary for 24/7 capital at risk.
+
+## Implementation amendment — 2026-10-22 (version 1.0.7)
+
+Section 3 of this ADR says "costs modelled: fees + **slippage**". The fee was
+always modelled; the slippage was not. `SLIP_BPS = 6` was defined in
+`server/backtest.py` and read by nothing, while `slippage_bps` defaulted to
+**zero** in three places: the `EventBacktester` constructor, `run_and_save`, and
+the body of `POST /api/backtest/run` (`b.get("slippage_bps", 0.0)`). Every
+default backtest — and every gate verdict built on one — therefore described a
+market where orders fill at the exact price. That contradicted section 3; it
+was not a setting of it.
+
+**What changed**
+
+| Item | Before 1.0.7 | From 1.0.7 |
+|---|---|---|
+| Simulator default `slippage_bps` | 0 | `SLIP_BPS` = 6 |
+| Default in `run_and_save` / `grid_search` | 0 | `SLIP_BPS` |
+| HTTP route default | 0 (always) | only when sent; otherwise the engine's default |
+| Browser simulator | no slippage | the same 6 bps, and `fee` from `PAPER_FEE_PCT` |
+| Gate checks | 7 | 8 — `costs_modeled` |
+| Report | numbers only | `costs: {slippage_bps, fee_pct, modeled}` |
+
+**Why `costs_modeled`:** a run without slippage is optimistic, not
+conservative. If the gate can certify it, the first real order invalidates the
+certification. A `0` run is still allowed (to separate the effect of cost from
+the effect of the strategy) but it cannot reach `PASS`; the state becomes
+`FAIL` and `costs_modeled` is named in `failed`.
+
+**What this amendment does not say:** it does not claim 6 bps is Nobitex's true
+spread. 6 bps is a conservative default, overridable via `slippage_bps` in the
+request body or through the dashboard input. The only claim is that **zero**
+cannot be the default and that a report must state the cost it was built with.
+
+**Operating it**
+
+```bash
+# default (6 bps):
+curl -s -X POST http://127.0.0.1:8000/api/backtest/run \
+  -H 'Content-Type: application/json' -d '{"symbol":"BTCIRT","tf":"4h","bars":2000}' \
+  | python -c "import json,sys; r=json.load(sys.stdin)['report']; print(r['costs'], r['gate']['checks']['costs_modeled'])"
+# a different cost:
+... -d '{"symbol":"BTCIRT","tf":"4h","bars":2000,"slippage_bps":25}'
+# frictionless — for comparison, not for promotion:
+... -d '{"symbol":"BTCIRT","tf":"4h","bars":2000,"slippage_bps":0}'   # -> gate.failed = ["costs_modeled"]
+```

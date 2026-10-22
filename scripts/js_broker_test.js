@@ -178,5 +178,30 @@ check('fallback exits are the live RR ladder against the stop distance', () => {
   return seen.join(', ');
 });
 
+/* 10. The offline walk-forward pays the same costs the server does. A browser
+ *     report that fills at the exact price would be an optimistic report the
+ *     page then presents as a promotion-gate result. */
+check('offline backtest models slippage and says so in its gate', () => {
+  const candles = [];
+  let px = 100;
+  for (let i = 0; i < 400; i++) {
+    px = Math.max(1, px * (1 + Math.sin(i / 7) * 0.01));
+    candles.push({ t: 1_700_000_000 + i * 3600, o: px, h: px * 1.01, l: px * 0.99, c: px, v: 10 });
+  }
+  const rep = NBX.Backtest.runWalkForward(candles, 'BTCUSDT', '1h', { equity: 50_000, risk_pct: 0.75 });
+  assert(rep.slippage_bps === 6, `default slippage is ${rep.slippage_bps}, expected 6`);
+  assert(rep.costs && rep.costs.modeled === true, 'report does not claim a cost model');
+  const free = NBX.Backtest.runWalkForward(candles, 'BTCUSDT', '1h',
+    { equity: 50_000, risk_pct: 0.75, slippage_bps: 0 });
+  assert(free.gate.checks.costs_modeled.pass === false, 'a frictionless run passed the cost check');
+  assert(free.gate.failed.includes('costs_modeled'), 'the failing cost check is not named');
+  // Not a direction test: on a 400-bar synthetic series the trade set itself
+  // changes with the cost, so the two expectancies are not comparable. The
+  // direction is asserted on the server side (test_backtest_costs.py) where
+  // the sample is large enough for it to mean something.
+  assert(free.config_hash !== rep.config_hash, 'the cost model is missing from the config hash');
+  return `default ${rep.slippage_bps} bps, frictionless gate state ${free.gate.state}`;
+});
+
 console.log(failures ? `\n${failures} failure(s)` : '\nPASS — standalone broker behaves like the server');
 process.exit(failures ? 1 : 0);

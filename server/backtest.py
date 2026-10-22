@@ -38,6 +38,10 @@ from ta_engine import candles_to_df, ta_score_series
 REPORTS = writable_dir("NBX_BT_DIR", Path(__file__).parent / "backtest_reports",
                        label="backtest-reports")
 
+#: Default cost model. A backtest that ignores the spread is not a cheap
+#: backtest, it is a different strategy: every target looks closer than it is.
+#: `slippage_bps=0` is still allowed, but the promotion gate then refuses to
+#: certify the result (see `costs_modeled`).
 SLIP_BPS = 6
 MIN_WARMUP = 60
 
@@ -112,7 +116,7 @@ def _cfg_hash(cfg: dict) -> str:
         "tp1_r": cfg.get("tp1_r", 1.5),
         "tp2_r": cfg.get("tp2_r", 2.5),
         "fee": FEE_PCT,
-        "slippage_bps": cfg.get("slippage_bps", 0),
+        "slippage_bps": cfg.get("slippage_bps", SLIP_BPS),
         "max_single_asset_pct": cfg.get("max_single_asset_pct", 25.0),
     }
     return hashlib.md5(json.dumps(payload, sort_keys=True).encode()).hexdigest()[:8]
@@ -142,7 +146,7 @@ class EventBacktester:
         self.tp2_r = float(cfg.get("tp2_r", 2.5))
         self.min_score = float(cfg.get("min_score", 0.0))
         self.max_single_asset_pct = float(cfg.get("max_single_asset_pct", 25.0))
-        self.slippage = float(cfg.get("slippage_bps", 0)) / 10_000.0
+        self.slippage = float(cfg.get("slippage_bps", SLIP_BPS)) / 10_000.0
 
     # ---------------- helpers ----------------
     def _ts_ms(self, v) -> float:
@@ -512,7 +516,14 @@ def _aggregate_windows(windows: list[dict], initial_equity: float = 100_000.0) -
     }
 
 
-def _gate(agg: dict, windows: list[dict], tb: int, eb: int, source: str = "live") -> dict:
+def _gate(
+    agg: dict,
+    windows: list[dict],
+    tb: int,
+    eb: int,
+    source: str = "live",
+    slippage_bps: float = SLIP_BPS,
+) -> dict:
     """ADR-0009 promotion gate.
 
     States: PASS / FAIL / INSUFFICIENT_DATA / SYNTHETIC_DATA.
@@ -559,6 +570,14 @@ def _gate(agg: dict, windows: list[dict], tb: int, eb: int, source: str = "live"
             "value": round(consistency, 1),
             "pass": consistency >= 50,
             "required": 50,
+        },
+        # A run with no slippage is not a pessimistic run, it is an optimistic
+        # one: the fee is modelled but the fill is free. Whatever it certifies
+        # would not survive the first real order, so it may not certify anything.
+        "costs_modeled": {
+            "value": slippage_bps,
+            "pass": slippage_bps > 0,
+            "required": "> 0 bps",
         },
     }
 
@@ -656,7 +675,7 @@ def run_and_save(
         "max_concurrent": int(cfg.get("max_concurrent", 5)),
         "min_score": float(cfg.get("min_score", 0.0)),
         "max_single_asset_pct": float(cfg.get("max_single_asset_pct", 25.0)),
-        "slippage_bps": float(cfg.get("slippage_bps", 0)),
+        "slippage_bps": float(cfg.get("slippage_bps", SLIP_BPS)),
     }
 
     signals = ta_score_series(df)
@@ -723,7 +742,8 @@ def run_and_save(
         base_cfg["initial_equity"],
     )
     # gross figures for the in-sample pool are approximated from PF & wins
-    gate = _gate(agg, windows, tb, eb, source=source)
+    gate = _gate(agg, windows, tb, eb, source=source,
+                slippage_bps=base_cfg["slippage_bps"])
     stability = _param_stability(windows)
 
     report = {
@@ -739,6 +759,12 @@ def run_and_save(
         "eval_bars": eb,
         "param_grid_size": len(grid) if (grid and mode != "single") else 1,
         "initial_equity": round(base_cfg["initial_equity"], 2),
+        "slippage_bps": base_cfg["slippage_bps"],
+        "costs": {
+            "slippage_bps": base_cfg["slippage_bps"],
+            "fee_pct": FEE_PCT,
+            "modeled": base_cfg["slippage_bps"] > 0,
+        },
         "aggregate": agg,
         "aggregate_is": agg_is,
         "degradation": {
@@ -761,7 +787,13 @@ def run_and_save(
 # --------------------------------------------------------------------------- #
 # Grid search over the same walk-forward harness
 # --------------------------------------------------------------------------- #
-def grid_search(symbol: str, tf: str, candles_rows: list[dict], grid: dict | None = None) -> dict:
+def grid_search(
+    symbol: str,
+    tf: str,
+    candles_rows: list[dict],
+    grid: dict | None = None,
+    slippage_bps: float = SLIP_BPS,
+) -> dict:
     """Sweep `atr_stop_k` x `risk_pct` across the walk-forward windows."""
     import itertools
     import time as _time
@@ -784,6 +816,7 @@ def grid_search(symbol: str, tf: str, candles_rows: list[dict], grid: dict | Non
             "atr_stop_k": float(params.get("atr_stop_k", 2.0)),
             "max_concurrent": 5,
             "max_single_asset_pct": 25.0,
+            "slippage_bps": float(slippage_bps),
             "_signals": signals,
         }
         runner = WalkForwardRunner(train_bars=tb, eval_bars=eb)
@@ -802,6 +835,7 @@ def grid_search(symbol: str, tf: str, candles_rows: list[dict], grid: dict | Non
     return {
         "symbol": symbol,
         "tf": tf,
+        "slippage_bps": float(slippage_bps),
         "combo_count": len(combos),
         "windows": max(0, (n - tb) // eb),
         "window_bars": {"train": tb, "eval": eb},

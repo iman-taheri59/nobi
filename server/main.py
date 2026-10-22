@@ -45,7 +45,7 @@ import journal as signal_journal
 import nobitex_metadata
 import notify
 import paper_trading
-from backtest import grid_search, run_and_save
+from backtest import SLIP_BPS, grid_search, run_and_save
 from benchmark import MIN_OBS as BENCH_MIN_OBS
 from benchmark import PERIODS_PER_YEAR
 from benchmark import relative as relative_to
@@ -357,7 +357,7 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(
     title="nobiTrader",
-    version="1.0.6",
+    version="1.0.7",
     lifespan=lifespan,
 )
 
@@ -2854,8 +2854,12 @@ async def backtest_run(payload: dict):
         "train_bars": int(b.get("train_bars", 240)),
         "eval_bars": int(b.get("eval_bars", 120)),
         "fixed_params": bool(b.get("fixed_params", False)),
-        "slippage_bps": float(b.get("slippage_bps", 0.0)),
     }
+    # Only override the cost model when the caller actually asked for one:
+    # sending 0.0 by default would make every route-level backtest frictionless
+    # while the simulator claims otherwise, and the gate would certify it.
+    if b.get("slippage_bps") is not None:
+        cfg["slippage_bps"] = float(b["slippage_bps"])
     grid = b.get("grid") if isinstance(b.get("grid"), list) else None
     try:
         rows, src = await client.get_candles_ex(symbol, tf, bars)
@@ -2868,6 +2872,7 @@ async def backtest_run(payload: dict):
             "bars_requested": bars,
             "bars_received": len(rows),
             "source": src,
+            "slippage_bps": res.get("slippage_bps"),
             **provenance(),
         }
     except UpstreamUnavailable as e:
@@ -2979,7 +2984,11 @@ async def backtest_grid(payload: dict):
             log.warning("grid skipped for %s %s: no candles", symbol, tf,
                         extra={"nbx_captured": True})
             return {"ok": False, "error": "no candles fetched", "log_id": row["id"]}
-        res = await asyncio.to_thread(grid_search, symbol, tf, rows, custom)
+        res = await asyncio.to_thread(
+            grid_search, symbol, tf, rows, custom,
+            float(b["slippage_bps"]) if b.get("slippage_bps") is not None
+            else SLIP_BPS,
+        )
         return {"ok": True, **res}
     except Exception as e:
         row = errorlog.capture(level="error", source="api.backtest.grid",
