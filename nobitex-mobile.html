@@ -680,7 +680,7 @@ html[dir="ltr"] .live-badge { right: auto; left: 14px; }
       </button>
     </div>
     <span class="hidden 2xl:inline-flex chip shrink-0"><span class="dot bg-emerald-400"></span> <span data-i18n="hdr.kill"></span></span>
-    <span id="buildChip" class="hidden lg:inline-flex chip num text-violet-300 border-violet-400/30 shrink-0" title="نسخه واقعی از /api/health">v1.0.15 · core</span>
+    <span id="buildChip" class="hidden lg:inline-flex chip num text-violet-300 border-violet-400/30 shrink-0" title="نسخه واقعی از /api/health">v1.0.16 · core</span>
     <div class="ms-auto flex items-center gap-1.5 shrink-0">
       <span class="hidden xl:inline-flex chip num" id="clock">--:--:--</span>
       <span id="apiChip" class="hidden 2xl:inline-flex chip num text-zinc-400 border-white/10" title=""><i data-lucide="wifi-off" class="w-3.5 h-3.5"></i> <span>API: —</span></span>
@@ -6924,7 +6924,19 @@ window.addEventListener('resize', resizeCharts);
     return { pdi, ndi, adx };
   };
 
-  TA.signalScore = function (candles) {
+  // The two bars that turn a score into a direction. Named once here so the
+  // Python side can be compared with them (server/tests/test_single_source_constants.py)
+  // and so a caller can ask "what if the bar were different?" without forking
+  // this function. Defaults are the historical constants: unchanged behaviour.
+  const LONG_SCORE_MIN = 68;
+  const NEUTRAL_SCORE_MIN = 55;
+
+  TA.signalScore = function (candles, opts) {
+    const longMin = opts && opts.longMin != null ? opts.longMin : LONG_SCORE_MIN;
+    const neutralMin = opts && opts.neutralMin != null ? opts.neutralMin : NEUTRAL_SCORE_MIN;
+    if (!(neutralMin < longMin)) {
+      throw new Error(`neutralMin (${neutralMin}) must be below longMin (${longMin})`);
+    }
     if (!candles || candles.length < 60) {
       return { score: 0, direction: 'NEUTRAL', regime: 'UNKNOWN', components: {}, reason: 'insufficient data' };
     }
@@ -6982,7 +6994,7 @@ window.addEventListener('resize', resizeCharts);
     const raw = 0.4 * comp.trend + 0.25 * comp.momentum + 0.15 * comp.volume + 0.2 * comp.structure;
     const score = clamp(raw * gating, 0, 100);
 
-    const direction = score >= 68 ? 'LONG' : score >= 55 ? 'NEUTRAL' : 'EXIT';
+    const direction = score >= longMin ? 'LONG' : score >= neutralMin ? 'NEUTRAL' : 'EXIT';
     const stopDist = atr[i] * 2;
     return {
       score: +score.toFixed(1),

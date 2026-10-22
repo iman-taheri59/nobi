@@ -34,8 +34,29 @@ def regime_gate(regime: str) -> float:
     return 1.0 if regime == "TREND" else RANGE_GATE
 
 
-def direction_for(score: float) -> str:
-    return "LONG" if score >= LONG_SCORE_MIN else ("NEUTRAL" if score >= NEUTRAL_SCORE_MIN else "EXIT")
+def direction_for(
+    score: float,
+    long_min: float = LONG_SCORE_MIN,
+    neutral_min: float = NEUTRAL_SCORE_MIN,
+) -> str:
+    """Label a score with the bars that apply *here*.
+
+    The thresholds are parameters with the historical constants as defaults, so
+    every existing caller keeps its behaviour to the digit. They became
+    parameters because ADR-0020 measures that one bar cannot fit every timeframe,
+    and ADR-0021 refuses to apply the measurement until it can be *tested* — and
+    it cannot be tested while the label is welded to the constant: a `min_score`
+    below 68 used to filter nothing, so a "no difference" result actually meant
+    "we changed nothing". `adaptive_evidence` now passes the candidate bars here.
+
+    Ordering is checked, not assumed: crossed thresholds would make NEUTRAL
+    unreachable and quietly turn three states into two.
+    """
+    if not (neutral_min < long_min):
+        raise ValueError(f"neutral_min ({neutral_min}) must be below long_min ({long_min})")
+    if score >= long_min:
+        return "LONG"
+    return "NEUTRAL" if score >= neutral_min else "EXIT"
 
 
 def candles_to_df(rows: list[dict]) -> pd.DataFrame:
@@ -99,7 +120,11 @@ def adx_di(df: pd.DataFrame, n=14):
 
 
 # ---------- composite score ----------
-def ta_score(df: pd.DataFrame) -> dict[str, Any]:
+def ta_score(
+    df: pd.DataFrame,
+    long_min: float = LONG_SCORE_MIN,
+    neutral_min: float = NEUTRAL_SCORE_MIN,
+) -> dict[str, Any]:
     if len(df) < 60:
         return {"score": 0, "direction": "NEUTRAL", "regime": "UNKNOWN", "components": {}, "reason": "insufficient_data"}
     close = df["c"]
@@ -153,7 +178,7 @@ def ta_score(df: pd.DataFrame) -> dict[str, Any]:
     regime = "TREND" if (not np.isnan(adx.iat[i]) and adx.iat[i] > ADX_TREND_MIN) else "RANGE"
     score = component_score(comp) * regime_gate(regime)
     score = round(float(max(0, min(100, score))), 1)
-    direction = direction_for(score)
+    direction = direction_for(score, long_min, neutral_min)
     atr_val = float(atr_i.iat[i])
     out = {
         "score": score,
@@ -176,7 +201,12 @@ def ta_score(df: pd.DataFrame) -> dict[str, Any]:
 # --------------------------------------------------------------------------- #
 # Vectorised signal series (identical output to ta_score on a growing slice)
 # --------------------------------------------------------------------------- #
-def ta_score_series(df: pd.DataFrame, start: int = 60) -> list[dict[str, Any] | None]:
+def ta_score_series(
+    df: pd.DataFrame,
+    start: int = 60,
+    long_min: float = LONG_SCORE_MIN,
+    neutral_min: float = NEUTRAL_SCORE_MIN,
+) -> list[dict[str, Any] | None]:
     """Compute `ta_score` for every bar in one vectorised pass.
 
     `ta_score(df.iloc[:i+1])` recomputes ~15 pandas operations per bar, which
@@ -249,7 +279,7 @@ def ta_score_series(df: pd.DataFrame, start: int = 60) -> list[dict[str, Any] | 
         score = component_score({"trend": comp_trend, "momentum": comp_mom,
                                  "volume": comp_vol, "structure": comp_str}) * regime_gate(regime)
         score = round(float(max(0, min(100, score))), 1)
-        direction = direction_for(score)
+        direction = direction_for(score, long_min, neutral_min)
         atr_val = float(atr_i.iat[i])
         out[i] = {
             "score": score,

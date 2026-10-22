@@ -162,3 +162,24 @@ def test_the_page_can_read_the_ladder_it_is_judged_by():
 
     assert caps["rrLevels"] == [1.5, 2.5]
     assert caps["minRR"] == pytest.approx(1.5)
+
+
+def test_the_browser_labels_scores_with_the_same_bars_as_the_server():
+    """`ta_engine.LONG_SCORE_MIN` / `NEUTRAL_SCORE_MIN` versus the two `const`s in
+    `nbx-core.js`. They agreed only by coincidence before this test, and 1.0.16
+    made both sides *parameters* — which is exactly when a default starts to
+    drift unnoticed."""
+    import ta_engine
+
+    assert _js_constant("LONG_SCORE_MIN") == pytest.approx(ta_engine.LONG_SCORE_MIN)
+    assert _js_constant("NEUTRAL_SCORE_MIN") == pytest.approx(ta_engine.NEUTRAL_SCORE_MIN)
+
+
+def test_the_javascript_score_function_accepts_the_same_override():
+    """A parameter on one side and a hardcoded literal on the other is how the
+    A/B harness would end up measuring a bar only the server obeys."""
+    text = (ROOT / "nbx-core.js").read_text(encoding="utf-8")
+    assert "TA.signalScore = function (candles, opts)" in text
+    assert "opts.longMin" in text and "opts.neutralMin" in text
+    # No bare literal may survive in the label line.
+    assert "score >= 68" not in text and "score >= 55" not in text

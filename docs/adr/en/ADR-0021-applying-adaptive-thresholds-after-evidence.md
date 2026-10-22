@@ -63,3 +63,29 @@ instead of the constant. Until then, `lower-bar-untestable` is the correct answe
 - The final value of the factor (it is a function of timeframe and regime, not a constant).
 - Whether applying should be automatic or manual. The proposal is manual and versioned,
   like every other change in this repository.
+
+## Amendment — 2026-10-22 (version 1.0.16): prerequisite implemented, one refusal retired
+
+The "technical prerequisite for a lower bar" section of this ADR is now done:
+`LONG_SCORE_MIN` and `NEUTRAL_SCORE_MIN` are **parameters** in `ta_engine`
+(`direction_for(score, long_min, neutral_min)`, and the same two on `ta_score` and
+`ta_score_series`), and the browser twin names them too (`nbx-core.js` →
+`LONG_SCORE_MIN`/`NEUTRAL_SCORE_MIN`, plus `TA.signalScore(candles, opts)`). **The defaults
+are the previous constants**, so this is a structural change, not a behavioural one: 28×10
+parity and every existing number stay identical to the digit.
+
+Consequences:
+
+1. `lower-bar-untestable` is **removed** from `adaptive_evidence`; both directions are
+   measurable.
+2. Each arm labels signals with the same bar its filter uses.
+3. A new named refusal, `bad-factor`, for a factor outside `[0.5, 2.0]` — outside that range
+   the comparison is not a threshold experiment.
+4. **One claim withdrawn:** "a lower bar can only add trades" is false, because the
+   walk-forward re-optimises the stop/target grid. What is true is that the sets `LONG` and
+   `LONG ∪ NEUTRAL` never shrink under a lower bar.
+
+**The ADR's status does not change:** still *proposed*. The technical prerequisite is gone,
+but the five conditions in "Proposed decision" (one variable, out-of-sample, enough sample, a
+materiality threshold, a real feed) still have to be met on Nobitex data, and no code path
+writes `LONG_SCORE_MIN`.

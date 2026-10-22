@@ -2,6 +2,34 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 1.0.16
+
+- **ADR-0021's technical prerequisite landed: the direction threshold is now a parameter.**
+  `ta_engine.direction_for`, `ta_score` and `ta_score_series` accept `long_min` and
+  `neutral_min`, **defaulting to the previous constants** — so no behaviour changed and
+  every existing path produces the same numbers to the digit. The reason: while the LONG
+  label was welded to the constant, testing a lower bar was meaningless ("no difference"
+  meant "we changed nothing").
+- **The browser twin names the same two numbers:** `nbx-core.js` now has `LONG_SCORE_MIN`
+  and `NEUTRAL_SCORE_MIN`, and `TA.signalScore(candles, opts)` accepts overrides; no magic
+  number survives in the label line. Two new tests in `test_single_source_constants.py`
+  compare the values on both sides and pin the parameter's existence.
+- **`lower-bar-untestable` is retired.** `adaptive_evidence` measures both directions, and
+  each arm labels signals with the same bar its filter uses — an arm whose signal says LONG
+  at 58 while the backtester filters at 68 tests neither number.
+- **New named refusal: `bad-factor`.** A factor outside `[0.5, 2.0]` is not a threshold
+  experiment any more but a different strategy, and calling it evidence would launder the
+  difference; crossed bars (which make NEUTRAL unreachable) are refused at the engine
+  boundary with a `ValueError`.
+- **One claim withdrawn.** The first assumption was "a lower bar can only add trades". A
+  test refused it (34 → 31 on a real sample): the monotonicity holds for **labels**, not for
+  the trade count, because the walk-forward re-optimises the stop/target grid on the train
+  slice and a different bar makes a different parameter set win. The test moved to the level
+  where the claim is true: `LONG` and `LONG ∪ NEUTRAL` do not shrink under a lower bar.
+- **CLI:** `scripts/adaptive_report.py --evidence [--factor X]` prints the same comparison
+  on the command line, under the same rule: a verdict with its sample size, and "not
+  applied" at the end.
+
 ## 1.0.15
 
 - **The next question, in code: "would a higher bar have been better out-of-sample?"**

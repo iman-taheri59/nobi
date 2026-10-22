@@ -956,10 +956,15 @@ def test_js_mirror_uses_the_same_weights_as_python():
     assert m, "the JS weight expression moved; update this guard"
     assert [float(x) for x in m.groups()] == [w["trend"], w["momentum"], w["volume"], w["structure"]]
 
-    d = re.search(r"score >= ([\d.]+) \? 'LONG' : score >= ([\d.]+) \?", js)
+    # 1.0.16 made the two bars *names* on both sides (so a caller can ask "what
+    # if the bar were different?"), which means the guard has to compare values
+    # rather than rediscover literals in an expression.
+    d = re.search(r"const LONG_SCORE_MIN = ([\d.]+);\s*\n\s*const NEUTRAL_SCORE_MIN = ([\d.]+);", js)
     assert d, "the JS direction thresholds moved; update this guard"
     assert float(d.group(1)) == ta_engine.LONG_SCORE_MIN
     assert float(d.group(2)) == ta_engine.NEUTRAL_SCORE_MIN
+    assert re.search(r"score >= longMin \? 'LONG' : score >= neutralMin \?", js), \
+        "the JS label no longer uses the named bars"
 
     # The browser engine now runs the "no fundamentals" branch of the same
     # formula (TA + liquidity, renormalised). The FA term must not reappear with
