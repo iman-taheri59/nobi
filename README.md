@@ -2,7 +2,7 @@
 
 **فارسی** · [English](README.en.md)
 
-نسخهٔ جاری: **1.0.10** · تگ: **v1.0.6**
+نسخهٔ جاری: **1.0.11** · تگ: **v1.0.6**
 
 راهنمای [نسخه‌بندی و GitHub Release](docs/releases.md) شامل قواعد افزایش نسخه، تگ و انتشار فایل موبایل است. [تاریخچهٔ تغییرات](CHANGELOG.md) را نیز ببینید ([English](CHANGELOG.en.md)).
 
@@ -194,7 +194,7 @@ docs/                   ADR، تحلیل، ops، بازبینی‌ها
 ## مستندات
 
 - [`docs/README.md`](docs/README.md) — نقشهٔ مستندات (از کجا شروع کنم) · [English](docs/README.en.md)
-- [`docs/adr/`](docs/adr) — ۱۸ ADR دوزبانه (قرارداد داده ADR-0014، مرز واحد ADR-0015)
+- [`docs/adr/`](docs/adr) — ۱۹ ADR دوزبانه؛ ADR-0019 توضیح می‌دهد چرا `nobitex-mobile.html` نسخهٔ دوم نیست و یک صفحهٔ ریسپانسیو بیشتر نداریم (قرارداد داده ADR-0014، مرز واحد ADR-0015)
 - [`docs/adr/README.md`](docs/adr/README.md) — کدام ADR پیاده شده و شاهدش کجاست
 - [`docs/releases.en.md`](docs/releases.en.md) — نسخه‌بندی و انتشار (انگلیسی) · [`docs/releases.md`](docs/releases.md) (فارسی)
 - [`docs/reviews/2026-10-20-live-path-verification-fa.md`](docs/reviews/2026-10-20-live-path-verification-fa.md)

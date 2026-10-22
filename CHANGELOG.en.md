@@ -2,6 +2,26 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 1.0.11
+
+- **One page, one artifact (ADR-0019).** `nobitex-mobile.html` is not a second
+  version: `scripts/build_standalone.py` builds it from `index.html` + 5 stylesheets +
+  `nbx-core.js` + `nbx-app.js`, and all it does is inline. Undo that inlining and the
+  two files are identical — there is **one responsive page**, not two versions in
+  conflict. The artifact exists for three contexts that block subresources: a phone's
+  `file://`, a preview iframe without network, and an air-gapped host.
+- **New guard `server/tests/test_single_page.py`** (5 tests, no node needed): artifact
+  equality after de-inlining, byte equality of the inlined CSS against the five source
+  files, equality of the inlined JS against both engines, absence of mobile-only
+  markup, and the online-logo call staying alive. A deliberate hand edit to the
+  artifact turned two of them red.
+- **A misdiagnosis corrected:** the dashboard does not orphan `setCoinMetadata`. The
+  definition is in `index.html`; the call is in `nbx-app.js` (`loadCoinMetadata()`
+  after `NBX.boot()` and hourly). Both icon layers are live — 40 bundled SVGs and
+  CoinGecko logos from the server's disk cache — and the ten coins without a bundled
+  SVG (TON, SHIB, NEAR, AXS, EGLD, HBAR, APT, ARB, OP, PEPE) are covered by the second.
+  The new test stops that call from disappearing silently.
+
 ## 1.0.10
 
 - **The dependency lock is repaired:** `package-lock.json` pinned an `@types/estree`
