@@ -17,6 +17,12 @@ There is no browser in CI, so these tests pin the wiring that only breaks in one
 * both languages carry the label, because the label is the safety property;
 * the page the server actually serves (`nobitex-mobile.html`) contains the card, since
   `index.html` is not what a phone opens.
+
+Version 1.0.14 added the second half of the same rule. A measurement belongs to a pair
+(symbol, timeframe, feed), and the three controls sit next to the card. So the pair that
+was measured travels with the numbers: when the selection moves, the card says it is
+stale and names the drift before it re-measures. Numbers from BTCIRT/1h under a header
+that says ETHIRT/4h are the same lie as an unlabelled proposal, only quieter.
 """
 from __future__ import annotations
 
@@ -41,6 +47,7 @@ CARD_KEYS = {
     "ad.title", "ad.measureOnly", "ad.measure", "ad.atr", "ad.percentile", "ad.regime",
     "ad.factor", "ad.long", "ad.neutral", "ad.share", "ad.bars", "ad.applied",
     "ad.notApplied", "ad.needBackend", "ad.failed", "ad.refused", "ad.clamped",
+    "ad.stale",
 }
 
 
@@ -73,7 +80,9 @@ def test_the_card_asks_the_route_that_exists_with_the_same_candle_source() -> No
     # Measurement and backtest must read one feed: two panels on two sources is
     # how they start disagreeing about the same symbol.
     assert "btSrc" in script, "the card ignores the backtest's candle source"
-    assert "source=${src}" in script.replace(" ", "")
+    compact = script.replace(" ", "")
+    assert "&source=${" in compact, "the request does not carry the candle source"
+    assert "btSrc" in script
     assert "btSym" in script and "btTf" in script
 
 
@@ -132,3 +141,43 @@ def test_the_served_page_contains_the_card() -> None:
     built = STANDALONE.read_text(encoding="utf-8")
     for name in ("adCard", "adBtn", "adaptive/thresholds/"):
         assert name in built, f"the built page is missing {name} — run: npm run build"
+
+
+#: 1.0.14 — the pair the numbers belong to.
+def test_the_card_says_when_the_pair_it_measured_has_moved() -> None:
+    script = _card_script()
+    assert "const sel = ()" in script, "the card does not read the live selection"
+    assert "drift" in script and "adCard" in script
+    # The stale label comes from i18n, not from a hardcoded word, and the drift is
+    # named as "measured → now" rather than described vaguely.
+    assert "t('ad.stale')" in script
+    assert "`${asked} → ${now}`" in script
+    # The badge must be able to stop saying "measurement only": the chip and the
+    # sentence both switch on the same condition.
+    assert "text-amber-300 border-amber-300/30" in script
+
+
+def test_a_moved_selection_re_measures_after_a_debounce() -> None:
+    script = _card_script()
+    assert "['btSym', 'btTf', 'btSrc']" in script, "the card does not watch the controls"
+    assert "addEventListener('change'" in script
+    # Debounced, so dragging through a symbol list is one request, not ten.
+    assert "clearTimeout(timer)" in script and "setTimeout(() => { timer = null; measure(); }" in script
+
+
+def test_changing_the_controls_never_fires_a_measurement_nobody_asked_for() -> None:
+    """Until the person asks once, the card is silent — it is evidence, not a poller."""
+    script = _card_script()
+    handler = script[script.index("function onControlChange()"):]
+    handler = handler[: handler.index("btn.addEventListener")]
+    assert "if (!asked) return;" in handler
+
+
+def test_the_stale_path_keeps_the_numbers_and_the_named_pair() -> None:
+    """Stale numbers stay — they are true for their own pair — but they may not
+    wear the current header, and nothing is defaulted to zero."""
+    script = _card_script()
+    paint = script[script.index("function paint()"):script.index("function render(r)")]
+    assert "card.dataset.stale" in paint, "the stale state is not externally observable"
+    assert "→" in paint
+    assert "|| 0" not in paint
