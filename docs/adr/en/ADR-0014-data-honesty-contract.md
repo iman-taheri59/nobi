@@ -74,3 +74,46 @@ A contract without a test is a slogan. Three layers:
   contract, not TLS, rate limits or real outages.
 - **Known gap:** the backend exposes no order-book endpoint, so the depth panel stays
   in `EXPLAINED`. That is honest, but it is not a feature.
+
+## Amendment — 2026-10-22 (version 1.0.10): the reference feed, and the fences around it
+
+**The problem.** `apiv2.nobitex.ir` is unreachable from outside Iran (our own measurement:
+timeout after 8 s). Two ordinary jobs become impossible: developing against real candles,
+and checking whether the number on screen is even plausible.
+
+**The fix.** A **reference** feed (`server/reference_feed.py`) from another public
+exchange. KuCoin is the default because it answered from this sandbox; Binance returns
+**451** — the same problem under a different name:
+
+| Target | Answer from this network |
+|---|---|
+| `apiv2.nobitex.ir` | timeout |
+| `api.binance.com` | **451** |
+| `api.kucoin.com` | 200 |
+| `www.okx.com` · `api.exchange.coinbase.com` | 200 |
+
+**The fences this amendment sets**
+
+1. **A reference is not a substitute.** Every report from this path carries
+   `source="reference"` and the gate returns `REFERENCE_DATA`, which **can never be
+   `PASS`** — even when the arithmetic verdict passes (it is reported under `would_be`).
+   A strategy validated on another exchange's prices has not been validated on ours.
+2. **A rial market is derived, not observed.** `BTCIRT` has no counterpart on a USD
+   exchange. A series exists only with an operator-supplied toman rate
+   (`toman_per_usdt` or `NBX_TOMAN_PER_USDT`), is marked `derived: true` and
+   `quote_unit: "rial"`, and **assumes the rial premium is zero** — the very thing the
+   rial market exists to price. That assumption has to travel with the report.
+3. **Units are explicit.** The toman rate is multiplied by `RIAL_PER_TOMAN` so the prices
+   match the rest of the repository (rial); a factor-of-ten slip here looks perfectly
+   reasonable on screen.
+4. **Unavailability is a named error.** `geo-blocked`, `no-fx`, `disabled`,
+   `bad-timeframe`, `provider-error` — none of them turn into a generated series.
+
+**The two permitted uses**
+
+- **Development and longer backtests:** the reference venue's multi-year history sits
+  beside Nobitex's 2000-candle ceiling rather than replacing it, and the report states
+  which data it was built on.
+- **Cross-check (`/api/reference/cross-check`):** venue price against reference price. A
+  wide gap means one of the two feeds is stale or mis-scaled, not that there is an
+  arbitrage — a failure no other panel showed, because each feed looks healthy alone.

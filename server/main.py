@@ -45,6 +45,7 @@ import journal as signal_journal
 import nobitex_metadata
 import notify
 import paper_trading
+import reference_feed
 from backtest import SLIP_BPS, grid_search, run_and_save
 from benchmark import MIN_OBS as BENCH_MIN_OBS
 from benchmark import PERIODS_PER_YEAR
@@ -357,7 +358,7 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(
     title="nobiTrader",
-    version="1.0.9",
+    version="1.0.10",
     lifespan=lifespan,
 )
 
@@ -2834,6 +2835,71 @@ async def exec_mode_set(payload: dict, request: Request):
     return {"ok": True, **_exec_mode_payload(), **provenance()}
 
 
+# ---------------- Reference feed (ADR-0014, 1.0.10) ----------------
+# A second venue, for developing outside Iran and for sanity-checking the
+# numbers. Read-only, clearly labelled, and never a stand-in for the exchange:
+# `/api/backtest/run` turns it into a REFERENCE_DATA verdict that cannot pass.
+@app.get("/api/reference/status")
+async def reference_status():
+    """Is the fallback feed alive, and what does it say BTCUSDT is worth?"""
+    try:
+        return {"ok": True, **(await reference_feed.status())}
+    except Exception as e:      # a status probe must never 500
+        log.warning("reference status failed: %s", e)
+        return {"ok": False, "reachable": False, "error": str(e)}
+
+
+@app.get("/api/reference/candles/{symbol}")
+async def reference_candles(symbol: str, tf: str = "4h", limit: int = 500,
+                            toman_per_usdt: float | None = None):
+    """Candles from the reference venue, shaped exactly like the exchange's."""
+    try:
+        rows, meta = await reference_feed.fetch_candles(
+            symbol.upper(), tf, limit=max(10, min(int(limit), 2000)),
+            fx=toman_per_usdt,
+        )
+    except reference_feed.ReferenceError as e:
+        return {"ok": False, "error": e.code, "message": e.message, "meta": e.meta}
+    return {"ok": True, "symbol": symbol.upper(), "tf": tf, "rows": rows,
+            "count": len(rows), "reference": meta, **provenance()}
+
+
+@app.get("/api/reference/cross-check")
+async def reference_cross_check(symbol: str = "BTCUSDT"):
+    """Compare the venue's last price with the reference venue's.
+
+    Inside Iran this is the useful direction: a large, unexplained gap means one
+    of the two is stale, mis-scaled, or pointed at the wrong pair — a failing no
+    other panel would show, because each feed looks fine on its own.
+    """
+    out: dict = {"ok": True, "symbol": symbol.upper(), "venue": None, "reference": None}
+    try:
+        rows, _src = await client.get_candles_ex(symbol.upper(), "15m", 2)
+        out["venue"] = rows[-1]["c"] if rows else None
+        out["venue_source"] = _src
+    except UpstreamUnavailable as e:
+        out["venue_error"] = str(e)
+    try:
+        price, meta = await reference_feed.fetch_price(symbol.upper())
+        out["reference"] = price
+        out["reference_meta"] = meta
+    except reference_feed.ReferenceError as e:
+        out["reference_error"] = e.code
+        out["reference_message"] = e.message
+    if out["venue"] and out["reference"]:
+        gap = (out["venue"] / out["reference"] - 1.0) * 100
+        out["gap_pct"] = round(gap, 3)
+        out["verdict"] = (
+            "aligned" if abs(gap) <= 2.0
+            else "wide" if abs(gap) <= 10.0
+            else "divergent"
+        )
+        if out["verdict"] != "aligned":
+            out["note"] = ("a gap this size is a stale or mis-scaled feed, not an "
+                           "arbitrage: check both before trusting either")
+    return out
+
+
 # ---------------- Walk-Forward Backtest (ADR-0009) ----------------
 @app.post("/api/backtest/run", dependencies=[Depends(require_client)])
 async def backtest_run(payload: dict):
@@ -2843,6 +2909,10 @@ async def backtest_run(payload: dict):
     tf = (b.get("tf") or "1h")
     mode = (b.get("mode") or "wf").lower()
     bars = max(200, min(int(b.get("bars", 600)), 2000))
+    candles_source = (b.get("candles_source") or "nobitex").lower()
+    if candles_source not in ("nobitex", "reference"):
+        return {"ok": False, "error": f"unknown candles_source {candles_source!r}",
+                "allowed": ["nobitex", "reference"]}
     cfg = {
         "initial_equity": float(b.get("equity", 50000)),
         "risk_pct": float(b.get("risk_pct", 0.75)),
@@ -2861,8 +2931,23 @@ async def backtest_run(payload: dict):
     if b.get("slippage_bps") is not None:
         cfg["slippage_bps"] = float(b["slippage_bps"])
     grid = b.get("grid") if isinstance(b.get("grid"), list) else None
+    ref_meta: dict = {}
     try:
-        rows, src = await client.get_candles_ex(symbol, tf, bars)
+        if candles_source == "reference":
+            # A second venue's candles, clearly labelled. `source` travels into
+            # the report and the gate turns it into REFERENCE_DATA, which can
+            # never be PASS.
+            try:
+                rows, ref_meta = await reference_feed.fetch_candles(
+                    symbol, tf, limit=bars,
+                    fx=b.get("toman_per_usdt"),
+                )
+            except reference_feed.ReferenceError as e:
+                return {"ok": False, "error": e.code, "message": e.message,
+                        "meta": e.meta, "candles_source": candles_source}
+            src = "reference"
+        else:
+            rows, src = await client.get_candles_ex(symbol, tf, bars)
         res = await asyncio.to_thread(
             run_and_save, symbol, tf, rows, cfg, mode, grid, bool(b.get("auto_window", True)), src
         )
@@ -2871,9 +2956,16 @@ async def backtest_run(payload: dict):
             "report": res,
             "bars_requested": bars,
             "bars_received": len(rows),
-            "source": src,
+            # `source` in the body used to be provenance()'s upstream liveness
+            # flag, which silently overwrote the candle origin. They answer
+            # different questions, so they get different names:
+            # `report.source` = where the candles came from,
+            # `upstream`      = whether the exchange answered at all.
+            "candles_source": candles_source,
+            **({"reference": ref_meta} if ref_meta else {}),
             "slippage_bps": res.get("slippage_bps"),
-            **provenance(),
+            "upstream": provenance()["source"],
+            "as_of": provenance()["as_of"],
         }
     except UpstreamUnavailable as e:
         return {**upstream_error("backtest", str(e))}

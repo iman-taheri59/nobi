@@ -680,7 +680,7 @@ html[dir="ltr"] .live-badge { right: auto; left: 14px; }
       </button>
     </div>
     <span class="hidden 2xl:inline-flex chip shrink-0"><span class="dot bg-emerald-400"></span> <span data-i18n="hdr.kill"></span></span>
-    <span id="buildChip" class="hidden lg:inline-flex chip num text-violet-300 border-violet-400/30 shrink-0" title="نسخه واقعی از /api/health">v1.0.9 · core</span>
+    <span id="buildChip" class="hidden lg:inline-flex chip num text-violet-300 border-violet-400/30 shrink-0" title="نسخه واقعی از /api/health">v1.0.10 · core</span>
     <div class="ms-auto flex items-center gap-1.5 shrink-0">
       <span class="hidden xl:inline-flex chip num" id="clock">--:--:--</span>
       <span id="apiChip" class="hidden 2xl:inline-flex chip num text-zinc-400 border-white/10" title=""><i data-lucide="wifi-off" class="w-3.5 h-3.5"></i> <span>API: —</span></span>
@@ -1553,6 +1553,13 @@ html[dir="ltr"] .live-badge { right: auto; left: 14px; }
       <div class="glass p-4 sm:p-5">
         <div class="font-bold text-[13px] sm:text-sm mb-3 flex items-center gap-2"><i data-lucide="settings-2" class="w-4 h-4 text-indigo-300"></i> <span data-i18n="bt.cfg"></span></div>
         <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-7 gap-2.5 text-[11px]">
+          <label class="block">
+            <span class="text-zinc-500" data-i18n="bt.src"></span>
+            <select id="btSrc" class="mt-1 w-full rounded-lg bg-white/5 border border-white/10 px-2.5 py-2 text-xs outline-none focus:border-indigo-300/40">
+              <option value="nobitex" selected data-i18n="bt.srcVenue"></option>
+              <option value="reference" data-i18n="bt.srcRef"></option>
+            </select>
+          </label>
           <label class="block col-span-2 md:col-span-1">
             <span class="text-zinc-500" data-i18n="col.symbol"></span>
             <select id="btSym" class="mt-1 w-full rounded-lg bg-white/5 border border-white/10 px-2.5 py-2 num text-xs outline-none focus:border-indigo-300/40"></select>
@@ -1778,7 +1785,7 @@ const T = {
     'bt.cfg':'پیکربندی بک‌تست','bt.equity':'سرمایه اولیه','bt.stopK':'ضریب استاپ (k×ATR)','bt.train':'پنجره آموزش (کندل)','bt.eval':'پنجره آزمون (کندل)',
     'bt.cfgNote':'پارامترها فقط روی پنجره آموزش بهینه می‌شوند و اعداد گزارش‌شده از پنجره آزمون (خارج‌از‌نمونه) می‌آیند · اگر کمتر از ۲ پنجره جا شود، اندازه پنجره‌ها خودکار انتخاب می‌شود · تداخل SL/TP در یک کندل محافظه‌کارانه به ضرر فرض می‌شود · نتایج در backtest_reports/ ذخیره می‌گردد.',
     'bt.sample':'معاملات نمونه (آخرین پنجره)','bt.exit':'خروج','bt.loading':'در حال اجرا...',
-    'bt.bars':'تاریخچه (کندل)','bt.slip':'لغزش (bps)','bt.basisTaOnly':'فقط تکنیکال','bt.gateTitle':'دروازه ارتقا (ADR-0009):','bt.params':'پارامتر','bt.isR':'R آموزش',
+    'bt.bars':'تاریخچه (کندل)','bt.slip':'لغزش (bps)','bt.basisTaOnly':'فقط تکنیکال','bt.src':'منبع کندل','bt.srcVenue':'نوبیتکس (محل معامله)','bt.srcRef':'صرافی مرجع (فقط برای توسعه)','bt.gateRef':'داده مرجع','bt.gateTitle':'دروازه ارتقا (ADR-0009):','bt.params':'پارامتر','bt.isR':'R آموزش',
     'bt.oos':'خارج‌از‌نمونه','bt.gatePass':'قبول','bt.gateFail':'رد','bt.gateShort':'داده کافی نیست','bt.gateSynth':'داده شبیه‌سازی‌شده',
     'bt.grid':'جستجوی شبکه‌ای — حساسیت پارامتر', 'bt.fallback':'سرور پاسخ نداد؛ محاسبهٔ محلی (شبیه‌سازی)','bt.gridRun':'اجرای گرید','bt.gridBest':'بهترین ترکیب','bt.gridMeta':'در انتظار اجرا',
     'bt.multi':'اسکن گرید چندنمادی — بهینه‌ترین پارامتر به‌ازای هر نماد','bt.multiRun':'اجرا برای ۸ نماد',
@@ -2026,7 +2033,7 @@ const T = {
     'bt.cfg':'Backtest configuration','bt.equity':'Initial equity','bt.stopK':'Stop factor (k×ATR)','bt.train':'Train window (bars)','bt.eval':'Eval window (bars)',
     'bt.cfgNote':'Parameters are optimised on the train window only; reported numbers come from the eval window (out-of-sample) · windows auto-fit when fewer than 2 fit · SL/TP collisions inside one candle are resolved pessimistically · reports are saved to backtest_reports/.',
     'bt.sample':'Sample trades (last window)','bt.exit':'Exit','bt.loading':'Running...',
-    'bt.bars':'History (bars)','bt.slip':'Slippage (bps)','bt.basisTaOnly':'TA-only','bt.gateTitle':'Promotion gate (ADR-0009):','bt.params':'Params','bt.isR':'Train R',
+    'bt.bars':'History (bars)','bt.slip':'Slippage (bps)','bt.basisTaOnly':'TA-only','bt.src':'Candles','bt.srcVenue':'Nobitex (the venue)','bt.srcRef':'Reference venue (dev only)','bt.gateRef':'Reference data','bt.gateTitle':'Promotion gate (ADR-0009):','bt.params':'Params','bt.isR':'Train R',
     'bt.oos':'Out-of-sample','bt.gatePass':'PASS','bt.gateFail':'FAIL','bt.gateShort':'Insufficient data','bt.gateSynth':'Simulated data',
     'bt.grid':'Grid search — parameter sensitivity', 'bt.fallback':'server unreachable; computed locally (simulated)',
 'bt.gridRun':'Run grid','bt.gridBest':'Best combo','bt.gridMeta':'Idle',
@@ -5924,6 +5931,7 @@ function btReadCfg(){
   // empty box falls back to the server's own default rather than to 0.
   const slipRaw = parseInputNumber(g('btSlip') && g('btSlip').value);
   return {
+    candles_source: (g('btSrc') && g('btSrc').value) || 'nobitex',
     symbol: g('btSym').value || 'BTCIRT',
     tf: g('btTf').value || '1h',
     equity: parseInputNumber(g('btEq').value) || 50000,
@@ -5941,6 +5949,7 @@ const BT_GATE_STYLE = {
   FAIL:               { c:'red',     k:'bt.gateFail'  },
   INSUFFICIENT_DATA:  { c:'amber',   k:'bt.gateShort' },
   SYNTHETIC_DATA:     { c:'sky',     k:'bt.gateSynth' },
+  REFERENCE_DATA:     { c:'violet',  k:'bt.gateRef'   },
 };
 function btRenderGate(rep){
   const g = (rep && rep.gate) || {};
@@ -5961,6 +5970,7 @@ function btRenderGate(rep){
       costs_modeled:'مدل‌سازی هزینه‌ها (لغزش)',ambiguous_share_le_10:'سهم خروج‌های مبهم'};
     const fa = g.state==='PASS'?'نتایج خارج از نمونه تمام بررسی‌های ADR-0009 را گذرانده‌اند.':
       g.state==='SYNTHETIC_DATA'?'داده شبیه‌سازی‌شده است؛ این نتیجه مبنای ارتقا نیست.':
+      g.state==='REFERENCE_DATA'?'کندل‌ها از صرافی مرجع آمده‌اند، نه از خود نوبیتکس؛ این نتیجه برای توسعه و مقایسه است، نه مجوز ارتقا.':
       g.state==='INSUFFICIENT_DATA'?`شواهد کافی نیست؛ حدود ${fmtNum(g.bars_needed)} کندل تاریخچه لازم است.`:
       g.state==='FAIL'?'بررسی‌های ناموفق: '+(g.failed||[]).map(k=>names[k]||k).join('، '):g.message||'';
     msg.textContent = localizeText(LANG==='fa'?fa:g.message||'');
@@ -5989,7 +5999,8 @@ function btRenderGate(rep){
     bits.push(`${fmtNum(rep.aggregate && rep.aggregate.windows || 0)} ${LANG==='fa'?'پنجره':'windows'}`);
     bits.push(`${fmtNum(rep.param_grid_size||1)} ${LANG==='fa'?'ترکیب':'combos'}`);
     if (rep.window_mode === 'auto') bits.push(LANG==='fa'?'پنجره خودکار':'auto windows');
-    if (rep.source && rep.source !== 'live') bits.push(LANG==='fa'?'داده شبیه‌سازی':'simulated');
+    if (rep.source === 'reference') bits.push(LANG==='fa'?'صرافی مرجع':'reference venue');
+    else if (rep.source && rep.source !== 'live') bits.push(LANG==='fa'?'داده شبیه‌سازی':'simulated');
     const slip = (rep.costs && rep.costs.slippage_bps != null) ? rep.costs.slippage_bps : rep.slippage_bps;
     if (slip != null) bits.push(slip > 0 ? `${fmtNum(slip,0)} bps` : (LANG==='fa'?'بدون لغزش':'no slippage'));
     const amb = (rep.aggregate && rep.aggregate.ambiguous_share);

@@ -2,6 +2,41 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 1.0.10
+
+- **The dependency lock is repaired:** `package-lock.json` pinned an `@types/estree`
+  version that was never published, so every `npm ci` in CI died with a 404 — which is
+  what turned the `js` and `ui` jobs red. Pinned back to the published `1.0.9`.
+- **A reference feed, so development outside Iran is possible again.** `apiv2.nobitex.ir`
+  is unreachable (timeout), so `server/reference_feed.py` pulls candles from another public
+  exchange. **KuCoin** is the default because it answers from this network; Binance returns
+  **451** — the same problem under a different name. Routes: `GET /api/reference/status`,
+  `GET /api/reference/candles/{symbol}`, `GET /api/reference/cross-check`.
+- **A reference is not a substitute.** Every report from this path carries
+  `source="reference"` and the gate returns a new `REFERENCE_DATA` state that can never be
+  `PASS`; the arithmetic verdict is reported under `would_be`. A strategy validated on
+  another venue's prices has not been validated on ours.
+- **A rial market is derived, and only with an explicit rate.** `BTCIRT` has no USD
+  counterpart; a series exists only via `toman_per_usdt` or `NBX_TOMAN_PER_USDT`, flagged
+  `derived: true` and `quote_unit: "rial"`. Toman→rial goes through `RIAL_PER_TOMAN` so it
+  matches the rest of the repository, and the "rial premium is zero" assumption is stated.
+- **`POST /api/backtest/run` accepts a candle source:** `candles_source:
+  "nobitex"|"reference"` (Nobitex by default). The response now separates `candles_source`,
+  `reference` (provider/pair/derived metadata) and `upstream` — previously
+  `provenance().source` overwrote the `source` key, losing the boundary between "where the
+  candles came from" and "is the exchange alive".
+- **`GET /api/reference/cross-check`:** venue price against reference price with `gap_pct`
+  and an `aligned|wide|divergent` verdict — it surfaces a stale or mis-scaled feed, not an
+  arbitrage.
+- **Dashboard:** a "candles" selector in the backtest config, a violet "reference data" chip
+  for `REFERENCE_DATA`, and the source named in the metadata line.
+- **ADR-0014** (data honesty contract) amended in both languages: the network-access table,
+  the four fences, and the two permitted uses.
+- 14 new tests in `server/tests/test_reference_feed.py` over a mock transport — symbol and
+  timeframe mapping, ascending order, **KuCoin's field order** (`o, c, h, l`, not
+  `o, h, l, c`), refusal of a rial market without a rate, the rial scaling, the gate state,
+  and the routes.
+
 ## 1.0.9
 
 - **`npm run lint` was red and nobody had noticed:** `scripts/ui_smoke_test.js` carried a

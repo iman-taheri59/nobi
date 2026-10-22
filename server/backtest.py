@@ -645,8 +645,13 @@ def _gate(
     else:
         would_be = "FAIL"
 
-    synthetic = source != "live"
-    state = "SYNTHETIC_DATA" if synthetic else would_be
+    # Two sources can produce arithmetic that looks like a result without being
+    # one. Simulated candles are the obvious case. The reference feed (1.0.10)
+    # is the subtler one: its prices are real, but they are *another venue's*,
+    # so a strategy validated on them has not been validated where it trades.
+    synthetic = source == "synthetic"
+    reference = source == "reference"
+    state = "SYNTHETIC_DATA" if synthetic else ("REFERENCE_DATA" if reference else would_be)
 
     # How much history would make the trade count sufficient?
     avg_trades = agg["trades"] / n_windows if n_windows else 0.0
@@ -660,6 +665,12 @@ def _gate(
         msg = (
             "Candles came from the offline fallback (simulated). The arithmetic verdict "
             f"would be {would_be}, but no promotion decision may rest on simulated data."
+        )
+    elif reference:
+        msg = (
+            "Candles came from the reference feed, not from the venue. The arithmetic "
+            f"verdict would be {would_be}; it describes another exchange's prices, so it "
+            "cannot certify a strategy that executes on this one."
         )
     elif would_be == "INSUFFICIENT_DATA":
         msg = (
