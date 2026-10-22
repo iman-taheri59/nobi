@@ -1101,6 +1101,9 @@
         // reports the worst; keeping the block means the scan card can name the
         // symbol whose feed is behind instead of averaging it away.
         live.scanFreshness = sig.freshness || null;
+        // ADR-0022 stage 1 — the gates' verdicts, always `applied: false`. Kept so
+        // the card can say what *would* have happened without implying it did.
+        live.gates = sig.gates || null;
         live.unavailable = !!(uni.unavailable || sig.unavailable) || !(sig.scored || []).length;
         live.unavailableMsg = (sig.unavailable && sig.message) || (uni.unavailable && uni.message) || '';
         live.unavailableDetail = (sig.detail || uni.detail || '').slice(0, 160);

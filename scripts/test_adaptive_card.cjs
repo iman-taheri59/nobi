@@ -31,7 +31,10 @@
  *      and the sentence that says a rank of the past is not a forecast;
  *  11. a list of symbols is only as fresh as its worst name (1.0.23): the browser
  *      twin aggregates per symbol, the chip names the lagging one, and the block
- *      the server already measured wins over any local recomputation.
+ *      the server already measured wins over any local recomputation;
+ *  12. the gates are reported, never applied (1.0.25): the chip says how many rows
+ *      a gate would have removed and how many could not be judged, and it never
+ *      claims anything was removed.
  *
  * No CDN, no server: the page is read from disk and the API is a function.
  */
@@ -444,13 +447,54 @@ function stub(result) {
   const nothing = F.assessScan({}, '15m', { now: scanNow });
   assert.equal(nothing.reason, 'no-candles');
 
+  // ---- 12. the gates, in the open and applied to nothing (1.0.25 / ADR-0022) ----
+  const gateChip = doc.getElementById('sgGateChip');
+  assert.ok(gateChip, 'the scan card has no gate chip');
+  window.sgRenderGates(null);
+  assert.equal(gateChip.classList.contains('hidden'), true, 'a missing block drew a chip');
+  window.sgRenderGates({ counts: { rows: 0 } });
+  assert.equal(gateChip.classList.contains('hidden'), true, 'an empty scan drew a chip');
+
+  window.sgRenderGates({
+    mode: 'shadow', applied: false,
+    would_block: ['DEADIRT', 'THINIRT', 'WIDEIRT', 'FOURTHIRT'],
+    unknown: ['GHOSTIRT'],
+    counts: { rows: 24, ok: 19, would_block: 4, unknown: 1 },
+    note: 'shadow only: these are the symbols a gate would have removed; '
+        + 'nothing was removed and no ranking changed',
+  });
+  assert.equal(gateChip.classList.contains('hidden'), false, 'a shadow verdict was hidden');
+  assert.ok(plain(gateChip.textContent).includes('4') && plain(gateChip.textContent).includes('24'),
+    `the chip did not count blocked/rows: "${gateChip.textContent}"`);
+  assert.match(gateChip.title, /DEADIRT/, 'the blocked names were not named');
+  assert.match(gateChip.title, /nothing was removed/,
+    'the chip did not say that nothing was removed');
+  assert.match(gateChip.title, /shadow only/, 'the server note was dropped on the way to the screen');
+
+  // A clean scan is said in words, not with an amber warning that means nothing.
+  window.sgRenderGates({
+    mode: 'shadow', applied: false, would_block: [], unknown: [],
+    counts: { rows: 24, ok: 24, would_block: 0, unknown: 0 },
+    note: 'shadow only',
+  });
+  assert.equal(gateChip.classList.contains('amber'), false);
+  assert.match(gateChip.title, /no gate objects|هیچ دروازه/);
+
+  // "Cannot be judged" is on the card too, separate from "blocked".
+  window.sgRenderGates({
+    mode: 'shadow', applied: false, would_block: [], unknown: ['GHOSTIRT', 'EMPTYIRT'],
+    counts: { rows: 24, ok: 22, would_block: 0, unknown: 2 }, note: 'shadow only',
+  });
+  assert.ok(plain(gateChip.title).includes('2'),
+    `the unjudgeable count was lost: "${gateChip.title}"`);
+
   // ---- 9. the disabled-backend path ----
   window.NBX.core.api = undefined;
   await window.adMeasureThresholds();
   assert.match(text('adState'), /backend|بک‌اند/,
     'a missing backend produced no explanation');
 
-  console.log('PASS — adaptive card: numbers, the not-applied label, named refusals, no zeros, staleness named and re-measured, A/B verdict with its sample size, stale candles named on the backtest and scan cards, worst-per-symbol on the scan');
+  console.log('PASS — adaptive card: numbers, the not-applied label, named refusals, no zeros, staleness named and re-measured, A/B verdict with its sample size, stale candles named on the backtest and scan cards, worst-per-symbol on the scan, gates reported but never applied');
   // The page arms intervals (clock, polling) that would keep node alive forever;
   // this script asserts and leaves.
   dom.window.close();

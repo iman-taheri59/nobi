@@ -2,6 +2,37 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 1.0.25
+
+- **Five hard gates now have named verdicts — and still none of them blocks anything.** Stage 1
+  of ADR-0022 is implemented: `server/gates.py` judges every row with seven codes (`halted`,
+  `no-data`, `stale-data`, `no-book`, `spread-wide`, `book-thin`, `ok`) and `/api/signals`
+  returns a `gates` block with `mode: "shadow"` and `applied: false`. The ranked list is **the
+  same list**: this layer reports, it does not remove.
+- **Precedence is a contract, not an accident:** first "can this be evaluated" (`halted`,
+  `no-data`), then "is the input valid" (`stale-data`), then "is the market tradeable"
+  (`no-book`, `spread-wide`, `book-thin`). `code` is the first, `codes` keeps all of them —
+  because someone who fixes the spread deserves to know the candles were stale too.
+- **"I do not know" is not "fine":** `no-data` and `no-book` land in `unknown`, counted apart
+  from `would_block`. A symbol whose book was never read is neither healthy nor blocked.
+- **Zero network requests:** every input already exists — the per-symbol age (1.0.23), the
+  closed-market set, and the spread/depth the `/api/orderbook/{symbol}` route already read and
+  now keeps. An IRT book's depth is converted to dollars with the USDTIRT rate (a USDT book
+  already is dollars); a missing rate gives `no-book` rather than comparing tomans to dollars.
+- **The thresholds are parameters, and their default is off:** `max_age_bars=2` (the same
+  `DEFAULT_TOLERANCE_BARS`), `max_spread_bps=None`, `min_depth_usd=None`, `enforcing=False` — and
+  `enforcing` is **never read** on the reporting path.
+- **Dashboard:** a chip reading "gates (shadow): 4 of 24", with the symbol names and the sentence
+  "nothing was removed" in its title; a clean scan is said in words rather than with a permanent
+  warning.
+- **Tests:** 13 Python tests (`test_gates.py`: precedence, each code with its number, unknown
+  separate from blocked, thresholds off by default, the caller's rows untouched, and a test
+  asserting this module **has no way to remove rows**) + jsdom scenario 12. Three deliberate
+  mutations — a layer that filters, "unknown" counted as blocked, and a route that drops the
+  blocked rows — each turned the tests red.
+- Documentation: an implementation amendment in ADR-0022 (fa/en) and a cross-reference in
+  ADR-0007's gap note (fa/en).
+
 ## 1.0.24
 
 - **ADR-0022 is written: how gates move from labels to gates — and why not today.** ADR-0007
