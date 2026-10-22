@@ -359,7 +359,7 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(
     title="nobiTrader",
-    version="1.0.18",
+    version="1.0.19",
     lifespan=lifespan,
 )
 
@@ -2836,7 +2836,7 @@ async def exec_mode_set(payload: dict, request: Request):
     return {"ok": True, **_exec_mode_payload(), **provenance()}
 
 
-# ---------------- Reference feed (ADR-0014, 1.0.18) ----------------
+# ---------------- Reference feed (ADR-0014, 1.0.19) ----------------
 # A second venue, for developing outside Iran and for sanity-checking the
 # numbers. Read-only, clearly labelled, and never a stand-in for the exchange:
 # `/api/backtest/run` turns it into a REFERENCE_DATA verdict that cannot pass.
