@@ -2,6 +2,33 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 1.0.9
+
+- **`npm run lint` was red and nobody had noticed:** `scripts/ui_smoke_test.js` carried a
+  useless escape (`\"`) that eslint rejects. This release introduced it, so it is fixed
+  here. The reason it stayed hidden is worth writing down: gate output was read through
+  `tail -1`, and the trailing blank line hid the failure. Every gate now reports its own
+  exit code.
+- **The browser engine answered the intrabar question the opposite way from the server.**
+  ADR-0009 §3 resolves intrabar ambiguity pessimistically (the path is unknowable, so the
+  stop came first). Python did that; in `nbx-core.js` the test
+  `if (tr.tp1 && c.h >= tr.tp1)` came **before** the stop check, so any candle that touched
+  both levels was booked as a win. That is the one bias a backtest must never have — and it
+  lived in the engine that produces the phone's offline numbers.
+- **One rule now:** stop first, exit labelled `sl-ambiguous`, and `ambiguous_exits` counted.
+- **`ambiguous_share` in both engines** (per window and in the aggregate) and **a ninth gate
+  check:** `ambiguous_share_le_10`. If the assumption decides more than 10 % of exits, the
+  expectancy describes the assumption as much as the market. On our own fixture that share is
+  **50.9 %**.
+- **Dashboard:** "ambiguous 50.9 %" in the gate bar, plus a Persian label for the new check.
+- **Two-engine test:** `scripts/js_engine_parity.js` feeds one candle (touching both levels)
+  to each engine and `server/tests/test_intrabar_parity.py` compares the answers; both say
+  `sl-ambiguous`. To make the comparison possible the browser engine gained a `_signals`
+  hook — the equivalent of Python's `signals=`.
+- **ADR-0009 third amendment** (Persian + English), and the new check wired into CI and
+  `npm run test:intrabar`.
+- 5 new tests in `server/tests/test_intrabar_parity.py` and 2 in `scripts/js_broker_test.js`.
+
 ## 1.0.8
 
 - **The backtest now says what it measured.** The live decision (ADR-0007) blends three

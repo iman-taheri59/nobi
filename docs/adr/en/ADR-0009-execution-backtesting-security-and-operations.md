@@ -138,3 +138,43 @@ curl -s -X POST http://127.0.0.1:8000/api/backtest/run \
   | python -c "import json,sys; r=json.load(sys.stdin)['report']; \
 print(r['decision_basis']); print(r['gate']['message'][-160:])"
 ```
+
+## Third amendment — 2026-10-22 (version 1.0.9): one candle, two engines, one answer
+
+Section 3 of this ADR says intrabar ambiguity is resolved pessimistically: the path is
+unknowable, so assume the stop was hit first. The Python engine does exactly that and marks
+the trade `sl-ambiguous`. The JavaScript engine — the one that produces the phone's offline
+numbers — did **the opposite**:
+
+```js
+if (tr.tp1 && c.h >= tr.tp1)      exit = tp1;   // the target won
+else if (c.l <= tr.stop)          exit = stop;
+```
+
+So whenever a candle touched both the stop and the target, the browser took the target.
+That is the one bias a backtest must never have, and it lived in the engine whose numbers
+the operator actually sees.
+
+**What changed**
+
+| Item | Up to 1.0.8 | From 1.0.9 |
+|---|---|---|
+| Exit rule in the browser | target first | stop first, labelled `sl-ambiguous` |
+| Counting | none | `ambiguous_exits` per window and in the aggregate |
+| Share | server-side count only | `ambiguous_share` in both engines |
+| Gate | 8 checks | **9** — `ambiguous_share_le_10` |
+| Dashboard | nothing | "ambiguous 50.9 %" in the gate bar + a Persian label for the check |
+
+**Why it gates:** the pessimistic assumption is the honest choice, but it is still an
+*assumption*. If it decides more than 10 % of the exits, the expectancy describes the
+assumption as much as the market. On our own fixture (ordinary bars plus wide news candles)
+that share is **50.9 %** — half the result. On real 4-hour data it is usually far smaller;
+when it is not, the number is not citable.
+
+**Why this check rejects the verdict, unlike `decision_basis`:** there, the problem was the
+scope of the claim and a sentence was enough. Here the number itself can be fogged — a PASS
+built on 60 % ambiguous exits certifies an assumption, not a strategy.
+
+**The two-engine test:** `scripts/js_engine_parity.js` feeds one candle to both engines and
+`server/tests/test_intrabar_parity.py` compares the answers. To make the comparison possible
+the browser engine also gained a `_signals` hook — the equivalent of Python's `signals=`.

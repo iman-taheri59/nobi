@@ -277,7 +277,7 @@
       </button>
     </div>
     <span class="hidden 2xl:inline-flex chip shrink-0"><span class="dot bg-emerald-400"></span> <span data-i18n="hdr.kill"></span></span>
-    <span id="buildChip" class="hidden lg:inline-flex chip num text-violet-300 border-violet-400/30 shrink-0" title="نسخه واقعی از /api/health">v1.0.8 · core</span>
+    <span id="buildChip" class="hidden lg:inline-flex chip num text-violet-300 border-violet-400/30 shrink-0" title="نسخه واقعی از /api/health">v1.0.9 · core</span>
     <div class="ms-auto flex items-center gap-1.5 shrink-0">
       <span class="hidden xl:inline-flex chip num" id="clock">--:--:--</span>
       <span id="apiChip" class="hidden 2xl:inline-flex chip num text-zinc-400 border-white/10" title=""><i data-lucide="wifi-off" class="w-3.5 h-3.5"></i> <span>API: —</span></span>
@@ -5555,7 +5555,7 @@ function btRenderGate(rep){
     const names = {windows_ge_3:'تعداد پنجره‌ها',oos_trades_ge_min:'تعداد معاملات خارج از نمونه',
       profit_factor_ge_1_3:'ضریب سود',max_drawdown_lt_15:'بیشینه افت',expectancy_r_positive:'امید ریاضی مثبت',
       is_oos_degradation_ok:'حفظ عملکرد خارج از نمونه',profitable_windows_ge_50:'سهم پنجره‌های سودده',
-      costs_modeled:'مدل‌سازی هزینه‌ها (لغزش)'};
+      costs_modeled:'مدل‌سازی هزینه‌ها (لغزش)',ambiguous_share_le_10:'سهم خروج‌های مبهم'};
     const fa = g.state==='PASS'?'نتایج خارج از نمونه تمام بررسی‌های ADR-0009 را گذرانده‌اند.':
       g.state==='SYNTHETIC_DATA'?'داده شبیه‌سازی‌شده است؛ این نتیجه مبنای ارتقا نیست.':
       g.state==='INSUFFICIENT_DATA'?`شواهد کافی نیست؛ حدود ${fmtNum(g.bars_needed)} کندل تاریخچه لازم است.`:
@@ -5589,6 +5589,8 @@ function btRenderGate(rep){
     if (rep.source && rep.source !== 'live') bits.push(LANG==='fa'?'داده شبیه‌سازی':'simulated');
     const slip = (rep.costs && rep.costs.slippage_bps != null) ? rep.costs.slippage_bps : rep.slippage_bps;
     if (slip != null) bits.push(slip > 0 ? `${fmtNum(slip,0)} bps` : (LANG==='fa'?'بدون لغزش':'no slippage'));
+    const amb = (rep.aggregate && rep.aggregate.ambiguous_share);
+    if (amb != null) bits.push(`${LANG==='fa'?'مبهم':'ambiguous'} ${fmtNum(amb,1)}${LANG==='fa'?'٪':'%'}`);
     meta.textContent = bits.join(' · ');
   }
 }

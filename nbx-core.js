@@ -758,21 +758,33 @@
       const openPos = [];
       const closed = [];
       const equityCurve = [];
+      let ambiguous = 0;
 
       for (let i = 60; i < candles.length; i++) {
         const c = candles[i];
         const slice = candles.slice(0, i + 1);
-        const sig = TA.signalScore(slice);
+        // Same hook the Python engine has (`signals=`): a caller may hand in a
+        // signal series to isolate the execution rules from the scoring ones.
+        const sig = (cfg._signals && cfg._signals[i]) || TA.signalScore(slice);
 
         for (let pIdx = openPos.length - 1; pIdx >= 0; pIdx--) {
           const tr = openPos[pIdx];
           let exitPx = null, reason = null;
-          if (tr.tp1 && c.h >= tr.tp1) {
-            exitPx = tr.tp1 * (1 - slip);
-            reason = 'tp1';
-          } else if (c.l <= tr.stop) {
+          const hitTp = tr.tp1 && c.h >= tr.tp1;
+          const hitSl = c.l <= tr.stop;
+          if (hitTp && hitSl) {
+            // Same candle reached both levels: the intrabar path is unknowable,
+            // so take the adverse one and record it. Taking the target here (as
+            // this engine used to) is the one bias a backtest must not have.
+            ambiguous += 1;
+            exitPx = tr.stop * (1 - slip);
+            reason = 'sl-ambiguous';
+          } else if (hitSl) {
             exitPx = tr.stop * (1 - slip);
             reason = 'sl';
+          } else if (hitTp) {
+            exitPx = tr.tp1 * (1 - slip);
+            reason = 'tp1';
           }
           if (exitPx !== null) {
             const notionalIn = tr.entry * tr.qty;
@@ -861,6 +873,7 @@
         gross_loss: +sumLoss.toFixed(2),
         initial_equity: initEq,
         final_equity: equityCurve.length ? equityCurve[equityCurve.length - 1][1] : initEq,
+        ambiguous_exits: ambiguous,
         equity_curve: equityCurve.slice(-300),
         sample_trades: closed.slice(-8).map((t) => ({
           entry: t.entry,
@@ -948,6 +961,8 @@
       const denom = Math.max(1, totalTrades);
       const expR = windows.reduce((a, w) => a + w.expectancy_r * w.trades, 0) / denom;
       const mdd = Math.max(...windows.map((w) => w.max_drawdown), 0);
+      const ambiguousTotal = windows.reduce((a, w) => a + (w.ambiguous_exits || 0), 0);
+      const ambiguousShare = totalTrades ? +((ambiguousTotal / totalTrades) * 100).toFixed(1) : 0;
       const profitable = windows.filter((w) => (w.final_equity || 0) > (w.initial_equity || 0)).length;
       const consistency = windows.length ? (profitable / windows.length) * 100 : 0;
 
@@ -969,6 +984,7 @@
         max_drawdown_lt_15: { value: +mdd.toFixed(1), pass: mdd < 15, required: 15 },
         expectancy_r_positive: { value: +expR.toFixed(3), pass: expR > 0, required: 0 },
         profitable_windows_ge_50: { value: +consistency.toFixed(1), pass: consistency >= 50, required: 50 },
+        ambiguous_share_le_10: { value: ambiguousShare, pass: ambiguousShare <= 10, required: '<= 10 %' },
         costs_modeled: { value: slipBps, pass: slipBps > 0, required: '> 0 bps' },
       };
       const dataShort = windows.length < 3 || totalTrades < 30;
@@ -1008,6 +1024,8 @@
           profitable_windows: profitable,
           initial_equity: initialEquity,
           final_equity: +eq.toFixed(2),
+          ambiguous_exits: ambiguousTotal,
+          ambiguous_share: ambiguousShare,
           equity_curve: curve.slice(-400),
         },
         aggregate_is: { trades: 0, expectancy_r: 0, profit_factor: 0 },

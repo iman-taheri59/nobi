@@ -117,6 +117,28 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     taOnlyCleared = basisChip.classList.contains('hidden');
   }
 
+  // Render a full shaped report through the page's own renderer and read the
+  // gate bar. A broken template used to leak `(LANG==='fa'?'٪':'%')` into the
+  // bar as literal text — visible to the user, invisible to every gate.
+  let barText = '', barLeak = null;
+  if (typeof window.btRender === 'function') {
+    window.btRender({ report: {
+      symbol: 'BTCIRT', tf: '1h', bars: 600, train_bars: 240, eval_bars: 120,
+      aggregate: { trades: 34, windows: 3, profit_factor: 1.4, expectancy_r: 0.9,
+        hit_rate: 60, max_drawdown: 4, ambiguous_share: 50.9, ambiguous_exits: 17 },
+      costs: { slippage_bps: 6, modeled: true },
+      decision_basis: { matches_live: false, live_weights: { ta: 0.55, fa: 0.25, liq: 0.2 } },
+      gate: { state: 'FAIL', failed: ['ambiguous_share_le_10'],
+        checks: { ambiguous_share_le_10: { value: 50.9, pass: false, required: '<= 10 %' } },
+        decision_basis: { matches_live: false, live_weights: { ta: 0.55, fa: 0.25, liq: 0.2 } },
+        message: 'Failed: ambiguous_share_le_10' },
+      details: [],
+    } });
+    barText = (doc.getElementById('btGateBar')?.textContent || '').replace(/\s+/g, ' ').trim();
+    const bad = /LANG\s*===|undefined|NaN|\[object Object\]/.exec(barText);
+    barLeak = bad ? bad[0] : null;
+  }
+
   const txt = (sel) => (doc.querySelector(sel)?.textContent || '').trim();
   const kpiGrid = doc.querySelector('#pVoid')?.closest('.grid');
   const kpiCells = kpiGrid ? kpiGrid.children.length : 0;
@@ -163,6 +185,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     perfChip: txt('#perfOrigin'),
     taOnlyChip,
     taOnlyCleared,
+    barText,
+    barLeak,
     errors,
   };
   console.log(JSON.stringify(report, null, 2));
@@ -203,6 +227,11 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     else if (!taOnlyChip.text) problems.push('the basis chip is visible but empty');
     else if (!taOnlyChip.title) problems.push('the basis chip has no tooltip naming the live weights');
     if (taOnlyCleared !== true) problems.push('the basis chip did not clear when the basis matched live');
+  }
+  // The gate bar must never print code, placeholders or unformatted objects.
+  if (barLeak) problems.push(`the gate bar leaks "${barLeak}": ${barText.slice(0, 100)}`);
+  if (barText && !/bps|لغزش|slippage/.test(barText)) {
+    problems.push(`the gate bar does not state the cost model: ${barText.slice(0, 100)}`);
   }
   if (!report.exportBtns) problems.push('export buttons missing');
   if (!report.auditRows) problems.push('#auBody has no audit rows');

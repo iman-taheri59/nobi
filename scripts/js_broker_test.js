@@ -223,5 +223,46 @@ check('offline backtest declares it tested the technical component only', () => 
   return 'ta-only, caveat present';
 });
 
+/* 12. The browser resolves an ambiguous candle the same way the server does.
+ *     It used to take the target, which is the one bias a backtest must not
+ *     have — and it produced the numbers the phone showed. */
+check('an ambiguous candle takes the stop in the browser engine too', () => {
+  const rows = [];
+  for (let i = 0; i < 66; i++)
+    rows.push({ t: 1_700_000_000 + i * 3600, o: 100, h: 100, l: 100, c: 100, v: 1 });
+  rows[65] = { ...rows[65], h: 110, l: 90 };
+  const signals = [];
+  signals[61] = { direction: 'LONG', score: 80, risk: { atr: 1.5 } };
+  const w = NBX.Backtest.runWindow(rows, 'XUSDT', '1h', {
+    initial_equity: 100_000, risk_pct: 1.0, atr_stop_k: 2.0, tp1_r: 1.5, tp2_r: 2.5,
+    slippage_bps: 0, min_score: 0, _signals: signals,
+  });
+  assert(w.trades === 1, `expected 1 trade, got ${w.trades}`);
+  assert(w.ambiguous_exits === 1, `ambiguous_exits=${w.ambiguous_exits}`);
+  const t = w.sample_trades[w.sample_trades.length - 1];
+  assert(t.reason === 'sl-ambiguous', `exit reason: ${t.reason}`);
+  assert(t.r < 0, `an ambiguous exit was priced as a win: ${t.r}R`);
+  return `reason ${t.reason}, ${t.r}R`;
+});
+
+/* 13. And the share reaches the gate, so a run built on the assumption cannot
+ *     look like a run built on the data. */
+check('the walk-forward exposes the share and gates on it', () => {
+  const rows = [];
+  let px = 100;
+  for (let i = 0; i < 500; i++) {
+    px = Math.max(1, px * (1 + Math.sin(i / 3) * 0.004));
+    const w = i % 9 === 0 ? 0.08 : 0.004;
+    rows.push({ t: 1_700_000_000 + i * 3600, o: px, h: px * (1 + w), l: px * (1 - w), c: px, v: 10 });
+  }
+  const rep = NBX.Backtest.runWalkForward(rows, 'XUSDT', '1h', { equity: 50_000 });
+  const a = rep.aggregate;
+  assert(typeof a.ambiguous_share === 'number', 'aggregate has no ambiguous_share');
+  assert(typeof a.ambiguous_exits === 'number', 'aggregate has no ambiguous_exits');
+  const chk = rep.gate.checks.ambiguous_share_le_10;
+  assert(chk && chk.pass === (chk.value <= 10), 'gate check missing or inconsistent');
+  return `share ${a.ambiguous_share}% over ${a.trades} trades`;
+});
+
 console.log(failures ? `\n${failures} failure(s)` : '\nPASS — standalone broker behaves like the server');
 process.exit(failures ? 1 : 0);
