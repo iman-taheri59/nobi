@@ -2,6 +2,32 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 1.0.24
+
+- **ADR-0022 is written: how gates move from labels to gates — and why not today.** ADR-0007
+  defined six hard gates, and its own review recorded that only the fundamental veto actually
+  changes a decision today. This document records that gap with code references: data age,
+  symbol suspension, spread, depth and the daily stop — **five gates out of six** — wear a gate's
+  clothing without stopping anyone.
+- **This version changes no behaviour** — it is a proposed document. The proposed decision: a pure
+  evaluation layer (`server/gates.py`) with seven named verdicts (`ok`, `stale-data`,
+  `spread-wide`, `book-thin`, `halted`, `no-book`, `no-data`), which first runs in **shadow mode**:
+  `mode: "shadow"` and `applied: false`, with the response saying what *would* have happened
+  without removing a single row from the list.
+- **The thresholds are parameters, and their default is off.** `max_age_bars` defaults to 2 (the
+  same `DEFAULT_TOLERANCE_BARS` — one number, one home); `max_spread_bps` and `min_depth_usd`
+  default to `None`, meaning off, because we do not invent a number with no provenance.
+- **The evidence needed to leave shadow mode, registered in advance:** one variable at a time; the
+  **forward** return of blocked names against the same-window median of allowed ones; at least 30
+  verdicts across 5 trading days; an effect of ≥ 0.5 standard deviations (written **before** any
+  result is seen); and a real feed. On `source=reference` the verdict is always `inconclusive`.
+- **"I do not know" is not "fine":** the `no-book` code (no book arrived) is counted separately
+  from `would_block`, and the "never an empty list" rule is written down: if everything is ever
+  blocked, the answer says "everything was blocked" with per-code counts, not a list that looks
+  like "nothing today".
+- Bilingual document: `docs/adr/fa/ADR-0022-…` and `docs/adr/en/ADR-0022-…` (each links to the
+  other), and row 0022 in the status table of `docs/adr/README.md`.
+
 ## 1.0.23
 
 - **Twenty-three healthy symbols cannot hide a dead one.** 1.0.21 read the age from the
