@@ -135,3 +135,10 @@ From this version:
 4. On the card, data staleness is **separate** from pair staleness (`data-stale` versus
    `stale`), because the two ask the user for different actions.
 5. When both are stale, both are said; neither hides the other.
+
+### Appendix to the third amendment — version 1.0.20
+
+The rule "a number has to say when it is from" was extended from the threshold card to the
+**backtest result card**: both backtest routes return a `freshness` block, and the card gains
+a chip that is visible only when the data is old and carries the age in its title. A failed
+age check never takes the numbers down (`freshness_block()` → a stale block with a named code).

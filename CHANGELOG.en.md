@@ -2,6 +2,25 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 1.0.20
+
+- **The same rule, on the largest set of numbers on the page.** 1.0.18 reported candle age
+  for the threshold card, but the backtest runs on the same candles: a walk-forward whose
+  newest candle is three days old describes a window that ended three days ago, not today.
+  Both backtest routes (`/api/backtest/run` and `/api/backtest/quick`) now return a
+  `freshness` block, and the result card gains a chip that appears only when the data is old.
+- **The chip carries the age in it** (title: "the newest candle is 41.2 bars old; this report
+  describes that window, not today") — not a generic warning users learn to ignore. On
+  current data the chip hides itself.
+- **One helper, three outcomes, no exceptions:** `freshness_block()` feeds the adaptive routes
+  as well as the backtest routes and turns a failed age check into a stale block with a named
+  code, rather than an error that takes the healthy numbers down with it. `bad-timeframe` and
+  an unusable timestamp both have tests.
+- **Tests:** 3 Python tests (the block on both backtest routes, the helper's non-throwing
+  degradation, the chip's three states) + 1 jsdom scenario with three assertions. Two
+  deliberate mutations (a chip that never hides, dropping the age from the title) turned a
+  test red.
+
 ## 1.0.19
 
 - **One word, made plain (Persian docs).** "مصفوفه" became **"جدول ترکیبی (مصفوفه)"** — a

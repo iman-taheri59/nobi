@@ -277,7 +277,7 @@
       </button>
     </div>
     <span class="hidden 2xl:inline-flex chip shrink-0"><span class="dot bg-emerald-400"></span> <span data-i18n="hdr.kill"></span></span>
-    <span id="buildChip" class="hidden lg:inline-flex chip num text-violet-300 border-violet-400/30 shrink-0" title="نسخه واقعی از /api/health">v1.0.19 · core</span>
+    <span id="buildChip" class="hidden lg:inline-flex chip num text-violet-300 border-violet-400/30 shrink-0" title="نسخه واقعی از /api/health">v1.0.20 · core</span>
     <div class="ms-auto flex items-center gap-1.5 shrink-0">
       <span class="hidden xl:inline-flex chip num" id="clock">--:--:--</span>
       <span id="apiChip" class="hidden 2xl:inline-flex chip num text-zinc-400 border-white/10" title=""><i data-lucide="wifi-off" class="w-3.5 h-3.5"></i> <span>API: —</span></span>
@@ -1189,6 +1189,7 @@
         <span class="font-bold text-zinc-300" data-i18n="bt.gateTitle"></span>
         <span class="chip" id="btGate">—</span>
         <span class="chip text-violet-300 border-violet-300/30" id="btOosChip" data-ui-label="OOS">OOS</span>
+        <span class="chip hidden" id="btFreshChip" title=""></span>
         <span class="chip hidden" id="btBasisChip" title=""></span>
         <span class="text-zinc-500 leading-5" id="btGateMsg"></span>
         <span class="ms-auto text-[10px] text-zinc-500 num" id="btMeta"></span>
@@ -1420,7 +1421,7 @@ const T = {
     'bt.cfgNote':'پارامترها فقط روی پنجره آموزش بهینه می‌شوند و اعداد گزارش‌شده از پنجره آزمون (خارج‌از‌نمونه) می‌آیند · اگر کمتر از ۲ پنجره جا شود، اندازه پنجره‌ها خودکار انتخاب می‌شود · تداخل SL/TP در یک کندل محافظه‌کارانه به ضرر فرض می‌شود · نتایج در backtest_reports/ ذخیره می‌گردد.',
     'bt.sample':'معاملات نمونه (آخرین پنجره)','bt.exit':'خروج','bt.loading':'در حال اجرا...',
     'bt.bars':'تاریخچه (کندل)','bt.slip':'لغزش (bps)','bt.basisTaOnly':'فقط تکنیکال','ad.title':'آستانه‌ها و رژیم','ad.measureOnly':'فقط اندازه‌گیری','ad.measure':'اندازه‌گیری','ad.atr':'ATR نسبت به قیمت','ad.percentile':'صدک ATR','ad.regime':'رژیم','ad.factor':'ضریب ورود','ad.long':'LONG (فعلی ← پیشنهاد)','ad.neutral':'NEUTRAL (فعلی ← پیشنهاد)','ad.share':'سهم LONG','ad.bars':'کندل امتیازخورده','ad.applied':'اعمال شد','ad.stale':'کهنه','ad.dataStale':'داده کهنه','ad.dataStaleWhy':'داده {bars} کندل عقب است','ad.dataStaleNone':'داده‌ای نیست','ad.notApplied':'اعمال نشد — فقط شاهد','ad.needBackend':'برای اندازه‌گیری، بک‌اند لازم است','ad.failed':'اندازه‌گیری انجام نشد','ad.refused':'رد شد','ad.clamped':'ضریب به سقف/کف خود رسیده','ad.evidence':'شاهد خارج‌از‌نمونه','ad.evTitle':'فقط شاهد A/B','ad.evWindows':'پنجره','ad.evPf':'PF پایه ← بالاتر','ad.evDelta':'Δ','ad.evIdle':'اجرا نشده','ad.evVerdictAdaptive':'به نفع آستانهٔ بالاتر — فقط شاهد','ad.evVerdictBaseline':'به نفع آستانهٔ فعلی — فقط شاهد','ad.evInconclusive':'نامعلوم','ad.evNoPromote':'داده مرجع تأیید نمی‌کند','ad.evStale':'جفت عوض شد؛ دوباره اجرا کنید','ad.evFailed':'شاهد اجرا نشد','bt.src':'منبع کندل','bt.srcVenue':'نوبیتکس (محل معامله)','bt.srcRef':'صرافی مرجع (فقط برای توسعه)','bt.gateRef':'داده مرجع','bt.gateTitle':'دروازه ارتقا (ADR-0009):','bt.params':'پارامتر','bt.isR':'R آموزش',
-    'bt.oos':'خارج‌از‌نمونه','bt.gatePass':'قبول','bt.gateFail':'رد','bt.gateShort':'داده کافی نیست','bt.gateSynth':'داده شبیه‌سازی‌شده',
+    'bt.oos':'خارج‌از‌نمونه','bt.gatePass':'قبول','bt.gateFail':'رد','bt.gateShort':'داده کافی نیست','bt.gateSynth':'داده شبیه‌سازی‌شده','bt.dataStale':'داده کهنه','bt.dataStaleWhy':'آخرین کندل {bars} کندل عقب است؛ این گزارش آن بازه را توصیف می‌کند، نه امروز را',
     'bt.grid':'جستجوی شبکه‌ای — حساسیت پارامتر', 'bt.fallback':'سرور پاسخ نداد؛ محاسبهٔ محلی (شبیه‌سازی)','bt.gridRun':'اجرای گرید','bt.gridBest':'بهترین ترکیب','bt.gridMeta':'در انتظار اجرا',
     'bt.multi':'اسکن گرید چندنمادی — بهینه‌ترین پارامتر به‌ازای هر نماد','bt.multiRun':'اجرا برای ۸ نماد',
     'pn.title':'تأیید توقف اضطراری', 'pn.sub':'ثبت در لاگ حسابرسی می‌شود',
@@ -1668,7 +1669,7 @@ const T = {
     'bt.cfgNote':'Parameters are optimised on the train window only; reported numbers come from the eval window (out-of-sample) · windows auto-fit when fewer than 2 fit · SL/TP collisions inside one candle are resolved pessimistically · reports are saved to backtest_reports/.',
     'bt.sample':'Sample trades (last window)','bt.exit':'Exit','bt.loading':'Running...',
     'bt.bars':'History (bars)','bt.slip':'Slippage (bps)','bt.basisTaOnly':'TA-only','ad.title':'Thresholds and regime','ad.measureOnly':'measurement only','ad.measure':'Measure','ad.atr':'ATR / price','ad.percentile':'ATR percentile','ad.regime':'Regime','ad.factor':'Entry factor','ad.long':'LONG (live ← proposed)','ad.neutral':'NEUTRAL (live ← proposed)','ad.share':'LONG share','ad.bars':'scored bars','ad.applied':'applied','ad.stale':'stale','ad.dataStale':'stale data','ad.dataStaleWhy':'the feed is {bars} bars behind','ad.dataStaleNone':'no candles','ad.notApplied':'not applied — evidence only','ad.needBackend':'measurement needs the backend','ad.failed':'measurement failed','ad.refused':'refused','ad.clamped':'the factor sits at its bound','ad.evidence':'Out-of-sample evidence','ad.evTitle':'A/B evidence only','ad.evWindows':'windows','ad.evPf':'PF base ← higher','ad.evDelta':'Δ','ad.evIdle':'not run','ad.evVerdictAdaptive':'favours the higher bar — evidence only','ad.evVerdictBaseline':'favours the current bar — evidence only','ad.evInconclusive':'inconclusive','ad.evNoPromote':'reference data cannot certify','ad.evStale':'the pair changed; run it again','ad.evFailed':'the evidence run failed','bt.src':'Candles','bt.srcVenue':'Nobitex (the venue)','bt.srcRef':'Reference venue (dev only)','bt.gateRef':'Reference data','bt.gateTitle':'Promotion gate (ADR-0009):','bt.params':'Params','bt.isR':'Train R',
-    'bt.oos':'Out-of-sample','bt.gatePass':'PASS','bt.gateFail':'FAIL','bt.gateShort':'Insufficient data','bt.gateSynth':'Simulated data',
+    'bt.oos':'Out-of-sample','bt.gatePass':'PASS','bt.gateFail':'FAIL','bt.gateShort':'Insufficient data','bt.gateSynth':'Simulated data','bt.dataStale':'stale data','bt.dataStaleWhy':'the newest candle is {bars} bars old; this report describes that window, not today',
     'bt.grid':'Grid search — parameter sensitivity', 'bt.fallback':'server unreachable; computed locally (simulated)',
 'bt.gridRun':'Run grid','bt.gridBest':'Best combo','bt.gridMeta':'Idle',
     'bt.multi':'Multi-symbol grid scan — optimal parameters per symbol','bt.multiRun':'Run for 8 symbols',
@@ -5642,8 +5643,31 @@ function btRenderGate(rep){
     meta.textContent = bits.join(' · ');
   }
 }
+function btRenderFresh(r){
+  /* 1.0.20 — the same rule as the threshold card, applied to the biggest set of
+   * numbers on the page: a walk-forward whose newest candle is three days old
+   * describes a window that ended three days ago. The gate already says where the
+   * candles came from; this says *when* they were. Names the age, not just the
+   * adjective, so it can be checked instead of argued about. */
+  const chip = document.getElementById('btFreshChip');
+  if (!chip) return;
+  const f = (r && r.freshness) || null;
+  if (!f || !f.stale){
+    chip.classList.add('hidden');
+    chip.textContent = ''; chip.title = '';
+    return;
+  }
+  const age = typeof f.age_bars === 'number' ? fmtNum(Math.abs(f.age_bars), 1) : null;
+  chip.classList.remove('hidden');
+  chip.className = 'chip text-amber-300 border-amber-300/30';
+  chip.textContent = t('bt.dataStale');
+  chip.title = f.reason === 'no-candles'
+    ? (LANG==='fa'?'کندلی برای سنجش سن نیست':'no candle to measure an age from')
+    : t('bt.dataStaleWhy').replace('{bars}', age == null ? '—' : age);
+}
 function btRender(r){
   window.__btRan = true;          // a real report exists; the empty state is over
+  btRenderFresh(r);               // ...and it says how old the candles were
   const rep = (r && r.report) || {};
   BT.lastReport = rep;
   const a = rep.aggregate || {};
@@ -5796,7 +5820,7 @@ function btRender(r){
   const DRIFT_MS = 700;
 
   let asked = null;   // the pair the last request was for
-  // 1.0.19 — the *data* can be stale independently of the pair: a measurement on
+  // 1.0.20 — the *data* can be stale independently of the pair: a measurement on
   // a series whose newest candle is three days old is a claim about three days
   // ago wearing a present-tense sentence. Kept separate from `drift` because the
   // two failures need different words: one is "wrong pair", the other is "old

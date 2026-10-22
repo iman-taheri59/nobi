@@ -26,6 +26,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import adaptive
 import freshness
 
+ROOT_HTML = Path(__file__).resolve().parents[2] / "index.html"
+
 
 def series(tf: str = "1h", *, bars: int = 20, last_age_minutes: float = 0.0,
            now: datetime | None = None) -> list[dict]:
@@ -142,3 +144,38 @@ def test_last_bar_is_iso_and_matches_the_newest_row() -> None:
     out_old = freshness.assess(old, "1h")
     assert out_old["stale"] and out_old["reason"] == "behind"
     assert datetime.fromisoformat(out_old["last_bar"]) == datetime(2020, 1, 1, tzinfo=UTC) - timedelta(hours=0)
+
+
+#: 1.0.20 — the same rule on the backtest result, the largest set of numbers on the page.
+def test_the_backtest_routes_report_freshness_too() -> None:
+    src = (Path(__file__).resolve().parents[1] / "main.py").read_text(encoding="utf-8")
+    assert src.count('"freshness": freshness_block(rows, tf)') == 2, \
+        "expected freshness on both walk-forward routes (run and quick)"
+
+
+def test_a_failed_age_check_degrades_instead_of_taking_the_numbers_down() -> None:
+    src = (Path(__file__).resolve().parents[1] / "main.py").read_text(encoding="utf-8")
+    helper = src[src.index("def freshness_block("):src.index('@app.get("/api/adaptive/thresholds')]
+    # Named code for the cases the module knows, the exception's own name otherwise,
+    # and never a re-raise: a card that loses its numbers because the age check
+    # failed is the worst of both worlds.
+    assert "AdaptiveRefusal" in helper and "e.code" in helper
+    assert "type(e).__name__" in helper
+    assert "raise" not in helper
+
+
+def test_the_backtest_card_shows_the_age_and_hides_itself_when_current() -> None:
+    page = (ROOT_HTML).read_text(encoding="utf-8")
+    assert 'id="btFreshChip"' in page
+    fn = page[page.index("function btRenderFresh(r)"):page.index("function btRender(r)")]
+    # Hidden on current data...
+    assert "chip.classList.add('hidden')" in fn
+    # ...and the visible state carries the arithmetic, formatted like the page.
+    assert "Math.abs(f.age_bars)" in fn and "fmtNum(" in fn
+    assert "t('bt.dataStaleWhy').replace('{bars}'" in fn
+    assert "t('bt.dataStale')" in fn
+    # It must be called from btRender with the *response*, because freshness lives
+    # beside the report, not inside it.
+    assert "btRenderFresh(r);" in page[page.index("function btRender(r){"):][:400]
+    for key in ("bt.dataStale", "bt.dataStaleWhy"):
+        assert page.count(f"'{key}':") == 2, f"{key} is not defined in both languages"

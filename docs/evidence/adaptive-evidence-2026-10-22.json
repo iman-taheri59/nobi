@@ -1,8 +1,8 @@
 {
   "kind": "adaptive-evidence-matrix",
-  "version": "1.0.18",
+  "version": "1.0.20",
   "provenance": {
-    "generated_at": "2026-10-22T17:41:56+00:00",
+    "generated_at": "2026-10-22T18:01:18+00:00",
     "label": "REFERENCE_DATA",
     "promotable": false,
     "applied": false,
@@ -57,13 +57,13 @@
       },
       "baseline": {
         "windows": 4,
-        "trades": 31,
+        "trades": 32,
         "wins": 11,
-        "hit_rate": 35.48,
-        "gross_profit": 561.05,
-        "gross_loss": 1849.3,
-        "profit_factor": 0.303,
-        "expectancy_r": -0.6705,
+        "hit_rate": 34.38,
+        "gross_profit": 598.21,
+        "gross_loss": 1784.58,
+        "profit_factor": 0.335,
+        "expectancy_r": -0.6042,
         "max_drawdown": 1.2,
         "profitable_windows": 0,
         "ambiguous_exits": 0
@@ -82,20 +82,20 @@
         "ambiguous_exits": 0
       },
       "delta": {
-        "profit_factor": -0.238,
-        "expectancy_r": -0.7294,
-        "trades": -10,
-        "hit_rate": -16.43
+        "profit_factor": -0.27,
+        "expectancy_r": -0.7957,
+        "trades": -11,
+        "hit_rate": -15.33
       },
       "verdict": "inconclusive",
       "verdict_capped": null,
-      "why": "out-of-sample trades below 30 in at least one arm (base 31, adaptive 21) — but this ran on the reference feed, which can never certify a strategy (ADR-0009/ADR-0014)",
+      "why": "out-of-sample trades below 30 in at least one arm (base 32, adaptive 21) — but this ran on the reference feed, which can never certify a strategy (ADR-0009/ADR-0014)",
       "applied": false,
       "promotable": false,
       "measurement": {
-        "regime": "volatile",
-        "percentile": 0.8442,
-        "why": "15m is noisier than 1h: the same score is weaker evidence there, so the bar rises to 1.25x. ATR sits at the 84th percentile of the last 200 bars, which reads as a volatile regime."
+        "regime": "normal",
+        "percentile": 0.7286,
+        "why": "15m is noisier than 1h: the same score is weaker evidence there, so the bar rises to 1.25x. ATR sits at the 73th percentile of the last 200 bars, which reads as a normal regime."
       }
     },
     {
@@ -121,13 +121,13 @@
       },
       "baseline": {
         "windows": 4,
-        "trades": 42,
-        "wins": 11,
-        "hit_rate": 26.19,
-        "gross_profit": 575.72,
-        "gross_loss": 4052.3,
-        "profit_factor": 0.142,
-        "expectancy_r": -0.669,
+        "trades": 40,
+        "wins": 12,
+        "hit_rate": 30.0,
+        "gross_profit": 548.29,
+        "gross_loss": 3532.69,
+        "profit_factor": 0.155,
+        "expectancy_r": -0.5816,
         "max_drawdown": 3.7,
         "profitable_windows": 0,
         "ambiguous_exits": 0
@@ -146,20 +146,20 @@
         "ambiguous_exits": 0
       },
       "delta": {
-        "profit_factor": -0.081,
-        "expectancy_r": -0.4856,
-        "trades": -25,
-        "hit_rate": -14.43
+        "profit_factor": -0.094,
+        "expectancy_r": -0.573,
+        "trades": -23,
+        "hit_rate": -18.24
       },
       "verdict": "inconclusive",
       "verdict_capped": null,
-      "why": "out-of-sample trades below 30 in at least one arm (base 42, adaptive 17) — but this ran on the reference feed, which can never certify a strategy (ADR-0009/ADR-0014)",
+      "why": "out-of-sample trades below 30 in at least one arm (base 40, adaptive 17) — but this ran on the reference feed, which can never certify a strategy (ADR-0009/ADR-0014)",
       "applied": false,
       "promotable": false,
       "measurement": {
         "regime": "normal",
-        "percentile": 0.6734,
-        "why": "1h is the reference timeframe, so only the regime moves the bar. ATR sits at the 67th percentile of the last 200 bars, which reads as a normal regime."
+        "percentile": 0.5226,
+        "why": "1h is the reference timeframe, so only the regime moves the bar. ATR sits at the 52th percentile of the last 200 bars, which reads as a normal regime."
       }
     },
     {
@@ -252,10 +252,10 @@
         "trades": 33,
         "wins": 15,
         "hit_rate": 45.45,
-        "gross_profit": 884.13,
-        "gross_loss": 2649.52,
-        "profit_factor": 0.334,
-        "expectancy_r": -0.6692,
+        "gross_profit": 924.49,
+        "gross_loss": 2629.09,
+        "profit_factor": 0.352,
+        "expectancy_r": -0.6581,
         "max_drawdown": 2.0,
         "profitable_windows": 0,
         "ambiguous_exits": 0
@@ -266,16 +266,16 @@
         "wins": 4,
         "hit_rate": 22.22,
         "gross_profit": 254.99,
-        "gross_loss": 1592.89,
-        "profit_factor": 0.16,
-        "expectancy_r": -1.0793,
+        "gross_loss": 1549.88,
+        "profit_factor": 0.165,
+        "expectancy_r": -1.0656,
         "max_drawdown": 1.7,
         "profitable_windows": 0,
         "ambiguous_exits": 0
       },
       "delta": {
-        "profit_factor": -0.174,
-        "expectancy_r": -0.4101,
+        "profit_factor": -0.187,
+        "expectancy_r": -0.4075,
         "trades": -15,
         "hit_rate": -23.23
       },
@@ -285,9 +285,9 @@
       "applied": false,
       "promotable": false,
       "measurement": {
-        "regime": "volatile",
-        "percentile": 0.8392,
-        "why": "15m is noisier than 1h: the same score is weaker evidence there, so the bar rises to 1.25x. ATR sits at the 84th percentile of the last 200 bars, which reads as a volatile regime."
+        "regime": "normal",
+        "percentile": 0.7337,
+        "why": "15m is noisier than 1h: the same score is weaker evidence there, so the bar rises to 1.25x. ATR sits at the 73th percentile of the last 200 bars, which reads as a normal regime."
       }
     },
     {
@@ -317,10 +317,10 @@
         "wins": 10,
         "hit_rate": 40.0,
         "gross_profit": 375.75,
-        "gross_loss": 3157.52,
-        "profit_factor": 0.119,
-        "expectancy_r": -0.6635,
-        "max_drawdown": 3.4,
+        "gross_loss": 2962.72,
+        "profit_factor": 0.127,
+        "expectancy_r": -0.6171,
+        "max_drawdown": 3.5,
         "profitable_windows": 0,
         "ambiguous_exits": 0
       },
@@ -338,8 +338,8 @@
         "ambiguous_exits": 0
       },
       "delta": {
-        "profit_factor": 0.029,
-        "expectancy_r": -0.3049,
+        "profit_factor": 0.021,
+        "expectancy_r": -0.3513,
         "trades": -13,
         "hit_rate": -6.67
       },
@@ -350,8 +350,8 @@
       "promotable": false,
       "measurement": {
         "regime": "normal",
-        "percentile": 0.5628,
-        "why": "1h is the reference timeframe, so only the regime moves the bar. ATR sits at the 56th percentile of the last 200 bars, which reads as a normal regime."
+        "percentile": 0.4322,
+        "why": "1h is the reference timeframe, so only the regime moves the bar. ATR sits at the 43th percentile of the last 200 bars, which reads as a normal regime."
       }
     },
     {
@@ -441,13 +441,13 @@
       },
       "baseline": {
         "windows": 4,
-        "trades": 33,
+        "trades": 32,
         "wins": 8,
-        "hit_rate": 24.24,
-        "gross_profit": 633.91,
-        "gross_loss": 3810.18,
-        "profit_factor": 0.166,
-        "expectancy_r": -0.9334,
+        "hit_rate": 25.0,
+        "gross_profit": 656.2,
+        "gross_loss": 3587.1,
+        "profit_factor": 0.183,
+        "expectancy_r": -0.8938,
         "max_drawdown": 2.9,
         "profitable_windows": 0,
         "ambiguous_exits": 0
@@ -458,28 +458,28 @@
         "wins": 0,
         "hit_rate": 0.0,
         "gross_profit": 0.0,
-        "gross_loss": 701.59,
+        "gross_loss": 642.21,
         "profit_factor": 0.0,
-        "expectancy_r": -1.5164,
-        "max_drawdown": 1.1,
+        "expectancy_r": -1.374,
+        "max_drawdown": 0.8,
         "profitable_windows": 0,
         "ambiguous_exits": 0
       },
       "delta": {
-        "profit_factor": -0.166,
-        "expectancy_r": -0.583,
-        "trades": -26,
-        "hit_rate": -24.24
+        "profit_factor": -0.183,
+        "expectancy_r": -0.4802,
+        "trades": -25,
+        "hit_rate": -25.0
       },
       "verdict": "inconclusive",
       "verdict_capped": null,
-      "why": "out-of-sample trades below 30 in at least one arm (base 33, adaptive 7) — but this ran on the reference feed, which can never certify a strategy (ADR-0009/ADR-0014)",
+      "why": "out-of-sample trades below 30 in at least one arm (base 32, adaptive 7) — but this ran on the reference feed, which can never certify a strategy (ADR-0009/ADR-0014)",
       "applied": false,
       "promotable": false,
       "measurement": {
         "regime": "volatile",
-        "percentile": 0.8492,
-        "why": "15m is noisier than 1h: the same score is weaker evidence there, so the bar rises to 1.25x. ATR sits at the 85th percentile of the last 200 bars, which reads as a volatile regime."
+        "percentile": 0.794,
+        "why": "15m is noisier than 1h: the same score is weaker evidence there, so the bar rises to 1.25x. ATR sits at the 79th percentile of the last 200 bars, which reads as a volatile regime."
       }
     },
     {
@@ -508,10 +508,10 @@
         "trades": 21,
         "wins": 5,
         "hit_rate": 23.81,
-        "gross_profit": 129.09,
+        "gross_profit": 214.52,
         "gross_loss": 4033.28,
-        "profit_factor": 0.032,
-        "expectancy_r": -1.0111,
+        "profit_factor": 0.053,
+        "expectancy_r": -0.9845,
         "max_drawdown": 3.4,
         "profitable_windows": 0,
         "ambiguous_exits": 0
@@ -530,8 +530,8 @@
         "ambiguous_exits": 0
       },
       "delta": {
-        "profit_factor": -0.032,
-        "expectancy_r": -0.0139,
+        "profit_factor": -0.053,
+        "expectancy_r": -0.0405,
         "trades": -11,
         "hit_rate": -23.81
       },
@@ -542,8 +542,8 @@
       "promotable": false,
       "measurement": {
         "regime": "normal",
-        "percentile": 0.4673,
-        "why": "1h is the reference timeframe, so only the regime moves the bar. ATR sits at the 47th percentile of the last 200 bars, which reads as a normal regime."
+        "percentile": 0.3166,
+        "why": "1h is the reference timeframe, so only the regime moves the bar. ATR sits at the 32th percentile of the last 200 bars, which reads as a normal regime."
       }
     },
     {
@@ -633,45 +633,45 @@
       },
       "baseline": {
         "windows": 4,
-        "trades": 25,
+        "trades": 24,
         "wins": 11,
-        "hit_rate": 44.0,
-        "gross_profit": 1486.03,
-        "gross_loss": 2206.8,
-        "profit_factor": 0.673,
-        "expectancy_r": -0.2296,
-        "max_drawdown": 2.5,
-        "profitable_windows": 0,
+        "hit_rate": 45.83,
+        "gross_profit": 1227.72,
+        "gross_loss": 1584.1,
+        "profit_factor": 0.775,
+        "expectancy_r": -0.173,
+        "max_drawdown": 2.0,
+        "profitable_windows": 1,
         "ambiguous_exits": 0
       },
       "adaptive": {
         "windows": 4,
         "trades": 23,
-        "wins": 5,
-        "hit_rate": 21.74,
-        "gross_profit": 293.98,
-        "gross_loss": 1144.14,
-        "profit_factor": 0.257,
-        "expectancy_r": -0.5757,
-        "max_drawdown": 1.1,
+        "wins": 6,
+        "hit_rate": 26.09,
+        "gross_profit": 311.58,
+        "gross_loss": 1095.87,
+        "profit_factor": 0.284,
+        "expectancy_r": -0.5323,
+        "max_drawdown": 1.0,
         "profitable_windows": 0,
         "ambiguous_exits": 0
       },
       "delta": {
-        "profit_factor": -0.416,
-        "expectancy_r": -0.3461,
-        "trades": -2,
-        "hit_rate": -22.26
+        "profit_factor": -0.491,
+        "expectancy_r": -0.3593,
+        "trades": -1,
+        "hit_rate": -19.74
       },
       "verdict": "inconclusive",
       "verdict_capped": null,
-      "why": "out-of-sample trades below 30 in at least one arm (base 25, adaptive 23) — but this ran on the reference feed, which can never certify a strategy (ADR-0009/ADR-0014)",
+      "why": "out-of-sample trades below 30 in at least one arm (base 24, adaptive 23) — but this ran on the reference feed, which can never certify a strategy (ADR-0009/ADR-0014)",
       "applied": false,
       "promotable": false,
       "measurement": {
         "regime": "normal",
-        "percentile": 0.7387,
-        "why": "15m is noisier than 1h: the same score is weaker evidence there, so the bar rises to 1.25x. ATR sits at the 74th percentile of the last 200 bars, which reads as a normal regime."
+        "percentile": 0.7035,
+        "why": "15m is noisier than 1h: the same score is weaker evidence there, so the bar rises to 1.25x. ATR sits at the 70th percentile of the last 200 bars, which reads as a normal regime."
       }
     },
     {
@@ -697,13 +697,13 @@
       },
       "baseline": {
         "windows": 4,
-        "trades": 34,
-        "wins": 10,
-        "hit_rate": 29.41,
-        "gross_profit": 1787.16,
-        "gross_loss": 5785.65,
-        "profit_factor": 0.309,
-        "expectancy_r": -0.5494,
+        "trades": 33,
+        "wins": 13,
+        "hit_rate": 39.39,
+        "gross_profit": 1832.34,
+        "gross_loss": 5313.59,
+        "profit_factor": 0.345,
+        "expectancy_r": -0.4756,
         "max_drawdown": 4.5,
         "profitable_windows": 1,
         "ambiguous_exits": 0
@@ -722,20 +722,20 @@
         "ambiguous_exits": 0
       },
       "delta": {
-        "profit_factor": 0.35,
-        "expectancy_r": 0.4738,
-        "trades": -21,
-        "hit_rate": 32.13
+        "profit_factor": 0.314,
+        "expectancy_r": 0.4,
+        "trades": -20,
+        "hit_rate": 22.15
       },
       "verdict": "inconclusive",
       "verdict_capped": null,
-      "why": "out-of-sample trades below 30 in at least one arm (base 34, adaptive 13) — but this ran on the reference feed, which can never certify a strategy (ADR-0009/ADR-0014)",
+      "why": "out-of-sample trades below 30 in at least one arm (base 33, adaptive 13) — but this ran on the reference feed, which can never certify a strategy (ADR-0009/ADR-0014)",
       "applied": false,
       "promotable": false,
       "measurement": {
         "regime": "normal",
-        "percentile": 0.4774,
-        "why": "1h is the reference timeframe, so only the regime moves the bar. ATR sits at the 48th percentile of the last 200 bars, which reads as a normal regime."
+        "percentile": 0.397,
+        "why": "1h is the reference timeframe, so only the regime moves the bar. ATR sits at the 40th percentile of the last 200 bars, which reads as a normal regime."
       }
     },
     {

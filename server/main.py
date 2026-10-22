@@ -47,6 +47,7 @@ import nobitex_metadata
 import notify
 import paper_trading
 import reference_feed
+from adaptive import AdaptiveError as AdaptiveRefusal
 from backtest import SLIP_BPS, grid_search, run_and_save
 from benchmark import MIN_OBS as BENCH_MIN_OBS
 from benchmark import PERIODS_PER_YEAR
@@ -359,7 +360,7 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(
     title="nobiTrader",
-    version="1.0.19",
+    version="1.0.20",
     lifespan=lifespan,
 )
 
@@ -2836,7 +2837,7 @@ async def exec_mode_set(payload: dict, request: Request):
     return {"ok": True, **_exec_mode_payload(), **provenance()}
 
 
-# ---------------- Reference feed (ADR-0014, 1.0.19) ----------------
+# ---------------- Reference feed (ADR-0014, 1.0.20) ----------------
 # A second venue, for developing outside Iran and for sanity-checking the
 # numbers. Read-only, clearly labelled, and never a stand-in for the exchange:
 # `/api/backtest/run` turns it into a REFERENCE_DATA verdict that cannot pass.
@@ -2899,6 +2900,21 @@ async def reference_cross_check(symbol: str = "BTCUSDT"):
             out["note"] = ("a gap this size is a stale or mis-scaled feed, not an "
                            "arbitrage: check both before trusting either")
     return out
+
+
+def freshness_block(rows: list[dict], tf: str) -> dict:
+    """The `freshness` block for a response, degrading instead of raising.
+
+    A card that loses its numbers because the *age check* failed would be the
+    worst of both worlds, so a failure to measure becomes a stale block with the
+    named code — never an exception bubbling out of an otherwise good answer.
+    """
+    try:
+        return freshness.assess(rows, tf)
+    except AdaptiveRefusal as e:                   # bad timeframes and timestamps
+        return {"stale": True, "reason": e.code, "age_bars": None}
+    except Exception as e:                          # pragma: no cover - last resort
+        return {"stale": True, "reason": type(e).__name__, "age_bars": None}
 
 
 @app.get("/api/adaptive/thresholds/{symbol}")
@@ -3058,6 +3074,9 @@ async def backtest_run(payload: dict):
             "slippage_bps": res.get("slippage_bps"),
             "upstream": provenance()["source"],
             "as_of": provenance()["as_of"],
+            # A walk-forward on candles that stopped three days ago describes a
+            # window that ended three days ago; say so in bars, next to the gate.
+            "freshness": freshness_block(rows, tf),
         }
     except UpstreamUnavailable as e:
         return {**upstream_error("backtest", str(e))}
@@ -3091,7 +3110,8 @@ async def backtest_quick(symbol: str = "BTCIRT", tf: str = "1h", bars: int = 600
         res = await asyncio.to_thread(run_and_save, symbol.upper(), tf, rows, cfg, "wf", None, True, src)
     except ValueError as e:
         return {"ok": False, "error": str(e)}
-    return {"ok": True, "report": res, "bars": len(rows), "source": src}
+    return {"ok": True, "report": res, "bars": len(rows), "source": src,
+            "freshness": freshness_block(rows, tf)}
 
 
 @app.post("/api/grid-multi", dependencies=[Depends(require_client)])
