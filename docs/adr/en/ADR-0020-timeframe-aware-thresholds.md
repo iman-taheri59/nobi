@@ -97,3 +97,23 @@ So the fence was extended into the interface:
 4. **Nothing is requested on boot** — only when the tab is opened or the button pressed.
 5. Executable guard: `scripts/test_adaptive_card.cjs` runs the real inline block in jsdom
    and asserts those four properties.
+
+## Second amendment — 2026-10-22 (version 1.0.14): a number belongs to a pair
+
+The 1.0.13 amendment printed the fence on the card itself. One hole remained, and the
+quietest hole is always the most dangerous: the card showed the numbers of one **pair**
+(symbol, timeframe, feed) while the three controls for that pair sat next to it, live.
+The result: `BTCUSDT/1h` numbers under a header reading `ETHIRT/4h` — the same lie as an
+unlabelled proposal, only whispered.
+
+From this version:
+
+1. The measured pair is stored with the numbers and compared against the live selection.
+2. When they differ, the chip moves from "measurement only" to **"stale"** and the drift
+   itself is named (`asked → now`).
+3. Stale numbers are kept — they remain true for their own pair — but they may not wear the
+   new pair's header, and a fresh measurement runs after 700 ms.
+4. Before the first request, changing the selection does nothing: the card is evidence,
+   not a poller.
+5. The staleness state is observable on `#adCard[data-stale]` and via
+   `window.adCardState()`, so the executable (jsdom) test can assert what a person sees.

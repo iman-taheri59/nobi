@@ -10,7 +10,10 @@
  *      and prints the named reason: no zero, no em-dash pretending to be data;
  *   3. a network throw leaves a sentence instead of a blank card;
  *   4. the request carries the symbol, the timeframe and the *same candle source*
- *      as the backtest control next to it.
+ *      as the backtest control next to it;
+ *   5. when the pair changes under the numbers, the card says so and then
+ *      re-measures — stale numbers wearing a fresh header are the quiet version
+ *      of the same lie (1.0.14).
  *
  * No CDN, no server: the page is read from disk and the API is a function.
  */
@@ -87,8 +90,22 @@ function stub(result) {
 }
 
 (async () => {
+  // ---- 0. a control change before anything was measured fires nothing ----
+  // Someone who has not asked for a measurement must not get one because they
+  // touched the symbol box.
+  // The API is stubbed first, so a request would be *visible* rather than
+  // silently absorbed by the "no backend" branch — otherwise this test passes
+  // for the wrong reason.
+  stub(FIXTURE);
+  assert.equal(stub.lastPath, undefined, 'a measurement ran before anyone asked');
+  doc.getElementById('btTf').value = 'D';
+  doc.getElementById('btTf').dispatchEvent(new window.Event('change'));
+  await new Promise((r) => setTimeout(r, 900));
+  assert.equal(stub.lastPath, undefined, 'changing the controls fired a measurement nobody asked for');
+
   // ---- 1. a real measurement ----
   doc.getElementById('btSym').innerHTML = '<option value="BTCUSDT" selected>BTCUSDT</option>';
+  doc.getElementById('btTf').value = '15m';
   const src = doc.getElementById('btSrc');
   if (src) src.value = 'reference';
   stub(FIXTURE);
@@ -124,13 +141,41 @@ function stub(result) {
   assert.match(text('adState'), /Failed to fetch|measurement failed|اندازه‌گیری انجام نشد/);
   assert.equal(val('adLong'), '—');
 
-  // ---- 4. the disabled-backend path ----
+  // ---- 4. the pair changed under the numbers (1.0.14) ----
+  doc.getElementById('btTf').value = '15m';
+  doc.getElementById('btSym').innerHTML = '<option value="BTCUSDT" selected>BTCUSDT</option>';
+  stub(FIXTURE);
+  await window.adMeasureThresholds();
+  let state = window.adCardState();
+  assert.equal(state.stale, false, 'a fresh measurement reported itself stale');
+  assert.equal(state.asked, state.now);
+
+  // Someone flips the timeframe. Nothing is auto-fired yet, but the card must
+  // stop claiming the numbers describe what is selected.
+  doc.getElementById('btTf').value = '4h';
+  doc.getElementById('btTf').dispatchEvent(new window.Event('change'));
+  state = window.adCardState();
+  assert.equal(state.stale, true, 'the card kept a fresh badge after the pair changed');
+  assert.match(text('adBadge'), /stale|کهنه/, `badge did not go stale: "${text('adBadge')}"`);
+  assert.ok(text('adState').includes(`${state.asked} → ${state.now}`),
+    `the drift was not named as "${state.asked} → ${state.now}": "${text('adState')}"`);
+  // The stale numbers stay, because they are still true for their own pair —
+  // they just may not wear the current header.
+  assert.equal(val('adLong'), '68 → 75.0');
+
+  // ... and after the debounce, it re-measures for the newly selected pair.
+  await new Promise((r) => setTimeout(r, 900));
+  assert.match(stub.lastPath, /BTCUSDT\?tf=4h/, `re-measure used ${stub.lastPath}`);
+  state = window.adCardState();
+  assert.equal(state.stale, false, 'the re-measure did not clear the stale flag');
+
+  // ---- 5. the disabled-backend path ----
   window.NBX.core.api = undefined;
   await window.adMeasureThresholds();
   assert.match(text('adState'), /backend|بک‌اند/,
     'a missing backend produced no explanation');
 
-  console.log('PASS — adaptive card: numbers, the not-applied label, named refusals, no zeros');
+  console.log('PASS — adaptive card: numbers, the not-applied label, named refusals, no zeros, staleness named and re-measured');
   // The page arms intervals (clock, polling) that would keep node alive forever;
   // this script asserts and leaves.
   dom.window.close();

@@ -2,6 +2,26 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 1.0.14
+
+- **The threshold card can no longer show one pair's numbers under another pair's header.**
+  A measurement belongs to a *pair* — symbol, timeframe, feed — and those three controls sit
+  next to the card. The measured pair now travels with the numbers: the moment the selection
+  moves, the card says **"stale"** and names the drift
+  (`BTCUSDT/15m/reference → BTCUSDT/4h/reference`), then re-measures after 700 ms. The old
+  numbers stay on screen — they are still true for their own pair — but they may not wear
+  the current header.
+- **This is the 1.0.13 rule again, only quieter:** a number from one pair under another
+  pair's header is the same lie as an unlabelled proposal, just whispered.
+- **Nothing is requested until someone asks for a measurement.** Changing the
+  symbol/timeframe before the first measurement does nothing: the card is evidence, not a
+  poller.
+- **Tests:** three new tests in `server/tests/test_adaptive_ui_wiring.py` (the stale label,
+  the debounce, silence before the first request, stale numbers preserved) and three
+  executable scenarios in `scripts/test_adaptive_card.cjs` (jsdom: going stale, naming the
+  drift, re-measuring with `tf=4h`, and the absence of an unasked request). Both deliberate
+  mutations — neutering the staleness check, deleting the silence guard — turned a test red.
+
 ## 1.0.13
 
 - **A "thresholds and regime" card in the backtest lab.** The 1.0.12 measurement is now
