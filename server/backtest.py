@@ -43,6 +43,48 @@ REPORTS = writable_dir("NBX_BT_DIR", Path(__file__).parent / "backtest_reports",
 #: `slippage_bps=0` is still allowed, but the promotion gate then refuses to
 #: certify the result (see `costs_modeled`).
 SLIP_BPS = 6
+
+#: What the live decision actually blends (ADR-0007): TA 0.55, fundamentals
+#: 0.25, liquidity 0.20, then vetoes can cap the composite below promotion.
+#: Duplicated here on purpose — `server/main.py` imports this module, so the
+#: values cannot live there, and importing main from here would be a cycle.
+#: `tests/test_backtest_basis.py` asserts these equal `main.TA_W/FA_W/LIQ_W`.
+LIVE_COMPOSITE_WEIGHTS: dict[str, float] = {"ta": 0.55, "fa": 0.25, "liq": 0.20}
+LIVE_COMPOSITE = "ta+fa+liq"
+
+#: What a walk-forward report is *able* to test. Fundamentals and liquidity have
+#: no historical series in this repository (both are fetched point-in-time), and
+#: inventing one would be worse than admitting the gap — so the backtest runs on
+#: the TA component alone and says so in every report.
+BACKTEST_COMPONENTS: tuple[str, ...] = ("ta",)
+
+
+def decision_basis() -> dict[str, Any]:
+    """Declare which strategy the numbers below were produced on.
+
+    A report that cannot answer this is a report about an unnamed strategy. The
+    live engine blends three components and applies vetoes; the walk-forward
+    simulator reproduces the TA component only, because the other two have no
+    history to replay.
+    """
+    weights = dict.fromkeys(BACKTEST_COMPONENTS, 1.0)
+    return {
+        "components": list(BACKTEST_COMPONENTS),
+        "weights": weights,
+        "vetoes": False,
+        "live_composite": LIVE_COMPOSITE,
+        "live_weights": dict(LIVE_COMPOSITE_WEIGHTS),
+        "matches_live": tuple(LIVE_COMPOSITE_WEIGHTS) == BACKTEST_COMPONENTS,
+    }
+
+
+#: Appended to every gate verdict built on a TA-only run, so the sentence the
+#: operator reads is never stronger than the evidence behind it.
+BASIS_CAVEAT = (
+    "This report measures the technical component only. The live decision also "
+    "weights liquidity and fundamentals and can be capped by vetoes, so a PASS "
+    "here certifies the TA rules, not the full live composite."
+)
 MIN_WARMUP = 60
 
 # Strategy parameters that actually change trade decisions. `risk_pct` is not
@@ -118,6 +160,7 @@ def _cfg_hash(cfg: dict) -> str:
         "fee": FEE_PCT,
         "slippage_bps": cfg.get("slippage_bps", SLIP_BPS),
         "max_single_asset_pct": cfg.get("max_single_asset_pct", 25.0),
+        "basis": list(BACKTEST_COMPONENTS),
     }
     return hashlib.md5(json.dumps(payload, sort_keys=True).encode()).hexdigest()[:8]
 
@@ -615,9 +658,14 @@ def _gate(
         msg = "Out-of-sample results satisfy every ADR-0009 check."
     else:
         msg = "Failed: " + ", ".join(failed)
+    basis = decision_basis()
+    if not basis["matches_live"]:
+        msg = f"{msg} {BASIS_CAVEAT}"
+
     return {
         "state": state,
         "would_be": would_be,
+        "decision_basis": basis,
         "data_source": source,
         "checks": checks,
         "failed": failed,
@@ -760,6 +808,7 @@ def run_and_save(
         "param_grid_size": len(grid) if (grid and mode != "single") else 1,
         "initial_equity": round(base_cfg["initial_equity"], 2),
         "slippage_bps": base_cfg["slippage_bps"],
+        "decision_basis": decision_basis(),
         "costs": {
             "slippage_bps": base_cfg["slippage_bps"],
             "fee_pct": FEE_PCT,

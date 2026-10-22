@@ -95,3 +95,46 @@ curl -s -X POST http://127.0.0.1:8000/api/backtest/run \
 # frictionless — for comparison, not for promotion:
 ... -d '{"symbol":"BTCIRT","tf":"4h","bars":2000,"slippage_bps":0}'   # -> gate.failed = ["costs_modeled"]
 ```
+
+## Second amendment — 2026-10-22 (version 1.0.8): the backtest must say what it measured
+
+The live engine (ADR-0007) builds its decision from three components — technical
+0.55, fundamentals 0.25, liquidity 0.20 — and vetoes can then pull the score
+below the promotion threshold (`apply_vetoes`: capped at `VETO_CAP` /
+`VETO_CAP_SEVERE`). The backtest simulator (`ta_score_series`) replays the
+technical component only, because fundamentals and liquidity have **no history**:
+both are fetched point-in-time and their past series is not stored in this
+repository.
+
+That limitation is defensible; silence about it is not. Until 1.0.7 a report
+said "PF 1.42, gate: PASS" while having measured a quarter of the live rule.
+
+**What changed**
+
+| Item | Up to 1.0.7 | From 1.0.8 |
+|---|---|---|
+| Report | no `decision_basis` | `components`, `weights`, `vetoes`, `live_weights`, `matches_live` |
+| Config hash | indifferent to the rule set | `basis` is part of the hash |
+| Gate message | verdict reason only | reason + `BASIS_CAVEAT` sentence |
+| Dashboard | OOS chip | amber "TA-only" chip with live weights in its tooltip |
+| Browser (offline) | said nothing | the same declaration and the same caveat |
+
+**Why the gate does not refuse to certify:** unlike `costs_modeled` (first
+amendment), which was a numerical lie, this is a **scope of validity**, not an
+error. A TA-only run produces correct numbers; it just does not speak about the
+full rule. So we do not reject the verdict, we make the sentence accurate: a
+`PASS` here means the technical rules, not the live composite.
+
+**What closing the gap needs** (future, its own ADR): storing historical
+liquidity (24 h turnover / depth) and fundamentals per symbol alongside candles,
+so the composite can be replayed. Until then the report must stay honest rather
+than look complete.
+
+**Operating it**
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/api/backtest/run \
+  -H 'Content-Type: application/json' -d '{"symbol":"BTCIRT","tf":"4h","bars":2000}' \
+  | python -c "import json,sys; r=json.load(sys.stdin)['report']; \
+print(r['decision_basis']); print(r['gate']['message'][-160:])"
+```

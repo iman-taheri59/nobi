@@ -680,7 +680,7 @@ html[dir="ltr"] .live-badge { right: auto; left: 14px; }
       </button>
     </div>
     <span class="hidden 2xl:inline-flex chip shrink-0"><span class="dot bg-emerald-400"></span> <span data-i18n="hdr.kill"></span></span>
-    <span id="buildChip" class="hidden lg:inline-flex chip num text-violet-300 border-violet-400/30 shrink-0" title="نسخه واقعی از /api/health">v1.0.7 · core</span>
+    <span id="buildChip" class="hidden lg:inline-flex chip num text-violet-300 border-violet-400/30 shrink-0" title="نسخه واقعی از /api/health">v1.0.8 · core</span>
     <div class="ms-auto flex items-center gap-1.5 shrink-0">
       <span class="hidden xl:inline-flex chip num" id="clock">--:--:--</span>
       <span id="apiChip" class="hidden 2xl:inline-flex chip num text-zinc-400 border-white/10" title=""><i data-lucide="wifi-off" class="w-3.5 h-3.5"></i> <span>API: —</span></span>
@@ -1585,6 +1585,7 @@ html[dir="ltr"] .live-badge { right: auto; left: 14px; }
         <span class="font-bold text-zinc-300" data-i18n="bt.gateTitle"></span>
         <span class="chip" id="btGate">—</span>
         <span class="chip text-violet-300 border-violet-300/30" id="btOosChip" data-ui-label="OOS">OOS</span>
+        <span class="chip hidden" id="btBasisChip" title=""></span>
         <span class="text-zinc-500 leading-5" id="btGateMsg"></span>
         <span class="ms-auto text-[10px] text-zinc-500 num" id="btMeta"></span>
       </div>
@@ -1777,7 +1778,7 @@ const T = {
     'bt.cfg':'پیکربندی بک‌تست','bt.equity':'سرمایه اولیه','bt.stopK':'ضریب استاپ (k×ATR)','bt.train':'پنجره آموزش (کندل)','bt.eval':'پنجره آزمون (کندل)',
     'bt.cfgNote':'پارامترها فقط روی پنجره آموزش بهینه می‌شوند و اعداد گزارش‌شده از پنجره آزمون (خارج‌از‌نمونه) می‌آیند · اگر کمتر از ۲ پنجره جا شود، اندازه پنجره‌ها خودکار انتخاب می‌شود · تداخل SL/TP در یک کندل محافظه‌کارانه به ضرر فرض می‌شود · نتایج در backtest_reports/ ذخیره می‌گردد.',
     'bt.sample':'معاملات نمونه (آخرین پنجره)','bt.exit':'خروج','bt.loading':'در حال اجرا...',
-    'bt.bars':'تاریخچه (کندل)','bt.slip':'لغزش (bps)','bt.gateTitle':'دروازه ارتقا (ADR-0009):','bt.params':'پارامتر','bt.isR':'R آموزش',
+    'bt.bars':'تاریخچه (کندل)','bt.slip':'لغزش (bps)','bt.basisTaOnly':'فقط تکنیکال','bt.gateTitle':'دروازه ارتقا (ADR-0009):','bt.params':'پارامتر','bt.isR':'R آموزش',
     'bt.oos':'خارج‌از‌نمونه','bt.gatePass':'قبول','bt.gateFail':'رد','bt.gateShort':'داده کافی نیست','bt.gateSynth':'داده شبیه‌سازی‌شده',
     'bt.grid':'جستجوی شبکه‌ای — حساسیت پارامتر', 'bt.fallback':'سرور پاسخ نداد؛ محاسبهٔ محلی (شبیه‌سازی)','bt.gridRun':'اجرای گرید','bt.gridBest':'بهترین ترکیب','bt.gridMeta':'در انتظار اجرا',
     'bt.multi':'اسکن گرید چندنمادی — بهینه‌ترین پارامتر به‌ازای هر نماد','bt.multiRun':'اجرا برای ۸ نماد',
@@ -2025,7 +2026,7 @@ const T = {
     'bt.cfg':'Backtest configuration','bt.equity':'Initial equity','bt.stopK':'Stop factor (k×ATR)','bt.train':'Train window (bars)','bt.eval':'Eval window (bars)',
     'bt.cfgNote':'Parameters are optimised on the train window only; reported numbers come from the eval window (out-of-sample) · windows auto-fit when fewer than 2 fit · SL/TP collisions inside one candle are resolved pessimistically · reports are saved to backtest_reports/.',
     'bt.sample':'Sample trades (last window)','bt.exit':'Exit','bt.loading':'Running...',
-    'bt.bars':'History (bars)','bt.slip':'Slippage (bps)','bt.gateTitle':'Promotion gate (ADR-0009):','bt.params':'Params','bt.isR':'Train R',
+    'bt.bars':'History (bars)','bt.slip':'Slippage (bps)','bt.basisTaOnly':'TA-only','bt.gateTitle':'Promotion gate (ADR-0009):','bt.params':'Params','bt.isR':'Train R',
     'bt.oos':'Out-of-sample','bt.gatePass':'PASS','bt.gateFail':'FAIL','bt.gateShort':'Insufficient data','bt.gateSynth':'Simulated data',
     'bt.grid':'Grid search — parameter sensitivity', 'bt.fallback':'server unreachable; computed locally (simulated)',
 'bt.gridRun':'Run grid','bt.gridBest':'Best combo','bt.gridMeta':'Idle',
@@ -5964,6 +5965,23 @@ function btRenderGate(rep){
       g.state==='FAIL'?'بررسی‌های ناموفق: '+(g.failed||[]).map(k=>names[k]||k).join('، '):g.message||'';
     msg.textContent = localizeText(LANG==='fa'?fa:g.message||'');
   }
+  const basis = g.decision_basis || rep.decision_basis;
+  const basisChip = document.getElementById('btBasisChip');
+  if (basisChip){
+    if (basis && basis.matches_live === false){
+      basisChip.classList.remove('hidden');
+      basisChip.className = 'chip text-amber-300 border-amber-300/30';
+      basisChip.textContent = t('bt.basisTaOnly');
+      const live = Object.entries(basis.live_weights || {}).map(([k,v])=>`${k} ${fmtNum(v*100,0)}٪`).join(' · ');
+      basisChip.title = (LANG==='fa'
+        ? `این گزارش فقط جزء تکنیکال را می‌سنجد. تصمیم زنده: ${live} و وتوها.`
+        : `This report tests the technical component only. Live decision: ${live} plus vetoes.`);
+    } else {
+      basisChip.classList.add('hidden');
+      basisChip.textContent = '';
+      basisChip.title = '';
+    }
+  }
   const meta = document.getElementById('btMeta');
   if (meta && rep){
     const bits = [];
@@ -7379,6 +7397,14 @@ window.addEventListener('resize', resizeCharts);
         initial_equity: initialEquity,
         slippage_bps: slipBps,
         costs: { slippage_bps: slipBps, fee_pct: PAPER_FEE_PCT, modeled: slipBps > 0 },
+        // Same disclosure as the server: this engine replays the TA rules only,
+        // while the live decision also weights liquidity/fundamentals and can be
+        // capped by vetoes. Saying nothing would make the report look complete.
+        decision_basis: {
+          components: ['ta'], weights: { ta: 1 }, vetoes: false,
+          live_composite: 'ta+fa+liq', live_weights: { ta: 0.55, fa: 0.25, liq: 0.2 },
+          matches_live: false,
+        },
         aggregate: {
           trades: totalTrades,
           total_wins: totalWins,
@@ -7401,9 +7427,12 @@ window.addEventListener('resize', resizeCharts);
           data_source: 'synthetic',
           checks,
           failed: Object.keys(checks).filter((k) => !checks[k].pass),
-          message: (typeof LANG !== 'undefined' && LANG === 'fa')
+          message: ((typeof LANG !== 'undefined' && LANG === 'fa')
             ? 'شمع‌ها از موتور مرورگر (شبیه‌سازی) آمده‌اند؛ دروازه ارتقا روی داده مصنوعی مجوز نمی‌دهد.'
-            : 'Candles come from the browser engine (simulated); the gate never certifies simulated data.',
+            : 'Candles come from the browser engine (simulated); the gate never certifies simulated data.')
+            + ' ' + ((typeof LANG !== 'undefined' && LANG === 'fa')
+              ? 'این گزارش فقط جزء تکنیکال را می‌سنجد؛ تصمیم زنده وزن نقدینگی/فاندامنتال و وتو هم دارد.'
+              : 'This report measures the technical component only; the live decision also weights liquidity/fundamentals and can be vetoed.'),
           bars_needed: tb + 3 * eb,
         },
         details: windows.slice(-12),
