@@ -26,6 +26,7 @@ Named refusals, never guessed numbers: ``insufficient-data``, ``flat-market``
 from __future__ import annotations
 
 import math
+from datetime import UTC, datetime
 from typing import Any
 
 import pandas as pd
@@ -122,6 +123,27 @@ def _clean(rows: list[dict]) -> pd.DataFrame:
     return df.reset_index(drop=True)
 
 
+def _percentile_of_last(values: pd.Series) -> float:
+    """Where the last value of `values` sits inside `values` (0..1).
+
+    The single definition, used both for the headline number and for every point
+    of the chart strip (1.0.22) — drawing a history with a slightly different
+    formula than the number it illustrates would make the two disagree on screen.
+
+    Ties count as "not below", so a perfectly flat window has no percentile and is
+    refused: `0.5` there would be an average of nothing.
+    """
+    current = float(values.iloc[-1])
+    if current <= 0:
+        raise AdaptiveError(
+            "flat-market",
+            "ATR is zero over the window: a percentile of zero variance is undefined",
+            {"atr": current, "bars": len(values)},
+        )
+    below = int((values < current).sum())
+    return round(min(1.0, max(0.0, below / max(1, len(values) - 1))), 4)
+
+
 def atr_percentile(df: pd.DataFrame, window: int = LOOKBACK) -> dict[str, Any]:
     """Where the current ATR sits inside its own recent history (0..1).
 
@@ -133,22 +155,102 @@ def atr_percentile(df: pd.DataFrame, window: int = LOOKBACK) -> dict[str, Any]:
         raise AdaptiveError("insufficient-data", "ATR could not be computed")
     tail = series.iloc[-window:]
     current = float(tail.iloc[-1])
-    if current <= 0:
-        raise AdaptiveError(
-            "flat-market",
-            "ATR is zero over the window: a percentile of zero variance is undefined",
-            {"atr": current, "bars": len(tail)},
-        )
-    below = int((tail < current).sum())
-    pct = below / max(1, len(tail) - 1)
+    pct = _percentile_of_last(tail)
     return {
         "atr": round(current, 10),
         "atr_abs": current,
         "atr_pct_price": round(current / float(df["c"].iloc[-1]) * 100, 4),
-        "percentile": round(min(1.0, max(0.0, pct)), 4),
+        "percentile": pct,
         "window": len(tail),
         "period": ATR_WINDOW,
     }
+
+
+#: How many points the chart strip draws. Enough to see a shape, few enough that
+#: the response stays small and every point is still a full-window percentile.
+STRIP_BARS = 60
+
+
+def atr_percentile_path(
+    df: pd.DataFrame,
+    *,
+    window: int = LOOKBACK,
+    points: int = STRIP_BARS,
+) -> dict[str, Any]:
+    """The same percentile, walked backwards over the chart's own bars (1.0.22).
+
+    The headline number says "ATR is at the 12th percentile". That is a rank with
+    no shape — a reader cannot tell whether 12 is the tail of a quiet month or a
+    single calm day inside a violent one. This returns the last `points` values of
+    that same rank so the chart can draw it, computed by `_percentile_of_last`,
+    i.e. by the same formula as the number it illustrates.
+
+    Each point is labelled with the length of the window it was ranked against, and
+    `windows` reports the shortest one actually used: with 260 bars every point
+    sees the full `window`, and a caller that fetched fewer bars is told what it
+    got instead of being handed an unqualified percentile.
+    """
+    series = atr_series(df, ATR_WINDOW).dropna()
+    if series.empty:
+        raise AdaptiveError("insufficient-data", "ATR could not be computed")
+    if len(df) < MIN_BARS:
+        raise AdaptiveError(
+            "insufficient-data",
+            f"{len(df)} usable candles; the ATR percentile needs {MIN_BARS}",
+            {"bars": len(df), "required": MIN_BARS},
+        )
+
+    stamps = df["t"].iloc[-len(series):] if "t" in df.columns else None
+    last = len(series) - 1
+    first = max(0, len(series) - max(1, points))
+    out: list[dict[str, Any]] = []
+    used: list[int] = []
+    for i in range(first, last + 1):
+        lo = max(0, i - window + 1)
+        slice_ = series.iloc[lo:i + 1]
+        if len(slice_) < 2:
+            continue
+        try:
+            pct = _percentile_of_last(slice_)
+        except AdaptiveError:
+            # A flat bar *inside* the history has no rank, and a zero there would
+            # draw a spike that never happened: skip it and let the caller see the
+            # shorter list. A flat *current* bar is different — it is the answer
+            # the card would print, so the refusal travels instead of vanishing.
+            if i == last:
+                raise
+            continue
+        used.append(len(slice_))
+        stamp = None
+        if stamps is not None:
+            value = stamps.iloc[i - (len(series) - len(stamps))] if i >= len(series) - len(stamps) else None
+            stamp = _iso(value)
+        out.append({"t": stamp, "pct": pct})
+
+    if not out:
+        raise AdaptiveError("insufficient-data", "no bar in the window has a percentile")
+
+    return {
+        "points": out,
+        "count": len(out),
+        "window": window,
+        "period": ATR_WINDOW,
+        "min_bars": MIN_BARS,
+        "windows": {"min": min(used), "max": max(used)},
+    }
+
+
+def _iso(value: Any) -> str | None:
+    if value is None:
+        return None
+    try:
+        if hasattr(value, "to_pydatetime"):
+            value = value.to_pydatetime()
+        if hasattr(value, "isoformat"):
+            return str(value.isoformat())
+        return datetime.fromtimestamp(float(value), UTC).isoformat()
+    except (TypeError, ValueError, OSError):
+        return None
 
 
 def regime_for(percentile: float) -> str:

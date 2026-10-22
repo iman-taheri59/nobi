@@ -161,3 +161,23 @@ From this version:
    place the fee and the starting equity were pinned.
 4. No threshold, weight or verdict changed: this version only puts a time label on numbers that
    were already there.
+
+### Third appendix to the third amendment — version 1.0.22
+
+The percentile has been on the card since 1.0.13, but it had no **shape**. "The 12th percentile"
+can be the tail of a quiet month or one calm day inside a volatile one, and the decision that
+leans on it (entry, stop) is sensitive to exactly that difference.
+
+From this version:
+
+1. `_percentile_of_last()` is the only definition of the rank; the headline number and every
+   point of the strip are built from it, so the picture and the number cannot disagree.
+2. `GET /api/candles/{symbol}` returns a `volatility` block: the percentile, ATR as a share of
+   price, the regime, the regime cuts, and 60 strip points — with `applied: false` and the
+   sentence that this describes the past rather than forecasting it.
+3. A named refusal replaces an exception (`insufficient-data`, `flat-market`) and carries its
+   counts; no zero is ever drawn where a rank belongs.
+4. `windows: {min, max}` reports how many bars each point was ranked against — a short strip
+   announces its shortness.
+5. The page owns no number of its own: the regime cuts come from the response, and if they are
+   not sent, no band is drawn.

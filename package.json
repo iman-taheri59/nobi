@@ -20,5 +20,5 @@
     "jsdom": "^26.0.0",
     "tailwindcss": "^4.3.3"
   },
-  "version": "1.0.21"
+  "version": "1.0.22"
 }
