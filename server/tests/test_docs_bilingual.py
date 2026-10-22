@@ -29,6 +29,7 @@ PAIRS = (
     ("docs/testing.md", "docs/testing.en.md"),
     ("docs/coin-metadata.md", "docs/coin-metadata.en.md"),
     ("docs/financial-display.md", "docs/financial-display.en.md"),
+    ("docs/evidence.md", "docs/evidence.en.md"),
 )
 
 ADR_RE = re.compile(r"^ADR-(\d{4})-")

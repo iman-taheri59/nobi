@@ -1,0 +1,806 @@
+{
+  "kind": "adaptive-evidence-matrix",
+  "version": "1.0.17",
+  "provenance": {
+    "generated_at": "2026-10-22T17:33:49+00:00",
+    "label": "REFERENCE_DATA",
+    "promotable": false,
+    "applied": false,
+    "note": "reference feed — demonstrates the method only; ADR-0009/ADR-0014 forbid certifying a strategy on it, so every verdict stays inconclusive"
+  },
+  "matrix": {
+    "symbols": [
+      "BTCUSDT",
+      "ETHUSDT",
+      "SOLUSDT",
+      "XRPUSDT"
+    ],
+    "timeframes": [
+      "15m",
+      "1h",
+      "4h"
+    ],
+    "bars": 900,
+    "factor": 1.25,
+    "cells": 12
+  },
+  "summary": {
+    "cells": 12,
+    "answered": 12,
+    "refused": 0,
+    "unnamed_failures": 0,
+    "favours_adaptive": 0,
+    "favours_baseline": 0,
+    "inconclusive": 12
+  },
+  "cells": [
+    {
+      "symbol": "BTCUSDT",
+      "tf": "15m",
+      "ok": true,
+      "bars": 900,
+      "factor": {
+        "proposed": 1.25,
+        "tested": 1.25
+      },
+      "thresholds": {
+        "base_long": 68.0,
+        "scaled_long": 85.0,
+        "base_neutral": 55.0,
+        "scaled_neutral": 68.75
+      },
+      "windows": {
+        "train_bars": 384,
+        "eval_bars": 128,
+        "count": 4,
+        "paired": true
+      },
+      "baseline": {
+        "windows": 4,
+        "trades": 31,
+        "wins": 11,
+        "hit_rate": 35.48,
+        "gross_profit": 561.05,
+        "gross_loss": 1849.3,
+        "profit_factor": 0.303,
+        "expectancy_r": -0.6705,
+        "max_drawdown": 1.2,
+        "profitable_windows": 0,
+        "ambiguous_exits": 0
+      },
+      "adaptive": {
+        "windows": 4,
+        "trades": 21,
+        "wins": 4,
+        "hit_rate": 19.05,
+        "gross_profit": 101.9,
+        "gross_loss": 1579.83,
+        "profit_factor": 0.065,
+        "expectancy_r": -1.3999,
+        "max_drawdown": 1.3,
+        "profitable_windows": 0,
+        "ambiguous_exits": 0
+      },
+      "delta": {
+        "profit_factor": -0.238,
+        "expectancy_r": -0.7294,
+        "trades": -10,
+        "hit_rate": -16.43
+      },
+      "verdict": "inconclusive",
+      "verdict_capped": null,
+      "why": "out-of-sample trades below 30 in at least one arm (base 31, adaptive 21) — but this ran on the reference feed, which can never certify a strategy (ADR-0009/ADR-0014)",
+      "applied": false,
+      "promotable": false,
+      "measurement": {
+        "regime": "volatile",
+        "percentile": 0.804,
+        "why": "15m is noisier than 1h: the same score is weaker evidence there, so the bar rises to 1.25x. ATR sits at the 80th percentile of the last 200 bars, which reads as a volatile regime."
+      }
+    },
+    {
+      "symbol": "BTCUSDT",
+      "tf": "1h",
+      "ok": true,
+      "bars": 900,
+      "factor": {
+        "proposed": 1.0,
+        "tested": 1.25
+      },
+      "thresholds": {
+        "base_long": 68.0,
+        "scaled_long": 85.0,
+        "base_neutral": 55.0,
+        "scaled_neutral": 68.75
+      },
+      "windows": {
+        "train_bars": 384,
+        "eval_bars": 128,
+        "count": 4,
+        "paired": true
+      },
+      "baseline": {
+        "windows": 4,
+        "trades": 42,
+        "wins": 11,
+        "hit_rate": 26.19,
+        "gross_profit": 575.72,
+        "gross_loss": 4052.3,
+        "profit_factor": 0.142,
+        "expectancy_r": -0.669,
+        "max_drawdown": 3.7,
+        "profitable_windows": 0,
+        "ambiguous_exits": 0
+      },
+      "adaptive": {
+        "windows": 4,
+        "trades": 17,
+        "wins": 2,
+        "hit_rate": 11.76,
+        "gross_profit": 136.04,
+        "gross_loss": 2233.62,
+        "profit_factor": 0.061,
+        "expectancy_r": -1.1546,
+        "max_drawdown": 2.1,
+        "profitable_windows": 0,
+        "ambiguous_exits": 0
+      },
+      "delta": {
+        "profit_factor": -0.081,
+        "expectancy_r": -0.4856,
+        "trades": -25,
+        "hit_rate": -14.43
+      },
+      "verdict": "inconclusive",
+      "verdict_capped": null,
+      "why": "out-of-sample trades below 30 in at least one arm (base 42, adaptive 17) — but this ran on the reference feed, which can never certify a strategy (ADR-0009/ADR-0014)",
+      "applied": false,
+      "promotable": false,
+      "measurement": {
+        "regime": "normal",
+        "percentile": 0.6734,
+        "why": "1h is the reference timeframe, so only the regime moves the bar. ATR sits at the 67th percentile of the last 200 bars, which reads as a normal regime."
+      }
+    },
+    {
+      "symbol": "BTCUSDT",
+      "tf": "4h",
+      "ok": true,
+      "bars": 900,
+      "factor": {
+        "proposed": 0.85,
+        "tested": 1.25
+      },
+      "thresholds": {
+        "base_long": 68.0,
+        "scaled_long": 85.0,
+        "base_neutral": 55.0,
+        "scaled_neutral": 68.75
+      },
+      "windows": {
+        "train_bars": 384,
+        "eval_bars": 128,
+        "count": 4,
+        "paired": true
+      },
+      "baseline": {
+        "windows": 4,
+        "trades": 36,
+        "wins": 15,
+        "hit_rate": 41.67,
+        "gross_profit": 7640.76,
+        "gross_loss": 5032.01,
+        "profit_factor": 1.518,
+        "expectancy_r": 0.147,
+        "max_drawdown": 4.5,
+        "profitable_windows": 2,
+        "ambiguous_exits": 0
+      },
+      "adaptive": {
+        "windows": 4,
+        "trades": 22,
+        "wins": 9,
+        "hit_rate": 40.91,
+        "gross_profit": 3733.91,
+        "gross_loss": 4655.54,
+        "profit_factor": 0.802,
+        "expectancy_r": -0.2449,
+        "max_drawdown": 4.0,
+        "profitable_windows": 1,
+        "ambiguous_exits": 0
+      },
+      "delta": {
+        "profit_factor": -0.716,
+        "expectancy_r": -0.3919,
+        "trades": -14,
+        "hit_rate": -0.76
+      },
+      "verdict": "inconclusive",
+      "verdict_capped": null,
+      "why": "out-of-sample trades below 30 in at least one arm (base 36, adaptive 22) — but this ran on the reference feed, which can never certify a strategy (ADR-0009/ADR-0014)",
+      "applied": false,
+      "promotable": false,
+      "measurement": {
+        "regime": "normal",
+        "percentile": 0.5879,
+        "why": "4h is quieter than 1h: the same score is stronger evidence there, so the bar falls to 0.85x. ATR sits at the 59th percentile of the last 200 bars, which reads as a normal regime."
+      }
+    },
+    {
+      "symbol": "ETHUSDT",
+      "tf": "15m",
+      "ok": true,
+      "bars": 900,
+      "factor": {
+        "proposed": 1.25,
+        "tested": 1.25
+      },
+      "thresholds": {
+        "base_long": 68.0,
+        "scaled_long": 85.0,
+        "base_neutral": 55.0,
+        "scaled_neutral": 68.75
+      },
+      "windows": {
+        "train_bars": 384,
+        "eval_bars": 128,
+        "count": 4,
+        "paired": true
+      },
+      "baseline": {
+        "windows": 4,
+        "trades": 33,
+        "wins": 15,
+        "hit_rate": 45.45,
+        "gross_profit": 884.13,
+        "gross_loss": 2649.52,
+        "profit_factor": 0.334,
+        "expectancy_r": -0.6692,
+        "max_drawdown": 2.0,
+        "profitable_windows": 0,
+        "ambiguous_exits": 0
+      },
+      "adaptive": {
+        "windows": 4,
+        "trades": 18,
+        "wins": 4,
+        "hit_rate": 22.22,
+        "gross_profit": 254.99,
+        "gross_loss": 1592.89,
+        "profit_factor": 0.16,
+        "expectancy_r": -1.0793,
+        "max_drawdown": 1.7,
+        "profitable_windows": 0,
+        "ambiguous_exits": 0
+      },
+      "delta": {
+        "profit_factor": -0.174,
+        "expectancy_r": -0.4101,
+        "trades": -15,
+        "hit_rate": -23.23
+      },
+      "verdict": "inconclusive",
+      "verdict_capped": null,
+      "why": "out-of-sample trades below 30 in at least one arm (base 33, adaptive 18) — but this ran on the reference feed, which can never certify a strategy (ADR-0009/ADR-0014)",
+      "applied": false,
+      "promotable": false,
+      "measurement": {
+        "regime": "volatile",
+        "percentile": 0.799,
+        "why": "15m is noisier than 1h: the same score is weaker evidence there, so the bar rises to 1.25x. ATR sits at the 80th percentile of the last 200 bars, which reads as a volatile regime."
+      }
+    },
+    {
+      "symbol": "ETHUSDT",
+      "tf": "1h",
+      "ok": true,
+      "bars": 900,
+      "factor": {
+        "proposed": 1.0,
+        "tested": 1.25
+      },
+      "thresholds": {
+        "base_long": 68.0,
+        "scaled_long": 85.0,
+        "base_neutral": 55.0,
+        "scaled_neutral": 68.75
+      },
+      "windows": {
+        "train_bars": 384,
+        "eval_bars": 128,
+        "count": 4,
+        "paired": true
+      },
+      "baseline": {
+        "windows": 4,
+        "trades": 25,
+        "wins": 10,
+        "hit_rate": 40.0,
+        "gross_profit": 375.75,
+        "gross_loss": 3157.52,
+        "profit_factor": 0.119,
+        "expectancy_r": -0.6635,
+        "max_drawdown": 3.4,
+        "profitable_windows": 0,
+        "ambiguous_exits": 0
+      },
+      "adaptive": {
+        "windows": 4,
+        "trades": 12,
+        "wins": 4,
+        "hit_rate": 33.33,
+        "gross_profit": 228.47,
+        "gross_loss": 1543.4,
+        "profit_factor": 0.148,
+        "expectancy_r": -0.9684,
+        "max_drawdown": 2.0,
+        "profitable_windows": 0,
+        "ambiguous_exits": 0
+      },
+      "delta": {
+        "profit_factor": 0.029,
+        "expectancy_r": -0.3049,
+        "trades": -13,
+        "hit_rate": -6.67
+      },
+      "verdict": "inconclusive",
+      "verdict_capped": null,
+      "why": "out-of-sample trades below 30 in at least one arm (base 25, adaptive 12) — but this ran on the reference feed, which can never certify a strategy (ADR-0009/ADR-0014)",
+      "applied": false,
+      "promotable": false,
+      "measurement": {
+        "regime": "normal",
+        "percentile": 0.5628,
+        "why": "1h is the reference timeframe, so only the regime moves the bar. ATR sits at the 56th percentile of the last 200 bars, which reads as a normal regime."
+      }
+    },
+    {
+      "symbol": "ETHUSDT",
+      "tf": "4h",
+      "ok": true,
+      "bars": 900,
+      "factor": {
+        "proposed": 0.85,
+        "tested": 1.25
+      },
+      "thresholds": {
+        "base_long": 68.0,
+        "scaled_long": 85.0,
+        "base_neutral": 55.0,
+        "scaled_neutral": 68.75
+      },
+      "windows": {
+        "train_bars": 384,
+        "eval_bars": 128,
+        "count": 4,
+        "paired": true
+      },
+      "baseline": {
+        "windows": 4,
+        "trades": 38,
+        "wins": 13,
+        "hit_rate": 34.21,
+        "gross_profit": 7190.24,
+        "gross_loss": 8330.34,
+        "profit_factor": 0.863,
+        "expectancy_r": -0.1038,
+        "max_drawdown": 6.7,
+        "profitable_windows": 1,
+        "ambiguous_exits": 0
+      },
+      "adaptive": {
+        "windows": 4,
+        "trades": 16,
+        "wins": 5,
+        "hit_rate": 31.25,
+        "gross_profit": 1969.92,
+        "gross_loss": 3434.49,
+        "profit_factor": 0.574,
+        "expectancy_r": -0.3127,
+        "max_drawdown": 4.8,
+        "profitable_windows": 0,
+        "ambiguous_exits": 0
+      },
+      "delta": {
+        "profit_factor": -0.289,
+        "expectancy_r": -0.2089,
+        "trades": -22,
+        "hit_rate": -2.96
+      },
+      "verdict": "inconclusive",
+      "verdict_capped": null,
+      "why": "out-of-sample trades below 30 in at least one arm (base 38, adaptive 16) — but this ran on the reference feed, which can never certify a strategy (ADR-0009/ADR-0014)",
+      "applied": false,
+      "promotable": false,
+      "measurement": {
+        "regime": "normal",
+        "percentile": 0.5628,
+        "why": "4h is quieter than 1h: the same score is stronger evidence there, so the bar falls to 0.85x. ATR sits at the 56th percentile of the last 200 bars, which reads as a normal regime."
+      }
+    },
+    {
+      "symbol": "SOLUSDT",
+      "tf": "15m",
+      "ok": true,
+      "bars": 900,
+      "factor": {
+        "proposed": 1.25,
+        "tested": 1.25
+      },
+      "thresholds": {
+        "base_long": 68.0,
+        "scaled_long": 85.0,
+        "base_neutral": 55.0,
+        "scaled_neutral": 68.75
+      },
+      "windows": {
+        "train_bars": 384,
+        "eval_bars": 128,
+        "count": 4,
+        "paired": true
+      },
+      "baseline": {
+        "windows": 4,
+        "trades": 33,
+        "wins": 8,
+        "hit_rate": 24.24,
+        "gross_profit": 633.91,
+        "gross_loss": 3810.18,
+        "profit_factor": 0.166,
+        "expectancy_r": -0.9334,
+        "max_drawdown": 2.9,
+        "profitable_windows": 0,
+        "ambiguous_exits": 0
+      },
+      "adaptive": {
+        "windows": 4,
+        "trades": 7,
+        "wins": 0,
+        "hit_rate": 0.0,
+        "gross_profit": 0.0,
+        "gross_loss": 701.59,
+        "profit_factor": 0.0,
+        "expectancy_r": -1.5164,
+        "max_drawdown": 1.1,
+        "profitable_windows": 0,
+        "ambiguous_exits": 0
+      },
+      "delta": {
+        "profit_factor": -0.166,
+        "expectancy_r": -0.583,
+        "trades": -26,
+        "hit_rate": -24.24
+      },
+      "verdict": "inconclusive",
+      "verdict_capped": null,
+      "why": "out-of-sample trades below 30 in at least one arm (base 33, adaptive 7) — but this ran on the reference feed, which can never certify a strategy (ADR-0009/ADR-0014)",
+      "applied": false,
+      "promotable": false,
+      "measurement": {
+        "regime": "volatile",
+        "percentile": 0.8141,
+        "why": "15m is noisier than 1h: the same score is weaker evidence there, so the bar rises to 1.25x. ATR sits at the 81th percentile of the last 200 bars, which reads as a volatile regime."
+      }
+    },
+    {
+      "symbol": "SOLUSDT",
+      "tf": "1h",
+      "ok": true,
+      "bars": 900,
+      "factor": {
+        "proposed": 1.0,
+        "tested": 1.25
+      },
+      "thresholds": {
+        "base_long": 68.0,
+        "scaled_long": 85.0,
+        "base_neutral": 55.0,
+        "scaled_neutral": 68.75
+      },
+      "windows": {
+        "train_bars": 384,
+        "eval_bars": 128,
+        "count": 4,
+        "paired": true
+      },
+      "baseline": {
+        "windows": 4,
+        "trades": 21,
+        "wins": 5,
+        "hit_rate": 23.81,
+        "gross_profit": 129.09,
+        "gross_loss": 4033.28,
+        "profit_factor": 0.032,
+        "expectancy_r": -1.0111,
+        "max_drawdown": 3.4,
+        "profitable_windows": 0,
+        "ambiguous_exits": 0
+      },
+      "adaptive": {
+        "windows": 4,
+        "trades": 10,
+        "wins": 0,
+        "hit_rate": 0.0,
+        "gross_profit": 0.0,
+        "gross_loss": 1606.47,
+        "profit_factor": 0.0,
+        "expectancy_r": -1.025,
+        "max_drawdown": 1.9,
+        "profitable_windows": 0,
+        "ambiguous_exits": 0
+      },
+      "delta": {
+        "profit_factor": -0.032,
+        "expectancy_r": -0.0139,
+        "trades": -11,
+        "hit_rate": -23.81
+      },
+      "verdict": "inconclusive",
+      "verdict_capped": null,
+      "why": "out-of-sample trades below 30 in at least one arm (base 21, adaptive 10) — but this ran on the reference feed, which can never certify a strategy (ADR-0009/ADR-0014)",
+      "applied": false,
+      "promotable": false,
+      "measurement": {
+        "regime": "normal",
+        "percentile": 0.4673,
+        "why": "1h is the reference timeframe, so only the regime moves the bar. ATR sits at the 47th percentile of the last 200 bars, which reads as a normal regime."
+      }
+    },
+    {
+      "symbol": "SOLUSDT",
+      "tf": "4h",
+      "ok": true,
+      "bars": 900,
+      "factor": {
+        "proposed": 0.85,
+        "tested": 1.25
+      },
+      "thresholds": {
+        "base_long": 68.0,
+        "scaled_long": 85.0,
+        "base_neutral": 55.0,
+        "scaled_neutral": 68.75
+      },
+      "windows": {
+        "train_bars": 384,
+        "eval_bars": 128,
+        "count": 4,
+        "paired": true
+      },
+      "baseline": {
+        "windows": 4,
+        "trades": 38,
+        "wins": 19,
+        "hit_rate": 50.0,
+        "gross_profit": 13408.85,
+        "gross_loss": 5650.01,
+        "profit_factor": 2.373,
+        "expectancy_r": 0.5336,
+        "max_drawdown": 5.6,
+        "profitable_windows": 2,
+        "ambiguous_exits": 0
+      },
+      "adaptive": {
+        "windows": 4,
+        "trades": 25,
+        "wins": 7,
+        "hit_rate": 28.0,
+        "gross_profit": 2380.94,
+        "gross_loss": 6115.81,
+        "profit_factor": 0.389,
+        "expectancy_r": -0.4342,
+        "max_drawdown": 3.9,
+        "profitable_windows": 0,
+        "ambiguous_exits": 1
+      },
+      "delta": {
+        "profit_factor": -1.984,
+        "expectancy_r": -0.9678,
+        "trades": -13,
+        "hit_rate": -22.0
+      },
+      "verdict": "inconclusive",
+      "verdict_capped": null,
+      "why": "out-of-sample trades below 30 in at least one arm (base 38, adaptive 25) — but this ran on the reference feed, which can never certify a strategy (ADR-0009/ADR-0014)",
+      "applied": false,
+      "promotable": false,
+      "measurement": {
+        "regime": "calm",
+        "percentile": 0.2312,
+        "why": "4h is quieter than 1h: the same score is stronger evidence there, so the bar falls to 0.85x. ATR sits at the 23th percentile of the last 200 bars, which reads as a calm regime."
+      }
+    },
+    {
+      "symbol": "XRPUSDT",
+      "tf": "15m",
+      "ok": true,
+      "bars": 900,
+      "factor": {
+        "proposed": 1.25,
+        "tested": 1.25
+      },
+      "thresholds": {
+        "base_long": 68.0,
+        "scaled_long": 85.0,
+        "base_neutral": 55.0,
+        "scaled_neutral": 68.75
+      },
+      "windows": {
+        "train_bars": 384,
+        "eval_bars": 128,
+        "count": 4,
+        "paired": true
+      },
+      "baseline": {
+        "windows": 4,
+        "trades": 25,
+        "wins": 11,
+        "hit_rate": 44.0,
+        "gross_profit": 1486.03,
+        "gross_loss": 2206.8,
+        "profit_factor": 0.673,
+        "expectancy_r": -0.2296,
+        "max_drawdown": 2.5,
+        "profitable_windows": 0,
+        "ambiguous_exits": 0
+      },
+      "adaptive": {
+        "windows": 4,
+        "trades": 23,
+        "wins": 5,
+        "hit_rate": 21.74,
+        "gross_profit": 293.98,
+        "gross_loss": 1144.14,
+        "profit_factor": 0.257,
+        "expectancy_r": -0.5757,
+        "max_drawdown": 1.1,
+        "profitable_windows": 0,
+        "ambiguous_exits": 0
+      },
+      "delta": {
+        "profit_factor": -0.416,
+        "expectancy_r": -0.3461,
+        "trades": -2,
+        "hit_rate": -22.26
+      },
+      "verdict": "inconclusive",
+      "verdict_capped": null,
+      "why": "out-of-sample trades below 30 in at least one arm (base 25, adaptive 23) — but this ran on the reference feed, which can never certify a strategy (ADR-0009/ADR-0014)",
+      "applied": false,
+      "promotable": false,
+      "measurement": {
+        "regime": "normal",
+        "percentile": 0.7286,
+        "why": "15m is noisier than 1h: the same score is weaker evidence there, so the bar rises to 1.25x. ATR sits at the 73th percentile of the last 200 bars, which reads as a normal regime."
+      }
+    },
+    {
+      "symbol": "XRPUSDT",
+      "tf": "1h",
+      "ok": true,
+      "bars": 900,
+      "factor": {
+        "proposed": 1.0,
+        "tested": 1.25
+      },
+      "thresholds": {
+        "base_long": 68.0,
+        "scaled_long": 85.0,
+        "base_neutral": 55.0,
+        "scaled_neutral": 68.75
+      },
+      "windows": {
+        "train_bars": 384,
+        "eval_bars": 128,
+        "count": 4,
+        "paired": true
+      },
+      "baseline": {
+        "windows": 4,
+        "trades": 34,
+        "wins": 10,
+        "hit_rate": 29.41,
+        "gross_profit": 1787.16,
+        "gross_loss": 5785.65,
+        "profit_factor": 0.309,
+        "expectancy_r": -0.5494,
+        "max_drawdown": 4.5,
+        "profitable_windows": 1,
+        "ambiguous_exits": 0
+      },
+      "adaptive": {
+        "windows": 4,
+        "trades": 13,
+        "wins": 8,
+        "hit_rate": 61.54,
+        "gross_profit": 832.06,
+        "gross_loss": 1263.46,
+        "profit_factor": 0.659,
+        "expectancy_r": -0.0756,
+        "max_drawdown": 2.0,
+        "profitable_windows": 1,
+        "ambiguous_exits": 0
+      },
+      "delta": {
+        "profit_factor": 0.35,
+        "expectancy_r": 0.4738,
+        "trades": -21,
+        "hit_rate": 32.13
+      },
+      "verdict": "inconclusive",
+      "verdict_capped": null,
+      "why": "out-of-sample trades below 30 in at least one arm (base 34, adaptive 13) — but this ran on the reference feed, which can never certify a strategy (ADR-0009/ADR-0014)",
+      "applied": false,
+      "promotable": false,
+      "measurement": {
+        "regime": "normal",
+        "percentile": 0.4673,
+        "why": "1h is the reference timeframe, so only the regime moves the bar. ATR sits at the 47th percentile of the last 200 bars, which reads as a normal regime."
+      }
+    },
+    {
+      "symbol": "XRPUSDT",
+      "tf": "4h",
+      "ok": true,
+      "bars": 900,
+      "factor": {
+        "proposed": 0.85,
+        "tested": 1.25
+      },
+      "thresholds": {
+        "base_long": 68.0,
+        "scaled_long": 85.0,
+        "base_neutral": 55.0,
+        "scaled_neutral": 68.75
+      },
+      "windows": {
+        "train_bars": 384,
+        "eval_bars": 128,
+        "count": 4,
+        "paired": true
+      },
+      "baseline": {
+        "windows": 4,
+        "trades": 47,
+        "wins": 22,
+        "hit_rate": 46.81,
+        "gross_profit": 10037.99,
+        "gross_loss": 7032.78,
+        "profit_factor": 1.427,
+        "expectancy_r": 0.1805,
+        "max_drawdown": 5.6,
+        "profitable_windows": 2,
+        "ambiguous_exits": 0
+      },
+      "adaptive": {
+        "windows": 4,
+        "trades": 20,
+        "wins": 16,
+        "hit_rate": 80.0,
+        "gross_profit": 7751.36,
+        "gross_loss": 1721.21,
+        "profit_factor": 4.503,
+        "expectancy_r": 0.7985,
+        "max_drawdown": 2.8,
+        "profitable_windows": 2,
+        "ambiguous_exits": 0
+      },
+      "delta": {
+        "profit_factor": 3.076,
+        "expectancy_r": 0.618,
+        "trades": -27,
+        "hit_rate": 33.19
+      },
+      "verdict": "inconclusive",
+      "verdict_capped": null,
+      "why": "out-of-sample trades below 30 in at least one arm (base 47, adaptive 20) — but this ran on the reference feed, which can never certify a strategy (ADR-0009/ADR-0014)",
+      "applied": false,
+      "promotable": false,
+      "measurement": {
+        "regime": "normal",
+        "percentile": 0.2563,
+        "why": "4h is quieter than 1h: the same score is stronger evidence there, so the bar falls to 0.85x. ATR sits at the 26th percentile of the last 200 bars, which reads as a normal regime."
+      }
+    }
+  ]
+}

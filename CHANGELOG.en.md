@@ -2,6 +2,26 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 1.0.17
+
+- **An evidence matrix with provenance.** `scripts/evidence_matrix.py` runs the paired
+  comparison across 4 symbols × 3 timeframes and writes one artefact
+  (`docs/evidence/adaptive-evidence-YYYY-MM-DD.json`) that states where it came from:
+  `label`, `promotable`, `applied: false`, and the generation timestamp.
+- **The rule the tests enforce:** in a file stamped `promotable: false`, no cell may carry a
+  decision-grade verdict — all must stay `inconclusive`. The word `PASS` is banned from these
+  files too, because in this repository it belongs to the promotion gate.
+- **A named refusal is a row; an unnamed exception is an exit code.** `insufficient-data`,
+  `no-fx` and `bad-factor` appear in the table and the run still succeeds; an unnamed failure
+  (a dropped socket, say) exits 1 so it cannot hide inside a table.
+- **Today's recorded run:** 12 cells, source `REFERENCE_DATA` (Nobitex is unreachable from
+  the sandbox), **12 `inconclusive`** because one arm had fewer than 30 out-of-sample trades.
+  Which is to say: the method works end to end and the higher bar reduced trades everywhere,
+  but there is no verdict about which bar is better — and that is the correct output.
+- **Bilingual documentation:** `docs/evidence.md` + `docs/evidence.en.md` (added to the
+  bilingual test's `PAIRS`) with the venue command and the list of things these numbers
+  cannot prove.
+
 ## 1.0.16
 
 - **ADR-0021's technical prerequisite landed: the direction threshold is now a parameter.**

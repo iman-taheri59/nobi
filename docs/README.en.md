@@ -2,7 +2,7 @@
 
 [فارسی](README.md) · **English**
 
-Current version: **1.0.16**. See [versioning and GitHub releases](releases.en.md) and the
+Current version: **1.0.17**. See [versioning and GitHub releases](releases.en.md) and the
 [changelog](../CHANGELOG.en.md).
 
 ## Documentation map
@@ -93,6 +93,7 @@ What is written twice, what is written once, and what is pending. The gate in
 | Testing guide | [`testing.md`](testing.md) | [`testing.en.md`](testing.en.md) |
 | Coin metadata and logos | [`coin-metadata.md`](coin-metadata.md) | [`coin-metadata.en.md`](coin-metadata.en.md) |
 | Financial display | [`financial-display.md`](financial-display.md) | [`financial-display.en.md`](financial-display.en.md) |
+| Out-of-sample evidence | [`evidence.md`](evidence.md) | [`evidence.en.md`](evidence.en.md) |
 | Tuning the take-profit ladder (`NBX_RR_LEVELS`) | [`rr-ladder-tuning.md`](rr-ladder-tuning.md) | [`rr-ladder-tuning.en.md`](rr-ladder-tuning.en.md) |
 | Roadmap | [`roadmap/fa/`](roadmap/fa) | **pending** |
 | Analysis catalogues | [`analysis/`](analysis) | **pending** |
