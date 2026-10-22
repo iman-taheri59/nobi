@@ -22,7 +22,10 @@
  *      must say so in its own words — not fold it into "wrong pair";
  *   8. the backtest card repeats the rule on the largest set of numbers on the
  *      page (1.0.20): a stale chip with the age in it, hidden again when the
- *      candles are current.
+ *      candles are current;
+ *   9. the market-scan card does it for the ranking it computes in the browser
+ *      (1.0.21), and the browser's bar arithmetic is the same arithmetic the
+ *      server uses — eight 15m bars is eight bars on both sides.
  *
  * No CDN, no server: the page is read from disk and the API is a function.
  */
@@ -269,13 +272,56 @@ function stub(result) {
   window.btRender({ report: { aggregate: {} } });
   assert.equal(chip.classList.contains('hidden'), true, 'a missing block was read as stale');
 
-  // ---- 8. the disabled-backend path ----
+  // ---- 8. the market-scan card names how old the candles it scanned are (1.0.21) ----
+  const sgChip = doc.getElementById('sgFreshChip');
+  assert.ok(sgChip, 'the market-scan card has no freshness chip');
+  // Current candles: no chip at all. A warning that is always on is furniture.
+  window.sgRenderFresh({ stale: false, reason: 'current', age_bars: 0.2 });
+  assert.equal(sgChip.classList.contains('hidden'), true, 'a current scan warned anyway');
+  // Old candles: named, with the arithmetic in the title.
+  window.sgRenderFresh({ stale: true, reason: 'behind', age_bars: 41.2 });
+  assert.equal(sgChip.classList.contains('hidden'), false,
+    'old candles left the scan card looking current');
+  assert.match(sgChip.textContent, /stale data|داده کهنه/, sgChip.textContent);
+  assert.ok(plain(sgChip.title).includes('41.2'), `the age was not named: "${sgChip.title}"`);
+  // A scan that returned no bars says so, instead of quoting an age of nothing.
+  window.sgRenderFresh({ stale: true, reason: 'no-candles', age_bars: null });
+  assert.match(sgChip.textContent, /stale data|داده کهنه/);
+  assert.match(sgChip.title, /no candle|کندلی/, `title said "${sgChip.title}"`);
+  // A response (or an engine) without the block must not invent staleness.
+  window.sgRenderFresh(null);
+  assert.equal(sgChip.classList.contains('hidden'), true, 'a missing block was read as stale');
+  assert.equal(window.sgFreshNow(), null, 'the card invented a freshness with no engine behind it');
+
+  // The browser's rule is the server's rule: same bar length, same tolerance,
+  // same reasons — checked by running `nbx-core.js` in its own page context,
+  // because this dashboard's inline block does not load it.
+  const coreDom = new JSDOM('<!doctype html><html><body></body></html>',
+    { url: 'https://page.test/', runScripts: 'outside-only' });
+  coreDom.window.eval(fs.readFileSync('nbx-core.js', 'utf8'));
+  const F = coreDom.window.NBX.freshness;
+  const nowMs = Date.UTC(2026, 9, 22, 12, 0, 0);
+  const eight15m = nowMs / 1000 - 8 * 15 * 60;
+  const behind = F.assessBar(eight15m, '15m', { now: nowMs });
+  assert.equal(behind.reason, 'behind');
+  assert.equal(behind.stale, true);
+  assert.equal(behind.age_bars, 8);
+  assert.equal(behind.bar_seconds, 900);
+  assert.equal(behind.tolerance_bars, 2);
+  assert.equal(F.assessBar(nowMs / 1000 - 60, '15m', { now: nowMs }).reason, 'current');
+  assert.equal(F.assessBar(nowMs / 1000 + 3600, '15m', { now: nowMs }).reason, 'ahead-of-clock');
+  assert.equal(F.assessBar(null, '15m', { now: nowMs }).reason, 'no-candles');
+  assert.equal(F.assessBar(eight15m, '7m', { now: nowMs }).reason, 'bad-timeframe');
+  assert.equal(F.tfMinutes('D'), 1440);
+  coreDom.window.close();
+
+  // ---- 9. the disabled-backend path ----
   window.NBX.core.api = undefined;
   await window.adMeasureThresholds();
   assert.match(text('adState'), /backend|بک‌اند/,
     'a missing backend produced no explanation');
 
-  console.log('PASS — adaptive card: numbers, the not-applied label, named refusals, no zeros, staleness named and re-measured, A/B verdict with its sample size, stale candles named on the backtest card');
+  console.log('PASS — adaptive card: numbers, the not-applied label, named refusals, no zeros, staleness named and re-measured, A/B verdict with its sample size, stale candles named on the backtest and scan cards');
   // The page arms intervals (clock, polling) that would keep node alive forever;
   // this script asserts and leaves.
   dom.window.close();

@@ -330,6 +330,77 @@
   NBX.TA = TA;
 
   /* ----------------------------------------------------------
+   * 2b. Freshness — "how many bars old is the newest candle" (1.0.21)
+   * --------------------------------------------------------- */
+  /* The Python side has answered this since 1.0.18 (`server/freshness.py`); the
+   * market scan computes its numbers *here*, so the browser needs the same
+   * answer for the same reason: a ranking built on a series that stopped three
+   * days ago is a claim about three days ago, and the card must say so instead
+   * of wearing a present-tense header.
+   *
+   * Two constants, one division, and one named reason. They are compared with
+   * the server's in `server/tests/test_single_source_constants.py`, because a
+   * duplicated threshold is how the fee and the starting equity drifted before.
+   */
+  const TF_MINUTES = {
+    '5m': 5, '15m': 15, '30m': 30, '1h': 60, '2h': 120, '4h': 240, '1d': 1440, D: 1440,
+  };
+  NBX.TF_MINUTES = TF_MINUTES;
+
+  const FRESH_TOLERANCE_BARS = 2;      // mirrors freshness.DEFAULT_TOLERANCE_BARS
+  const FRESH_AHEAD_BARS = 1;          // mirrors freshness.AHEAD_TOLERANCE_BARS
+
+  NBX.freshness = {
+    TOLERANCE_BARS: FRESH_TOLERANCE_BARS,
+    AHEAD_TOLERANCE_BARS: FRESH_AHEAD_BARS,
+
+    tfMinutes(tf) {
+      const key = String(tf == null ? '' : tf).trim();
+      return Object.prototype.hasOwnProperty.call(TF_MINUTES, key) ? TF_MINUTES[key] : null;
+    },
+
+    /* `barAt` is the open time of the newest candle, in epoch seconds — the same
+     * unit candles carry in `t`. An unknown timeframe or a missing bar is a
+     * *named answer*, never a throw: a card that disappears because its age
+     * check failed is worse than a card that says "no candles". */
+    assessBar(barAt, tf, opts) {
+      const o = opts || {};
+      const minutes = this.tfMinutes(tf);
+      const nowMs = o.now == null ? Date.now() : (o.now instanceof Date ? o.now.getTime() : Number(o.now));
+      const asOf = new Date(nowMs).toISOString();
+      if (minutes === null || !isFinite(minutes) || minutes <= 0) {
+        return { stale: true, reason: 'bad-timeframe', bars: null, bar_seconds: null,
+                 tolerance_bars: FRESH_TOLERANCE_BARS, age_bars: null, age_seconds: null,
+                 last_bar: null, as_of: asOf };
+      }
+      const barSeconds = minutes * 60;
+      const tolerance = o.toleranceBars == null ? FRESH_TOLERANCE_BARS : Number(o.toleranceBars);
+      const stamp = barAt == null ? null : Number(barAt);
+      if (stamp === null || !isFinite(stamp) || stamp <= 0) {
+        return { stale: true, reason: 'no-candles', bars: null, bar_seconds: barSeconds,
+                 tolerance_bars: tolerance, age_bars: null, age_seconds: null,
+                 last_bar: null, as_of: asOf };
+      }
+      const ageSeconds = nowMs / 1000 - stamp;
+      const ageBars = ageSeconds / barSeconds;
+      let reason = 'current';
+      if (ageBars < -FRESH_AHEAD_BARS) reason = 'ahead-of-clock';
+      else if (ageBars > tolerance) reason = 'behind';
+      return {
+        stale: reason !== 'current',
+        reason,
+        bars: null,
+        bar_seconds: barSeconds,
+        tolerance_bars: tolerance,
+        age_bars: Math.round(ageBars * 100) / 100,
+        age_seconds: Math.round(ageSeconds * 10) / 10,
+        last_bar: new Date(stamp * 1000).toISOString(),
+        as_of: asOf,
+      };
+    },
+  };
+
+  /* ----------------------------------------------------------
    * 3. Standalone FA Engine (ADR-0006 parity in JS)
    * --------------------------------------------------------- */
   NBX.FA = {
@@ -1925,6 +1996,10 @@
       this.premium_pct = null;
       this.onUpdate = [];
       this.scanning = false;
+      //: Newest candle open (epoch seconds) across the symbols of the last scan,
+      //: and the timeframe it belongs to. `null` until a scan returns bars.
+      this.scanBarAt = null;
+      this.scanTf = null;
     }
     subscribe(fn) {
       this.onUpdate.push(fn);
@@ -2002,6 +2077,9 @@
       const tf = timeframe || cfg.timeframes[0];
       if (!this.universe.length) await this.loadUniverse();
       const failed = [];
+      // A scan is a claim about the candles it read, so the newest of them is
+      // kept: the rows themselves are not (260 per symbol), the stamp is.
+      let newest = null;
       for (const u of this.universe) {
         const sym = u.symbol;
         try {
@@ -2009,6 +2087,8 @@
           if (!rows || !rows.length) throw new Error('empty candle series');
           this.candles[sym] = rows;
           this.candles[sym + ':' + tf] = rows;
+          const lastT = +rows[rows.length - 1].t;
+          if (isFinite(lastT) && (newest === null || lastT > newest)) newest = lastT;
           this.signals[sym] = NBX.TA.signalScore(rows);
         } catch (e) {
           failed.push(sym);
@@ -2017,8 +2097,18 @@
       }
       this.unavailable = failed.length > 0 && Object.keys(this.signals).length === 0;
       this.unavailable_reason = failed.length ? `${failed.length} symbol(s) had no candles` : null;
+      this.scanTf = tf;
+      this.scanBarAt = newest;
       this.scanning = false;
       this.emit('signals', this.rankSignals());
+    }
+
+    /* Where the numbers just emitted stand against the clock, in bars of the
+     * timeframe they were computed on. Same rule and same vocabulary as the
+     * server: `behind`, `ahead-of-clock`, `no-candles`, `current`. */
+    freshness(tf) {
+      const use = tf || this.scanTf || cfg.timeframes[0];
+      return NBX.freshness.assessBar(this.scanBarAt, use);
     }
 
     rankSignals() {
