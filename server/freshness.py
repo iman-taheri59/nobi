@@ -28,6 +28,7 @@ copy of the rule.
 """
 from __future__ import annotations
 
+import math
 from datetime import UTC, datetime
 from typing import Any
 
@@ -88,6 +89,11 @@ def assess_bar(
         last = _ts_seconds(bar_at)
     except (TypeError, ValueError) as exc:
         raise AdaptiveError("bad-candles", f"candle timestamps are not usable: {exc}") from exc
+    if not math.isfinite(last):
+        # `nan` and `inf` survive float() and then blow up inside
+        # `datetime.fromtimestamp`, one frame away from the caller that needs the
+        # named reason. They are not usable stamps, and say so here.
+        raise AdaptiveError("bad-candles", f"candle timestamp is not finite: {bar_at!r}")
 
     age_seconds = now_s - last
     age_bars = age_seconds / bar_seconds

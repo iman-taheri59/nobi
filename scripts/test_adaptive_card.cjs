@@ -28,7 +28,10 @@
  *      server uses — eight 15m bars is eight bars on both sides;
  *  10. the ATR percentile is *drawn* (1.0.22): one bar per point the server sent,
  *      the regime named, a refusal that names its code instead of drawing zeros,
- *      and the sentence that says a rank of the past is not a forecast.
+ *      and the sentence that says a rank of the past is not a forecast;
+ *  11. a list of symbols is only as fresh as its worst name (1.0.23): the browser
+ *      twin aggregates per symbol, the chip names the lagging one, and the block
+ *      the server already measured wins over any local recomputation.
  *
  * No CDN, no server: the page is read from disk and the API is a function.
  */
@@ -390,13 +393,64 @@ function stub(result) {
   window.renderAtrStrip(strip, { rows: [] }, 'BTCIRT', '15m');
   assert.match(strip.textContent, /محاسبه نشد|could not be computed/);
 
+  // ---- 11. per-symbol freshness: the worst name decides (1.0.23) ----
+  // One current symbol and one three days dead: the aggregate must be stale, and
+  // it must say *which* symbol rather than blaming the list.
+  window.sgRenderFresh({
+    stale: true, reason: 'behind', age_bars: 288,
+    symbols: { count: 3, current: 2, stale: 1, no_candles: 0 },
+    worst: { symbol: 'DEADIRT', age_bars: 288, reason: 'behind' },
+  });
+  assert.equal(sgChip.classList.contains('hidden'), false);
+  assert.match(sgChip.title, /DEADIRT/, `the lagging symbol was not named: "${sgChip.title}"`);
+  assert.ok(plain(sgChip.title).includes('288'), 'the age of the worst symbol was not named');
+  // More than one lagging name: the count is said, not hidden behind "some".
+  window.sgRenderFresh({
+    stale: true, reason: 'behind', age_bars: 288,
+    symbols: { count: 4, current: 1, stale: 3, no_candles: 0 },
+    worst: { symbol: 'DEADIRT', age_bars: 288, reason: 'behind' },
+  });
+  assert.ok(plain(sgChip.title).includes('2'), 'the other stale symbols were not counted');
+
+  // The server's block wins over a local recomputation: it measured every symbol,
+  // and a browser scan that never ran must not be allowed to answer "current".
+  const savedLive = window.live;
+  window.live = {
+    scanFreshness: { stale: true, reason: 'behind', age_bars: 12,
+                     worst: { symbol: 'SERVER', age_bars: 12, reason: 'behind' } },
+    freshness: () => ({ stale: false, reason: 'current', age_bars: 0.1 }),
+  };
+  const answered = window.sgFreshNow();
+  assert.equal(answered.worst.symbol, 'SERVER', 'a local recomputation overrode the server');
+  assert.equal(answered.stale, true);
+  window.live = savedLive;
+
+  // The browser twin aggregates the same way the server does.
+  const scanNow = Date.UTC(2026, 9, 22, 12, 0, 0);
+  const scan = F.assessScan({
+    BTCIRT: scanNow / 1000 - 5 * 60,
+    ETHIRT: scanNow / 1000 - 8 * 60,
+    DEADIRT: scanNow / 1000 - 3 * 24 * 60 * 60,
+  }, '15m', { now: scanNow });
+  assert.equal(scan.stale, true, 'a dead symbol did not make the list stale');
+  assert.equal(scan.worst.symbol, 'DEADIRT', `worst was ${JSON.stringify(scan.worst)}`);
+  assert.equal(scan.age_bars, 288);
+  // JSON round-trip: the object was built inside the jsdom realm, so it has that
+  // realm's Object.prototype and a strict deep-equal would compare prototypes.
+  assert.equal(JSON.stringify(scan.symbols), JSON.stringify({ count: 3, current: 2, stale: 1, no_candles: 0 }));
+  const healthy = F.assessScan({ BTCIRT: scanNow / 1000 - 5 * 60 }, '15m', { now: scanNow });
+  assert.equal(healthy.stale, false);
+  assert.equal(healthy.worst, null);
+  const nothing = F.assessScan({}, '15m', { now: scanNow });
+  assert.equal(nothing.reason, 'no-candles');
+
   // ---- 9. the disabled-backend path ----
   window.NBX.core.api = undefined;
   await window.adMeasureThresholds();
   assert.match(text('adState'), /backend|بک‌اند/,
     'a missing backend produced no explanation');
 
-  console.log('PASS — adaptive card: numbers, the not-applied label, named refusals, no zeros, staleness named and re-measured, A/B verdict with its sample size, stale candles named on the backtest and scan cards');
+  console.log('PASS — adaptive card: numbers, the not-applied label, named refusals, no zeros, staleness named and re-measured, A/B verdict with its sample size, stale candles named on the backtest and scan cards, worst-per-symbol on the scan');
   // The page arms intervals (clock, polling) that would keep node alive forever;
   // this script asserts and leaves.
   dom.window.close();

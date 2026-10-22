@@ -359,6 +359,42 @@
       return Object.prototype.hasOwnProperty.call(TF_MINUTES, key) ? TF_MINUTES[key] : null;
     },
 
+    /* Freshness for a list of symbols: the worst one decides (mirrors
+     * `scan_freshness_block` in server/main.py). Same block shape the cards
+     * already read, plus `symbols` and `worst`. */
+    assessScan(bars, tf, opts) {
+      const map = bars || {};
+      const syms = Object.keys(map);
+      if (!syms.length) {
+        const empty = this.assessBar(null, tf, opts);
+        empty.symbols = { count: 0, current: 0, stale: 0, no_candles: 0 };
+        empty.worst = null;
+        return empty;
+      }
+      const per = {};
+      syms.forEach((sym) => { per[sym] = this.assessBar(map[sym], tf, opts); });
+      const staleSyms = syms.filter((sym) => per[sym].stale);
+      const rank = (sym) => {
+        const age = per[sym].age_bars;
+        return (typeof age === 'number' && isFinite(age)) ? Math.abs(age) : Infinity;
+      };
+      const pool = staleSyms.length ? staleSyms : syms;
+      const worstSym = pool.reduce((a, b) => (rank(b) > rank(a) ? b : a), pool[0]);
+      const worst = per[worstSym];
+      return {
+        ...worst,
+        symbols: {
+          count: syms.length,
+          current: syms.length - staleSyms.length,
+          stale: staleSyms.length,
+          no_candles: syms.filter((sym) => per[sym].reason === 'no-candles').length,
+        },
+        worst: staleSyms.length
+          ? { symbol: worstSym, age_bars: worst.age_bars, reason: worst.reason }
+          : null,
+      };
+    },
+
     /* `barAt` is the open time of the newest candle, in epoch seconds — the same
      * unit candles carry in `t`. An unknown timeframe or a missing bar is a
      * *named answer*, never a throw: a card that disappears because its age
@@ -1996,9 +2032,10 @@
       this.premium_pct = null;
       this.onUpdate = [];
       this.scanning = false;
-      //: Newest candle open (epoch seconds) across the symbols of the last scan,
-      //: and the timeframe it belongs to. `null` until a scan returns bars.
-      this.scanBarAt = null;
+      //: Newest candle open (epoch seconds) **per symbol** in the last scan, and
+      //: the timeframe it belongs to. A single `max()` across symbols is what let a
+      //: dead feed hide behind twenty-three healthy ones, so the map is kept.
+      this.scanBars = {};
       this.scanTf = null;
     }
     subscribe(fn) {
@@ -2077,9 +2114,9 @@
       const tf = timeframe || cfg.timeframes[0];
       if (!this.universe.length) await this.loadUniverse();
       const failed = [];
-      // A scan is a claim about the candles it read, so the newest of them is
-      // kept: the rows themselves are not (260 per symbol), the stamp is.
-      let newest = null;
+      // A scan is a claim about the candles it read, so each symbol's newest stamp
+      // is kept: the rows themselves are not (260 per symbol).
+      const seen = {};
       for (const u of this.universe) {
         const sym = u.symbol;
         try {
@@ -2088,7 +2125,7 @@
           this.candles[sym] = rows;
           this.candles[sym + ':' + tf] = rows;
           const lastT = +rows[rows.length - 1].t;
-          if (isFinite(lastT) && (newest === null || lastT > newest)) newest = lastT;
+          if (isFinite(lastT)) seen[sym] = lastT;
           this.signals[sym] = NBX.TA.signalScore(rows);
         } catch (e) {
           failed.push(sym);
@@ -2098,17 +2135,19 @@
       this.unavailable = failed.length > 0 && Object.keys(this.signals).length === 0;
       this.unavailable_reason = failed.length ? `${failed.length} symbol(s) had no candles` : null;
       this.scanTf = tf;
-      this.scanBarAt = newest;
+      this.scanBars = seen;
       this.scanning = false;
       this.emit('signals', this.rankSignals());
     }
 
     /* Where the numbers just emitted stand against the clock, in bars of the
      * timeframe they were computed on. Same rule and same vocabulary as the
-     * server: `behind`, `ahead-of-clock`, `no-candles`, `current`. */
+     * server: `behind`, `ahead-of-clock`, `no-candles`, `current` — and the same
+     * aggregation: the worst symbol decides, because a stale row in the list makes
+     * the list stale. */
     freshness(tf) {
       const use = tf || this.scanTf || cfg.timeframes[0];
-      return NBX.freshness.assessBar(this.scanBarAt, use);
+      return NBX.freshness.assessScan(this.scanBars, use);
     }
 
     rankSignals() {

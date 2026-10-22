@@ -2,7 +2,7 @@
 
 [فارسی](README.md) · **English**
 
-Current version: **1.0.22** · tag: **v1.0.21**
+Current version: **1.0.23** · tag: **v1.0.22**
 
 See [versioning and GitHub releases](docs/releases.en.md) for the rules on bumping
 the version, tagging and shipping the mobile file, and the
@@ -103,10 +103,15 @@ These are exactly what CI runs, and they run the same way locally:
 
 ```bash
 ruff check server scripts        # → All checks passed
-mypy                             # → Success: no issues found in 58 source files
+mypy                             # → Success: no issues found
 npm run lint                     # bundles + scripts
 npm run lint:dashboard           # the inline block in index.html
 ```
+
+The `mypy` file count is deliberately absent here: until 1.0.22 the line claimed
+"58 source files" while the real number was 76, and a number that goes stale with
+every new file is a trap rather than documentation. The criterion is the line
+"Success: no issues found".
 
 Configuration lives in `pyproject.toml` and `eslint.config.mjs`, not on the command
 line. What is deliberately **not** enabled, and why, is in ADR-0016 (line length,

@@ -181,3 +181,21 @@ From this version:
    announces its shortness.
 5. The page owns no number of its own: the regime cuts come from the response, and if they are
    not sent, no band is drawn.
+
+### Fourth appendix to the third amendment — version 1.0.23
+
+The 1.0.21 amendment read the age from "the newest candle across the scan". That is the
+optimistic end of the list: one symbol whose feed died three days ago sits behind twenty-three
+healthy ones, the card stays "current", and that symbol's row still carries a score — the
+quietest form of the very error these amendments exist to prevent.
+
+From this version:
+
+1. The age is kept **per symbol**, not as one number for the whole scan.
+2. **The worst symbol decides:** a list with one stale name is stale, and it is named.
+3. An unknown age (`no-candles`) outranks any number, because unknown means "I do not know",
+   not "small".
+4. One refused symbol refuses only itself; the rest of the list keeps its measurement.
+5. The same aggregation exists in the browser (`NBX.freshness.assessScan`), and the card
+   prefers the server's block when it has one — the server measured every symbol and that is
+   what the list was built from.

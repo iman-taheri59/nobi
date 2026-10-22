@@ -2,7 +2,7 @@
 
 **فارسی** · [English](README.en.md)
 
-نسخهٔ جاری: **1.0.22** · تگ: **v1.0.21**
+نسخهٔ جاری: **1.0.23** · تگ: **v1.0.22**
 
 راهنمای [نسخه‌بندی و GitHub Release](docs/releases.md) شامل قواعد افزایش نسخه، تگ و انتشار فایل موبایل است. [تاریخچهٔ تغییرات](CHANGELOG.md) را نیز ببینید ([English](CHANGELOG.en.md)).
 
@@ -101,10 +101,14 @@ css` را نزنی، `build_standalone.py` هشدار می‌دهد که CSS ا�
 
 ```bash
 ruff check server scripts        # → All checks passed
-mypy                             # → Success: no issues found in 58 source files
+mypy                             # → Success: no issues found
 npm run lint                     # bundles + scripts
 npm run lint:dashboard           # بلوک درون‌خطی index.html
 ```
+
+شمارهٔ فایل‌های `mypy` عمداً در این سند نیست: تا ۱.۰.۲۲ عبارت «۵۸ source files» اینجا
+مانده بود در حالی که شمار واقعی ۷۶ بود، و عددی که با هر فایل تازه کهنه می‌شود،
+به‌جای مستند، تله است. معیار، همان خط «Success: no issues found» است.
 
 پیکربندی در `pyproject.toml` و `eslint.config.mjs` است، نه در خط فرمان. آنچه
 عمداً فعال **نشده** و دلیلش، در ADR-0016 آمده است (طول خط، `except Exception`).
