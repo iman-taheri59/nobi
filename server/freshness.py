@@ -18,6 +18,13 @@ it just fetched. The result is a small dict a dashboard can print and a test can
 assert, with a named `reason` rather than a boolean alone — `no-candles`,
 `behind`, `ahead-of-clock` — because "stale" without a number invites an argument
 about opinion, and `age_bars: 41.2` does not.
+
+*One rule, two doors.* `assess()` takes a candle series; `assess_bar()` takes the
+single newest timestamp the caller already extracted. They are the same arithmetic
+by construction — `assess()` is `assess_bar()` plus "find the newest row" — because
+the scan (1.0.21) fetches 260 rows per symbol and keeps only the scores: asking it
+to retain a series just to measure its age would have been a second, drift-prone
+copy of the rule.
 """
 from __future__ import annotations
 
@@ -44,28 +51,31 @@ def _ts_seconds(value: Any) -> float:
     return float(value)
 
 
-def assess(
-    rows: list[dict],
+def assess_bar(
+    bar_at: Any,
     tf: str,
     *,
     now: datetime | None = None,
     tolerance_bars: float = DEFAULT_TOLERANCE_BARS,
 ) -> dict[str, Any]:
-    """Where the newest candle sits relative to the clock, in bars.
+    """Where a bar timestamp sits relative to the clock, in bars.
 
-    Returns ``stale`` plus the arithmetic behind it. Raises `AdaptiveError` only
-    for an unknown timeframe — an empty series is a *result* here (``no-candles``),
-    not an exception, because callers report it next to the numbers.
+    The single implementation of the rule. ``bar_at`` is the *open* time of the
+    newest bar the caller based its number on, in epoch seconds (or a pandas
+    timestamp, or ``None`` when there is no bar at all).
+
+    Callers that hold a series use `assess()`; callers that kept only the newest
+    stamp — the market scan discards its rows — call this one.
     """
     bar_seconds = float(tf_minutes(tf) * 60)
     stamp = now or datetime.now(UTC)
     now_s = stamp.timestamp()
 
-    if not rows:
+    if bar_at is None:
         return {
             "stale": True,
             "reason": "no-candles",
-            "bars": 0,
+            "bars": None,
             "bar_seconds": bar_seconds,
             "tolerance_bars": tolerance_bars,
             "age_bars": None,
@@ -75,7 +85,7 @@ def assess(
         }
 
     try:
-        last = max(_ts_seconds(r.get("t")) for r in rows if r.get("t") is not None)
+        last = _ts_seconds(bar_at)
     except (TypeError, ValueError) as exc:
         raise AdaptiveError("bad-candles", f"candle timestamps are not usable: {exc}") from exc
 
@@ -94,7 +104,7 @@ def assess(
     return {
         "stale": stale,
         "reason": reason,
-        "bars": len(rows),
+        "bars": None,
         "bar_seconds": bar_seconds,
         "tolerance_bars": tolerance_bars,
         "age_bars": round(age_bars, 2),
@@ -102,6 +112,35 @@ def assess(
         "last_bar": datetime.fromtimestamp(last, UTC).isoformat(),
         "as_of": stamp.isoformat(),
     }
+
+
+def assess(
+    rows: list[dict],
+    tf: str,
+    *,
+    now: datetime | None = None,
+    tolerance_bars: float = DEFAULT_TOLERANCE_BARS,
+) -> dict[str, Any]:
+    """Where the newest candle sits relative to the clock, in bars.
+
+    Returns ``stale`` plus the arithmetic behind it. Raises `AdaptiveError` only
+    for an unknown timeframe or unusable timestamps — an empty series is a
+    *result* here (``no-candles``), not an exception, because callers report it
+    next to the numbers.
+    """
+    if not rows:
+        out = assess_bar(None, tf, now=now, tolerance_bars=tolerance_bars)
+        out["bars"] = 0
+        return out
+
+    try:
+        newest = max(_ts_seconds(r.get("t")) for r in rows if r.get("t") is not None)
+    except (TypeError, ValueError) as exc:
+        raise AdaptiveError("bad-candles", f"candle timestamps are not usable: {exc}") from exc
+
+    out = assess_bar(newest, tf, now=now, tolerance_bars=tolerance_bars)
+    out["bars"] = len(rows)
+    return out
 
 
 def line(fresh: dict[str, Any]) -> str:

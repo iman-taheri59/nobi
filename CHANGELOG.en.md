@@ -2,6 +2,35 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 1.0.21
+
+- **The last numeric card without an age now has one.** The "Nobitex Universe Ranking" card
+  prints "Cycle: 15m candle close" in its header, yet nothing asked how old the candles behind
+  the ranking were: a queue of candidates whose newest candle closed a day ago is a claim about
+  yesterday wearing a present-tense sentence. The 1.0.18 and 1.0.20 rule now covers this card
+  too: a **"stale data"** chip that is visible only when the data is old and carries the age in
+  its `title` ("the newest candle in this scan is 41.2 bars old; this ranking describes that
+  window, not today"). On current data the chip hides itself, and a response without the block
+  is treated as neither stale nor fresh.
+- **One rule, two doors.** `freshness.assess()` (a candle series) and `freshness.assess_bar()`
+  (a single timestamp) are the same arithmetic, because `assess()` is built on `assess_bar()`.
+  Why: the scan fetches 260 rows per symbol and throws them away; keeping a series just to
+  measure its age would have been a second copy of the rule — the kind that drifts, as the fee
+  and the starting equity already did once.
+- **Server:** `rescan` keeps the newest candle it saw, per timeframe (`_cached["signals_bar"]`),
+  and `/api/signals` returns a `freshness` block from **both** of its answers — ranked and
+  empty. A failed age check becomes a stale block with a named code (`bad-timeframe`,
+  `bad-candles`), never an exception that takes a healthy ranking down with it.
+- **Browser:** `NBX.freshness.assessBar()` and `NBX.TF_MINUTES` mirror the rule and the bar
+  length, and `MarketEngine.scan` keeps the newest candle of the scan so the card can say how
+  many bars old it is without keeping the candles. The two sides are pinned together by
+  `test_single_source_constants`.
+- **Tests:** 5 Python tests (the two doors agree; a missing bar is an answer while an unknown
+  timeframe is a refusal; the scan records the newest bar; the helper degrades; the chip's three
+  states) + 2 Python/JavaScript parity tests (bar lengths and tolerance) + jsdom scenario 9. Two
+  deliberate mutations (a chip that never hides, "15 minutes = 60 seconds" in the browser) turned
+  the test red.
+
 ## 1.0.20
 
 - **The same rule, on the largest set of numbers on the page.** 1.0.18 reported candle age

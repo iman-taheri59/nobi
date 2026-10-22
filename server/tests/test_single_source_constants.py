@@ -183,3 +183,30 @@ def test_the_javascript_score_function_accepts_the_same_override():
     assert "opts.longMin" in text and "opts.neutralMin" in text
     # No bare literal may survive in the label line.
     assert "score >= 68" not in text and "score >= 55" not in text
+
+
+def _js_tf_minutes() -> dict[str, int]:
+    """The browser's timeframe table, read out of `nbx-core.js`."""
+    text = (ROOT / "nbx-core.js").read_text(encoding="utf-8")
+    start = text.index("const TF_MINUTES = {")
+    body = text[start:text.index("};", start)]
+    return {k: int(v) for k, v in re.findall(r"'?([0-9A-Za-z]+)'?\s*:\s*(\d+)", body)}
+
+
+def test_the_browser_and_the_server_call_a_bar_the_same_length():
+    """1.0.21 — the page now answers "how many bars old is this" on its own.
+
+    A 15-minute bar that the server counts as 900 s and the page counts as 60 s
+    would put the same candles on both sides of the staleness line, and the two
+    cards would disagree about the same feed.
+    """
+    import adaptive
+
+    assert _js_tf_minutes() == adaptive.TF_MINUTES
+
+
+def test_the_browser_uses_the_servers_staleness_tolerance():
+    import freshness
+
+    assert _js_constant("FRESH_TOLERANCE_BARS") == pytest.approx(freshness.DEFAULT_TOLERANCE_BARS)
+    assert _js_constant("FRESH_AHEAD_BARS") == pytest.approx(freshness.AHEAD_TOLERANCE_BARS)

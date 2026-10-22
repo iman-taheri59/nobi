@@ -23,7 +23,7 @@ import logging
 import os
 import sys
 import time
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -360,7 +360,7 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(
     title="nobiTrader",
-    version="1.0.20",
+    version="1.0.21",
     lifespan=lifespan,
 )
 
@@ -515,6 +515,10 @@ _cached: dict = {
     "signals": {},
     "signals_by_tf": {},
     "signals_ts": {},
+    #: Newest candle open (epoch seconds) per timeframe, as seen by the scan that
+    #: produced `signals_by_tf`. The scan throws away 260 rows per symbol, so this
+    #: stamp is the only thing left that can answer "how old are these numbers".
+    "signals_bar": {},
     "refreshing": {},
     "premium": None,
     "premium_pct": None,
@@ -888,6 +892,10 @@ async def rescan(tf: str = "15m", top: int = 40):
     sem = asyncio.Semaphore(6)
     out: dict = {}
     skipped: list[str] = []
+    #: The newest candle any symbol reported this cycle. Not "now": if the venue
+    #: hands back a series that stopped three days ago, the scores describe three
+    #: days ago, and `age_bars` is how the card finds out.
+    newest_bars: list[float] = []
     def _composite(ta: float, liq: float, fa: float | None) -> tuple[float, str]:
         return composite_score(ta, liq, fa)
 
@@ -899,6 +907,10 @@ async def rescan(tf: str = "15m", top: int = 40):
         try:
             async with sem:
                 rows, src = await client.get_candles_ex(u["symbol"], tf, 260)
+            # Unusable stamps are not a failed symbol: the block above will answer
+            # `no-candles`, which is a result the card can print.
+            with suppress(KeyError, TypeError, ValueError):
+                newest_bars.append(max(float(r["t"]) for r in rows if r.get("t") is not None))
             df = candles_to_df(rows)
             sig = ta_score(df)
             vol = u["vol24"]
@@ -982,6 +994,8 @@ async def rescan(tf: str = "15m", top: int = 40):
     _cached["signals_by_tf"][tf] = out
     _cached["scan_skipped"] = skipped
     _cached["signals_ts"][tf] = time.time()
+    if newest_bars:
+        _cached["signals_bar"][tf] = max(newest_bars)
     _cached["last_scan"] = datetime.now(UTC).isoformat()
     log.info("rescan %s: %d symbols, FA %d/%d", tf, len(out), len(scored), len(out))
     if os.getenv("NBX_JOURNAL", "1") != "0":
@@ -1036,7 +1050,10 @@ async def signals(tf: str = Query("15m", pattern="^(15m|1h|4h|D)$")):
                 "ts": datetime.now(UTC).isoformat(), "tf": tf, "count": 0,
                 "age_s": round(age or 0.0, 1), "stale": stale, "refreshing": False,
                 "scored": [], "premium_usdtirt": _cached["premium"], "premium_pct": _cached["premium_pct"],
-                "fa_coverage": _cached.get("fa_coverage")}
+                "fa_coverage": _cached.get("fa_coverage"),
+                # No scores is not the same as no candles: the block still says
+                # which wall was hit, with a named reason.
+                "freshness": freshness_block_at(_cached.get("signals_bar", {}).get(tf), tf)}
     return {
         "ok": True,
         "ts": datetime.now(UTC).isoformat(),
@@ -1048,6 +1065,9 @@ async def signals(tf: str = Query("15m", pattern="^(15m|1h|4h|D)$")):
         "premium_usdtirt": _cached["premium"],
         "premium_pct": _cached["premium_pct"],
         "fa_coverage": _cached.get("fa_coverage"),
+        # 1.0.21 — the ranking is a claim about the candles the scan read. How old
+        # those candles were travels with it, in bars of this very timeframe.
+        "freshness": freshness_block_at(_cached.get("signals_bar", {}).get(tf), tf),
         "scored": ranked,
         **provenance(),
     }
@@ -2912,6 +2932,21 @@ def freshness_block(rows: list[dict], tf: str) -> dict:
     try:
         return freshness.assess(rows, tf)
     except AdaptiveRefusal as e:                   # bad timeframes and timestamps
+        return {"stale": True, "reason": e.code, "age_bars": None}
+    except Exception as e:                          # pragma: no cover - last resort
+        return {"stale": True, "reason": type(e).__name__, "age_bars": None}
+
+
+def freshness_block_at(bar_at: float | None, tf: str) -> dict:
+    """The same block for a caller that kept only the newest bar stamp.
+
+    Exists so the market scan can report the age of its candles without being
+    asked to hold 260 rows per symbol for a number it already computed; the
+    arithmetic is `freshness.assess_bar`, i.e. the same rule, not a copy of it.
+    """
+    try:
+        return freshness.assess_bar(bar_at, tf)
+    except AdaptiveRefusal as e:
         return {"stale": True, "reason": e.code, "age_bars": None}
     except Exception as e:                          # pragma: no cover - last resort
         return {"stale": True, "reason": type(e).__name__, "age_bars": None}

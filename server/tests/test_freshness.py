@@ -179,3 +179,73 @@ def test_the_backtest_card_shows_the_age_and_hides_itself_when_current() -> None
     assert "btRenderFresh(r);" in page[page.index("function btRender(r){"):][:400]
     for key in ("bt.dataStale", "bt.dataStaleWhy"):
         assert page.count(f"'{key}':") == 2, f"{key} is not defined in both languages"
+
+
+#: 1.0.21 — the market scan answers the same question from a single stamp.
+def test_the_two_doors_are_the_same_rule() -> None:
+    """`assess()` and `assess_bar()` must not be two opinions.
+
+    The scan keeps scores and discards rows, so it can only ask about one
+    timestamp. If that path computed its own arithmetic, the same candles would
+    be "stale" on one card and "current" on another — the drift this repo has
+    already paid for once with the fee and the starting equity.
+    """
+    now = datetime.now(UTC).replace(microsecond=0)
+    rows = series("15m", bars=12, last_age_minutes=60, now=now)
+    newest = max(r["t"] for r in rows)
+    from_series = freshness.assess(rows, "15m", now=now)
+    from_stamp = freshness.assess_bar(newest, "15m", now=now)
+    for key in ("stale", "reason", "bar_seconds", "tolerance_bars",
+                "age_bars", "age_seconds", "last_bar"):
+        assert from_series[key] == from_stamp[key], key
+    # The one field that may differ is the count of rows, which only one caller has.
+    assert from_series["bars"] == 12
+    assert from_stamp["bars"] is None
+
+
+def test_a_missing_bar_is_an_answer_and_an_unknown_timeframe_is_a_refusal() -> None:
+    out = freshness.assess_bar(None, "1h")
+    assert out["stale"] is True and out["reason"] == "no-candles"
+    assert out["age_bars"] is None and out["bars"] is None
+    with pytest.raises(adaptive.AdaptiveError) as err:
+        freshness.assess_bar(None, "7m")
+    assert err.value.code == "bad-timeframe"
+    with pytest.raises(adaptive.AdaptiveError) as bad:
+        freshness.assess_bar("not-a-time", "1h")
+    assert bad.value.code == "bad-candles"
+
+
+def test_the_scan_keeps_the_newest_bar_it_read_and_reports_it() -> None:
+    """The scores are a claim about the candles the scan read — including when the
+    venue hands back a series that stopped days ago."""
+    src = (Path(__file__).resolve().parents[1] / "main.py").read_text(encoding="utf-8")
+    assert '"signals_bar": {}' in src, "the cache has no slot for the newest bar"
+    # Recorded inside the scan, from the rows it just fetched...
+    assert 'newest_bars.append(max(float(r["t"]) for r in rows if r.get("t") is not None))' in src
+    assert '_cached["signals_bar"][tf] = max(newest_bars)' in src
+    # ...and attached to both answers of the ranking route, empty or not.
+    assert src.count('"freshness": freshness_block_at(_cached.get("signals_bar", {}).get(tf), tf)') == 2
+
+
+def test_a_failed_scan_age_degrades_instead_of_emptying_the_ranking() -> None:
+    src = (Path(__file__).resolve().parents[1] / "main.py").read_text(encoding="utf-8")
+    helper = src[src.index("def freshness_block_at("):]
+    helper = helper[:helper.index("@app.get(")]
+    assert "freshness.assess_bar" in helper        # the shared rule, not a copy
+    assert "AdaptiveRefusal" in helper and "e.code" in helper
+    assert "raise" not in helper
+
+
+def test_the_market_scan_card_names_the_age_and_hides_itself_when_current() -> None:
+    page = ROOT_HTML.read_text(encoding="utf-8")
+    assert 'id="sgFreshChip"' in page
+    fn = page[page.index("function sgRenderFresh(f)"):page.index("function renderSignals()")]
+    assert "chip.classList.add('hidden')" in fn          # current: no chip
+    assert "Math.abs(fresh.age_bars)" in fn and "fmtNum(" in fn
+    assert "t('sg.dataStaleWhy').replace('{bars}'" in fn
+    assert "t('sg.dataStale')" in fn
+    # It is drawn with the list and again when a scan lands, because the scan is
+    # what changes the answer.
+    assert "sgRenderFresh(sgFreshNow());" in page
+    assert page.count("'sg.dataStale':") == 2 and page.count("'sg.dataStaleWhy':") == 2
+    assert page.count("'sg.dataStaleNone':") == 2

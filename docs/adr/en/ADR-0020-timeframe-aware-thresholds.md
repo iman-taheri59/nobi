@@ -142,3 +142,22 @@ The rule "a number has to say when it is from" was extended from the threshold c
 **backtest result card**: both backtest routes return a `freshness` block, and the card gains
 a chip that is visible only when the data is old and carries the age in its title. A failed
 age check never takes the numbers down (`freshness_block()` → a stale block with a named code).
+
+### Second appendix to the third amendment — version 1.0.21
+
+Until 1.0.20, the cards that named the age of their candles were the ones holding the candles.
+The **market-scan card** was not: it builds its ranking from 260-bar series per symbol and then
+throws the series away, so asking "how many bars old is this?" would have required either a
+second copy of the rule or no answer at all.
+
+From this version:
+
+1. `freshness.assess_bar()` sits beside `assess()`, and `assess()` is built on it: one
+   computation, two doors. Any change to the tolerance or to the meaning of "stale" moves both.
+2. The scan keeps the newest candle it saw, per timeframe, and `/api/signals` returns a
+   `freshness` block from both of its answers — ranked and empty.
+3. The browser twin (`NBX.freshness`) carries the same rule and the same bar length, and the
+   possible drift between the two sides is closed by `test_single_source_constants` — the same
+   place the fee and the starting equity were pinned.
+4. No threshold, weight or verdict changed: this version only puts a time label on numbers that
+   were already there.
