@@ -8,6 +8,7 @@
     "lint": "eslint nbx-core.js nbx-app.js \"scripts/**/*.js\" \"scripts/**/*.mjs\" eslint.config.mjs",
     "lint:dashboard": "node scripts/lint_dashboard.mjs",
     "test:js": "node scripts/js_broker_test.js",
+    "test:intrabar": "node scripts/js_engine_parity.js",
     "build": "python scripts/build_coin_icons.py && npm run css && python scripts/build_standalone.py",
     "test:display": "node scripts/test_display.cjs",
     "test:icons": "node scripts/test_coin_icons.cjs"
@@ -18,5 +19,5 @@
     "jsdom": "^26.0.0",
     "tailwindcss": "^4.3.3"
   },
-  "version": "1.0.8"
+  "version": "1.0.9"
 }

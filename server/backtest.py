@@ -551,6 +551,10 @@ def _aggregate_windows(windows: list[dict], initial_equity: float = 100_000.0) -
         "initial_equity": round(float(initial_equity), 2),
         "final_equity": round(equity, 2),
         "ambiguous_exits": int(sum(w.get("ambiguous_exits", 0) for w in windows)),
+        "ambiguous_share": float(
+            round(sum(w.get("ambiguous_exits", 0) for w in windows) / trades * 100, 1)
+            if trades else 0.0
+        ),
         "windows": len(windows),
         "equity_curve": curve[-400:],
         "profitable_windows": int(
@@ -613,6 +617,15 @@ def _gate(
             "value": round(consistency, 1),
             "pass": consistency >= 50,
             "required": 50,
+        },
+        # ADR-0009 §3 resolves intrabar ambiguity pessimistically (stop first,
+        # because the path is unknowable). That is the honest choice, but it is
+        # still an *assumption*: if it decides a large share of the exits, the
+        # expectancy describes the assumption as much as the market.
+        "ambiguous_share_le_10": {
+            "value": agg.get("ambiguous_share", 0.0),
+            "pass": agg.get("ambiguous_share", 0.0) <= 10.0,
+            "required": "<= 10 %",
         },
         # A run with no slippage is not a pessimistic run, it is an optimistic
         # one: the fee is modelled but the fill is free. Whatever it certifies
