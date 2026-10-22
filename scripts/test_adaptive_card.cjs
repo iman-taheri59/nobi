@@ -19,7 +19,10 @@
  *      that nothing was applied and that a reference feed cannot certify;
  *   7. old candles are named as old (1.0.18): a percentage measured on a series
  *      that stopped three days ago is a claim about three days ago, and the card
- *      must say so in its own words — not fold it into "wrong pair".
+ *      must say so in its own words — not fold it into "wrong pair";
+ *   8. the backtest card repeats the rule on the largest set of numbers on the
+ *      page (1.0.20): a stale chip with the age in it, hidden again when the
+ *      candles are current.
  *
  * No CDN, no server: the page is read from disk and the API is a function.
  */
@@ -252,13 +255,27 @@ function stub(result) {
   await window.adMeasureThresholds();
   assert.equal(window.adCardState().dataStale, false);
 
-  // ---- 7. the disabled-backend path ----
+  // ---- 7. the backtest result card names the age of its candles (1.0.20) ----
+  const chip = doc.getElementById('btFreshChip');
+  assert.ok(chip, 'the backtest card has no freshness chip');
+  window.btRender({ report: { aggregate: {} }, freshness: { stale: true, reason: 'behind', age_bars: 41.2 } });
+  assert.equal(chip.classList.contains('hidden'), false, 'a stale run still looked current');
+  assert.match(chip.textContent, /stale data|داده کهنه/, chip.textContent);
+  assert.ok(plain(chip.title).includes('41.2'), `the age was not named: "${chip.title}"`);
+  // Current candles put the chip away again — no permanent warning that means nothing.
+  window.btRender({ report: { aggregate: {} }, freshness: { stale: false, reason: 'current', age_bars: 0.2 } });
+  assert.equal(chip.classList.contains('hidden'), true, 'the chip stayed visible on current data');
+  // A response without the block (older backend) must not invent staleness.
+  window.btRender({ report: { aggregate: {} } });
+  assert.equal(chip.classList.contains('hidden'), true, 'a missing block was read as stale');
+
+  // ---- 8. the disabled-backend path ----
   window.NBX.core.api = undefined;
   await window.adMeasureThresholds();
   assert.match(text('adState'), /backend|بک‌اند/,
     'a missing backend produced no explanation');
 
-  console.log('PASS — adaptive card: numbers, the not-applied label, named refusals, no zeros, staleness named and re-measured, A/B verdict with its sample size');
+  console.log('PASS — adaptive card: numbers, the not-applied label, named refusals, no zeros, staleness named and re-measured, A/B verdict with its sample size, stale candles named on the backtest card');
   // The page arms intervals (clock, polling) that would keep node alive forever;
   // this script asserts and leaves.
   dom.window.close();
