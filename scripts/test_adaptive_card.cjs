@@ -16,7 +16,10 @@
  *      of the same lie (1.0.14);
  *   6. the A/B evidence line (1.0.15) shows a verdict **with its sample size**,
  *      refuses on a named error without inventing numbers, and always repeats
- *      that nothing was applied and that a reference feed cannot certify.
+ *      that nothing was applied and that a reference feed cannot certify;
+ *   7. old candles are named as old (1.0.18): a percentage measured on a series
+ *      that stopped three days ago is a claim about three days ago, and the card
+ *      must say so in its own words — not fold it into "wrong pair".
  *
  * No CDN, no server: the page is read from disk and the API is a function.
  */
@@ -218,7 +221,38 @@ function stub(result) {
   await new Promise((r) => setTimeout(r, 900));
   assert.match(text('adEvVerdict'), /run it again|دوباره اجرا کنید/);
 
-  // ---- 6. the disabled-backend path ----
+  // ---- 6. stale candles are named as stale, separately from a stale pair (1.0.18) ----
+  doc.getElementById('btSym').innerHTML = '<option value="BTCUSDT" selected>BTCUSDT</option>';
+  doc.getElementById('btTf').value = '15m';
+  stub({ ...FIXTURE, freshness: { stale: true, reason: 'behind', age_bars: 41.2, tolerance_bars: 2 } });
+  await window.adMeasureThresholds();
+  let st = window.adCardState();
+  assert.equal(st.stale, false, 'stale data was reported as a wrong pair');
+  assert.equal(st.dataStale, true, 'old candles left the card looking current');
+  assert.match(text('adBadge'), /stale data|داده کهنه/, `badge said "${text('adBadge')}"`);
+  // The reason carries the arithmetic, from the response, not from a constant.
+  // Persian digits by default — normalise, do not fight the formatter.
+  assert.ok(plain(text('adState')).includes('41.2'), `the age was not named: "${text('adState')}"`);
+  assert.match(text('adState'), /not applied|اعمال نشد/);
+  // The numbers stay: they are true for their own (old) window, they just may
+  // not wear a present-tense badge.
+  assert.equal(val('adLong'), '68 → 75.0');
+
+  // ... and a current series clears it again.
+  stub({ ...FIXTURE, freshness: { stale: false, reason: 'current', age_bars: 0.1, tolerance_bars: 2 } });
+  await window.adMeasureThresholds();
+  st = window.adCardState();
+  assert.equal(st.dataStale, false);
+  assert.match(text('adBadge'), /measurement only|فقط اندازه‌گیری/);
+
+  // A response with no freshness block must not be treated as stale (older
+  // backends keep working) — and must not be treated as fresh either: the badge
+  // simply stays on the measurement label.
+  stub({ ...FIXTURE });
+  await window.adMeasureThresholds();
+  assert.equal(window.adCardState().dataStale, false);
+
+  // ---- 7. the disabled-backend path ----
   window.NBX.core.api = undefined;
   await window.adMeasureThresholds();
   assert.match(text('adState'), /backend|بک‌اند/,

@@ -50,6 +50,7 @@ CARD_KEYS = {
     "ad.factor", "ad.long", "ad.neutral", "ad.share", "ad.bars", "ad.applied",
     "ad.notApplied", "ad.needBackend", "ad.failed", "ad.refused", "ad.clamped",
     "ad.stale",
+    "ad.dataStale", "ad.dataStaleWhy", "ad.dataStaleNone",
     # 1.0.15
     "ad.evidence", "ad.evTitle", "ad.evWindows", "ad.evPf", "ad.evDelta", "ad.evIdle",
     "ad.evVerdictAdaptive", "ad.evVerdictBaseline", "ad.evInconclusive", "ad.evNoPromote",
@@ -237,3 +238,38 @@ def test_the_evidence_run_needs_a_click_and_its_panel_is_stale_with_the_pair() -
         assert "adEvidenceRun" not in start_block, "the A/B run fires on boot"
     handler = script[script.index("function onControlChange()"):script.index("btn.addEventListener")]
     assert "t('ad.evStale')" in handler, "the verdict survives a change of pair"
+
+
+#: 1.0.18 — old candles are a different failure from a wrong pair.
+def test_stale_data_is_named_separately_from_a_stale_pair() -> None:
+    script = _card_script()
+    paint = script[script.index("function paint()"):script.index("function render(r)")]
+    # Two distinct flags on the element: a card that only knows "stale" cannot
+    # tell a user whether to re-select or re-fetch.
+    assert "card.dataset.stale" in paint and "card.dataset.dataStale" in paint
+    assert "t('ad.dataStale')" in paint
+    # The sentence itself is built in dataNote(); paint() must consume it rather
+    # than re-derive a second, drifting version.
+    assert "dataNote()" in paint
+    # The wrong pair outranks old candles, and both are mentioned when both apply.
+    assert paint.index("if (drift)") < paint.index("if (data)")
+
+
+def test_the_data_staleness_carries_its_arithmetic() -> None:
+    script = _card_script()
+    note = script[script.index("function dataNote()"):script.index("function paint()")]
+    assert "{bars}" in note and "age_bars" in note, "the stale sentence lost its number"
+    assert "fmtNum" in note, "the age is not formatted like the rest of the page"
+    assert "no-candles" in note, "an empty series has no words of its own"
+    page = _page()
+    for lang_key in ("'ad.dataStaleWhy':",):
+        assert page.count(lang_key) == 2
+    assert "{bars}" in page[page.index("'ad.dataStaleWhy':"):][:80]
+
+
+def test_freshness_is_read_from_every_answer_and_cleared_by_the_next() -> None:
+    script = _card_script()
+    assert "fresh = (r && r.freshness) || null;" in script
+    # A response without the block must leave the card in its plain state rather
+    # than guessing "fresh".
+    assert "if (!fresh || !fresh.stale) return '';" in script

@@ -40,6 +40,7 @@ import coin_metadata
 import devsuite
 import diagnostics
 import errorlog
+import freshness
 import identity
 import journal as signal_journal
 import nobitex_metadata
@@ -358,7 +359,7 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(
     title="nobiTrader",
-    version="1.0.17",
+    version="1.0.18",
     lifespan=lifespan,
 )
 
@@ -2835,7 +2836,7 @@ async def exec_mode_set(payload: dict, request: Request):
     return {"ok": True, **_exec_mode_payload(), **provenance()}
 
 
-# ---------------- Reference feed (ADR-0014, 1.0.17) ----------------
+# ---------------- Reference feed (ADR-0014, 1.0.18) ----------------
 # A second venue, for developing outside Iran and for sanity-checking the
 # numbers. Read-only, clearly labelled, and never a stand-in for the exchange:
 # `/api/backtest/run` turns it into a REFERENCE_DATA verdict that cannot pass.
@@ -2936,6 +2937,13 @@ async def adaptive_thresholds(
     except AdaptiveError as e:
         return {**out, "ok": False, "error": e.code, "message": e.message, "meta": e.meta}
     out["bars"] = len(rows)
+    # A measurement describes *now* only if its newest candle is close to the
+    # clock. Say so, in bars, instead of letting a three-day-old number wear a
+    # present-tense sentence.
+    try:
+        out["freshness"] = await asyncio.to_thread(freshness.assess, rows, tf)
+    except AdaptiveError as e:
+        out["freshness"] = {"stale": True, "reason": e.code, "age_bars": None}
     return out
 
 
@@ -2977,6 +2985,10 @@ async def adaptive_evidence(
             compare, rows, tf, sym, factor=factor, source=source))
     except AdaptiveError as e:
         return {**out, "ok": False, "error": e.code, "message": e.message, "meta": e.meta}
+    try:
+        out["freshness"] = await asyncio.to_thread(freshness.assess, rows, tf)
+    except AdaptiveError as e:
+        out["freshness"] = {"stale": True, "reason": e.code, "age_bars": None}
     return out
 
 

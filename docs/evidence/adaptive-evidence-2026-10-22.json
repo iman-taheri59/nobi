@@ -1,8 +1,8 @@
 {
   "kind": "adaptive-evidence-matrix",
-  "version": "1.0.17",
+  "version": "1.0.18",
   "provenance": {
-    "generated_at": "2026-10-22T17:33:49+00:00",
+    "generated_at": "2026-10-22T17:41:56+00:00",
     "label": "REFERENCE_DATA",
     "promotable": false,
     "applied": false,
@@ -94,8 +94,8 @@
       "promotable": false,
       "measurement": {
         "regime": "volatile",
-        "percentile": 0.804,
-        "why": "15m is noisier than 1h: the same score is weaker evidence there, so the bar rises to 1.25x. ATR sits at the 80th percentile of the last 200 bars, which reads as a volatile regime."
+        "percentile": 0.8442,
+        "why": "15m is noisier than 1h: the same score is weaker evidence there, so the bar rises to 1.25x. ATR sits at the 84th percentile of the last 200 bars, which reads as a volatile regime."
       }
     },
     {
@@ -286,8 +286,8 @@
       "promotable": false,
       "measurement": {
         "regime": "volatile",
-        "percentile": 0.799,
-        "why": "15m is noisier than 1h: the same score is weaker evidence there, so the bar rises to 1.25x. ATR sits at the 80th percentile of the last 200 bars, which reads as a volatile regime."
+        "percentile": 0.8392,
+        "why": "15m is noisier than 1h: the same score is weaker evidence there, so the bar rises to 1.25x. ATR sits at the 84th percentile of the last 200 bars, which reads as a volatile regime."
       }
     },
     {
@@ -478,8 +478,8 @@
       "promotable": false,
       "measurement": {
         "regime": "volatile",
-        "percentile": 0.8141,
-        "why": "15m is noisier than 1h: the same score is weaker evidence there, so the bar rises to 1.25x. ATR sits at the 81th percentile of the last 200 bars, which reads as a volatile regime."
+        "percentile": 0.8492,
+        "why": "15m is noisier than 1h: the same score is weaker evidence there, so the bar rises to 1.25x. ATR sits at the 85th percentile of the last 200 bars, which reads as a volatile regime."
       }
     },
     {
@@ -670,8 +670,8 @@
       "promotable": false,
       "measurement": {
         "regime": "normal",
-        "percentile": 0.7286,
-        "why": "15m is noisier than 1h: the same score is weaker evidence there, so the bar rises to 1.25x. ATR sits at the 73th percentile of the last 200 bars, which reads as a normal regime."
+        "percentile": 0.7387,
+        "why": "15m is noisier than 1h: the same score is weaker evidence there, so the bar rises to 1.25x. ATR sits at the 74th percentile of the last 200 bars, which reads as a normal regime."
       }
     },
     {
@@ -734,8 +734,8 @@
       "promotable": false,
       "measurement": {
         "regime": "normal",
-        "percentile": 0.4673,
-        "why": "1h is the reference timeframe, so only the regime moves the bar. ATR sits at the 47th percentile of the last 200 bars, which reads as a normal regime."
+        "percentile": 0.4774,
+        "why": "1h is the reference timeframe, so only the regime moves the bar. ATR sits at the 48th percentile of the last 200 bars, which reads as a normal regime."
       }
     },
     {

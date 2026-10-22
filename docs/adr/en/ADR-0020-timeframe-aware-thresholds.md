@@ -117,3 +117,21 @@ From this version:
    not a poller.
 5. The staleness state is observable on `#adCard[data-stale]` and via
    `window.adCardState()`, so the executable (jsdom) test can assert what a person sees.
+
+## Third amendment — 2026-10-22 (version 1.0.18): a number has to say *when* it is from
+
+The 1.0.14 amendment tied the numbers to a **pair** (symbol, timeframe, feed). One axis was
+missing: **time**. A percentile computed on a series whose newest candle is three days old is
+not wrong — its label is; and that is the same family of error that `applied: false` and the
+`REFERENCE_DATA` stamp exist to prevent.
+
+From this version:
+
+1. `server/freshness.py` measures the newest candle's age in **bars**, not seconds
+   (tolerance: 2 bars).
+2. The reason is named: `behind`, `ahead-of-clock`, `no-candles` — a boolean is not enough,
+   because "stale" starts an argument about taste and `age_bars: 41.2` does not.
+3. Both API routes return a `freshness` block next to the numbers.
+4. On the card, data staleness is **separate** from pair staleness (`data-stale` versus
+   `stale`), because the two ask the user for different actions.
+5. When both are stale, both are said; neither hides the other.
