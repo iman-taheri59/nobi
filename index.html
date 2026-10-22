@@ -277,7 +277,7 @@
       </button>
     </div>
     <span class="hidden 2xl:inline-flex chip shrink-0"><span class="dot bg-emerald-400"></span> <span data-i18n="hdr.kill"></span></span>
-    <span id="buildChip" class="hidden lg:inline-flex chip num text-violet-300 border-violet-400/30 shrink-0" title="نسخه واقعی از /api/health">v1.0.25 · core</span>
+    <span id="buildChip" class="hidden lg:inline-flex chip num text-violet-300 border-violet-400/30 shrink-0" title="نسخه واقعی از /api/health">v1.0.26 · core</span>
     <div class="ms-auto flex items-center gap-1.5 shrink-0">
       <span class="hidden xl:inline-flex chip num" id="clock">--:--:--</span>
       <span id="apiChip" class="hidden 2xl:inline-flex chip num text-zinc-400 border-white/10" title=""><i data-lucide="wifi-off" class="w-3.5 h-3.5"></i> <span>API: —</span></span>
@@ -1404,6 +1404,7 @@ const T = {
     'sg.noCandles':'کندلی برای این نماد در حافظه نیست', 'sg.close':'بستن',
     'sg.hdr':'رتبه‌بندی دنیای نوبیتکس', 'sg.scanned':'بدون داده', 'sg.cycle':'چرخه: بستن کندل ۱۵د',
     'sg.weights':'TA ۵۵٪ · FA ۲۵٪ · نقد ۲۰٪ (در نبود FA: وزن‌ها بازتوزیع می‌شود)', 'sg.faCoverage':'بنیادی زنده: —', 'sg.last':'آخرین چرخه: —', 'sg.dataStale':'داده کهنه', 'sg.dataStaleWhy':'آخرین کندلِ این اسکن {bars} کندل عقب است؛ این رتبه‌بندی آن بازه را توصیف می‌کند، نه امروز را', 'sg.dataStaleNone':'کندلی برای سنجش سن نیست',
+    'sg.gatesEvidence':'شاهد تا امروز: {gate} — {n} حکم در {days} روز (کافی: {need} حکم در {needDays} روز)', 'sg.gatesEvidenceReady':'شاهد جمع شد: {gate} — {n} حکم در {days} روز؛ حکمِ خودِ شاهد را در /api/gates/evidence ببینید',
     'sg.gatesChip':'دروازه‌ها (سایه): {blocked} از {rows}', 'sg.gatesWhy':'اگر دروازه‌ها عمل می‌کردند، {names}{more} حذف می‌شدند — چیزی حذف نشد', 'sg.gatesClean':'هیچ دروازه‌ای اعتراضی ندارد', 'sg.gatesUnknown':'{n} نماد را نمی‌شود سنجید (دفتری خوانده نشده)',
     'sg.dataStaleWorst':'بدترین نماد این اسکن {sym} است: آخرین کندلش {bars} کندل عقب است{more}؛ این رتبه‌بندی آن بازه را توصیف می‌کند، نه امروز را', 'sg.dataStaleMore':' ({n} نماد دیگر هم کهنه‌اند)',
     'atr.title':'صدک ATR روی نمودار', 'atr.regimeCalm':'آرام', 'atr.regimeNormal':'معمولی',
@@ -1661,6 +1662,7 @@ const T = {
     'sg.noCandles':'no candles for this symbol in memory', 'sg.close':'close',
     'sg.hdr':'Nobitex Universe Ranking', 'sg.scanned':'no data', 'sg.cycle':'Cycle: 15m candle close',
     'sg.weights':'TA 55% · FA 25% · Liquidity 20% (weights renormalise when FA is missing)', 'sg.faCoverage':'Live FA: —', 'sg.last':'Last cycle: —', 'sg.dataStale':'stale data', 'sg.dataStaleWhy':'the newest candle in this scan is {bars} bars old; this ranking describes that window, not today', 'sg.dataStaleNone':'no candle to measure an age from',
+    'sg.gatesEvidence':'evidence so far: {gate} — {n} verdicts over {days} day(s) (needs {need} over {needDays})', 'sg.gatesEvidenceReady':'evidence collected: {gate} — {n} verdicts over {days} day(s); read its verdict at /api/gates/evidence',
     'sg.gatesChip':'gates (shadow): {blocked} of {rows}', 'sg.gatesWhy':'a gate would have removed {names}{more} — nothing was removed', 'sg.gatesClean':'no gate objects', 'sg.gatesUnknown':'{n} symbol(s) cannot be judged (no book read yet)',
     'sg.dataStaleWorst':'the worst symbol in this scan is {sym}: its newest candle is {bars} bars old{more}; this ranking describes that window, not today', 'sg.dataStaleMore':' ({n} more symbols are stale too)',
     'atr.title':'ATR percentile on the chart', 'atr.regimeCalm':'calm', 'atr.regimeNormal':'normal',
@@ -3138,9 +3140,23 @@ function sgRenderGates(g){
   const tail = unknown
     ? t('sg.gatesUnknown').replace('{n}', fmtNum(unknown, 0))
     : '';
+  // ADR-0022 stage 2: how much evidence the ledger has collected. A title line, not
+  // a second chip — a sample still filling up is not a result, and the card should
+  // not dress it as one. The gate with the most verdicts is the one to report.
+  const led = (block.ledger && block.ledger.gates) || {};
+  const best = Object.keys(led).sort((a, b) => (led[b].verdicts || 0) - (led[a].verdicts || 0))[0];
+  const lim = (block.ledger && block.ledger.limits) || {};
+  const ev = best
+    ? t(led[best].ready ? 'sg.gatesEvidenceReady' : 'sg.gatesEvidence')
+        .replace('{gate}', best)
+        .replace('{n}', fmtNum(led[best].verdicts || 0, 0))
+        .replace('{days}', fmtNum(led[best].days || 0, 0))
+        .replace('{need}', fmtNum(lim.min_verdicts || 30, 0))
+        .replace('{needDays}', fmtNum(lim.min_days || 5, 0))
+    : '';
   // The note the server shipped with the block travels in the title, so the
   // "shadow only" sentence is never lost between the API and the screen.
-  chip.title = [head, tail, block.note || ''].filter(Boolean).join(' — ');
+  chip.title = [head, tail, ev, block.note || ''].filter(Boolean).join(' — ');
 }
 function renderSignals(){
   sgRenderFresh(sgFreshNow());       // the ranking and the age of its candles, together

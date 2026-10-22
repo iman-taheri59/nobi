@@ -488,13 +488,55 @@ function stub(result) {
   assert.ok(plain(gateChip.title).includes('2'),
     `the unjudgeable count was lost: "${gateChip.title}"`);
 
+  // ---- 13. the ledger behind the gates, reported honestly (1.0.26 / ADR-0022) ----
+  // A sample still filling up must never read as a result: the card says how many
+  // verdicts and how many days it has, and what it still needs.
+  window.sgRenderGates({
+    mode: 'shadow', applied: false, would_block: ['WIDEIRT'], unknown: [],
+    counts: { rows: 24, ok: 23, would_block: 1, unknown: 0 },
+    ledger: {
+      gates: { 'spread-wide': { verdicts: 12, days: 2, ready: false,
+                                missing: { verdicts: 18, days: 3 } } },
+      limits: { min_verdicts: 30, min_days: 5, delta_bp: 25, min_share: 0.6 },
+      ready: [],
+    },
+    note: 'shadow only',
+  });
+  const evTitle = plain(gateChip.title);       // Persian digits → ASCII for the asserts
+  assert.match(evTitle, /spread-wide/, 'the gate with verdicts was not named');
+  assert.match(evTitle, /12/, `the verdict count was lost: "${evTitle}"`);
+  assert.match(evTitle, /2 روز|2 day/, `the day count was lost: "${evTitle}"`);
+  assert.match(evTitle, /30/, 'the target the sample must reach was not shown');
+  assert.doesNotMatch(evTitle, /collected|جمع شد/,
+    'a filling sample was announced as collected evidence');
+
+  // Once it is ready the wording changes; the chip still never claims a block.
+  window.sgRenderGates({
+    mode: 'shadow', applied: false, would_block: [], unknown: [],
+    counts: { rows: 24, ok: 24, would_block: 0, unknown: 0 },
+    ledger: {
+      gates: { 'spread-wide': { verdicts: 41, days: 6, ready: true },
+               'book-thin': { verdicts: 3, days: 1, ready: false } },
+      limits: { min_verdicts: 30, min_days: 5 },
+      ready: ['spread-wide'],
+    },
+    note: 'shadow only',
+  });
+  const readyTitle = plain(gateChip.title);
+  assert.match(readyTitle, /41/, 'the ready gate was not the one reported');
+  assert.doesNotMatch(readyTitle, /book-thin/,
+    'a smaller sample outranked the one with 41 verdicts');
+  const chipBody = plain(gateChip.textContent);
+  assert.ok(chipBody.includes('24'), `the chip stopped counting rows: "${chipBody}"`);
+  assert.doesNotMatch(chipBody, /41/, 'the sample leaked into the chip body');
+
   // ---- 9. the disabled-backend path ----
   window.NBX.core.api = undefined;
   await window.adMeasureThresholds();
   assert.match(text('adState'), /backend|بک‌اند/,
     'a missing backend produced no explanation');
 
-  console.log('PASS — adaptive card: numbers, the not-applied label, named refusals, no zeros, staleness named and re-measured, A/B verdict with its sample size, stale candles named on the backtest and scan cards, worst-per-symbol on the scan, gates reported but never applied');
+  console.log('PASS — adaptive card: numbers, the not-applied label, named refusals, no zeros, staleness named and re-measured, A/B verdict with its sample size, stale candles named on the backtest and scan cards, worst-per-symbol on the scan, gates reported but never applied, and the ledger sample size told in days and verdicts');
   // The page arms intervals (clock, polling) that would keep node alive forever;
   // this script asserts and leaves.
   dom.window.close();

@@ -2,6 +2,39 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 1.0.26
+
+- **The gates now have a memory.** Stage 2 of ADR-0022: `server/gate_ledger.py` records each
+  symbol's verdict **once per bar** (keyed on symbol + timeframe + the bar's close time) and
+  only reads afterwards. The scan runs every 90 seconds; a repeated verdict is never written,
+  so the sample grows with the *market*, not with the *polling rate*.
+- **The exit rule is now code:** one gate, **≥30 verdicts**, **≥5 days**, and the blocked
+  names must have done worse than the ones that passed. `MIN_VERDICTS`, `MIN_DAYS`,
+  `DELTA_BP=25` and `MIN_SHARE=0.6` are constants, not numbers chosen in a report.
+- **The comparison is paired inside each bar:** blocked mean minus allowed mean at the
+  **same** timestamp and the **same** horizon, averaged over bars afterwards. Comparing
+  against the market mean measures whether the market rose, not whether the gate helps.
+- **"Not known yet" is not zero:** a row whose future bar does not exist is counted in
+  `unresolved` and kept out of the means. Imputing zero drags every mean toward the centre
+  and makes a gate look innocent.
+- **"I do not know" is not evidence for a block:** asking about `no-data`/`no-book` is
+  refused by name (`refused`). Verdicts: `insufficient` · `inconclusive` · `supports` ·
+  `contradicts` — with **`applied: false` on all of them**, including the one that favours the
+  gate. Reference data (ADR-0009/ADR-0014) can never promote it.
+- **New route:** `GET /api/gates/evidence?tf=4h&horizon=4` — joins the ledger against the
+  candles that came *after* and returns one verdict per gate with its own sample size. It
+  only reads.
+- **`/api/signals` stayed cheap:** only the counts (`gates.ledger`) were added; the expensive
+  join lives elsewhere. The dashboard chip says them in its title: "evidence so far:
+  spread-wide — 12 verdicts over 2 day(s) (needs 30 over 5)" — and when the sample is ready
+  the sentence changes, not the chip.
+- **Tests:** 31 in `test_gate_ledger.py` (rescanning does not inflate the sample, the first
+  verdict for a bar stands, 29 verdicts are `insufficient`, 30 verdicts in one day are too,
+  the comparison is paired, unknown is not zero, reference cannot promote, the evidence route
+  never writes) + jsdom scenario 13. Four deliberate mutations — allowing duplicate rows,
+  dropping the days rule, unpaired means, counting unknown as a zero return — each turned the
+  suite red.
+
 ## 1.0.25
 
 - **Five hard gates now have named verdicts — and still none of them blocks anything.** Stage 1

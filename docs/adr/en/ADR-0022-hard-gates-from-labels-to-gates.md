@@ -173,3 +173,37 @@ gets `no-book`, which is the most honest answer available.
 **Status:** still **proposed**. No gate blocks anything and `enforcing` is never read; the test
 `test_the_module_has_no_way_to_apply_anything` guards exactly that. Leaving "proposed" requires
 clause 4 of the main text: the forward-return evidence for **one** gate.
+
+## Implementation amendment — version 1.0.26 (2026-10-23)
+
+Stage 2: **the shadow ledger**. Section 4 says leaving shadow mode needs evidence, and
+evidence that lives in one scan's memory and is overwritten by the next scan is not
+evidence. `server/gate_ledger.py` writes every verdict **once, for one bar** (keyed on
+symbol + timeframe + the bar's close time) and only ever reads afterwards.
+
+**The rule is now code:** one gate, ≥30 verdicts, ≥5 **days**, and the blocked names must
+have done worse afterwards. Three decisions keep the number honest:
+
+- **Paired inside each bar.** The comparison is blocked mean minus allowed mean at the same
+  timestamp and the same horizon, and only then averaged. Comparing against the market mean
+  would measure whether the market rose, not whether the gate helps.
+- **Missing is not zero.** A row whose future bar does not exist yet is counted in
+  `unresolved` and left out of the means; imputing zero for "not known yet" drags every
+  mean toward the centre.
+- **"I do not know" is not evidence for a block.** Asking for evidence about
+  `no-data`/`no-book` is refused by name (`refused`), not answered with a number.
+
+**Verdicts:** `insufficient` (the sample is too small — the number is reported but is not a
+finding), `inconclusive` (sample is large enough but the difference is inside the threshold,
+fewer than 60 % of bars agree, or the data is simulated), `supports`, `contradicts`.
+**`applied: false` on every path** — and reference data can never promote a gate
+(ADR-0009/ADR-0014).
+
+**Where it shows:** `/api/signals` carries only the **counts** (`gates.ledger`) and the chip
+says them in its title ("evidence so far: spread-wide — 12 verdicts over 2 day(s)"). The
+expensive join against later candles lives on its own route, `GET /api/gates/evidence`, and
+that route only reads.
+
+**Status:** still **proposed**. No gate blocks anything; this version only builds the
+measuring instrument that section 4 asks for. Even the first gate that earns `supports`
+will not block without its own ADR and its own PR.

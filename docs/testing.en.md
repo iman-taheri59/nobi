@@ -287,3 +287,28 @@ python scripts/probe_live.py --url http://127.0.0.1:8000
 
 With `NBX_RATE_TTL_S` and `NBX_UNIVERSE_TTL_S` you can deliberately create the "dead
 feed" case and watch the `no-fx-rate` path (see §5).
+
+---
+
+## 8) The gates: shadow, and their evidence (ADR-0022)
+
+Keep two things apart: the **verdict** (what a gate *would* have blocked today) and the
+**evidence** (whether that block was right).
+
+```bash
+# The verdicts, on every scan: applied must always be false
+curl -s "http://127.0.0.1:8000/api/signals?tf=15m" | python -c \
+  "import json,sys; g=json.load(sys.stdin)['gates']; print(g['mode'], g['applied'], g['counts'], g['ledger']['ready'])"
+
+# The evidence: the ledger joined to the candles that came after
+curl -s "http://127.0.0.1:8000/api/gates/evidence?tf=4h&horizon=4" | python -m json.tool | head -40
+```
+
+| What to look at | Healthy | Broken |
+|---|---|---|
+| `gates.applied` | always `false` | `true` ⇒ a gate acted without an ADR |
+| `gates.counts.rows` | equal to `len(scored)` | smaller ⇒ a row was removed (never allowed) |
+| `gates.verdicts[].code` | one of the seven codes | an unknown code ⇒ the contract broke |
+| `gates.ledger.ready` | `[]` until the sample fills | a gate "ready" within a day ⇒ the days rule broke |
+| `evidence.gates[].verdict` | `insufficient` in the first days | `supports` with `blocked.verdicts < 30` ⇒ manufactured sample |
+| `evidence.applied` | `false` | `true` ⇒ evidence became an instruction |

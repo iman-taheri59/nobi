@@ -42,6 +42,7 @@ import devsuite
 import diagnostics
 import errorlog
 import freshness
+import gate_ledger
 import gates
 import identity
 import journal as signal_journal
@@ -362,7 +363,7 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(
     title="nobiTrader",
-    version="1.0.25",
+    version="1.0.26",
     lifespan=lifespan,
 )
 
@@ -1015,6 +1016,12 @@ async def rescan(tf: str = "15m", top: int = 40):
                 log.info("journal: %d new prediction(s) on %s", added, tf)
         except Exception as e:  # journalling must not break scans
             log.warning("journal write failed: %s", e)
+    try:
+        judged = gate_write(tf)
+        if judged:
+            log.info("gates: %d shadow verdict(s) on %s", judged, tf)
+    except Exception as e:      # the ledger must never break a scan
+        log.warning("gate ledger write failed: %s", e)
     return out
 
 
@@ -3019,6 +3026,137 @@ def _toman_per_usdt() -> float | None:
     return rate if rate > 0 else None
 
 
+@app.get("/api/gates/evidence")
+async def gates_evidence(
+    tf: str = Query("4h", pattern="^(15m|1h|4h|D)$"),
+    horizon: int = Query(gate_ledger.HORIZON_BARS, ge=1, le=50),
+):
+    """Has any gate earned the right to block? The ledger's own answer (ADR-0022).
+
+    Reads the shadow verdicts that were written at each bar's close, joins them to
+    the candles that came *after* — which the ledger could not have known at the
+    time — and compares, inside each bar, the rows a gate would have removed with
+    the rows that passed. Each gate gets its own verdict and its own sample size;
+    `applied` is false everywhere, because evidence is not an instruction.
+
+    Nothing here writes: the ledger is append-only in one direction and this route
+    only reads it.
+    """
+    try:
+        conn = gate_ledger.connect()
+        try:
+            evidence_rows = gate_ledger.rows(conn, tf=tf)
+            summary = gate_ledger.counts(conn, tf=tf)
+        finally:
+            conn.close()
+    except Exception as e:
+        return {**upstream_error("gates", str(e)), "applied": False, "gates": {},
+                "tf": tf, "horizon_bars": horizon}
+
+    symbols = sorted({str(r["symbol"]) for r in evidence_rows})[:40]
+    frames: dict[str, dict[str, list[float]]] = {}
+
+    async def one(sym: str) -> None:
+        try:
+            bars, _src = await client.get_candles_ex(sym, tf, 800)
+        except Exception:                      # one symbol's feed must not fail the answer
+            return
+        if not bars:
+            return
+        frames[sym] = {"t": [int(b["t"]) for b in bars],
+                       "c": [float(b["c"]) for b in bars]}
+
+    if symbols:
+        await asyncio.gather(*(one(s) for s in symbols))
+
+    # One reference row anywhere in this ledger is enough to cap every verdict: the
+    # comparison must be made on the exchange's candles or on nothing (ADR-0014).
+    source = "reference" if any(r.get("source") == "reference" for r in evidence_rows) else None
+    measured = {g: gate_ledger.measure(evidence_rows, frames, gate=g, horizon=horizon,
+                                       source=source)
+                for g in gate_ledger.MEASURABLE}
+    return {
+        "ok": True,
+        "tf": tf,
+        "horizon_bars": horizon,
+        "applied": False,
+        "gates": measured,
+        "ledger": summary,
+        "symbols_read": len(frames),
+        "source": source,
+        "note": ("each verdict is per gate, on that gate's own sample; no gate changes "
+                 "the ranking until it is supported here and adopted in an ADR"),
+    }
+
+
+def gate_ledger_summary(max_age_s: float = 30.0) -> dict:
+    """How much evidence the shadow ledger holds — the cheap half (ADR-0022).
+
+    Counting rows is a single indexed query, but `/api/signals` is the hottest route
+    in the app, so the answer is cached for half a minute. A failure here must
+    never break a scan: an unreadable ledger is reported, not propagated.
+    """
+    cached = _cached.get("gate_ledger_summary")
+    if cached and (time.time() - cached[0]) < max_age_s:
+        return cached[1]
+    try:
+        conn = gate_ledger.connect()
+        try:
+            out = gate_ledger.counts(conn)
+        finally:
+            conn.close()
+    except Exception as e:                      # a ledger problem is not a scan problem
+        log.warning("gate ledger unavailable: %s", e)
+        out = {"gates": {}, "ready": [], "error": str(e),
+               "limits": {"min_verdicts": gate_ledger.MIN_VERDICTS,
+                          "min_days": gate_ledger.MIN_DAYS,
+                          "delta_bp": gate_ledger.DELTA_BP,
+                          "min_share": gate_ledger.MIN_SHARE}}
+    _cached["gate_ledger_summary"] = (time.time(), out)
+    return out
+
+
+def _scan_source(ranked: list[dict]) -> str | None:
+    """Reference data anywhere in the scan caps every verdict it feeds.
+
+    One simulated row is enough: the ledger does not get to promote a gate on
+    candles that were never the exchange's (ADR-0009, ADR-0014).
+    """
+    sources = {str(r.get("data_source") or "") for r in ranked}
+    if "reference" in sources:
+        return "reference"
+    return "live" if "live" in sources else None
+
+
+def gate_write(tf: str) -> int:
+    """Write this scan's shadow verdicts, one row per symbol per closed bar.
+
+    The bar stamps come from `_cached["signals_bars"]`, which the scan already
+    filled for the freshness block: no extra request per symbol just to know when
+    its bar closed. Re-running the scan on the same bar writes nothing (the table
+    is keyed on the close time), so the sample grows with markets, not with polls.
+    """
+    if os.getenv("NBX_GATES", "1") == "0":
+        return 0
+    tf_signals = _cached["signals_by_tf"].get(tf) or _cached["signals"] or {}
+    ranked = sorted(tf_signals.values(), key=lambda r: r.get("composite") or 0, reverse=True)
+    if not ranked:
+        return 0
+    block = gates_block(ranked, tf)
+    step = signal_journal.TF_SECONDS.get(tf, 900)
+    bars = (_cached.get("signals_bars") or {}).get(tf) or {}
+    ts_of = {sym: int(t) + step for sym, t in bars.items() if t is not None}
+    conn = gate_ledger.connect()
+    try:
+        n = gate_ledger.record(conn, block.get("verdicts") or {}, tf=tf, ts_of=ts_of,
+                               source=_scan_source(ranked))
+    finally:
+        conn.close()
+    if n:
+        _cached.pop("gate_ledger_summary", None)     # the counts just changed
+    return n
+
+
 def gates_block(ranked: list[dict], tf: str) -> dict:
     """ADR-0022 stage 1 — the gates' verdicts, on rows the ranking already has.
 
@@ -3056,6 +3194,9 @@ def gates_block(ranked: list[dict], tf: str) -> dict:
         "books": sum(1 for r in rows if r.get("book")),
         "closed": len(closed),
     }
+    # ADR-0022 stage 2: how much evidence exists so far, per gate. Counting only —
+    # this block has never been able to change a verdict, and still cannot.
+    out["ledger"] = gate_ledger_summary()
     return out
 
 
