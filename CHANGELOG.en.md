@@ -2,6 +2,17 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 1.0.19
+
+- **One word, made plain (Persian docs).** "مصفوفه" became **"جدول ترکیبی (مصفوفه)"** — a
+  table whose rows are symbols and whose columns are timeframes, with one independent run per
+  cell. The English identifier (`matrix`) is untouched in code, because the code is English;
+  what changed is the Persian prose, which should be readable without a glossary.
+- `docs/evidence.md` gained a "one word" paragraph saying exactly that, plus why the table is
+  needed: a single "favours the higher bar" on one cell is an anecdote; evidence is the same
+  pattern repeating across symbols and timeframes.
+- No number, verdict or computed behaviour changed — this release is naming only.
+
 ## 1.0.18
 
 - **A second kind of staleness, with its own words: "stale data".** Until today the card only
