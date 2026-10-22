@@ -2,8 +2,8 @@
 
 [فارسی](releases.md) · **English**
 
-The current version of this change is **1.0.9**; the previously published tag is
-**v1.0.6**, and this change will ship as **v1.0.9**.
+The current version of this change is **1.0.10**; the previously published tag is
+**v1.0.6**, and this change will ship as **v1.0.10**.
 `VERSION` is the source of truth for the release number; the tag name is exactly `v`
 plus that number.
 
@@ -11,7 +11,7 @@ plus that number.
 
 - Every set of changes — including a documentation-only change — carries a version
   bump and a new section in `CHANGELOG.md` (and `CHANGELOG.en.md`).
-- A regular fix: PATCH, e.g. `1.0.8` to `1.0.9`.
+- A regular fix: PATCH, e.g. `1.0.9` to `1.0.10`.
 - A backwards-compatible feature: MINOR, e.g. `1.0.1` to `1.1.0`.
 - A breaking change: MAJOR, e.g. `1.0.1` to `2.0.0`.
 - The number must be identical in `VERSION`, `server/main.py`, `package.json`, the two
@@ -30,7 +30,7 @@ From the project root:
 ```sh
 npm ci --no-audit --no-fund
 npm run build
-python scripts/release_notes.py --tag v1.0.9
+python scripts/release_notes.py --tag v1.0.10
 python -m pytest -q server/tests
 npm run test:display
 npm run lint
@@ -47,17 +47,17 @@ specific to this release; on the next release change them to match `VERSION`.
 After review and green tests, commit the related changes and then:
 
 ```sh
-git tag -a v1.0.9 -m "nobitrader 1.0.9"
+git tag -a v1.0.10 -m "nobitrader 1.0.10"
 ```
 
 Only after push is approved:
 
 ```sh
-git push --atomic origin main v1.0.9
+git push --atomic origin main v1.0.10
 ```
 
 If the tag already exists, do not run `git tag` again. Before pushing, check where the
-tag points with `git show v1.0.9 --no-patch`. `--atomic` prevents a half-published
+tag points with `git show v1.0.10 --no-patch`. `--atomic` prevents a half-published
 branch/tag if one of them is rejected.
 
 ## GitHub Release
