@@ -2,6 +2,41 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 1.0.12
+
+- **The CSS build is deterministic.** Tailwind v4 scans every text file in the project,
+  Python modules and ADRs included. One docstring sentence ("the factor would invert
+  the order") pulled `.invert` into `tailwind.css` and turned CI's "generated files are
+  current" step red — the build had become dependent on the wording of documentation.
+  With `source(none)` and three explicit `@source` lines the stylesheet is a function of
+  the page and its two engines only (7.2 KB of junk utilities dropped).
+  `test_the_stylesheet_scans_only_the_page_and_its_engines` guards that boundary.
+- **Signal thresholds depend on the timeframe — and nobody could see it (ADR-0020).**
+  `LONG_SCORE_MIN = 68` is one number for every symbol and every timeframe, so "few
+  signals today" could mean three different things: a quiet market, a low median
+  score, or an unreachable threshold. `server/adaptive.py` separates them: the current
+  ATR percentile, the volatility regime (calm/normal/volatile), and **how often the
+  fixed threshold actually fires**.
+- **No decision changed.** Every report returns `applied: false`; the proposal is
+  evidence, not a behaviour change. Actually applying it needs its own ADR.
+- **Measured on real data (reference feed, 340 bars):** the same 68 makes **40%** of
+  15-minute bars LONG, 19.4% on 1h, 21.2% on 4h and 17.3% on the daily. One constant
+  for all four is an unintended policy.
+- **The proposal is bounded and ordered:** the factor is clamped to `[0.85, 1.25]`, a
+  shorter timeframe never gets a lower bar, and a factor that would push `NEUTRAL`
+  above `LONG` is refused as `band-collapsed` rather than reported.
+- **`GET /api/adaptive/thresholds/{symbol}`** with `tf`, `source=nobitex|reference` and
+  `limit`; plus **`scripts/adaptive_report.py`**, which prints the four-timeframe table.
+  Named refusals: `insufficient-data`, `flat-market`, `bad-timeframe`, `bad-candles`,
+  `band-collapsed`.
+- **Fixes a real defect in the reference feed (1.0.10):** KuCoin's candle endpoint takes
+  a **window**, not a count — a request for 700 bars quietly returned 100 and nobody
+  noticed. It now pages (`startAt`/`endAt`, capped at `MAX_PAGES`), de-duplicates
+  overlapping pages, and reports `requested`, `pages` and **`truncated`** in its
+  metadata: a short series says it is short.
+- 27 new tests: 24 in `server/tests/test_adaptive.py` and 3 paging tests in
+  `server/tests/test_reference_feed.py`.
+
 ## 1.0.11
 
 - **One page, one artifact (ADR-0019).** `nobitex-mobile.html` is not a second

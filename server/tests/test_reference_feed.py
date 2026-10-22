@@ -241,3 +241,81 @@ def test_the_backtest_route_surfaces_a_reference_refusal(monkeypatch):
     assert out["ok"] is False
     assert out["error"] == "no-fx"
     assert out["candles_source"] == "reference"
+
+
+# --------------------------------------------------------------------------- #
+# 5. paging — a request for N bars must not silently arrive as 100 (1.0.12)
+# --------------------------------------------------------------------------- #
+def _series(start: int, count: int, step: int = 3600) -> dict:
+    """A run of KuCoin rows ending at `start`, oldest first."""
+    data = []
+    for i in range(count):
+        t = start + i * step
+        base = 80000 + i
+        data.append([str(t), str(base), str(base + 20), str(base + 40), str(base - 40),
+                     "12.5", "1.0"])
+    return {"code": "200000", "data": data}
+
+
+def test_paging_keeps_asking_until_the_caller_has_what_it_asked_for(monkeypatch):
+    """The venue answers a *window*, so 400 bars need more than one request."""
+    calls: list[tuple[int, int]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        q = dict(pair.split("=") for pair in request.url.query.decode().split("&"))
+        start, end = int(q["startAt"]), int(q["endAt"])
+        calls.append((start, end))
+        step = 3600
+        count = min(rf.PAGE_BARS, max(0, (end - start) // step))
+        return httpx.Response(200, json=_series(end - count * step, count, step))
+
+    _install(monkeypatch, handler)
+    rows, meta = _run(rf.fetch_candles("BTCUSDT", "1h", limit=400))
+
+    assert len(rows) == 400
+    assert meta["requested"] == 400
+    assert meta["truncated"] is False
+    assert meta["pages"] >= 2, "one page holds PAGE_BARS, so 400 must page"
+    # Each page walks strictly backwards, and no timestamp is duplicated.
+    assert len(calls) == meta["pages"]
+    assert len({r["t"] for r in rows}) == len(rows)
+    assert [r["t"] for r in rows] == sorted(r["t"] for r in rows)
+
+
+def test_a_venue_that_has_nothing_older_stops_and_says_truncated(monkeypatch):
+    """A short answer is reported as short, never padded and never implied full."""
+    state = {"page": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        state["page"] += 1
+        if state["page"] > 2:
+            return httpx.Response(200, json={"code": "200000", "data": []})
+        q = dict(pair.split("=") for pair in request.url.query.decode().split("&"))
+        end = int(q["endAt"])
+        return httpx.Response(200, json=_series(end - 100 * 3600, 100, 3600))
+
+    _install(monkeypatch, handler)
+    rows, meta = _run(rf.fetch_candles("BTCUSDT", "1h", limit=400))
+
+    assert len(rows) < 400
+    assert meta["truncated"] is True
+    assert meta["rows"] == len(rows)
+    assert state["page"] <= rf.MAX_PAGES + 1, "paging must terminate"
+
+
+def test_paging_stops_at_the_hard_page_limit(monkeypatch):
+    """A venue that always answers the same full page must not loop forever."""
+    calls = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        # A fixed window of rows, ignoring startAt: every page looks "fresh"
+        # only because the timestamps are new — the loop is bounded by MAX_PAGES.
+        return httpx.Response(200, json=_series(1_700_000_000 + calls["n"] * 10 ** 6,
+                                                rf.PAGE_BARS))
+
+    _install(monkeypatch, handler)
+    rows, meta = _run(rf.fetch_candles("BTCUSDT", "1h", limit=10_000))
+    assert meta["pages"] == rf.MAX_PAGES
+    assert calls["n"] == rf.MAX_PAGES
+    assert len(rows) <= rf.PAGE_BARS * rf.MAX_PAGES

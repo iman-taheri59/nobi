@@ -358,7 +358,7 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(
     title="nobiTrader",
-    version="1.0.11",
+    version="1.0.12",
     lifespan=lifespan,
 )
 
@@ -2835,7 +2835,7 @@ async def exec_mode_set(payload: dict, request: Request):
     return {"ok": True, **_exec_mode_payload(), **provenance()}
 
 
-# ---------------- Reference feed (ADR-0014, 1.0.11) ----------------
+# ---------------- Reference feed (ADR-0014, 1.0.12) ----------------
 # A second venue, for developing outside Iran and for sanity-checking the
 # numbers. Read-only, clearly labelled, and never a stand-in for the exchange:
 # `/api/backtest/run` turns it into a REFERENCE_DATA verdict that cannot pass.
@@ -2897,6 +2897,45 @@ async def reference_cross_check(symbol: str = "BTCUSDT"):
         if out["verdict"] != "aligned":
             out["note"] = ("a gap this size is a stale or mis-scaled feed, not an "
                            "arbitrage: check both before trusting either")
+    return out
+
+
+@app.get("/api/adaptive/thresholds/{symbol}")
+async def adaptive_thresholds(
+    symbol: str,
+    tf: str = Query("1h"),
+    source: str = Query("nobitex", pattern="^(nobitex|reference)$"),
+    limit: int = Query(400, ge=120, le=2000),
+    toman_per_usdt: float | None = None,
+):
+    """What the fixed score thresholds amount to on *this* timeframe.
+
+    `LONG_SCORE_MIN = 68` is one number for every symbol and every timeframe, so
+    "the strategy is quiet" and "68 is unreachable at 4h" look the same on the
+    dashboard. This measures the difference and recommends a factor. It always
+    reports `applied: false`: the number is evidence, not a behaviour change.
+    """
+    from adaptive import AdaptiveError
+    from adaptive import report as adaptive_report
+
+    sym = (symbol or "").upper()
+    out: dict = {"ok": True, "symbol": sym, "tf": tf, "candles_source": source}
+    try:
+        if source == "reference":
+            rows, ref_meta = await reference_feed.fetch_candles(
+                sym, tf, limit=limit, fx=toman_per_usdt)
+            out["reference"] = ref_meta
+        else:
+            rows, _src = await client.get_candles_ex(sym, tf, limit)
+    except reference_feed.ReferenceError as e:
+        return {**out, "ok": False, "error": e.code, "message": e.message, "meta": e.meta}
+    except UpstreamUnavailable as e:
+        return {**out, "ok": False, **upstream_error("candles", str(e))}
+    try:
+        out.update(await asyncio.to_thread(adaptive_report, rows, tf))
+    except AdaptiveError as e:
+        return {**out, "ok": False, "error": e.code, "message": e.message, "meta": e.meta}
+    out["bars"] = len(rows)
     return out
 
 

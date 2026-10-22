@@ -65,6 +65,15 @@ TF_SECONDS: dict[str, int] = {
     "1m": 60, "5m": 300, "15m": 900, "30m": 1800, "1h": 3600, "4h": 14400, "D": 86400,
 }
 
+#: KuCoin answers `/market/candles` with a window, not a count: asking without
+#: `startAt`/`endAt` returned 100 rows here regardless of the timeframe, so a
+#: request for 700 bars used to arrive as 100 and nothing said so. One page is
+#: sized in seconds and pages walk backwards until the caller has what it asked
+#: for — with a hard stop, because "fetch until it stops returning data" is how a
+#: background worker ends up in an unbounded loop.
+PAGE_BARS = 300
+MAX_PAGES = 8
+
 QUOTE_SUFFIXES = ("USDT", "USDC", "USD", "BTC", "ETH")
 IRT_SUFFIXES = ("IRT", "IRR", "TMN")
 
@@ -207,32 +216,46 @@ async def fetch_candles(
             )
         rate = toman * RIAL_PER_TOMAN
 
-    url = f"{provider.base}/api/v1/market/candles?type={TF_MAP[tf]}&symbol={pair}"
+    wanted = max(1, int(limit))
+    step = TF_SECONDS[tf] * PAGE_BARS
+    now = int(time.time())
+    seen: dict[int, dict] = {}
+    pages = 0
+    end = now
     async with _client(provider) as client:
-        payload = await _get_json(client, url)
+        while len(seen) < wanted and pages < MAX_PAGES:
+            url = (f"{provider.base}/api/v1/market/candles?type={TF_MAP[tf]}&symbol={pair}"
+                   f"&startAt={end - step}&endAt={end}")
+            payload = await _get_json(client, url)
+            pages += 1
+            if str(payload.get("code")) != "200000" or not isinstance(payload.get("data"), list):
+                raise ReferenceError("provider-error", f"unexpected payload from {provider.name}",
+                                     {"code": payload.get("code"), "page": pages})
+            fresh = 0
+            for item in payload["data"]:
+                try:
+                    # [start, open, close, high, low, volume, turnover] — close comes
+                    # *third* in KuCoin's row, which is a silent way to swap high/low.
+                    t, o, c, h, lo, v = item[0], item[1], item[2], item[3], item[4], item[5]
+                    stamp = int(float(t))
+                except (TypeError, ValueError, IndexError):
+                    continue
+                if stamp in seen:
+                    continue          # the window overlaps the previous page
+                seen[stamp] = {
+                    "t": stamp,
+                    "o": float(o) * rate,
+                    "h": float(h) * rate,
+                    "l": float(lo) * rate,
+                    "c": float(c) * rate,
+                    "v": float(v),
+                }
+                fresh += 1
+            if fresh == 0:
+                break                  # the venue has nothing older to give
+            end = min(seen) - 1
 
-    if str(payload.get("code")) != "200000" or not isinstance(payload.get("data"), list):
-        raise ReferenceError("provider-error", f"unexpected payload from {provider.name}",
-                             {"code": payload.get("code")})
-
-    rows: list[dict] = []
-    for item in payload["data"]:
-        try:
-            # [start, open, close, high, low, volume, turnover] — close comes
-            # *third* in KuCoin's row, which is a silent way to swap high/low.
-            t, o, c, h, lo, v = item[0], item[1], item[2], item[3], item[4], item[5]
-            rows.append({
-                "t": int(float(t)),
-                "o": float(o) * rate,
-                "h": float(h) * rate,
-                "l": float(lo) * rate,
-                "c": float(c) * rate,
-                "v": float(v),
-            })
-        except (TypeError, ValueError, IndexError):
-            continue
-    rows.sort(key=lambda r: r["t"])
-    rows = rows[-max(1, int(limit)):]
+    rows = [seen[t] for t in sorted(seen)][-wanted:]
     if not rows:
         raise ReferenceError("empty", f"{provider.name} returned no candles for {pair} {tf}",
                              {"pair": pair, "tf": tf})
@@ -246,6 +269,11 @@ async def fetch_candles(
         "rows": len(rows),
         "first": rows[0]["t"],
         "last": rows[-1]["t"],
+        # A short answer is stated, never implied: a caller that asked for 700
+        # bars and got 240 must not believe it backtested 700.
+        "requested": wanted,
+        "pages": pages,
+        "truncated": len(rows) < wanted,
     }
     return rows, meta
 
