@@ -2,7 +2,7 @@
 
 [فارسی](README.md) · **English**
 
-Current version: **1.0.11** · tag: **v1.0.6**
+Current version: **1.0.12** · tag: **v1.0.6**
 
 See [versioning and GitHub releases](docs/releases.en.md) for the rules on bumping
 the version, tagging and shipping the mobile file, and the
@@ -200,7 +200,7 @@ runs — so a preview cannot promise something the broker would reject. Details
 Start at the [documentation map](docs/README.en.md). The short version:
 
 - [`docs/README.md`](docs/README.md) — the map (Persian) · [`English`](docs/README.en.md)
-- [`docs/adr/`](docs/adr) — 19 ADRs, **each in Persian and English** (data honesty
+- [`docs/adr/`](docs/adr) — 20 ADRs, **each in Persian and English** (data honesty
   ADR-0014, unit boundary ADR-0015, one page / one artifact ADR-0019)
 - [`docs/adr/README.md`](docs/adr/README.md) — which ADR is implemented, with the code
   that proves it

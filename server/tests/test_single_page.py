@@ -143,3 +143,31 @@ def test_the_dashboard_asks_for_online_coin_metadata() -> None:
     assert re.search(r"setInterval\(loadCoinMetadata,\s*60\s*\*\s*60\s*\*\s*1000\)", app)
     # Cosmetic: it must never gate the market data boot path.
     assert "try {\n      await NBX.boot();\n      loadCoinMetadata();" in app
+
+
+def test_the_stylesheet_scans_only_the_page_and_its_engines() -> None:
+    """A docs edit must not be able to change the CSS.
+
+    Tailwind v4 detects sources automatically: every text file in the project,
+    Python and Markdown included. The extractor reads raw text, so prose becomes
+    utilities — a docstring saying "the factor would invert the order" emitted
+    `.invert{--tw-invert:invert(100%)}` into `tailwind.css`, and CI then failed
+    its "generated files are current" step because the committed CSS no longer
+    matched a rebuild. The build depended on the wording of documentation.
+
+    `source(none)` plus three explicit `@source` lines makes the stylesheet a
+    function of the page and its two engines, and of nothing else.
+    """
+    src = (ROOT / "assets" / "css" / "tailwind.src.css").read_text(encoding="utf-8")
+    assert '@import "tailwindcss" source(none);' in src, (
+        "automatic source detection is back on: documentation text can now emit CSS"
+    )
+    assert src.count('@import "tailwindcss"') == 1
+    sources = re.findall(r'@source\s+"([^"]+)"', src)
+    assert sorted(sources) == sorted(
+        ["../../index.html", "../../nbx-app.js", "../../nbx-core.js"]
+    ), f"unexpected scan set: {sources}"
+    # The compiled stylesheet is what the page actually loads; it must exist and
+    # be the product of the file above.
+    compiled = (ROOT / "assets" / "css" / "tailwind.css").read_text(encoding="utf-8")
+    assert compiled.startswith("/*! tailwindcss v4"), "unexpected stylesheet header"

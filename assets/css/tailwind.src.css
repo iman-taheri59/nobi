@@ -11,11 +11,21 @@
  */
 @layer theme, base, components, utilities;
 
-@import "tailwindcss";
-
-/* Note: the extractor reads raw text, so `table { border-collapse: collapse }`
- * in index.html emits a `.collapse` utility that nothing uses. It is harmless
- * output of the extractor, not a class anyone wrote; do not hunt for it. */
+/* Scan ONLY the three files that can contain a class name.
+ *
+ * Tailwind v4 detects sources automatically: every text file in the project,
+ * including this repository's Python modules, ADRs and CHANGELOGs. The extractor
+ * reads raw text, so prose becomes utilities — writing "the factor would invert
+ * the order" in a docstring emitted `.invert{--tw-invert:invert(100%)}` into the
+ * stylesheet, and CI then failed the "generated files are current" step because
+ * the committed CSS no longer matched a rebuild. That is the worst shape of
+ * failure: the build depends on the wording of documentation.
+ *
+ * `source(none)` turns automatic detection off, so a docs edit can never change
+ * the CSS again. The note below still applies to index.html itself: it contains
+ * `table { border-collapse: collapse }`, so a `.collapse` utility appears that
+ * nothing uses. Harmless extractor output, not a class anyone wrote. */
+@import "tailwindcss" source(none);
 @source "../../index.html";
 @source "../../nbx-app.js";
 @source "../../nbx-core.js";
