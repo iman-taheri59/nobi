@@ -2,7 +2,7 @@
 
 **فارسی** · [English](README.en.md)
 
-نسخهٔ جاری: **1.0.16**. راهنمای [نسخه‌بندی و انتشار GitHub](releases.md) ([English](releases.en.md)) و [تاریخچهٔ تغییرات](../CHANGELOG.md) ([English](../CHANGELOG.en.md)).
+نسخهٔ جاری: **1.0.17**. راهنمای [نسخه‌بندی و انتشار GitHub](releases.md) ([English](releases.en.md)) و [تاریخچهٔ تغییرات](../CHANGELOG.md) ([English](../CHANGELOG.en.md)).
 
 ## نقشهٔ مستندات
 
@@ -88,6 +88,7 @@
 | راهنمای تست | [`testing.md`](testing.md) | [`testing.en.md`](testing.en.md) |
 | مشخصات و لوگوی نمادها | [`coin-metadata.md`](coin-metadata.md) | [`coin-metadata.en.md`](coin-metadata.en.md) |
 | نمایش مالی | [`financial-display.md`](financial-display.md) | [`financial-display.en.md`](financial-display.en.md) |
+| شاهد خارج‌از‌نمونه | [`evidence.md`](evidence.md) | [`evidence.en.md`](evidence.en.md) |
 | تنظیم نردبان سود (`NBX_RR_LEVELS`) | [`rr-ladder-tuning.md`](rr-ladder-tuning.md) | [`rr-ladder-tuning.en.md`](rr-ladder-tuning.en.md) |
 | نقشهٔ قابلیت‌ها | [`roadmap/fa/`](roadmap/fa) | **در انتظار** |
 | کاتالوگ موتورها | [`analysis/`](analysis) | **در انتظار** |
