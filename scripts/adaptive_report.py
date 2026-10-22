@@ -4,6 +4,8 @@
     python3 scripts/adaptive_report.py BTCUSDT --source reference
     python3 scripts/adaptive_report.py BTCIRT  --source reference --toman 100798.65
     python3 scripts/adaptive_report.py BTCIRT  --source nobitex
+    python3 scripts/adaptive_report.py BTCUSDT --source nobitex --evidence
+    python3 scripts/adaptive_report.py BTCUSDT --source nobitex --evidence --factor 1.25
 
 `LONG_SCORE_MIN = 68` is one number for every timeframe, so "the strategy is
 quiet" and "68 is unreachable at 4h" look identical on the dashboard. This prints
@@ -11,7 +13,11 @@ the measurement side by side — ATR percentile, regime, the factor `adaptive.py
 would apply, and how often the *fixed* threshold actually fires — so a tuning
 argument can start from numbers instead of taste.
 
-It prints. It does not change anything: `applied` is `false` on every row.
+`--evidence` adds the paired walk-forward from `adaptive_evidence.py`: the same
+windows, one variable, and a verdict that arrives with its sample size. It is the
+same comparison the dashboard shows — and like the dashboard, it prints and does
+not apply. `applied` is `false` on every row, including a verdict that favours a
+different bar.
 """
 from __future__ import annotations
 
@@ -23,6 +29,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "server"))
 
 import adaptive
+import adaptive_evidence
 import reference_feed
 
 TFS = ("15m", "1h", "4h", "D")
@@ -72,7 +79,40 @@ async def run(args: argparse.Namespace) -> int:
                   f"median score {rep['frequency']['median_score']}")
     print()
     print("applied: false — this is a measurement, not a retune. See ADR-0020.")
+
+    if args.evidence:
+        print()
+        await print_evidence(args)
     return 1 if failures == len(args.timeframes) else 0
+
+
+async def print_evidence(args: argparse.Namespace) -> None:
+    """The A/B walk-forward, on the same candles, printed the same way it is shown."""
+    header = (f"{'tf':>4} {'windows':>7} {'PF base→cand':>13} {'Δexp R':>7} "
+              f"{'trades':>7} {'verdict':>20}")
+    print(f"{args.symbol.upper()} — paired walk-forward, source: {args.source}")
+    print(header)
+    print("-" * len(header))
+    for tf in args.timeframes:
+        try:
+            rows, _meta = await fetch(args.symbol, tf, args.source, max(args.bars, 900), args.toman)
+            out = adaptive_evidence.compare(rows, tf, args.symbol.upper(),
+                                            factor=args.factor, source=args.source)
+        except Exception as exc:
+            code = getattr(exc, "code", type(exc).__name__)
+            message = getattr(exc, "message", str(exc))
+            print(f"{tf:>4} refused: {code} — {message[:70]}")
+            continue
+        if not out.get("ok"):
+            print(f"{tf:>4} refused: {out.get('error')} — {str(out.get('message'))[:70]}")
+            continue
+        b, a, d, w = out["baseline"], out["adaptive"], out["delta"], out["windows"]
+        print(f"{tf:>4} {w['count']:>7} {b['profit_factor']:>6.2f}→{a['profit_factor']:<6.2f} "
+              f"{d['expectancy_r']:>+7.3f} {b['trades']:>3}→{a['trades']:<3} "
+              f"{out['verdict']:>20}")
+        print(f"      {out['why']}")
+    print()
+    print("applied: false — evidence for ADR-0021, not a retune of the engine.")
 
 
 def main() -> int:
@@ -84,6 +124,10 @@ def main() -> int:
                     help="toman per USDT, required to derive a rial market from the reference feed")
     ap.add_argument("--timeframes", nargs="+", default=list(TFS))
     ap.add_argument("-v", "--verbose", action="store_true")
+    ap.add_argument("--evidence", action="store_true",
+                    help="also run the paired walk-forward (higher/lower bar vs the constant)")
+    ap.add_argument("--factor", type=float, default=None,
+                    help="test this factor instead of the one adaptive.py proposes")
     return asyncio.run(run(ap.parse_args()))
 
 

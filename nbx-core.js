@@ -233,7 +233,19 @@
     return { pdi, ndi, adx };
   };
 
-  TA.signalScore = function (candles) {
+  // The two bars that turn a score into a direction. Named once here so the
+  // Python side can be compared with them (server/tests/test_single_source_constants.py)
+  // and so a caller can ask "what if the bar were different?" without forking
+  // this function. Defaults are the historical constants: unchanged behaviour.
+  const LONG_SCORE_MIN = 68;
+  const NEUTRAL_SCORE_MIN = 55;
+
+  TA.signalScore = function (candles, opts) {
+    const longMin = opts && opts.longMin != null ? opts.longMin : LONG_SCORE_MIN;
+    const neutralMin = opts && opts.neutralMin != null ? opts.neutralMin : NEUTRAL_SCORE_MIN;
+    if (!(neutralMin < longMin)) {
+      throw new Error(`neutralMin (${neutralMin}) must be below longMin (${longMin})`);
+    }
     if (!candles || candles.length < 60) {
       return { score: 0, direction: 'NEUTRAL', regime: 'UNKNOWN', components: {}, reason: 'insufficient data' };
     }
@@ -291,7 +303,7 @@
     const raw = 0.4 * comp.trend + 0.25 * comp.momentum + 0.15 * comp.volume + 0.2 * comp.structure;
     const score = clamp(raw * gating, 0, 100);
 
-    const direction = score >= 68 ? 'LONG' : score >= 55 ? 'NEUTRAL' : 'EXIT';
+    const direction = score >= longMin ? 'LONG' : score >= neutralMin ? 'NEUTRAL' : 'EXIT';
     const stopDist = atr[i] * 2;
     return {
       score: +score.toFixed(1),

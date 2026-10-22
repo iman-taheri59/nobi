@@ -23,19 +23,28 @@ Design
 
 Two refusals that exist because the alternative would be a lie
 -------------------------------------------------------------
-``lower-bar-untestable``
-    ``ta_engine`` derives the LONG/EXIT *label* from ``LONG_SCORE_MIN`` itself, so
-    lowering ``min_score`` below 68 filters nothing — the signal never says LONG
-    below 68 in the first place. A factor below 1 therefore cannot be tested
-    against this engine, and pretending otherwise would produce a confident
-    "no difference" that means "we changed nothing". Until the direction
-    threshold is a parameter, only a *higher* bar is measurable.
-
 ``no-op``
     A factor of exactly 1.0 has nothing to compare; two identical runs reported
     as evidence would be theatre.
 
-Both are named, and both carry the reason in ``why``.
+``bad-factor``
+    A factor outside the measurable range, or scaled bars that cross. Outside the
+    range the comparison is not a threshold experiment; crossed bars make NEUTRAL
+    unreachable and would quietly turn three states into two.
+
+One claim that had to be withdrawn (kept here because it was nearly written into a
+test): *"a lower bar can only add trades."* It is true of the **labels** — a lower
+long bar admits a superset of LONG signals — but not of the trade count, because
+the walk-forward re-optimises the stop/target grid on the train slice and a
+different bar drives it to a different parameter set. The monotonicity that holds
+is on signals, and that is what the tests assert.
+
+History worth keeping: until 1.0.16 a factor below 1 was refused outright as
+``lower-bar-untestable``. That was correct *then* — ``ta_engine`` derived the
+LONG/EXIT label from ``LONG_SCORE_MIN`` itself, so lowering ``min_score`` filtered
+nothing and "no difference" would have meant "we changed nothing". 1.0.16 made
+the direction thresholds parameters (ADR-0021's prerequisite), so both directions
+are now measurable — with the constant still the default, so nothing else moved.
 """
 from __future__ import annotations
 
@@ -47,7 +56,7 @@ import pandas as pd
 from adaptive import AdaptiveError
 from adaptive import report as adaptive_report
 from backtest import DEFAULT_PARAM_GRID, MIN_WARMUP, WalkForwardRunner, _auto_windows
-from ta_engine import LONG_SCORE_MIN, ta_score_series
+from ta_engine import LONG_SCORE_MIN, NEUTRAL_SCORE_MIN, ta_score_series
 
 #: Below this many windows the comparison cannot say anything: one window is an
 #: anecdote with a chart.
@@ -64,6 +73,12 @@ DELTA_EXP_R = 0.05
 
 #: A factor within this distance of 1.0 is the same bar after rounding.
 NOOP_EPS = 1e-9
+
+#: The range worth measuring. ADR-0020 clamps its recommendation to [0.85, 1.25];
+#: a factor far outside that is not a threshold experiment any more, it is a
+#: different strategy, and calling it evidence would launder the difference.
+MIN_FACTOR = 0.5
+MAX_FACTOR = 2.0
 
 
 def _pooled(windows: list[dict]) -> dict[str, Any]:
@@ -91,8 +106,11 @@ def _pooled(windows: list[dict]) -> dict[str, Any]:
     }
 
 
-def _run(df: pd.DataFrame, symbol: str, tf: str, tb: int, eb: int, min_score: float,
-         cfg: dict | None) -> list[dict]:
+def _run(df: pd.DataFrame, symbol: str, tf: str, tb: int, eb: int, long_min: float,
+         neutral_min: float, cfg: dict | None) -> list[dict]:
+    """One arm. The *labels* and the filter use the same bar, deliberately: an arm
+    whose signal says LONG at 58 while the backtester filters at 68 is testing
+    neither number."""
     base_cfg: dict[str, Any] = {
         "initial_equity": float((cfg or {}).get("initial_equity", 50_000)),
         "risk_pct": float((cfg or {}).get("risk_pct", 0.75)),
@@ -102,8 +120,8 @@ def _run(df: pd.DataFrame, symbol: str, tf: str, tb: int, eb: int, min_score: fl
         "max_concurrent": 5,
         "max_single_asset_pct": 25.0,
         "slippage_bps": float((cfg or {}).get("slippage_bps", 6)),
-        "min_score": float(min_score),
-        "_signals": ta_score_series(df),
+        "min_score": float(long_min),
+        "_signals": ta_score_series(df, long_min=long_min, neutral_min=neutral_min),
     }
     runner = WalkForwardRunner(train_bars=tb, eval_bars=eb)
     return runner.run(df, symbol, tf, base_cfg, grid=list(DEFAULT_PARAM_GRID))
@@ -156,8 +174,11 @@ def compare(
     proposed = float((measurement.get("scales") or {}).get("entry") or 1.0)
     used = round(float(factor if factor is not None else proposed), 4)
 
-    base_long = float((measurement.get("thresholds") or {}).get("base", {}).get("long") or LONG_SCORE_MIN)
+    base_pair = (measurement.get("thresholds") or {}).get("base") or {}
+    base_long = float(base_pair.get("long") or LONG_SCORE_MIN)
+    base_neutral = float(base_pair.get("neutral") or NEUTRAL_SCORE_MIN)
     scaled_long = round(base_long * used, 2)
+    scaled_neutral = round(base_neutral * used, 2)
 
     out: dict[str, Any] = {
         "symbol": symbol,
@@ -165,7 +186,12 @@ def compare(
         "candles_source": source,
         "applied": False,
         "factor": {"proposed": proposed, "tested": used},
-        "thresholds": {"base_long": base_long, "scaled_long": scaled_long},
+        "thresholds": {
+            "base_long": base_long,
+            "scaled_long": scaled_long,
+            "base_neutral": base_neutral,
+            "scaled_neutral": scaled_neutral,
+        },
         "bars": len(df),
         "measurement": {
             "regime": measurement.get("regime"),
@@ -179,19 +205,28 @@ def compare(
                 "message": "the tested factor is 1.0: the bar is unchanged, so there is "
                            "nothing to compare"}
 
-    if used < 1.0:
-        # Honest refusal rather than a comparison that changes nothing.
+    if not (MIN_FACTOR <= used <= MAX_FACTOR):
         return {
-            **out, "ok": False, "error": "lower-bar-untestable",
-            "message": "the engine derives LONG from the constant itself, so a bar below "
-                       f"{base_long:.0f} filters nothing; only a higher bar is measurable "
-                       "until the direction threshold becomes a parameter",
-            "meta": {"direction_threshold_fixed_at": base_long},
+            **out, "ok": False, "error": "bad-factor",
+            "message": f"factor {used} is outside the measurable range "
+                       f"[{MIN_FACTOR}, {MAX_FACTOR}]; outside it this is a different "
+                       "strategy, not a threshold experiment",
+            "meta": {"min_factor": MIN_FACTOR, "max_factor": MAX_FACTOR},
+        }
+
+    if not (scaled_neutral < scaled_long):
+        # Crossed bars make NEUTRAL unreachable: three states would become two,
+        # and the comparison would silently be about a different decision rule.
+        return {
+            **out, "ok": False, "error": "bad-factor",
+            "message": f"scaled bars cross (neutral {scaled_neutral} >= long {scaled_long}); "
+                       "NEUTRAL would be unreachable",
+            "meta": {"scaled_neutral": scaled_neutral, "scaled_long": scaled_long},
         }
 
     tb, eb = _auto_windows(len(df))
-    baseline = _pooled(_run(df, symbol, tf, tb, eb, base_long, cfg))
-    adaptive = _pooled(_run(df, symbol, tf, tb, eb, scaled_long, cfg))
+    baseline = _pooled(_run(df, symbol, tf, tb, eb, base_long, base_neutral, cfg))
+    adaptive = _pooled(_run(df, symbol, tf, tb, eb, scaled_long, scaled_neutral, cfg))
     verdict, why = _verdict(baseline, adaptive)
 
     # A simulated or reference feed may demonstrate the method; it may not

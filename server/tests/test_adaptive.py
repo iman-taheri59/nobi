@@ -271,3 +271,16 @@ def test_the_explanation_follows_the_sign_of_its_own_factor() -> None:
     assert slow["scales"]["entry"] < 1 and "is quieter than" in slow["why"]
     middle = ad.report(candles(400), "1h")
     assert "reference timeframe" in middle["why"]
+
+
+def test_crossed_thresholds_are_refused_at_the_engine_boundary():
+    """1.0.16 turned the two bars into parameters. Crossed bars would make
+    NEUTRAL unreachable and turn three states into two without anyone noticing,
+    so the engine refuses instead of rendering."""
+    import ta_engine
+
+    assert ta_engine.direction_for(70.0) == "LONG"
+    assert ta_engine.direction_for(70.0, long_min=75.0, neutral_min=55.0) == "NEUTRAL"
+    assert ta_engine.direction_for(58.0, long_min=57.8, neutral_min=46.75) == "LONG"
+    with pytest.raises(ValueError):
+        ta_engine.direction_for(70.0, long_min=40.0, neutral_min=60.0)

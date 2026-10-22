@@ -11,9 +11,12 @@ six trades, or simulated candles. So the tests pin exactly those properties:
 2. **The arithmetic of a higher bar.** Raising the bar can only remove trades,
    never add them — a run where the adaptive arm trades *more* means something
    other than the bar changed.
-3. **Named refusals.** A factor of 1.0 is `no-op`; a factor below 1.0 is
-   `lower-bar-untestable`, because the engine derives LONG from the constant
-   itself. Neither returns a flattering number.
+3. **Named refusals.** A factor of 1.0 is `no-op`; crossed bars are `bad-factor`
+   (NEUTRAL would be unreachable, turning three states into two). Neither returns
+   a flattering number. A factor *below* 1 used to be refused as
+   `lower-bar-untestable`; 1.0.16 made the direction thresholds parameters, so it
+   is now measurable — and the tests below hold the new invariant, that a lower
+   bar can only add trades.
 4. **Nothing is applied, ever.** `applied` and `promotable` are `False` on every
    path, and a verdict is never produced by a reference feed (ADR-0009/0014).
 5. **Determinism.** The same candles produce the same numbers twice; an evidence
@@ -82,15 +85,67 @@ def test_a_factor_of_one_is_a_named_no_op() -> None:
     assert r["applied"] is False
 
 
-def test_a_lower_bar_is_refused_because_it_cannot_be_tested() -> None:
-    """`ta_engine` labels LONG with the constant itself, so min_score < 68
-    filters nothing. A "no difference" result there would mean "we changed
-    nothing" — so it is a refusal with the reason attached, not a number."""
+def test_a_lower_bar_is_now_testable_and_can_only_add_trades() -> None:
+    """1.0.16 made the direction thresholds parameters, so a factor below 1 is a
+    real comparison rather than a no-op wearing a verdict.
+
+    The invariant that makes it meaningful is on the **labels**, and it is worth
+    being precise about why it is not on the trade count: the walk-forward
+    re-optimises the stop/target grid on the train slice, so a different bar can
+    drive it to a different parameter set and land on fewer eval trades. That is
+    a real result, not a bug — the assertion below is the one that must hold.
+    """
     r = ev.compare(ROWS, "15m", "BTCUSDT", factor=0.85, source="nobitex")
-    assert r["ok"] is False
-    assert r["error"] == "lower-bar-untestable"
-    assert r["meta"]["direction_threshold_fixed_at"] == pytest.approx(68.0)
+    assert r["ok"] is True
+    assert r["thresholds"]["scaled_long"] < r["thresholds"]["base_long"]
+    assert r["thresholds"]["scaled_neutral"] < r["thresholds"]["base_neutral"]
     assert r["applied"] is False
+
+    # The signal-level monotonicity: a lower bar labels a superset LONG.
+    import pandas as pd
+
+    from ta_engine import ta_score_series
+
+    df = pd.DataFrame(ROWS)
+    for col in ("t",):
+        df[col] = pd.to_datetime(df[col], unit="s", utc=True)
+    df = df.astype({"o": float, "h": float, "l": float, "c": float, "v": float})
+    base = ta_score_series(df)
+    lower = ta_score_series(df, long_min=r["thresholds"]["scaled_long"],
+                            neutral_min=r["thresholds"]["scaled_neutral"])
+    base_long = sum(1 for sig in base if sig and sig["direction"] == "LONG")
+    lower_long = sum(1 for sig in lower if sig and sig["direction"] == "LONG")
+    base_neutral = sum(1 for sig in base if sig and sig["direction"] == "NEUTRAL")
+    lower_neutral = sum(1 for sig in lower if sig and sig["direction"] == "NEUTRAL")
+    assert lower_long >= base_long, "a lower bar admitted fewer LONG labels"
+    # NEUTRAL *shrinks*, and that is correct: its strongest members are promoted
+    # to LONG. The set that has to grow is "LONG or NEUTRAL" — the bars the old
+    # rule called something other than EXIT.
+    assert lower_long + lower_neutral >= base_long + base_neutral, \
+        "a lower bar pushed bars into EXIT that the higher bar kept alive"
+
+
+def test_both_arms_use_their_own_bars_for_the_label_not_just_the_filter() -> None:
+    """The failure this guards: signals labelled with the constant while the
+    backtester filters with the candidate — two different bars in one arm, which
+    tests neither. Verified by construction: with the label still fixed at 68, a
+    lower factor could not add a single trade, and the test above would fail."""
+    import inspect
+
+    src = inspect.getsource(ev._run)
+    assert "ta_score_series(df, long_min=long_min, neutral_min=neutral_min)" in src
+    assert '"min_score": float(long_min)' in src
+
+
+def test_a_factor_outside_the_measurable_range_is_refused() -> None:
+    """Outside [0.5, 2.0] this is a different strategy, not a threshold
+    experiment, and calling it evidence would launder the difference."""
+    for factor in (0.01, 3.0):
+        r = ev.compare(ROWS, "15m", "BTCUSDT", factor=factor, source="nobitex")
+        assert r["ok"] is False, f"factor {factor} was measured anyway"
+        assert r["error"] == "bad-factor"
+        assert "measurable range" in r["message"]
+        assert r["applied"] is False
 
 
 def test_a_thin_sample_is_inconclusive_rather_than_encouraging() -> None:
@@ -116,7 +171,8 @@ def test_a_reference_feed_can_never_certify_a_strategy() -> None:
 def test_nothing_is_ever_applied_and_no_promotion_is_offered() -> None:
     from typing import Any
 
-    cases: tuple[dict[str, Any], ...] = ({"factor": 1.25}, {"factor": 1.0}, {"factor": 0.9}, {})
+    cases: tuple[dict[str, Any], ...] = ({"factor": 1.25}, {"factor": 1.0}, {"factor": 0.9},
+                                         {"factor": 0.01}, {"factor": 3.0}, {})
     for kwargs in cases:
         r = ev.compare(ROWS, "15m", "BTCUSDT", source="nobitex", **kwargs)
         assert r["applied"] is False, f"applied flipped for {kwargs}"
