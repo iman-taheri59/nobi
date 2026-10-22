@@ -2,6 +2,37 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 1.0.7
+
+- **Backtests no longer run cost-free.** `slippage_bps` defaulted to zero in three
+  places — the `EventBacktester` constructor, `run_and_save`, and the body of
+  `POST /api/backtest/run` (`b.get("slippage_bps", 0.0)`) — while `SLIP_BPS = 6` sat
+  defined in the same file and read by nothing. Every default report, and every
+  ADR-0009 gate verdict built on one, therefore described a market where orders fill
+  at the exact price. The default is now 6 bps on every path: the simulator,
+  `run_and_save`, `grid_search` and the browser simulator.
+- **The gate gained an eighth check: `costs_modeled`.** A `slippage_bps=0` run is
+  still allowed (to separate the effect of cost from the effect of the strategy) but
+  it can no longer reach `PASS`; it is named in `failed` and the gate message says
+  why. A frictionless run is optimistic, not conservative.
+- **The report carries its cost model:** `costs: {slippage_bps, fee_pct, modeled}` in
+  the report and in the file on disk, `slippage_bps` in the route response, and the
+  config hash moves when the cost model moves — two runs that differ only in cost are
+  two different experiments.
+- **Dashboard:** a "slippage (bps)" input defaulting to 6 in the backtest config, the
+  cost model shown in the gate bar (`6 bps`, or "no slippage"), and a Persian label
+  for the new gate check.
+- **The browser simulator now matches the server:** the same 6 bps, the fee from
+  `PAPER_FEE_PCT` (instead of a second copy), and targets read from the incoming
+  `tp1_r`/`tp2_r` — previously `1.5/2.5` were hard-coded and the operator's input was
+  ignored.
+- **ADR-0009 amended** (Persian + English): the "costs modelled" clause is now
+  enforced, with a before/after table and the operating procedure at 0 and 25 bps.
+- **README:** the current tag was corrected from `v1.0.4` to `v1.0.6` — it had been
+  stale since the 1.0.5 release.
+- 12 new tests in `server/tests/test_backtest_costs.py` and one in
+  `scripts/js_broker_test.js`.
+
 ## 1.0.6
 
 - The live take-profit ladder is no longer hidden: `GET /api/risk/state` publishes

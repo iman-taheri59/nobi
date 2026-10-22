@@ -2,7 +2,7 @@
 
 **فارسی** · [English](releases.en.md)
 
-نسخهٔ جاری این تغییر **1.0.6** و تگ انتشار آن **v1.0.6** است. `VERSION` مرجع شمارهٔ انتشار است؛ نام تگ دقیقاً `v` به‌علاوهٔ همان شماره است.
+نسخهٔ جاری این تغییر **1.0.7** است؛ تگ منتشرشدهٔ قبلی **v1.0.6** است و تگ این تغییر **v1.0.7** خواهد بود. `VERSION` مرجع شمارهٔ انتشار است؛ نام تگ دقیقاً `v` به‌علاوهٔ همان شماره است.
 
 ## قواعد از این پس
 
@@ -21,7 +21,7 @@
 ```sh
 npm ci --no-audit --no-fund
 npm run build
-python scripts/release_notes.py --tag v1.0.6
+python scripts/release_notes.py --tag v1.0.7
 python -m pytest -q server/tests
 npm run test:display
 npm run lint
@@ -35,16 +35,16 @@ npm run lint:dashboard
 پس از بازبینی و موفقیت تست‌ها، تغییرات مرتبط را commit کنید و سپس:
 
 ```sh
-git tag -a v1.0.6 -m "nobitrader 1.0.6"
+git tag -a v1.0.7 -m "nobitrader 1.0.7"
 ```
 
 فقط پس از اجازهٔ push:
 
 ```sh
-git push --atomic origin main v1.0.6
+git push --atomic origin main v1.0.7
 ```
 
-اگر تگ از قبل ساخته شده است، دوباره `git tag` نزنید. قبل از پوش، با `git show v1.0.6 --no-patch` مقصد تگ را بررسی کنید. `--atomic` مانع انتشار نصفهٔ شاخه/تگ در صورت رد یکی از آن‌ها می‌شود.
+اگر تگ از قبل ساخته شده است، دوباره `git tag` نزنید. قبل از پوش، با `git show v1.0.7 --no-patch` مقصد تگ را بررسی کنید. `--atomic` مانع انتشار نصفهٔ شاخه/تگ در صورت رد یکی از آن‌ها می‌شود.
 
 ## GitHub Release
 

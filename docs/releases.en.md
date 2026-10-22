@@ -2,7 +2,8 @@
 
 [فارسی](releases.md) · **English**
 
-The current version of this change is **1.0.6** and its release tag is **v1.0.6**.
+The current version of this change is **1.0.7**; the previously published tag is
+**v1.0.6**, and this change will ship as **v1.0.7**.
 `VERSION` is the source of truth for the release number; the tag name is exactly `v`
 plus that number.
 
@@ -29,7 +30,7 @@ From the project root:
 ```sh
 npm ci --no-audit --no-fund
 npm run build
-python scripts/release_notes.py --tag v1.0.6
+python scripts/release_notes.py --tag v1.0.7
 python -m pytest -q server/tests
 npm run test:display
 npm run lint
@@ -46,17 +47,17 @@ specific to this release; on the next release change them to match `VERSION`.
 After review and green tests, commit the related changes and then:
 
 ```sh
-git tag -a v1.0.6 -m "nobitrader 1.0.6"
+git tag -a v1.0.7 -m "nobitrader 1.0.7"
 ```
 
 Only after push is approved:
 
 ```sh
-git push --atomic origin main v1.0.6
+git push --atomic origin main v1.0.7
 ```
 
 If the tag already exists, do not run `git tag` again. Before pushing, check where the
-tag points with `git show v1.0.6 --no-patch`. `--atomic` prevents a half-published
+tag points with `git show v1.0.7 --no-patch`. `--atomic` prevents a half-published
 branch/tag if one of them is rejected.
 
 ## GitHub Release

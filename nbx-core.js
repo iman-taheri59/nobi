@@ -747,7 +747,14 @@
       const riskPct = +(cfg.risk_pct || 0.75);
       const stopK = +(cfg.atr_stop_k || 2.0);
       const maxOpen = +(cfg.max_concurrent || 5);
-      const feePct = 0.002;
+      const feePct = PAPER_FEE_PCT;
+      // Same cost model as the server: an offline backtest that fills at the
+      // exact price is not a cheaper backtest, it is a different one. 0 is
+      // accepted, and then `costs_modeled` below refuses to certify the run.
+      const slipBps = cfg.slippage_bps == null ? 6 : Math.max(0, +cfg.slippage_bps);
+      const slip = slipBps / 10000;
+      const tp1R = +(cfg.tp1_r || 1.5);
+      const tp2R = +(cfg.tp2_r || 2.5);
       const openPos = [];
       const closed = [];
       const equityCurve = [];
@@ -761,10 +768,10 @@
           const tr = openPos[pIdx];
           let exitPx = null, reason = null;
           if (tr.tp1 && c.h >= tr.tp1) {
-            exitPx = tr.tp1;
+            exitPx = tr.tp1 * (1 - slip);
             reason = 'tp1';
           } else if (c.l <= tr.stop) {
-            exitPx = tr.stop;
+            exitPx = tr.stop * (1 - slip);
             reason = 'sl';
           }
           if (exitPx !== null) {
@@ -788,11 +795,11 @@
           const atrV = sig.risk.atr || entry * 0.015;
           const stop = entry - stopK * atrV;
           const stopDist = entry - stop;
-          const tp1 = entry + 1.5 * stopDist;
-          const tp2 = entry + 2.5 * stopDist;
+          const tp1 = entry + tp1R * stopDist;
+          const tp2 = entry + tp2R * stopDist;
           const riskAmt = (equity * riskPct) / 100;
           const qty = stopDist > 0 ? riskAmt / stopDist : 0;
-          const cost = qty * entry * (1 + feePct);
+          const cost = qty * entry * (1 + slip) * (1 + feePct);
           if (qty > 0 && cost < cash) {
             cash -= cost;
             openPos.push({ side: 'buy', entry_t: c.t, entry, stop, tp1, tp2, qty });
@@ -871,6 +878,7 @@
       // behave on simulated candles, so every report is stamped as such.
       let tb = +(cfg.train_bars || 200);
       let eb = +(cfg.eval_bars || 120);
+      const slipBps = cfg.slippage_bps == null ? 6 : Math.max(0, +cfg.slippage_bps);
       let windowMode = 'manual';
       const fits = (t, e) => e > 0 && Math.floor((candles.length - t) / e);
       if (fits(tb, eb) < 2) {
@@ -961,6 +969,7 @@
         max_drawdown_lt_15: { value: +mdd.toFixed(1), pass: mdd < 15, required: 15 },
         expectancy_r_positive: { value: +expR.toFixed(3), pass: expR > 0, required: 0 },
         profitable_windows_ge_50: { value: +consistency.toFixed(1), pass: consistency >= 50, required: 50 },
+        costs_modeled: { value: slipBps, pass: slipBps > 0, required: '> 0 bps' },
       };
       const dataShort = windows.length < 3 || totalTrades < 30;
       const wouldBe = dataShort ? 'INSUFFICIENT_DATA' : (Object.values(checks).every((c) => c.pass) ? 'PASS' : 'FAIL');
@@ -978,6 +987,8 @@
         eval_bars: eb,
         param_grid_size: 1,
         initial_equity: initialEquity,
+        slippage_bps: slipBps,
+        costs: { slippage_bps: slipBps, fee_pct: PAPER_FEE_PCT, modeled: slipBps > 0 },
         aggregate: {
           trades: totalTrades,
           total_wins: totalWins,

@@ -82,8 +82,11 @@ curl -s -X POST http://127.0.0.1:8000/api/backtest/run \
   }' | python -m json.tool > btc-4h.json
 ```
 
-Pass `slippage_bps=6` explicitly: the route defaults to zero while the simulator itself
-carries 6 bps. Without it, the ladder with the nearer target wins artificially.
+Pass `slippage_bps=6` explicitly. Since 1.0.7 that is the default, but stating it has two
+benefits: the output records the cost it was built with, and comparisons stay comparable
+if you later change the number. A ladder with a nearer target wins artificially at zero
+cost — and since 1.0.7 a `slippage_bps=0` run can no longer reach `PASS`
+(`gate.failed` will contain `costs_modeled`).
 
 Repeat across several markets and timeframes — never just one:
 

@@ -680,7 +680,7 @@ html[dir="ltr"] .live-badge { right: auto; left: 14px; }
       </button>
     </div>
     <span class="hidden 2xl:inline-flex chip shrink-0"><span class="dot bg-emerald-400"></span> <span data-i18n="hdr.kill"></span></span>
-    <span id="buildChip" class="hidden lg:inline-flex chip num text-violet-300 border-violet-400/30 shrink-0" title="نسخه واقعی از /api/health">v1.0.6 · core</span>
+    <span id="buildChip" class="hidden lg:inline-flex chip num text-violet-300 border-violet-400/30 shrink-0" title="نسخه واقعی از /api/health">v1.0.7 · core</span>
     <div class="ms-auto flex items-center gap-1.5 shrink-0">
       <span class="hidden xl:inline-flex chip num" id="clock">--:--:--</span>
       <span id="apiChip" class="hidden 2xl:inline-flex chip num text-zinc-400 border-white/10" title=""><i data-lucide="wifi-off" class="w-3.5 h-3.5"></i> <span>API: —</span></span>
@@ -1567,6 +1567,7 @@ html[dir="ltr"] .live-badge { right: auto; left: 14px; }
           <label class="block"><span class="text-zinc-500" data-i18n="rk.rpt">%</span><input id="btRisk" type="number" step="0.05" value="0.75" class="mt-1 w-full rounded-lg bg-white/5 border border-white/10 px-2.5 py-2 num text-xs outline-none focus:border-indigo-300/40"></label>
           <label class="block"><span class="text-zinc-500" data-i18n="bt.stopK"></span><input id="btStopK" type="number" step="0.25" value="2" class="mt-1 w-full rounded-lg bg-white/5 border border-white/10 px-2.5 py-2 num text-xs outline-none focus:border-indigo-300/40"></label>
           <label class="block"><span class="text-zinc-500" data-i18n="ov.positions"></span><input id="btMax" type="number" value="5" class="mt-1 w-full rounded-lg bg-white/5 border border-white/10 px-2.5 py-2 num text-xs outline-none focus:border-indigo-300/40"></label>
+          <label class="block"><span class="text-zinc-500" data-i18n="bt.slip"></span><input id="btSlip" type="number" value="6" min="0" max="200" step="1" class="mt-1 w-full rounded-lg bg-white/5 border border-white/10 px-2.5 py-2 num text-xs outline-none focus:border-indigo-300/40"></label>
           <label class="block"><span class="text-zinc-500" data-i18n="bt.bars"></span><input id="btBars" type="number" value="600" min="200" max="2000" step="50" class="mt-1 w-full rounded-lg bg-white/5 border border-white/10 px-2.5 py-2 num text-xs outline-none focus:border-indigo-300/40"></label>
           <label class="block"><span class="text-zinc-500" data-i18n="bt.train"></span><input id="btTrain" type="number" value="240" class="mt-1 w-full rounded-lg bg-white/5 border border-white/10 px-2.5 py-2 num text-xs outline-none focus:border-indigo-300/40"></label>
           <label class="block"><span class="text-zinc-500" data-i18n="bt.eval"></span><input id="btEval" type="number" value="120" class="mt-1 w-full rounded-lg bg-white/5 border border-white/10 px-2.5 py-2 num text-xs outline-none focus:border-indigo-300/40"></label>
@@ -1776,7 +1777,7 @@ const T = {
     'bt.cfg':'پیکربندی بک‌تست','bt.equity':'سرمایه اولیه','bt.stopK':'ضریب استاپ (k×ATR)','bt.train':'پنجره آموزش (کندل)','bt.eval':'پنجره آزمون (کندل)',
     'bt.cfgNote':'پارامترها فقط روی پنجره آموزش بهینه می‌شوند و اعداد گزارش‌شده از پنجره آزمون (خارج‌از‌نمونه) می‌آیند · اگر کمتر از ۲ پنجره جا شود، اندازه پنجره‌ها خودکار انتخاب می‌شود · تداخل SL/TP در یک کندل محافظه‌کارانه به ضرر فرض می‌شود · نتایج در backtest_reports/ ذخیره می‌گردد.',
     'bt.sample':'معاملات نمونه (آخرین پنجره)','bt.exit':'خروج','bt.loading':'در حال اجرا...',
-    'bt.bars':'تاریخچه (کندل)','bt.gateTitle':'دروازه ارتقا (ADR-0009):','bt.params':'پارامتر','bt.isR':'R آموزش',
+    'bt.bars':'تاریخچه (کندل)','bt.slip':'لغزش (bps)','bt.gateTitle':'دروازه ارتقا (ADR-0009):','bt.params':'پارامتر','bt.isR':'R آموزش',
     'bt.oos':'خارج‌از‌نمونه','bt.gatePass':'قبول','bt.gateFail':'رد','bt.gateShort':'داده کافی نیست','bt.gateSynth':'داده شبیه‌سازی‌شده',
     'bt.grid':'جستجوی شبکه‌ای — حساسیت پارامتر', 'bt.fallback':'سرور پاسخ نداد؛ محاسبهٔ محلی (شبیه‌سازی)','bt.gridRun':'اجرای گرید','bt.gridBest':'بهترین ترکیب','bt.gridMeta':'در انتظار اجرا',
     'bt.multi':'اسکن گرید چندنمادی — بهینه‌ترین پارامتر به‌ازای هر نماد','bt.multiRun':'اجرا برای ۸ نماد',
@@ -2024,7 +2025,7 @@ const T = {
     'bt.cfg':'Backtest configuration','bt.equity':'Initial equity','bt.stopK':'Stop factor (k×ATR)','bt.train':'Train window (bars)','bt.eval':'Eval window (bars)',
     'bt.cfgNote':'Parameters are optimised on the train window only; reported numbers come from the eval window (out-of-sample) · windows auto-fit when fewer than 2 fit · SL/TP collisions inside one candle are resolved pessimistically · reports are saved to backtest_reports/.',
     'bt.sample':'Sample trades (last window)','bt.exit':'Exit','bt.loading':'Running...',
-    'bt.bars':'History (bars)','bt.gateTitle':'Promotion gate (ADR-0009):','bt.params':'Params','bt.isR':'Train R',
+    'bt.bars':'History (bars)','bt.slip':'Slippage (bps)','bt.gateTitle':'Promotion gate (ADR-0009):','bt.params':'Params','bt.isR':'Train R',
     'bt.oos':'Out-of-sample','bt.gatePass':'PASS','bt.gateFail':'FAIL','bt.gateShort':'Insufficient data','bt.gateSynth':'Simulated data',
     'bt.grid':'Grid search — parameter sensitivity', 'bt.fallback':'server unreachable; computed locally (simulated)',
 'bt.gridRun':'Run grid','bt.gridBest':'Best combo','bt.gridMeta':'Idle',
@@ -5918,6 +5919,9 @@ function btFillSymbols(){
 }
 function btReadCfg(){
   const g = id => document.getElementById(id);
+  // 0 is a legal choice and must survive as 0, so `|| 6` is wrong here; an
+  // empty box falls back to the server's own default rather than to 0.
+  const slipRaw = parseInputNumber(g('btSlip') && g('btSlip').value);
   return {
     symbol: g('btSym').value || 'BTCIRT',
     tf: g('btTf').value || '1h',
@@ -5928,6 +5932,7 @@ function btReadCfg(){
     bars: Math.max(200, Math.min(parseInputNumber(g('btBars').value) || 600, 2000)),
     train_bars: parseInputNumber(g('btTrain').value) || 240,
     eval_bars: parseInputNumber(g('btEval').value) || 120,
+    slippage_bps: Number.isFinite(slipRaw) ? Math.max(0, slipRaw) : 6,
   };
 }
 const BT_GATE_STYLE = {
@@ -5951,7 +5956,8 @@ function btRenderGate(rep){
   if (msg) {
     const names = {windows_ge_3:'تعداد پنجره‌ها',oos_trades_ge_min:'تعداد معاملات خارج از نمونه',
       profit_factor_ge_1_3:'ضریب سود',max_drawdown_lt_15:'بیشینه افت',expectancy_r_positive:'امید ریاضی مثبت',
-      is_oos_degradation_ok:'حفظ عملکرد خارج از نمونه',profitable_windows_ge_50:'سهم پنجره‌های سودده'};
+      is_oos_degradation_ok:'حفظ عملکرد خارج از نمونه',profitable_windows_ge_50:'سهم پنجره‌های سودده',
+      costs_modeled:'مدل‌سازی هزینه‌ها (لغزش)'};
     const fa = g.state==='PASS'?'نتایج خارج از نمونه تمام بررسی‌های ADR-0009 را گذرانده‌اند.':
       g.state==='SYNTHETIC_DATA'?'داده شبیه‌سازی‌شده است؛ این نتیجه مبنای ارتقا نیست.':
       g.state==='INSUFFICIENT_DATA'?`شواهد کافی نیست؛ حدود ${fmtNum(g.bars_needed)} کندل تاریخچه لازم است.`:
@@ -5966,6 +5972,8 @@ function btRenderGate(rep){
     bits.push(`${fmtNum(rep.param_grid_size||1)} ${LANG==='fa'?'ترکیب':'combos'}`);
     if (rep.window_mode === 'auto') bits.push(LANG==='fa'?'پنجره خودکار':'auto windows');
     if (rep.source && rep.source !== 'live') bits.push(LANG==='fa'?'داده شبیه‌سازی':'simulated');
+    const slip = (rep.costs && rep.costs.slippage_bps != null) ? rep.costs.slippage_bps : rep.slippage_bps;
+    if (slip != null) bits.push(slip > 0 ? `${fmtNum(slip,0)} bps` : (LANG==='fa'?'بدون لغزش':'no slippage'));
     meta.textContent = bits.join(' · ');
   }
 }
@@ -7129,7 +7137,14 @@ window.addEventListener('resize', resizeCharts);
       const riskPct = +(cfg.risk_pct || 0.75);
       const stopK = +(cfg.atr_stop_k || 2.0);
       const maxOpen = +(cfg.max_concurrent || 5);
-      const feePct = 0.002;
+      const feePct = PAPER_FEE_PCT;
+      // Same cost model as the server: an offline backtest that fills at the
+      // exact price is not a cheaper backtest, it is a different one. 0 is
+      // accepted, and then `costs_modeled` below refuses to certify the run.
+      const slipBps = cfg.slippage_bps == null ? 6 : Math.max(0, +cfg.slippage_bps);
+      const slip = slipBps / 10000;
+      const tp1R = +(cfg.tp1_r || 1.5);
+      const tp2R = +(cfg.tp2_r || 2.5);
       const openPos = [];
       const closed = [];
       const equityCurve = [];
@@ -7143,10 +7158,10 @@ window.addEventListener('resize', resizeCharts);
           const tr = openPos[pIdx];
           let exitPx = null, reason = null;
           if (tr.tp1 && c.h >= tr.tp1) {
-            exitPx = tr.tp1;
+            exitPx = tr.tp1 * (1 - slip);
             reason = 'tp1';
           } else if (c.l <= tr.stop) {
-            exitPx = tr.stop;
+            exitPx = tr.stop * (1 - slip);
             reason = 'sl';
           }
           if (exitPx !== null) {
@@ -7170,11 +7185,11 @@ window.addEventListener('resize', resizeCharts);
           const atrV = sig.risk.atr || entry * 0.015;
           const stop = entry - stopK * atrV;
           const stopDist = entry - stop;
-          const tp1 = entry + 1.5 * stopDist;
-          const tp2 = entry + 2.5 * stopDist;
+          const tp1 = entry + tp1R * stopDist;
+          const tp2 = entry + tp2R * stopDist;
           const riskAmt = (equity * riskPct) / 100;
           const qty = stopDist > 0 ? riskAmt / stopDist : 0;
-          const cost = qty * entry * (1 + feePct);
+          const cost = qty * entry * (1 + slip) * (1 + feePct);
           if (qty > 0 && cost < cash) {
             cash -= cost;
             openPos.push({ side: 'buy', entry_t: c.t, entry, stop, tp1, tp2, qty });
@@ -7253,6 +7268,7 @@ window.addEventListener('resize', resizeCharts);
       // behave on simulated candles, so every report is stamped as such.
       let tb = +(cfg.train_bars || 200);
       let eb = +(cfg.eval_bars || 120);
+      const slipBps = cfg.slippage_bps == null ? 6 : Math.max(0, +cfg.slippage_bps);
       let windowMode = 'manual';
       const fits = (t, e) => e > 0 && Math.floor((candles.length - t) / e);
       if (fits(tb, eb) < 2) {
@@ -7343,6 +7359,7 @@ window.addEventListener('resize', resizeCharts);
         max_drawdown_lt_15: { value: +mdd.toFixed(1), pass: mdd < 15, required: 15 },
         expectancy_r_positive: { value: +expR.toFixed(3), pass: expR > 0, required: 0 },
         profitable_windows_ge_50: { value: +consistency.toFixed(1), pass: consistency >= 50, required: 50 },
+        costs_modeled: { value: slipBps, pass: slipBps > 0, required: '> 0 bps' },
       };
       const dataShort = windows.length < 3 || totalTrades < 30;
       const wouldBe = dataShort ? 'INSUFFICIENT_DATA' : (Object.values(checks).every((c) => c.pass) ? 'PASS' : 'FAIL');
@@ -7360,6 +7377,8 @@ window.addEventListener('resize', resizeCharts);
         eval_bars: eb,
         param_grid_size: 1,
         initial_equity: initialEquity,
+        slippage_bps: slipBps,
+        costs: { slippage_bps: slipBps, fee_pct: PAPER_FEE_PCT, modeled: slipBps > 0 },
         aggregate: {
           trades: totalTrades,
           total_wins: totalWins,
