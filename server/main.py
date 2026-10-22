@@ -34,6 +34,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 import _env  # noqa: F401 — must precede every module that reads os.environ
+import adaptive
 import auth
 import auth_api
 import coin_metadata
@@ -360,7 +361,7 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(
     title="nobiTrader",
-    version="1.0.21",
+    version="1.0.22",
     lifespan=lifespan,
 )
 
@@ -1092,6 +1093,11 @@ async def candles(symbol: str, tf: str = Query("15m", pattern="^(15m|1h|4h|D)$")
         "rows": merged,
         "source": src,
         "last_candle": "ws" if merged is not rows else "rest",
+        # 1.0.22 — the ATR percentile, walked over the bars this response carries,
+        # so the chart can draw the rank instead of only naming it.
+        "volatility": volatility_block(merged),
+        # ...and, as on every card since 1.0.18, how old those bars are.
+        "freshness": freshness_block(merged, tf),
         "as_of": datetime.now(UTC).isoformat(),
     }
 
@@ -2935,6 +2941,32 @@ def freshness_block(rows: list[dict], tf: str) -> dict:
         return {"stale": True, "reason": e.code, "age_bars": None}
     except Exception as e:                          # pragma: no cover - last resort
         return {"stale": True, "reason": type(e).__name__, "age_bars": None}
+
+
+def volatility_block(rows: list[dict]) -> dict:
+    """ATR percentile + its path, or a named refusal — never a broken chart.
+
+    A strip is a *drawing of a measurement*: if the measurement is refused (too few
+    bars, a flat window) the answer still has to be an object the page can print,
+    with the code that says why. `applied` is false and always will be: nothing here
+    feeds the signal engine, it describes what already happened.
+    """
+    base = {"applied": False, "note": "descriptive statistics over past bars, not a forecast"}
+    try:
+        df = candles_to_df(rows)
+        current = adaptive.atr_percentile(df)
+        path = adaptive.atr_percentile_path(df)
+        return {
+            **base,
+            **current,
+            **path,
+            "regime": adaptive.regime_for(current["percentile"]),
+            "cuts": {"calm_max": adaptive.CALM_MAX, "volatile_min": adaptive.VOLATILE_MIN},
+        }
+    except AdaptiveRefusal as e:
+        return {**base, "ok": False, "error": e.code, "message": e.message, **e.meta}
+    except Exception as e:                          # pragma: no cover - last resort
+        return {**base, "ok": False, "error": type(e).__name__, "message": str(e)}
 
 
 def freshness_block_at(bar_at: float | None, tf: str) -> dict:

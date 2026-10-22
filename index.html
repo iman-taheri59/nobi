@@ -277,7 +277,7 @@
       </button>
     </div>
     <span class="hidden 2xl:inline-flex chip shrink-0"><span class="dot bg-emerald-400"></span> <span data-i18n="hdr.kill"></span></span>
-    <span id="buildChip" class="hidden lg:inline-flex chip num text-violet-300 border-violet-400/30 shrink-0" title="نسخه واقعی از /api/health">v1.0.21 · core</span>
+    <span id="buildChip" class="hidden lg:inline-flex chip num text-violet-300 border-violet-400/30 shrink-0" title="نسخه واقعی از /api/health">v1.0.22 · core</span>
     <div class="ms-auto flex items-center gap-1.5 shrink-0">
       <span class="hidden xl:inline-flex chip num" id="clock">--:--:--</span>
       <span id="apiChip" class="hidden 2xl:inline-flex chip num text-zinc-400 border-white/10" title=""><i data-lucide="wifi-off" class="w-3.5 h-3.5"></i> <span>API: —</span></span>
@@ -1403,6 +1403,12 @@ const T = {
     'sg.noCandles':'کندلی برای این نماد در حافظه نیست', 'sg.close':'بستن',
     'sg.hdr':'رتبه‌بندی دنیای نوبیتکس', 'sg.scanned':'بدون داده', 'sg.cycle':'چرخه: بستن کندل ۱۵د',
     'sg.weights':'TA ۵۵٪ · FA ۲۵٪ · نقد ۲۰٪ (در نبود FA: وزن‌ها بازتوزیع می‌شود)', 'sg.faCoverage':'بنیادی زنده: —', 'sg.last':'آخرین چرخه: —', 'sg.dataStale':'داده کهنه', 'sg.dataStaleWhy':'آخرین کندلِ این اسکن {bars} کندل عقب است؛ این رتبه‌بندی آن بازه را توصیف می‌کند، نه امروز را', 'sg.dataStaleNone':'کندلی برای سنجش سن نیست',
+    'atr.title':'صدک ATR روی نمودار', 'atr.regimeCalm':'آرام', 'atr.regimeNormal':'معمولی',
+    'atr.regimeVolatile':'پرنوسان', 'atr.calmBand':'آرام ≤{cut}', 'atr.volBand':'پرنوسان ≥{cut}',
+    'atr.ofPrice':'ATR = {pct} قیمت', 'atr.needBars':'کندل کافی نیست ({bars} از {need})',
+    'atr.window':'{bars} کندل رسم‌شده · کوتاه‌ترین پنجره {min} کندل · دورهٔ ATR {period}',
+    'atr.desc':'این رتبه گذشته را توصیف می‌کند، نه آینده را؛ در موتور سیگنال اعمال نمی‌شود.',
+    'atr.failed':'صدک ATR محاسبه نشد',
     'sg.why':'چگونه امتیاز هر نماد ساخته می‌شود',
     'sg.whyTa':'تکنیکال', 'sg.whyTaD':'جهت روند (EMA/ADX)، مومنتوم (MACD و %b) و ساختار کندل‌ها؛ این بخش فقط از کندل زندهٔ همان نماد ساخته می‌شود.',
     'sg.whyFa':'فاندامنتال', 'sg.whyFaD':'آنلاک توکن، TVL و نسبت حجم به ارزش‌بازار؛ اگر این منبع در دسترس نباشد این جزء چیزی به امتیاز اضافه نمی‌کند و امتیاز نهایی خالی می‌ماند.',
@@ -1652,6 +1658,12 @@ const T = {
     'sg.noCandles':'no candles for this symbol in memory', 'sg.close':'close',
     'sg.hdr':'Nobitex Universe Ranking', 'sg.scanned':'no data', 'sg.cycle':'Cycle: 15m candle close',
     'sg.weights':'TA 55% · FA 25% · Liquidity 20% (weights renormalise when FA is missing)', 'sg.faCoverage':'Live FA: —', 'sg.last':'Last cycle: —', 'sg.dataStale':'stale data', 'sg.dataStaleWhy':'the newest candle in this scan is {bars} bars old; this ranking describes that window, not today', 'sg.dataStaleNone':'no candle to measure an age from',
+    'atr.title':'ATR percentile on the chart', 'atr.regimeCalm':'calm', 'atr.regimeNormal':'normal',
+    'atr.regimeVolatile':'volatile', 'atr.calmBand':'calm ≤{cut}', 'atr.volBand':'volatile ≥{cut}',
+    'atr.ofPrice':'ATR = {pct} of price', 'atr.needBars':'not enough candles ({bars} of {need})',
+    'atr.window':'{bars} bars drawn · shortest window {min} bars · ATR period {period}',
+    'atr.desc':'this rank describes the past, not the future; it is not applied to the signal engine.',
+    'atr.failed':'the ATR percentile could not be computed',
     'sg.why':'How each symbol is scored',
     'sg.whyTa':'Technical', 'sg.whyTaD':'Trend direction (EMA/ADX), momentum (MACD, %b) and candle structure; this term is built only from that symbol’s live candles.',
     'sg.whyFa':'Fundamental', 'sg.whyFaD':'Token unlocks, TVL and volume/market-cap; when that feed is missing this term adds nothing and the final score stays empty.',
@@ -2418,8 +2430,147 @@ function candleChart(symbol){
   </div>`;
 }
 
+/* ================= ATR percentile strip (1.0.22) =================
+ * "ATR sits at the 12th percentile" is a rank with no shape: a reader cannot tell
+ * a quiet month from one calm day inside a violent one. The strip draws the same
+ * rank over the last bars, computed by the server with the same formula as the
+ * headline number (`_percentile_of_last`), so the drawing and the number cannot
+ * disagree. It is a description of the past on purpose: `applied` is false and the
+ * sentence under it says so — the same rule as every other card here.
+ */
+const ATR_STRIP = { W: 1000, H: 96, padL: 6, padR: 6, padT: 10, padB: 14 };
+
+function atrRegimeWord(regime){
+  const map = { calm: 'atr.regimeCalm', normal: 'atr.regimeNormal', volatile: 'atr.regimeVolatile' };
+  return map[regime] ? t(map[regime]) : (regime || '—');
+}
+function atrPctText(pct){
+  return (typeof pct === 'number' && isFinite(pct))
+    ? fmtNum(pct * 100, 0) + (LANG === 'fa' ? '٪' : '%') : '—';
+}
+function atrHead(chipText){
+  return `<div class="flex flex-wrap items-center gap-1.5 text-[10px] sm:text-[11px]">
+      <span class="text-zinc-500">${t('atr.title')}</span>
+      <span class="chip num" id="atrPctChip">${chipText || '—'}</span>
+      <span class="chip hidden" id="atrRegimeChip"></span>
+      <span class="text-zinc-500 num" id="atrPctNote"></span>
+    </div>`;
+}
+
+function atrStripSvg(v){
+  const pts = (v && v.points) || [];
+  if (pts.length < 2) return '';
+  const { W, H, padL, padR, padT, padB } = ATR_STRIP;
+  const innerW = W - padL - padR, innerH = H - padT - padB;
+  const x = i => padL + (i / (pts.length - 1)) * innerW;
+  const y = pct => padT + innerH - Math.max(0, Math.min(1, pct)) * innerH;
+  // The regime cuts come from the response, not from a copy of the numbers here:
+  // a page that remembers 25/75 on its own would keep drawing them after the
+  // engine moved them. No cuts sent, no bands drawn.
+  const cuts = v.cuts || {};
+  const bandsSpec = [['calm_max', 'atr.calmBand'], ['volatile_min', 'atr.volBand']]
+    .filter(([key]) => typeof cuts[key] === 'number')
+    .map(([key, label]) => [cuts[key], label]);
+  const line = pts.map((pt, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(pt.pct).toFixed(1)}`).join(' ');
+  const area = `${line} L${x(pts.length - 1).toFixed(1)},${(padT + innerH).toFixed(1)} L${padL.toFixed(1)},${(padT + innerH).toFixed(1)} Z`;
+  const bands = bandsSpec.map(([level, label]) => {
+    const yy = y(level);
+    const text = t(label).replace('{cut}', atrPctText(level));
+    return `<line x1="${padL}" y1="${yy.toFixed(1)}" x2="${W - padR}" y2="${yy.toFixed(1)}" stroke="rgba(255,255,255,.14)" stroke-width="1" stroke-dasharray="4 4"/>
+            <text x="${padL + 4}" y="${(yy - 4).toFixed(1)}" fill="#71717a" font-size="10" font-family="ui-monospace,monospace">${text}</text>`;
+  }).join('');
+  const lastPct = pts[pts.length - 1].pct;
+  const marker = `<circle cx="${x(pts.length - 1).toFixed(1)}" cy="${y(lastPct).toFixed(1)}" r="3" fill="#38bdf8"/>`;
+  return `<svg viewBox="0 0 ${W} ${H}" class="w-full h-20 sm:h-24" preserveAspectRatio="none" role="img" aria-label="${t('atr.title')}">
+      <path d="${area}" fill="rgba(56,189,248,.14)"/>
+      <path d="${line}" fill="none" stroke="#38bdf8" stroke-width="1.6" vector-effect="non-scaling-stroke"/>
+      ${bands}${marker}
+    </svg>`;
+}
+
+/* Pure: everything it draws comes from the response, nothing is invented. */
+function renderAtrStrip(el, resp, symbol, tf){
+  if (!el) return;
+  const v = (resp && resp.volatility) || null;
+  if (!v){
+    el.innerHTML = `${atrHead()}<div class="text-[10px] text-zinc-500 mt-1">${t('atr.failed')}</div>`;
+    return;
+  }
+  if (v.ok === false || v.percentile == null){
+    // A named refusal, never a zero standing in for a percentile.
+    const code = v.error || 'unknown';
+    const why = code === 'insufficient-data'
+      ? t('atr.needBars')
+          .replace('{bars}', fmtNum(v.bars == null ? 0 : v.bars, 0))
+          .replace('{need}', fmtNum(v.required == null ? (v.min_bars || 0) : v.required, 0))
+      : (v.message || code);
+    el.innerHTML = `${atrHead(code)}<div class="text-[10px] text-amber-300/80 mt-1" id="atrPctWhy">${why}</div>`;
+    return;
+  }
+
+  const pctPct = v.percentile * 100;
+  const fresh = (resp && resp.freshness) || null;
+  el.innerHTML = `${atrHead(atrPctText(v.percentile))}
+    ${atrStripSvg(v)}
+    <div class="relative h-1.5 rounded-full bg-white/[.06] mt-1.5">
+      <div class="absolute inset-y-0 start-0 rounded-full bg-gradient-to-l from-sky-400 to-sky-300/50" style="width:${Math.max(0, Math.min(100, pctPct)).toFixed(1)}%"></div>
+    </div>
+    <div class="text-[10px] text-zinc-500 mt-1 num" id="atrPctWindow">${t('atr.window')
+      .replace('{bars}', fmtNum(v.count || 0, 0))
+      .replace('{min}', fmtNum((v.windows && v.windows.min) || 0, 0))
+      .replace('{period}', fmtNum(v.period || 14, 0))}</div>
+    <div class="text-[10px] text-zinc-500 mt-1 leading-5" id="atrPctWhy">${t('atr.desc')}</div>`;
+
+  const chip = el.querySelector('#atrPctChip');
+  if (chip) chip.title = `${symbol || ''} · ${tf || ''}`;
+  const regimeChip = el.querySelector('#atrRegimeChip');
+  if (regimeChip && v.regime){
+    regimeChip.classList.remove('hidden');
+    regimeChip.textContent = atrRegimeWord(v.regime);
+    regimeChip.className = `chip ${v.regime === 'volatile' ? 'text-red-300 border-red-300/30'
+      : v.regime === 'calm' ? 'text-emerald-300 border-emerald-300/30' : 'text-zinc-300'}`;
+  }
+  const note = el.querySelector('#atrPctNote');
+  if (note && typeof v.atr_pct_price === 'number'){
+    note.textContent = t('atr.ofPrice').replace('{pct}', fmtNum(v.atr_pct_price, 2) + (LANG === 'fa' ? '٪' : '%'));
+  }
+  if (fresh && fresh.stale){
+    // The bars behind the strip can be old, and then the strip is a picture of
+    // then — the same warning the threshold and backtest cards carry.
+    const age = typeof fresh.age_bars === 'number' ? fmtNum(Math.abs(fresh.age_bars), 1) : null;
+    const warn = document.createElement('span');
+    warn.className = 'chip text-amber-300 border-amber-300/30';
+    warn.id = 'atrStaleChip';
+    warn.textContent = t('bt.dataStale');
+    warn.title = fresh.reason === 'no-candles' ? t('sg.dataStaleNone')
+      : t('bt.dataStaleWhy').replace('{bars}', age == null ? '—' : age);
+    const head = el.querySelector('#atrPctChip');
+    if (head && head.parentElement) head.parentElement.appendChild(warn);
+  }
+}
+
+async function atrStripLoad(symbol, el){
+  const box = el || document.getElementById('atrStrip');
+  if (!box) return;
+  const tf = (window.live && live.timeframe) || '15m';
+  const api = window.NBX && NBX.core && NBX.core.api;
+  if (!api || typeof api.get !== 'function'){
+    box.innerHTML = `<div class="text-[10px] text-zinc-500">${t('ad.needBackend')}</div>`;
+    return;
+  }
+  try {
+    const resp = await api.get(`${NBX.config.pythonApi}/candles/${encodeURIComponent(symbol)}`
+      + `?tf=${encodeURIComponent(tf)}&count=260`, 1);
+    renderAtrStrip(box, resp, symbol, tf);
+  } catch (e){
+    box.innerHTML = `<div class="text-[10px] text-amber-300/80">${t('atr.failed')}</div>`;
+  }
+}
+
 window.toggleSignalDetail = toggleSignalDetail;
 window.candleChart = candleChart;
+window.renderAtrStrip = renderAtrStrip;
+window.atrStripLoad = atrStripLoad;
 
 /* One row open at a time; clicking again closes it. */
 function toggleSignalDetail(row){
@@ -2437,13 +2588,17 @@ function toggleSignalDetail(row){
   box.innerHTML = `<div class="flex items-center gap-2 mb-1">
       <span class="font-bold text-[12px] sm:text-[13px] num">${window.coinIcon(sym, 20)}${sym}</span>
       <button type="button" class="ms-auto text-[10px] text-zinc-500 hover:text-zinc-300" data-close-detail>${t('sg.close')}</button>
-    </div>${candleChart(sym)}`;
+    </div>${candleChart(sym)}
+    <div id="atrStrip" class="mt-3" data-sym="${sym}"></div>`;
   row.after(box);
   box.querySelector('[data-close-detail]').onclick = () => {
     box.remove(); row.classList.remove('is-open');
   };
   animateBars(box);
   refreshIcons();
+  // 1.0.22 — one pair is open, so one measurement is asked for: the ATR rank the
+  // card has been able to compute since 1.0.18 but could only *name*, never show.
+  if (typeof atrStripLoad === 'function') atrStripLoad(sym, box.querySelector('#atrStrip'));
 }
 
 function seriesData(points){

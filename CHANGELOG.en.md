@@ -2,6 +2,37 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 1.0.22
+
+- **The ATR percentile is drawn now, not only named.** Since 1.0.13 the card said "ATR sits at
+  the 12th percentile", and that number was all a reader had: 12 can be the tail of a quiet
+  month or one calm day inside a volatile one. Opening a symbol now draws that same rank over
+  the last 60 bars, with two dashed lines marking where "calm" and "volatile" begin — those cuts
+  come from the server's response — and a marker on the current point.
+- **One formula, not two.** `_percentile_of_last()` was extracted, and both the headline number
+  and every point of the strip are built from it; `atr_percentile()` returns exactly the numbers
+  it returned before (the 1.0.13 tests are untouched and green). A drawing computed by a slightly
+  different rule would contradict the number printed next to it.
+- **`GET /api/candles/{symbol}` now returns `volatility` and `freshness`.** The block carries the
+  percentile, ATR as a share of price, the regime, the regime cuts and 60 strip points — with
+  `applied: false` and the sentence that this describes the past rather than forecasting it. A
+  named refusal replaces an exception: `insufficient-data` (below 120 bars) and `flat-market`
+  (zero ATR over the window), both with their counts ("63 of 120") so the page never draws a zero
+  where a rank belongs.
+- **The window travels with every point.** `windows: {min, max}` reports the shortest window that
+  actually produced a rank; a strip built on fewer than 200 bars says so instead of claiming the
+  full lookback.
+- **The age of the bars comes with the strip:** if the data is old, the "stale data" chip appears
+  exactly where 1.0.18 defined it for the threshold card and 1.0.20 for the backtest card — with
+  the age in its title.
+- **Tests:** 9 Python tests (the rank's definition written out by hand, the last point equal to
+  the headline number, the window reported, a short history refused, a flat window refused, the
+  block degrading instead of raising, its presence on the route, the page wiring) + jsdom scenario
+  10 (one segment per point the server sent, the marker placed by its value, two regime cuts only
+  when the server sends them, a named refusal with no bars drawn, the stale chip with its age).
+  Two deliberate mutations (geometry that ignores the value; a formula that counts ties as
+  "below") turned the tests red.
+
 ## 1.0.21
 
 - **The last numeric card without an age now has one.** The "Nobitex Universe Ranking" card

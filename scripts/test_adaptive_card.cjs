@@ -25,7 +25,10 @@
  *      candles are current;
  *   9. the market-scan card does it for the ranking it computes in the browser
  *      (1.0.21), and the browser's bar arithmetic is the same arithmetic the
- *      server uses — eight 15m bars is eight bars on both sides.
+ *      server uses — eight 15m bars is eight bars on both sides;
+ *  10. the ATR percentile is *drawn* (1.0.22): one bar per point the server sent,
+ *      the regime named, a refusal that names its code instead of drawing zeros,
+ *      and the sentence that says a rank of the past is not a forecast.
  *
  * No CDN, no server: the page is read from disk and the API is a function.
  */
@@ -314,6 +317,78 @@ function stub(result) {
   assert.equal(F.assessBar(eight15m, '7m', { now: nowMs }).reason, 'bad-timeframe');
   assert.equal(F.tfMinutes('D'), 1440);
   coreDom.window.close();
+
+  // ---- 10. the ATR percentile strip (1.0.22) ----
+  const strip = doc.createElement('div');
+  doc.body.appendChild(strip);   // in the document, like the real detail box
+  const points = [0.1, 0.2, 0.35, 0.3, 0.45, 0.5, 0.62, 0.58, 0.7, 0.4];
+  const VOL = {
+    ok: true, applied: false, percentile: 0.4, atr_pct_price: 0.83, period: 14,
+    window: 200, count: points.length, min_bars: 120,
+    windows: { min: 200, max: 200 }, regime: 'normal',
+    cuts: { calm_max: 0.25, volatile_min: 0.75 },
+    note: 'descriptive statistics over past bars, not a forecast',
+    points: points.map((pct, i) => ({ t: `2026-01-0${(i % 9) + 1}T00:00:00+00:00`, pct })),
+  };
+  window.renderAtrStrip(strip, { volatility: VOL, freshness: { stale: false, reason: 'current' } },
+    'BTCIRT', '15m');
+  assert.match(String(strip.innerHTML), /<svg/, 'the strip drew no chart');
+  // One segment per point the server sent: `M` starts the path, every bar after
+  // it is one `L`. A drawing that invents or drops points is not a drawing of
+  // the measurement.
+  const dPath = (strip.innerHTML.match(/d="(M[^"]+)" fill="none"/) || [])[1] || '';
+  assert.equal((dPath.match(/L/g) || []).length, points.length - 1,
+    `the strip drew ${(dPath.match(/L/g) || []).length + 1} of ${points.length} points`);
+  const markerY = (html) => Number((html.match(/<circle[^>]+cy="([0-9.]+)"/) || [])[1]);
+  assert.ok(Number.isFinite(markerY(strip.innerHTML)), 'the current point is not marked');
+  // The marker must sit where the *value* says: a higher percentile is a higher
+  // point on the strip. The same block at 40 and at 90 must not land together.
+  const lowMark = markerY(strip.innerHTML);
+  window.renderAtrStrip(strip, { volatility: { ...VOL, percentile: 0.9,
+    points: VOL.points.map((pt, i) => ({ ...pt, pct: i === points.length - 1 ? 0.9 : pt.pct })) } },
+    'BTCIRT', '15m');
+  const highMark = markerY(strip.innerHTML);
+  assert.ok(highMark < lowMark,
+    `a 90th-percentile point (y=${highMark}) was not drawn above a 40th (y=${lowMark})`);
+  // ...and back to the original block for the rest of the assertions.
+  window.renderAtrStrip(strip, { volatility: VOL, freshness: { stale: false, reason: 'current' } },
+    'BTCIRT', '15m');
+  assert.ok(plain(text('atrPctChip') || strip.textContent).includes('40'),
+    `the percentile was not named: "${strip.textContent}"`);
+  assert.match(strip.textContent, /معمولی|normal/, 'the regime was not named');
+  assert.match(strip.textContent, /نه آینده|not the future/,
+    'the strip did not say that a rank of the past is not a forecast');
+  // The window the rank was measured against is on the card, not implied.
+  assert.ok(plain(strip.textContent).includes('200'), 'the window was not named');
+  // Two dashed cuts mark where "calm" and "volatile" begin, and they are the
+  // server's numbers: the page keeps no copy of 25/75 to drift from.
+  assert.equal((strip.innerHTML.match(/stroke-dasharray/g) || []).length, 2,
+    'the regime cuts are not drawn');
+  window.renderAtrStrip(strip, { volatility: { ...VOL, cuts: undefined } }, 'BTCIRT', '15m');
+  assert.equal((strip.innerHTML.match(/stroke-dasharray/g) || []).length, 0,
+    'the page drew regime cuts nobody sent it');
+
+  // Old bars behind the strip: the warning travels with it, age included.
+  window.renderAtrStrip(strip, {
+    volatility: VOL,
+    freshness: { stale: true, reason: 'behind', age_bars: 41.2 },
+  }, 'BTCIRT', '15m');
+  const staleChip2 = doc.getElementById('atrStaleChip');
+  assert.ok(staleChip2, 'old candles drew a strip that looked current');
+  assert.ok(plain(staleChip2.title).includes('41.2'), `the age was not named: "${staleChip2.title}"`);
+
+  // A refusal names its code and draws nothing — no zero standing in for a rank.
+  window.renderAtrStrip(strip, {
+    volatility: { ok: false, error: 'insufficient-data', bars: 63, required: 120, applied: false },
+  }, 'BTCIRT', '15m');
+  assert.match(strip.textContent, /insufficient-data/, `refusal said "${strip.textContent}"`);
+  assert.doesNotMatch(strip.innerHTML, /<svg/, 'a refusal drew a chart anyway');
+  assert.ok(plain(strip.textContent).includes('63') && plain(strip.textContent).includes('120'),
+    'the refusal did not say how many candles it had and how many it needs');
+
+  // No block at all (older backend): a sentence, not confident emptiness.
+  window.renderAtrStrip(strip, { rows: [] }, 'BTCIRT', '15m');
+  assert.match(strip.textContent, /محاسبه نشد|could not be computed/);
 
   // ---- 9. the disabled-backend path ----
   window.NBX.core.api = undefined;
