@@ -2,6 +2,34 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 1.0.18
+
+- **A second kind of staleness, with its own words: "stale data".** Until today the card only
+  knew that the *pair* had changed. But data can go stale independently: a percentile computed
+  on a series whose newest candle is three days old is a claim about three days ago wearing a
+  present-tense sentence. `card.dataset.dataStale` is now separate from `card.dataset.stale`,
+  because the two need **different actions**: "re-select / re-fetch" versus "refresh the data".
+- **`server/freshness.py` — measured in bars, not seconds.** "Stale" means different things at
+  15m and 4h, and a fixed seconds threshold would call every 4h series stale and every 15m
+  series fresh. The tolerance is 2 bars, and the reason is written down: the newest candle is
+  the *open* one.
+- **A named reason, not a boolean:** `behind` / `ahead-of-clock` / `no-candles`. A candle from
+  the future has no trustworthy age and must not read as "very fresh"; an empty series is a
+  result, not an exception.
+- **In the API:** both routes (`thresholds` and `evidence`) attach a `freshness` block, and a
+  failure to assess does not take the numbers down with it
+  (`{"stale": true, "reason": code}`).
+- **In the dashboard:** the chip switches to "stale data" and the sentence carries **the
+  arithmetic** ("the feed is 41.2 bars behind"), alongside "not applied". When the pair has
+  moved too, the pair sentence comes first and the data staleness is mentioned with it. A
+  response without a `freshness` block (an older backend) is treated as neither stale nor
+  fresh — the chip simply stays in its normal state.
+- **Tests:** 12 Python tests (`test_freshness.py`: the same age is fresh at 4h and stale at
+  15m, the boundary is inclusive, a future candle, an empty series, an unknown timeframe,
+  `age_bars` agreeing with its own seconds, presence on both routes) + 3 wiring tests + 3
+  jsdom scenarios. Two deliberate mutations (collapsing data staleness into pair staleness,
+  dropping the number from the sentence) turned a test red.
+
 ## 1.0.17
 
 - **An evidence matrix with provenance.** `scripts/evidence_matrix.py` runs the paired
