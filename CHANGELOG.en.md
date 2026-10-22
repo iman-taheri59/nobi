@@ -2,6 +2,31 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 1.0.8
+
+- **The backtest now says what it measured.** The live decision (ADR-0007) blends three
+  components — technical 0.55, fundamentals 0.25, liquidity 0.20 — and vetoes can then pull
+  the score below the promotion threshold. The backtest simulator replays the **technical**
+  component only, because fundamentals and liquidity have no history in this repository.
+  Until 1.0.7 the report left all of that unsaid and read "PF 1.42, gate: PASS" while having
+  measured a quarter of the live rule.
+- **`decision_basis` in every report and every gate verdict:** `components`, `weights`,
+  `vetoes`, `live_weights`, `matches_live`. The config hash includes `basis`, so a report
+  cannot drift away from the rule set it tested.
+- **A `BASIS_CAVEAT` sentence is appended to the gate message** — after the reason, never
+  instead of it. A `PASS` here means "the technical rules passed", not "the live composite
+  passed".
+- **Dashboard:** an amber "TA-only" chip beside the OOS chip, with the live weights in its
+  tooltip.
+- **The browser simulator** makes the same declaration and appends the same sentence; silence
+  in an offline report made it look complete.
+- **ADR-0009 second amendment** (Persian + English): why this was done, why — unlike
+  `costs_modeled` — it does not reject the verdict (it is a scope of validity, not a
+  numerical error), and what closing the gap requires (storing historical liquidity and
+  fundamentals alongside candles).
+- 9 new tests in `server/tests/test_backtest_basis.py` and one in `scripts/js_broker_test.js`,
+  including one that keeps the declared live weights equal to the engine's `TA_W/FA_W/LIQ_W`.
+
 ## 1.0.7
 
 - **Backtests no longer run cost-free.** `slippage_bps` defaulted to zero in three

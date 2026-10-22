@@ -989,6 +989,14 @@
         initial_equity: initialEquity,
         slippage_bps: slipBps,
         costs: { slippage_bps: slipBps, fee_pct: PAPER_FEE_PCT, modeled: slipBps > 0 },
+        // Same disclosure as the server: this engine replays the TA rules only,
+        // while the live decision also weights liquidity/fundamentals and can be
+        // capped by vetoes. Saying nothing would make the report look complete.
+        decision_basis: {
+          components: ['ta'], weights: { ta: 1 }, vetoes: false,
+          live_composite: 'ta+fa+liq', live_weights: { ta: 0.55, fa: 0.25, liq: 0.2 },
+          matches_live: false,
+        },
         aggregate: {
           trades: totalTrades,
           total_wins: totalWins,
@@ -1011,9 +1019,12 @@
           data_source: 'synthetic',
           checks,
           failed: Object.keys(checks).filter((k) => !checks[k].pass),
-          message: (typeof LANG !== 'undefined' && LANG === 'fa')
+          message: ((typeof LANG !== 'undefined' && LANG === 'fa')
             ? 'شمع‌ها از موتور مرورگر (شبیه‌سازی) آمده‌اند؛ دروازه ارتقا روی داده مصنوعی مجوز نمی‌دهد.'
-            : 'Candles come from the browser engine (simulated); the gate never certifies simulated data.',
+            : 'Candles come from the browser engine (simulated); the gate never certifies simulated data.')
+            + ' ' + ((typeof LANG !== 'undefined' && LANG === 'fa')
+              ? 'این گزارش فقط جزء تکنیکال را می‌سنجد؛ تصمیم زنده وزن نقدینگی/فاندامنتال و وتو هم دارد.'
+              : 'This report measures the technical component only; the live decision also weights liquidity/fundamentals and can be vetoed.'),
           bars_needed: tb + 3 * eb,
         },
         details: windows.slice(-12),

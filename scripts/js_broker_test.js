@@ -203,5 +203,25 @@ check('offline backtest models slippage and says so in its gate', () => {
   return `default ${rep.slippage_bps} bps, frictionless gate state ${free.gate.state}`;
 });
 
+/* 11. The offline report says which rule set it tested. The browser cannot see
+ *     liquidity or fundamentals either, and a report that stays silent about
+ *     that reads like a verdict on the whole live decision. */
+check('offline backtest declares it tested the technical component only', () => {
+  const candles = [];
+  let px = 100;
+  for (let i = 0; i < 400; i++) {
+    px = Math.max(1, px * (1 + Math.sin(i / 5) * 0.01));
+    candles.push({ t: 1_700_000_000 + i * 3600, o: px, h: px * 1.01, l: px * 0.99, c: px, v: 10 });
+  }
+  const rep = NBX.Backtest.runWalkForward(candles, 'BTCUSDT', '1h', { equity: 50_000 });
+  const b = rep.decision_basis || {};
+  assert(JSON.stringify(b.components) === '["ta"]', 'components: ' + JSON.stringify(b.components));
+  assert(b.matches_live === false, 'the report claims it matched the live composite');
+  assert(b.live_weights && b.live_weights.ta === 0.55, 'live weights missing or wrong');
+  assert(/technical component only|فقط جزء تکنیکال/.test(rep.gate.message),
+    'the gate message does not carry the caveat: ' + rep.gate.message);
+  return 'ta-only, caveat present';
+});
+
 console.log(failures ? `\n${failures} failure(s)` : '\nPASS — standalone broker behaves like the server');
 process.exit(failures ? 1 : 0);

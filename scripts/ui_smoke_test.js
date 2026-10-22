@@ -96,6 +96,27 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     detailText = (detail?.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 120);
   }
 
+  // Backtest gate bar: a report that cannot claim the live rule must say so in
+  // the bar the operator reads, not only in the JSON. Driven through the page's
+  // own renderer with a shaped report — no network, no candles.
+  const basisChip = doc.getElementById('btBasisChip');
+  let taOnlyChip = null, taOnlyCleared = null;
+  if (typeof window.btRenderGate === 'function' && basisChip) {
+    window.btRenderGate({
+      gate: { state: 'PASS', decision_basis: {
+        matches_live: false, live_weights: { ta: 0.55, fa: 0.25, liq: 0.2 } } },
+      aggregate: { windows: 3 }, bars: 600,
+    });
+    taOnlyChip = {
+      text: (basisChip.textContent || '').trim(),
+      visible: !basisChip.classList.contains('hidden'),
+      title: (basisChip.getAttribute('title') || '').slice(0, 80),
+    };
+    window.btRenderGate({ gate: { state: 'PASS', decision_basis: { matches_live: true } },
+      aggregate: { windows: 3 }, bars: 600 });
+    taOnlyCleared = basisChip.classList.contains('hidden');
+  }
+
   const txt = (sel) => (doc.querySelector(sel)?.textContent || '').trim();
   const kpiGrid = doc.querySelector('#pVoid')?.closest('.grid');
   const kpiCells = kpiGrid ? kpiGrid.children.length : 0;
@@ -140,6 +161,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     perfWarnVisible: !!doc.querySelector('#perfWarn') && !doc.querySelector('#perfWarn').classList.contains('hidden'),
     perfWarn: (doc.querySelector('#perfWarn')?.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 120),
     perfChip: txt('#perfOrigin'),
+    taOnlyChip,
+    taOnlyCleared,
     errors,
   };
   console.log(JSON.stringify(report, null, 2));
@@ -173,6 +196,13 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   }
   if (report.perfChip && /^[\s۰-۹0-9.,٪%]+$/.test(report.perfChip)) {
     problems.push(`perf origin chip is a bare number: "${report.perfChip}"`);
+  }
+  // A TA-only backtest may not look like a verdict on the whole live decision.
+  if (basisChip) {
+    if (!taOnlyChip || !taOnlyChip.visible) problems.push('TA-only report did not raise the basis chip');
+    else if (!taOnlyChip.text) problems.push('the basis chip is visible but empty');
+    else if (!taOnlyChip.title) problems.push('the basis chip has no tooltip naming the live weights');
+    if (taOnlyCleared !== true) problems.push('the basis chip did not clear when the basis matched live');
   }
   if (!report.exportBtns) problems.push('export buttons missing');
   if (!report.auditRows) problems.push('#auBody has no audit rows');
