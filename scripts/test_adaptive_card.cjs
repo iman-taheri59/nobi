@@ -13,7 +13,10 @@
  *      as the backtest control next to it;
  *   5. when the pair changes under the numbers, the card says so and then
  *      re-measures — stale numbers wearing a fresh header are the quiet version
- *      of the same lie (1.0.14).
+ *      of the same lie (1.0.14);
+ *   6. the A/B evidence line (1.0.15) shows a verdict **with its sample size**,
+ *      refuses on a named error without inventing numbers, and always repeats
+ *      that nothing was applied and that a reference feed cannot certify.
  *
  * No CDN, no server: the page is read from disk and the API is a function.
  */
@@ -169,13 +172,59 @@ function stub(result) {
   state = window.adCardState();
   assert.equal(state.stale, false, 'the re-measure did not clear the stale flag');
 
-  // ---- 5. the disabled-backend path ----
+  // ---- 5. the A/B evidence line (1.0.15) ----
+  const EV = {
+    ok: true, symbol: 'BTCUSDT', tf: '15m', candles_source: 'reference', applied: false,
+    promotable: false, verdict: 'inconclusive',
+    windows: { train_bars: 255, eval_bars: 85, count: 4, paired: true },
+    baseline: { profit_factor: 0.382, expectancy_r: -0.4483, trades: 22 },
+    adaptive: { profit_factor: 0.243, expectancy_r: -0.457, trades: 6 },
+    delta: { profit_factor: -0.139, expectancy_r: -0.0087, trades: -16 },
+    why: 'out-of-sample trades below 30 in at least one arm (base 22, adaptive 6)',
+  };
+  doc.getElementById('btTf').value = '15m';
+  stub(EV);
+  await window.adEvidenceRun();
+  assert.match(stub.lastPath, /\/adaptive\/evidence\/BTCUSDT\?tf=15m/, `evidence used ${stub.lastPath}`);
+  assert.match(stub.lastPath, /limit=900/);
+  // The sample size travels with the verdict: a "favours" with no window count
+  // would be a slogan, not evidence.
+  assert.match(val('adEvWindows'), /4.*255.*85/, `windows line was "${text('adEvWindows')}"`);
+  assert.match(val('adEvPf'), /0\.38.*0\.24/, `PF line was "${text('adEvPf')}"`);
+  assert.match(text('adEvVerdict'), /inconclusive|نامعلوم/);
+  assert.match(text('adEvWhy'), /not applied|اعمال نشد/);
+  // Reference data may show the method, never certify a strategy.
+  assert.match(text('adEvWhy'), /cannot certify|تأیید نمی‌کند/);
+
+  // A named refusal clears the numbers instead of leaving the previous run.
+  stub({ ok: false, error: 'lower-bar-untestable', message: 'a bar below 68 filters nothing' });
+  await window.adEvidenceRun();
+  assert.equal(val('adEvPf'), '—', 'a refusal left a PF on screen');
+  assert.equal(val('adEvWindows'), '—');
+  assert.match(text('adEvVerdict'), /lower-bar-untestable/);
+  assert.match(text('adEvWhy'), /filters nothing/);
+
+  // The verdict belongs to a pair: moving the selection says so.
+  stub({ ...EV, verdict: 'favours-adaptive' });
+  doc.getElementById('btTf').value = '15m';
+  await window.adEvidenceRun();
+  assert.match(text('adEvVerdict'), /favours the higher bar|به نفع آستانهٔ بالاتر/);
+  doc.getElementById('btTf').value = '4h';
+  doc.getElementById('btTf').dispatchEvent(new window.Event('change'));
+  assert.match(text('adEvVerdict'), /run it again|دوباره اجرا کنید/,
+    `the evidence did not go stale with the pair: "${text('adEvVerdict')}"`);
+  // ... and the debounced re-measure of the threshold card must not resurrect a
+  // verdict about the old pair.
+  await new Promise((r) => setTimeout(r, 900));
+  assert.match(text('adEvVerdict'), /run it again|دوباره اجرا کنید/);
+
+  // ---- 6. the disabled-backend path ----
   window.NBX.core.api = undefined;
   await window.adMeasureThresholds();
   assert.match(text('adState'), /backend|بک‌اند/,
     'a missing backend produced no explanation');
 
-  console.log('PASS — adaptive card: numbers, the not-applied label, named refusals, no zeros, staleness named and re-measured');
+  console.log('PASS — adaptive card: numbers, the not-applied label, named refusals, no zeros, staleness named and re-measured, A/B verdict with its sample size');
   // The page arms intervals (clock, polling) that would keep node alive forever;
   // this script asserts and leaves.
   dom.window.close();

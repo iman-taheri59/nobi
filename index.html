@@ -277,7 +277,7 @@
       </button>
     </div>
     <span class="hidden 2xl:inline-flex chip shrink-0"><span class="dot bg-emerald-400"></span> <span data-i18n="hdr.kill"></span></span>
-    <span id="buildChip" class="hidden lg:inline-flex chip num text-violet-300 border-violet-400/30 shrink-0" title="نسخه واقعی از /api/health">v1.0.14 · core</span>
+    <span id="buildChip" class="hidden lg:inline-flex chip num text-violet-300 border-violet-400/30 shrink-0" title="نسخه واقعی از /api/health">v1.0.15 · core</span>
     <div class="ms-auto flex items-center gap-1.5 shrink-0">
       <span class="hidden xl:inline-flex chip num" id="clock">--:--:--</span>
       <span id="apiChip" class="hidden 2xl:inline-flex chip num text-zinc-400 border-white/10" title=""><i data-lucide="wifi-off" class="w-3.5 h-3.5"></i> <span>API: —</span></span>
@@ -1205,6 +1205,9 @@
           <button id="adBtn" class="ms-auto px-3 py-1.5 rounded-lg text-[11px] font-bold bg-cyan-400/15 text-cyan-200 border border-cyan-300/40 flex items-center gap-1.5 hover:bg-cyan-400/25 transition">
             <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> <span data-i18n="ad.measure"></span>
           </button>
+          <button id="adEvBtn" class="px-3 py-1.5 rounded-lg text-[11px] font-bold bg-zinc-400/10 text-zinc-300 border border-zinc-400/30 flex items-center gap-1.5 hover:bg-white/10 transition">
+            <i data-lucide="scale" class="w-3.5 h-3.5"></i> <span data-i18n="ad.evidence"></span>
+          </button>
         </div>
         <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 text-[10px] sm:text-[11px]">
           <div><div class="text-zinc-500 mb-0.5" data-i18n="ad.atr"></div><div class="num font-extrabold text-sm" id="adAtr">—</div></div>
@@ -1218,6 +1221,14 @@
         </div>
         <div class="mt-2.5 text-[10px] text-zinc-500 leading-5" id="adWhy"></div>
         <div class="mt-1 text-[10px] text-zinc-400 leading-5" id="adState"></div>
+        <div class="mt-2 pt-2 border-t border-white/5 text-[10px] leading-5 flex flex-wrap items-center gap-x-3 gap-y-1" id="adEv">
+          <span class="chip text-zinc-400 border-white/10"><span data-i18n="ad.evTitle"></span></span>
+          <span class="num" id="adEvWindows">—</span>
+          <span class="num" id="adEvPf">—</span>
+          <span class="num" id="adEvDelta">—</span>
+          <span class="font-bold" id="adEvVerdict">—</span>
+          <span class="text-zinc-500" id="adEvWhy"></span>
+        </div>
       </div>
 
       <!-- ===== Result KPIs (out-of-sample only) ===== -->
@@ -1408,7 +1419,7 @@ const T = {
     'bt.cfg':'پیکربندی بک‌تست','bt.equity':'سرمایه اولیه','bt.stopK':'ضریب استاپ (k×ATR)','bt.train':'پنجره آموزش (کندل)','bt.eval':'پنجره آزمون (کندل)',
     'bt.cfgNote':'پارامترها فقط روی پنجره آموزش بهینه می‌شوند و اعداد گزارش‌شده از پنجره آزمون (خارج‌از‌نمونه) می‌آیند · اگر کمتر از ۲ پنجره جا شود، اندازه پنجره‌ها خودکار انتخاب می‌شود · تداخل SL/TP در یک کندل محافظه‌کارانه به ضرر فرض می‌شود · نتایج در backtest_reports/ ذخیره می‌گردد.',
     'bt.sample':'معاملات نمونه (آخرین پنجره)','bt.exit':'خروج','bt.loading':'در حال اجرا...',
-    'bt.bars':'تاریخچه (کندل)','bt.slip':'لغزش (bps)','bt.basisTaOnly':'فقط تکنیکال','ad.title':'آستانه‌ها و رژیم','ad.measureOnly':'فقط اندازه‌گیری','ad.measure':'اندازه‌گیری','ad.atr':'ATR نسبت به قیمت','ad.percentile':'صدک ATR','ad.regime':'رژیم','ad.factor':'ضریب ورود','ad.long':'LONG (فعلی ← پیشنهاد)','ad.neutral':'NEUTRAL (فعلی ← پیشنهاد)','ad.share':'سهم LONG','ad.bars':'کندل امتیازخورده','ad.applied':'اعمال شد','ad.stale':'کهنه','ad.notApplied':'اعمال نشد — فقط شاهد','ad.needBackend':'برای اندازه‌گیری، بک‌اند لازم است','ad.failed':'اندازه‌گیری انجام نشد','ad.refused':'رد شد','ad.clamped':'ضریب به سقف/کف خود رسیده','bt.src':'منبع کندل','bt.srcVenue':'نوبیتکس (محل معامله)','bt.srcRef':'صرافی مرجع (فقط برای توسعه)','bt.gateRef':'داده مرجع','bt.gateTitle':'دروازه ارتقا (ADR-0009):','bt.params':'پارامتر','bt.isR':'R آموزش',
+    'bt.bars':'تاریخچه (کندل)','bt.slip':'لغزش (bps)','bt.basisTaOnly':'فقط تکنیکال','ad.title':'آستانه‌ها و رژیم','ad.measureOnly':'فقط اندازه‌گیری','ad.measure':'اندازه‌گیری','ad.atr':'ATR نسبت به قیمت','ad.percentile':'صدک ATR','ad.regime':'رژیم','ad.factor':'ضریب ورود','ad.long':'LONG (فعلی ← پیشنهاد)','ad.neutral':'NEUTRAL (فعلی ← پیشنهاد)','ad.share':'سهم LONG','ad.bars':'کندل امتیازخورده','ad.applied':'اعمال شد','ad.stale':'کهنه','ad.notApplied':'اعمال نشد — فقط شاهد','ad.needBackend':'برای اندازه‌گیری، بک‌اند لازم است','ad.failed':'اندازه‌گیری انجام نشد','ad.refused':'رد شد','ad.clamped':'ضریب به سقف/کف خود رسیده','ad.evidence':'شاهد خارج‌از‌نمونه','ad.evTitle':'فقط شاهد A/B','ad.evWindows':'پنجره','ad.evPf':'PF پایه ← بالاتر','ad.evDelta':'Δ','ad.evIdle':'اجرا نشده','ad.evVerdictAdaptive':'به نفع آستانهٔ بالاتر — فقط شاهد','ad.evVerdictBaseline':'به نفع آستانهٔ فعلی — فقط شاهد','ad.evInconclusive':'نامعلوم','ad.evNoPromote':'داده مرجع تأیید نمی‌کند','ad.evStale':'جفت عوض شد؛ دوباره اجرا کنید','ad.evFailed':'شاهد اجرا نشد','bt.src':'منبع کندل','bt.srcVenue':'نوبیتکس (محل معامله)','bt.srcRef':'صرافی مرجع (فقط برای توسعه)','bt.gateRef':'داده مرجع','bt.gateTitle':'دروازه ارتقا (ADR-0009):','bt.params':'پارامتر','bt.isR':'R آموزش',
     'bt.oos':'خارج‌از‌نمونه','bt.gatePass':'قبول','bt.gateFail':'رد','bt.gateShort':'داده کافی نیست','bt.gateSynth':'داده شبیه‌سازی‌شده',
     'bt.grid':'جستجوی شبکه‌ای — حساسیت پارامتر', 'bt.fallback':'سرور پاسخ نداد؛ محاسبهٔ محلی (شبیه‌سازی)','bt.gridRun':'اجرای گرید','bt.gridBest':'بهترین ترکیب','bt.gridMeta':'در انتظار اجرا',
     'bt.multi':'اسکن گرید چندنمادی — بهینه‌ترین پارامتر به‌ازای هر نماد','bt.multiRun':'اجرا برای ۸ نماد',
@@ -1656,7 +1667,7 @@ const T = {
     'bt.cfg':'Backtest configuration','bt.equity':'Initial equity','bt.stopK':'Stop factor (k×ATR)','bt.train':'Train window (bars)','bt.eval':'Eval window (bars)',
     'bt.cfgNote':'Parameters are optimised on the train window only; reported numbers come from the eval window (out-of-sample) · windows auto-fit when fewer than 2 fit · SL/TP collisions inside one candle are resolved pessimistically · reports are saved to backtest_reports/.',
     'bt.sample':'Sample trades (last window)','bt.exit':'Exit','bt.loading':'Running...',
-    'bt.bars':'History (bars)','bt.slip':'Slippage (bps)','bt.basisTaOnly':'TA-only','ad.title':'Thresholds and regime','ad.measureOnly':'measurement only','ad.measure':'Measure','ad.atr':'ATR / price','ad.percentile':'ATR percentile','ad.regime':'Regime','ad.factor':'Entry factor','ad.long':'LONG (live ← proposed)','ad.neutral':'NEUTRAL (live ← proposed)','ad.share':'LONG share','ad.bars':'scored bars','ad.applied':'applied','ad.stale':'stale','ad.notApplied':'not applied — evidence only','ad.needBackend':'measurement needs the backend','ad.failed':'measurement failed','ad.refused':'refused','ad.clamped':'the factor sits at its bound','bt.src':'Candles','bt.srcVenue':'Nobitex (the venue)','bt.srcRef':'Reference venue (dev only)','bt.gateRef':'Reference data','bt.gateTitle':'Promotion gate (ADR-0009):','bt.params':'Params','bt.isR':'Train R',
+    'bt.bars':'History (bars)','bt.slip':'Slippage (bps)','bt.basisTaOnly':'TA-only','ad.title':'Thresholds and regime','ad.measureOnly':'measurement only','ad.measure':'Measure','ad.atr':'ATR / price','ad.percentile':'ATR percentile','ad.regime':'Regime','ad.factor':'Entry factor','ad.long':'LONG (live ← proposed)','ad.neutral':'NEUTRAL (live ← proposed)','ad.share':'LONG share','ad.bars':'scored bars','ad.applied':'applied','ad.stale':'stale','ad.notApplied':'not applied — evidence only','ad.needBackend':'measurement needs the backend','ad.failed':'measurement failed','ad.refused':'refused','ad.clamped':'the factor sits at its bound','ad.evidence':'Out-of-sample evidence','ad.evTitle':'A/B evidence only','ad.evWindows':'windows','ad.evPf':'PF base ← higher','ad.evDelta':'Δ','ad.evIdle':'not run','ad.evVerdictAdaptive':'favours the higher bar — evidence only','ad.evVerdictBaseline':'favours the current bar — evidence only','ad.evInconclusive':'inconclusive','ad.evNoPromote':'reference data cannot certify','ad.evStale':'the pair changed; run it again','ad.evFailed':'the evidence run failed','bt.src':'Candles','bt.srcVenue':'Nobitex (the venue)','bt.srcRef':'Reference venue (dev only)','bt.gateRef':'Reference data','bt.gateTitle':'Promotion gate (ADR-0009):','bt.params':'Params','bt.isR':'Train R',
     'bt.oos':'Out-of-sample','bt.gatePass':'PASS','bt.gateFail':'FAIL','bt.gateShort':'Insufficient data','bt.gateSynth':'Simulated data',
     'bt.grid':'Grid search — parameter sensitivity', 'bt.fallback':'server unreachable; computed locally (simulated)',
 'bt.gridRun':'Run grid','bt.gridBest':'Best combo','bt.gridMeta':'Idle',
@@ -5878,6 +5889,13 @@ function btRender(r){
   }
 
   function onControlChange() {
+    // The A/B numbers belong to a pair as well; say so instead of leaving a
+    // verdict about a symbol that is no longer selected.
+    if (evPair && evPair !== sig(sel())) {
+      evClear(false);
+      evSet('adEvVerdict', t('ad.evStale'), 'font-bold text-amber-300');
+      evSet('adEvWhy', '', 'text-zinc-500');
+    }
     // Never measured: stay quiet. Someone who has not asked for a measurement
     // must not have one fired at them just because they changed the symbol.
     if (!asked) return;
@@ -5886,7 +5904,84 @@ function btRender(r){
     timer = setTimeout(() => { timer = null; measure(); }, DRIFT_MS);
   }
 
+  /* ---- The A/B walk-forward: evidence, not a verdict to act on ------------
+   * The measurement says what a factor would be; this asks whether it would
+   * have helped, on the same windows, one variable. Every exit keeps three
+   * words on screen: it was not applied, and a reference feed cannot certify.
+   * The verdict is a *sentence about a sample*, so it is rendered with its
+   * sample size next to it — a "favours" with no window count is a slogan. */
+  const evBtn = document.getElementById('adEvBtn');
+  const evSet = (id, text, cls) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = text;
+    if (cls) el.className = cls;
+  };
+  const evClear = (idle) => {
+    evSet('adEvWindows', '—', 'num');
+    evSet('adEvPf', '—', 'num');
+    evSet('adEvDelta', '—', 'num');
+    evSet('adEvVerdict', idle ? t('ad.evIdle') : '—', idle ? 'font-bold text-zinc-500' : 'font-bold');
+    evSet('adEvWhy', '', 'text-zinc-500');
+  };
+  let evPair = null;
+
+  function renderEvidence(r) {
+    if (!r || r.ok !== true) {
+      evClear(false);
+      const code = (r && (r.error || r.message)) || 'bad-response';
+      evSet('adEvVerdict', `${t('ad.refused')}: ${code}`, 'font-bold text-amber-300');
+      evSet('adEvWhy', (r && r.message && r.message !== code) ? String(r.message).slice(0, 180) : '',
+        'text-zinc-500');
+      return;
+    }
+    const b = r.baseline || {};
+    const a = r.adaptive || {};
+    const d = r.delta || {};
+    const w = r.windows || {};
+    const num = (x, n) => (typeof x === 'number' && isFinite(x) ? window.fmtNum(x, n) : '—');
+    evSet('adEvWindows', `${t('ad.evWindows')} ${num(w.count, 0)} × ${num(w.train_bars, 0)}/${num(w.eval_bars, 0)}`, 'num');
+    evSet('adEvPf', `${t('ad.evPf')} ${num(b.profit_factor, 2)} → ${num(a.profit_factor, 2)}`, 'num');
+    evSet('adEvDelta', `${t('ad.evDelta')} ${num(d.profit_factor, 2)} / ${num(d.expectancy_r, 3)}R`, 'num');
+    const verdict = {
+      'favours-adaptive': { text: t('ad.evVerdictAdaptive'), cls: 'font-bold text-emerald-300' },
+      'favours-baseline': { text: t('ad.evVerdictBaseline'), cls: 'font-bold text-amber-300' },
+    }[r.verdict] || { text: t('ad.evInconclusive'), cls: 'font-bold text-zinc-300' };
+    evSet('adEvVerdict', verdict.text, verdict.cls);
+    const tail = [r.why || ''];
+    if (r.candles_source && r.candles_source !== 'nobitex') tail.push(t('ad.evNoPromote'));
+    tail.push(t('ad.notApplied'));
+    evSet('adEvWhy', tail.filter(Boolean).join(' · '), 'text-zinc-500');
+  }
+
+  async function evidence() {
+    if (!(window.NBX && NBX.core && NBX.core.api && typeof NBX.core.api.get === 'function')) {
+      evSet('adEvVerdict', t('ad.needBackend'), 'font-bold text-amber-300');
+      return;
+    }
+    const pair = sel();
+    const mine = sig(pair);
+    evBtn.disabled = true;
+    evSet('adEvVerdict', t('bt.loading') || '…', 'font-bold text-zinc-500');
+    try {
+      const path = `${NBX.config.pythonApi}/adaptive/evidence/${encodeURIComponent(pair.sym)}`
+        + `?tf=${encodeURIComponent(pair.tf)}&source=${pair.src}&limit=900`;
+      const r = await NBX.core.api.get(path, 1);
+      evPair = mine;
+      renderEvidence(r);
+    } catch (e) {
+      evPair = mine;
+      evClear(false);
+      evSet('adEvVerdict', `${t('ad.evFailed')}`, 'font-bold text-red-300');
+      evSet('adEvWhy', String((e && e.message) || e).slice(0, 120), 'text-zinc-500');
+    } finally {
+      evBtn.disabled = false;
+      if (typeof refreshIcons === 'function') refreshIcons();
+    }
+  }
+
   btn.addEventListener('click', measure);
+  if (evBtn) evBtn.addEventListener('click', evidence);
   ['btSym', 'btTf', 'btSrc'].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.addEventListener('change', onControlChange);
@@ -5897,7 +5992,8 @@ function btRender(r){
   });
   window.adMeasureThresholds = measure;
   // Read-only window into the card for the jsdom test; nothing writes through it.
-  window.adCardState = () => ({ asked, now: sig(sel()), stale: card.dataset.stale === '1' });
+  window.adCardState = () => ({ asked, now: sig(sel()), stale: card.dataset.stale === '1', ev: evPair });
+  window.adEvidenceRun = evidence;
 })();
 
 /* ================= Grid Search heatmap ================= */

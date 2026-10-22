@@ -40,6 +40,8 @@ STANDALONE = ROOT / "nobitex-mobile.html"
 CARD_IDS = {
     "adCard", "adBtn", "adBadge", "adSym", "adTf", "adAtr", "adPct", "adRegime",
     "adFactor", "adLong", "adNeutral", "adShare", "adBars", "adWhy", "adState",
+    # 1.0.15 — the A/B evidence line
+    "adEvBtn", "adEv", "adEvWindows", "adEvPf", "adEvDelta", "adEvVerdict", "adEvWhy",
 }
 
 #: i18n keys the card reads through `t()`. A missing key renders its own name.
@@ -48,6 +50,10 @@ CARD_KEYS = {
     "ad.factor", "ad.long", "ad.neutral", "ad.share", "ad.bars", "ad.applied",
     "ad.notApplied", "ad.needBackend", "ad.failed", "ad.refused", "ad.clamped",
     "ad.stale",
+    # 1.0.15
+    "ad.evidence", "ad.evTitle", "ad.evWindows", "ad.evPf", "ad.evDelta", "ad.evIdle",
+    "ad.evVerdictAdaptive", "ad.evVerdictBaseline", "ad.evInconclusive", "ad.evNoPromote",
+    "ad.evStale", "ad.evFailed",
 }
 
 
@@ -181,3 +187,53 @@ def test_the_stale_path_keeps_the_numbers_and_the_named_pair() -> None:
     assert "card.dataset.stale" in paint, "the stale state is not externally observable"
     assert "→" in paint
     assert "|| 0" not in paint
+
+
+#: 1.0.15 — the A/B evidence line.
+def test_the_evidence_line_keeps_the_sample_next_to_the_verdict() -> None:
+    script = _card_script()
+    # The *second* assignment is the one that renders a response; the first is
+    # the "clear to a dash" path.
+    windows = script[script.rindex("evSet('adEvWindows'"):]
+    windows = windows[:windows.index("\n")]
+    # Window count *and* the window geometry, from the response, not a constant.
+    for field in ("w.count", "w.train_bars", "w.eval_bars"):
+        assert field in windows, f"the evidence line drops {field} — a verdict without n"
+    assert "t('ad.evWindows')" in windows
+
+
+def test_the_evidence_line_never_claims_application_or_certification() -> None:
+    script = _card_script()
+    block = script[script.index("function renderEvidence(r)"):script.index("async function evidence()")]
+    assert "t('ad.notApplied')" in block, "the A/B line stopped saying it was not applied"
+    assert "r.candles_source !== 'nobitex'" in block and "t('ad.evNoPromote')" in block, \
+        "a reference feed could now look like certification"
+    # Every verdict label is named in both languages and says "evidence only" or
+    # "inconclusive"; none of them reads as an instruction.
+    page = _page()
+    for key in ("ad.evVerdictAdaptive", "ad.evVerdictBaseline"):
+        assert page.count(f"'{key}':") == 2
+    fa_slice = page[page.index("'ad.evVerdictAdaptive':"):][:120]
+    en_slice = page[page.rindex("'ad.evVerdictAdaptive':"):][:160]
+    assert "فقط شاهد" in fa_slice, fa_slice
+    assert "evidence only" in en_slice, en_slice
+
+
+def test_a_refused_evidence_run_clears_the_numbers() -> None:
+    script = _card_script()
+    block = script[script.index("function renderEvidence(r)"):script.index("async function evidence()")]
+    refusal = block[block.index("r.ok !== true"):block.index("const b = r.baseline")]
+    assert "evClear(false)" in refusal, "a refusal must not leave the previous run on screen"
+    assert "r.error" in refusal
+    assert "|| 0" not in refusal
+
+
+def test_the_evidence_run_needs_a_click_and_its_panel_is_stale_with_the_pair() -> None:
+    script = _card_script()
+    assert "evBtn.addEventListener('click', evidence)" in script
+    boot = _page()
+    if "async function start()" in boot:
+        start_block = boot[boot.index("async function start()"):]
+        assert "adEvidenceRun" not in start_block, "the A/B run fires on boot"
+    handler = script[script.index("function onControlChange()"):script.index("btn.addEventListener")]
+    assert "t('ad.evStale')" in handler, "the verdict survives a change of pair"

@@ -30,6 +30,9 @@
 | 0016 | **دروازه‌های ایستا (ruff/mypy/eslint) و CI** | پذیرفته — پیاده‌شده | `pyproject.toml`، `eslint.config.mjs`، `.github/workflows/ci.yml` |
 | 0017 | **تست و بررسی از داخل داشبورد** | پذیرفته — پیاده‌شده | `server/diagnostics.py`، `server/devsuite.py`، `test_diagnostics.py` |
 | 0018 | **حساب کاربری، ورود و عضویت با دعوت** | پذیرفته — پیاده‌شده و تست‌شده | `server/auth.py`، `auth_api.py`، `identity.py`، `test_auth*.py` |
+| 0019 | **یک صفحه، یک آرتیفکت تولیدشده** | پذیرفته — پیاده‌شده | `index.html` + `scripts/build_standalone.py` → `nobitex-mobile.html`؛ `test_single_page.py` |
+| 0020 | **آستانه‌های وابسته به تایم‌فریم** | پذیرفته — اندازه‌گیری پیاده شد، اعمال نشد | `server/adaptive.py`، `GET /api/adaptive/thresholds/{symbol}`، کارت `#adCard`، `test_adaptive*.py` |
+| 0021 | **اعمال آستانه‌ها فقط با شاهد خارج‌از‌نمونه** | **پیشنهادی** — هیچ‌چیز اعمال نشده | `server/adaptive_evidence.py`، `GET /api/adaptive/evidence/{symbol}`، `test_adaptive_evidence.py` |
 
 ## چطور این وضعیت‌ها تعیین شدند
 

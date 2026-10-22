@@ -2,6 +2,41 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 1.0.15
+
+- **The next question, in code: "would a higher bar have been better out-of-sample?"**
+  `server/adaptive_evidence.py` runs a **paired** comparison: identical windows, identical
+  parameter grid, identical costs, and exactly **one** variable (`min_score` = 68 versus
+  `round(68×factor)`). Only evaluation-window numbers are reported.
+- **New route:** `GET /api/adaptive/evidence/{symbol}?tf=&source=&limit=&factor=` — always
+  `applied: false` and `promotable: false`.
+- **Two named refusals in place of a number:** `no-op` for a factor of 1.0 (two identical
+  runs are theatre, not evidence), and `lower-bar-untestable` for a factor below 1 — because
+  `ta_engine` derives the LONG label from the constant itself, a lower bar adds no trades,
+  and "no difference" there means "we changed nothing". Making it testable needs a
+  structural change, written down in ADR-0021.
+- **The verdict is conservative:** fewer than 3 windows or 30 out-of-sample trades in either
+  arm → `inconclusive`; and naming a winner requires ΔPF ≥ 0.10 **and** Δexpectancy ≥
+  0.05R. A profit-factor gain bought with collapsed expectancy is not an improvement.
+- **Reference data never certifies:** on `source=reference` the verdict is capped at
+  `inconclusive` with the reason attached; the arithmetic verdict, when clear, is kept aside
+  in `verdict_capped`.
+- **In the dashboard:** an "A/B evidence only" line in the same card — window count **with
+  the window geometry**, `PF base ← higher`, ΔPF/ΔR, and the verdict. No verdict is shown
+  without its sample size, and when the pair (symbol/timeframe/feed) moves, the evidence line
+  says it is stale rather than silently surviving.
+- **ADR-0021 "proposed":** the five simultaneous conditions for any future application, plus
+  the technical prerequisite for a lower bar. The status is deliberately "proposed" and no
+  path writes `LONG_SCORE_MIN`; `test_nothing_is_ever_applied_and_no_promotion_is_offered`
+  keeps it that way.
+- **Tests:** 9 new Python tests (`test_adaptive_evidence.py`: paired windows, a higher bar
+  never adds trades, both named refusals, thin-sample conservatism, the reference-feed cap,
+  `applied=false` on every path, determinism) + 4 wiring tests in
+  `test_adaptive_ui_wiring.py` + 4 executable jsdom scenarios (a verdict with its sample
+  size, a named refusal, going stale with the pair, and the repetition of "not applied" and
+  "reference data cannot certify"). Two deliberate mutations (dropping the sample size from
+  the window line, removing the reference-feed caveat) turned a test red.
+
 ## 1.0.14
 
 - **The threshold card can no longer show one pair's numbers under another pair's header.**

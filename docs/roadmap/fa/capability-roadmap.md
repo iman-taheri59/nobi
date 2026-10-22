@@ -21,7 +21,7 @@
 | A7 — آلفا/بتا نسبت به معیار | **انجام شد** (بتا، آلفا، خطای ردیابی، نسبت اطلاعات، ضبط صعود/نزول) | `server/benchmark.py`، `POST /api/benchmark/relative`، کارت «عملکرد نسبت به بازار» در تب performance |
 | A6 — شاخص‌های بازار | **انجام شد** (گستردگی، پراکندگی، تمرکز گردش؛ عمداً «شاخص» نیست) | `server/market_overview.py`، `GET /api/market/overview`، کارت «وضعیت بازار» در تب overview |
 | B8 — استریم WebSocket | **نیمه‌کاره** (فقط opt-in؛ پیش‌فرض REST polling) | `NBX_WS_URL`، `/api/ws/status` |
-| B7 — آستانه‌های تطبیقی | **اندازه‌گیری انجام شد، اعمال نشد** (صرفاً شاهد؛ `applied: false`؛ اعمال ADR جدا می‌خواهد) | `server/adaptive.py`، `GET /api/adaptive/thresholds/{symbol}`، `scripts/adaptive_report.py`، ADR-0020 |
+| B7 — آستانه‌های تطبیقی | **اندازه‌گیری و شاهدِ خارج‌از‌نمونه انجام شد، اعمال نشد** (مقایسهٔ جفت‌شده روی همان پنجره‌ها با یک متغیر؛ `applied: false`؛ آستانهٔ پایین‌تر تا پارامتری‌شدن جهت قابل آزمون نیست؛ اعمال نیازمند ADR-0021) | `server/adaptive.py`، `GET /api/adaptive/thresholds/{symbol}`، `server/adaptive_evidence.py`، `GET /api/adaptive/evidence/{symbol}`، کارت `#adCard`، ADR-0020، ADR-0021 |
 | — | **تأیید قرارداد داده** (ابزار تازه، خارج از نقشهٔ اولیه) | `scripts/probe_live.py`، `scripts/mock_upstream.py` |
 
 > قانون شواهد در مورد A1 تغییر نمی‌کند: اتصال «فقط-خواندنی» است؛ هیچ سفارش
