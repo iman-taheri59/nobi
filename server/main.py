@@ -358,7 +358,7 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(
     title="nobiTrader",
-    version="1.0.14",
+    version="1.0.15",
     lifespan=lifespan,
 )
 
@@ -2835,7 +2835,7 @@ async def exec_mode_set(payload: dict, request: Request):
     return {"ok": True, **_exec_mode_payload(), **provenance()}
 
 
-# ---------------- Reference feed (ADR-0014, 1.0.14) ----------------
+# ---------------- Reference feed (ADR-0014, 1.0.15) ----------------
 # A second venue, for developing outside Iran and for sanity-checking the
 # numbers. Read-only, clearly labelled, and never a stand-in for the exchange:
 # `/api/backtest/run` turns it into a REFERENCE_DATA verdict that cannot pass.
@@ -2936,6 +2936,47 @@ async def adaptive_thresholds(
     except AdaptiveError as e:
         return {**out, "ok": False, "error": e.code, "message": e.message, "meta": e.meta}
     out["bars"] = len(rows)
+    return out
+
+
+@app.get("/api/adaptive/evidence/{symbol}")
+async def adaptive_evidence(
+    symbol: str,
+    tf: str = Query("1h"),
+    source: str = Query("nobitex", pattern="^(nobitex|reference)$"),
+    limit: int = Query(900, ge=120, le=2000),
+    factor: float | None = Query(None, ge=0.5, le=2.0),
+    toman_per_usdt: float | None = None,
+):
+    """Paired walk-forward: the fixed bar against the measured one.
+
+    `adaptive.py` proposes a factor. This asks the next question in code — would
+    the higher bar have been better out-of-sample? — on identical windows, with
+    identical costs and one variable. It always reports `applied: false` and
+    `promotable: false`: a verdict is evidence for ADR-0021, not a retune. A
+    reference feed caps the verdict at `inconclusive` (ADR-0009 / ADR-0014).
+    """
+    from adaptive import AdaptiveError
+    from adaptive_evidence import compare
+
+    sym = (symbol or "").upper()
+    out: dict = {"ok": True, "symbol": sym, "tf": tf, "candles_source": source}
+    try:
+        if source == "reference":
+            rows, ref_meta = await reference_feed.fetch_candles(
+                sym, tf, limit=limit, fx=toman_per_usdt)
+            out["reference"] = ref_meta
+        else:
+            rows, _src = await client.get_candles_ex(sym, tf, limit)
+    except reference_feed.ReferenceError as e:
+        return {**out, "ok": False, "error": e.code, "message": e.message, "meta": e.meta}
+    except UpstreamUnavailable as e:
+        return {**out, "ok": False, **upstream_error("candles", str(e))}
+    try:
+        out.update(await asyncio.to_thread(
+            compare, rows, tf, sym, factor=factor, source=source))
+    except AdaptiveError as e:
+        return {**out, "ok": False, "error": e.code, "message": e.message, "meta": e.meta}
     return out
 
 
