@@ -61,6 +61,8 @@ jobs:
         run: node scripts/js_engine_parity.js
       - name: financial display and localization (offline jsdom)
         run: npm run test:display
+      - name: adaptive-thresholds card (offline jsdom, stubbed api)
+        run: npm run test:adaptive-card
       - name: preflight parity — 28 cases × 10 gates
         run: python3 scripts/check_preflight_parity.py
       - name: generated mobile file is current

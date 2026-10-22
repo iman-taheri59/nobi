@@ -11,7 +11,8 @@
     "test:intrabar": "node scripts/js_engine_parity.js",
     "build": "python scripts/build_coin_icons.py && npm run css && python scripts/build_standalone.py",
     "test:display": "node scripts/test_display.cjs",
-    "test:icons": "node scripts/test_coin_icons.cjs"
+    "test:icons": "node scripts/test_coin_icons.cjs",
+    "test:adaptive-card": "node scripts/test_adaptive_card.cjs"
   },
   "devDependencies": {
     "@tailwindcss/cli": "^4.3.3",
@@ -19,5 +20,5 @@
     "jsdom": "^26.0.0",
     "tailwindcss": "^4.3.3"
   },
-  "version": "1.0.12"
+  "version": "1.0.13"
 }
