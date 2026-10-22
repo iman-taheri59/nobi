@@ -77,3 +77,23 @@ for both is an unintended policy.
   without the factor; until then `applied` stays `false`.
 - Cost: two new surfaces (`/api/adaptive/thresholds/{symbol}` and a CLI script) that
   must stay in step with future engine changes; the tests hold that line.
+
+## Amendment — 2026-10-22 (version 1.0.13): the visible half, with the same fence
+
+Until 1.0.12 the measurement lived behind an API route and a CLI script. The
+"thresholds and regime" card in the backtest lab shows the same numbers — and that is
+where this decision's main risk appears: **a panel that proposes a better-looking number
+without saying it was not applied is exactly the moment a measurement becomes a silent
+policy.**
+
+So the fence was extended into the interface:
+
+1. Every card carries a fixed "measurement only" chip and a "not applied — evidence only"
+   line, read from the same i18n key whose bilingual definition a test keeps honest.
+2. **A refusal never becomes a number:** an unreachable venue or a missing toman rate
+   clears the cells to `—` and prints the named code (`no-fx`, `upstream_unavailable`).
+3. **One candle source:** the card reads the same `btSrc` control as the backtest beside
+   it, or two panels start disagreeing about one symbol.
+4. **Nothing is requested on boot** — only when the tab is opened or the button pressed.
+5. Executable guard: `scripts/test_adaptive_card.cjs` runs the real inline block in jsdom
+   and asserts those four properties.

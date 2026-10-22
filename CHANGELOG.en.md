@@ -2,6 +2,31 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 1.0.13
+
+- **A "thresholds and regime" card in the backtest lab.** The 1.0.12 measurement is now
+  visible where it is needed: ATR / price, the ATR percentile, the regime, the entry
+  factor, `LONG`/`NEUTRAL` as *live ← proposed*, the LONG share, and the number of scored
+  bars. The candle source is read from the control next to the backtest, so measurement
+  and backtest cannot end up on two different feeds.
+- **The "not applied" label is part of the design, not a footnote.** ADR-0020's fence is
+  enforced in the interface too: every card carries a "measurement only" chip and a
+  "not applied — evidence only" line. A panel that shows a better-looking number without
+  saying so is the moment a measurement becomes a silent policy.
+- **A refusal never becomes a number.** When Nobitex is unreachable, or a rial market has
+  no toman rate, the cells clear to `—` and the reason is named (`refused: no-fx`) —
+  never a zero.
+- **Nothing is requested on boot:** one light request when the lab tab is opened or the
+  button pressed. `GET /api/adaptive/thresholds/{symbol}` is unchanged.
+- **Two new guards:** `scripts/test_adaptive_card.cjs` (executes the real inline block in
+  jsdom against a stubbed API: cells filled, the not-applied label, a named refusal, no
+  zeros, and the request path) wired into CI; and `server/tests/test_adaptive_ui_wiring.py`
+  (8 tests: the ids exist, both languages define the keys, and the card survives into the
+  generated `nobitex-mobile.html`).
+- **One operational lesson:** while proving the guard bites, `git checkout -- index.html`
+  erased the newly written card, because it was not committed yet. It was rebuilt from the
+  same scripts — and the experiment did prove the guard: renaming one id turned a test red.
+
 ## 1.0.12
 
 - **The CSS build is deterministic.** Tailwind v4 scans every text file in the project,

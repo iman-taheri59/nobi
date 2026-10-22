@@ -277,7 +277,7 @@
       </button>
     </div>
     <span class="hidden 2xl:inline-flex chip shrink-0"><span class="dot bg-emerald-400"></span> <span data-i18n="hdr.kill"></span></span>
-    <span id="buildChip" class="hidden lg:inline-flex chip num text-violet-300 border-violet-400/30 shrink-0" title="نسخه واقعی از /api/health">v1.0.12 · core</span>
+    <span id="buildChip" class="hidden lg:inline-flex chip num text-violet-300 border-violet-400/30 shrink-0" title="نسخه واقعی از /api/health">v1.0.13 · core</span>
     <div class="ms-auto flex items-center gap-1.5 shrink-0">
       <span class="hidden xl:inline-flex chip num" id="clock">--:--:--</span>
       <span id="apiChip" class="hidden 2xl:inline-flex chip num text-zinc-400 border-white/10" title=""><i data-lucide="wifi-off" class="w-3.5 h-3.5"></i> <span>API: —</span></span>
@@ -1194,6 +1194,32 @@
         <span class="ms-auto text-[10px] text-zinc-500 num" id="btMeta"></span>
       </div>
 
+      <!-- ===== Adaptive thresholds (measurement only; ADR-0020) ===== -->
+      <div class="glass p-3.5 sm:p-4" id="adCard">
+        <div class="font-bold text-[13px] sm:text-sm mb-2.5 flex flex-wrap items-center gap-2">
+          <i data-lucide="gauge" class="w-4 h-4 text-cyan-300"></i>
+          <span data-i18n="ad.title"></span>
+          <span class="chip num" id="adSym">—</span>
+          <span class="chip num text-cyan-300 border-cyan-300/30" id="adTf">—</span>
+          <span class="chip text-zinc-400 border-white/10" id="adBadge" data-i18n="ad.measureOnly"></span>
+          <button id="adBtn" class="ms-auto px-3 py-1.5 rounded-lg text-[11px] font-bold bg-cyan-400/15 text-cyan-200 border border-cyan-300/40 flex items-center gap-1.5 hover:bg-cyan-400/25 transition">
+            <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> <span data-i18n="ad.measure"></span>
+          </button>
+        </div>
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 text-[10px] sm:text-[11px]">
+          <div><div class="text-zinc-500 mb-0.5" data-i18n="ad.atr"></div><div class="num font-extrabold text-sm" id="adAtr">—</div></div>
+          <div><div class="text-zinc-500 mb-0.5" data-i18n="ad.percentile"></div><div class="num font-extrabold text-sm" id="adPct">—</div></div>
+          <div><div class="text-zinc-500 mb-0.5" data-i18n="ad.regime"></div><div class="font-extrabold text-sm" id="adRegime">—</div></div>
+          <div><div class="text-zinc-500 mb-0.5" data-i18n="ad.factor"></div><div class="num font-extrabold text-sm" id="adFactor">—</div></div>
+          <div><div class="text-zinc-500 mb-0.5" data-i18n="ad.long"></div><div class="num font-extrabold text-sm text-emerald-300" id="adLong">—</div></div>
+          <div><div class="text-zinc-500 mb-0.5" data-i18n="ad.neutral"></div><div class="num font-extrabold text-sm text-amber-300" id="adNeutral">—</div></div>
+          <div><div class="text-zinc-500 mb-0.5" data-i18n="ad.share"></div><div class="num font-extrabold text-sm" id="adShare">—</div></div>
+          <div><div class="text-zinc-500 mb-0.5" data-i18n="ad.bars"></div><div class="num font-extrabold text-sm" id="adBars">—</div></div>
+        </div>
+        <div class="mt-2.5 text-[10px] text-zinc-500 leading-5" id="adWhy"></div>
+        <div class="mt-1 text-[10px] text-zinc-400 leading-5" id="adState"></div>
+      </div>
+
       <!-- ===== Result KPIs (out-of-sample only) ===== -->
       <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 sm:gap-4">
         <div class="glass p-3.5 sm:p-4"><div class="text-[10px] sm:text-[11px] text-zinc-500 mb-1" data-i18n="bt.pf"></div><div class="num font-extrabold text-lg sm:text-xl text-emerald-400" id="btPf">—</div></div>
@@ -1382,7 +1408,7 @@ const T = {
     'bt.cfg':'پیکربندی بک‌تست','bt.equity':'سرمایه اولیه','bt.stopK':'ضریب استاپ (k×ATR)','bt.train':'پنجره آموزش (کندل)','bt.eval':'پنجره آزمون (کندل)',
     'bt.cfgNote':'پارامترها فقط روی پنجره آموزش بهینه می‌شوند و اعداد گزارش‌شده از پنجره آزمون (خارج‌از‌نمونه) می‌آیند · اگر کمتر از ۲ پنجره جا شود، اندازه پنجره‌ها خودکار انتخاب می‌شود · تداخل SL/TP در یک کندل محافظه‌کارانه به ضرر فرض می‌شود · نتایج در backtest_reports/ ذخیره می‌گردد.',
     'bt.sample':'معاملات نمونه (آخرین پنجره)','bt.exit':'خروج','bt.loading':'در حال اجرا...',
-    'bt.bars':'تاریخچه (کندل)','bt.slip':'لغزش (bps)','bt.basisTaOnly':'فقط تکنیکال','bt.src':'منبع کندل','bt.srcVenue':'نوبیتکس (محل معامله)','bt.srcRef':'صرافی مرجع (فقط برای توسعه)','bt.gateRef':'داده مرجع','bt.gateTitle':'دروازه ارتقا (ADR-0009):','bt.params':'پارامتر','bt.isR':'R آموزش',
+    'bt.bars':'تاریخچه (کندل)','bt.slip':'لغزش (bps)','bt.basisTaOnly':'فقط تکنیکال','ad.title':'آستانه‌ها و رژیم','ad.measureOnly':'فقط اندازه‌گیری','ad.measure':'اندازه‌گیری','ad.atr':'ATR نسبت به قیمت','ad.percentile':'صدک ATR','ad.regime':'رژیم','ad.factor':'ضریب ورود','ad.long':'LONG (فعلی ← پیشنهاد)','ad.neutral':'NEUTRAL (فعلی ← پیشنهاد)','ad.share':'سهم LONG','ad.bars':'کندل امتیازخورده','ad.applied':'اعمال شد','ad.notApplied':'اعمال نشد — فقط شاهد','ad.needBackend':'برای اندازه‌گیری، بک‌اند لازم است','ad.failed':'اندازه‌گیری انجام نشد','ad.refused':'رد شد','ad.clamped':'ضریب به سقف/کف خود رسیده','bt.src':'منبع کندل','bt.srcVenue':'نوبیتکس (محل معامله)','bt.srcRef':'صرافی مرجع (فقط برای توسعه)','bt.gateRef':'داده مرجع','bt.gateTitle':'دروازه ارتقا (ADR-0009):','bt.params':'پارامتر','bt.isR':'R آموزش',
     'bt.oos':'خارج‌از‌نمونه','bt.gatePass':'قبول','bt.gateFail':'رد','bt.gateShort':'داده کافی نیست','bt.gateSynth':'داده شبیه‌سازی‌شده',
     'bt.grid':'جستجوی شبکه‌ای — حساسیت پارامتر', 'bt.fallback':'سرور پاسخ نداد؛ محاسبهٔ محلی (شبیه‌سازی)','bt.gridRun':'اجرای گرید','bt.gridBest':'بهترین ترکیب','bt.gridMeta':'در انتظار اجرا',
     'bt.multi':'اسکن گرید چندنمادی — بهینه‌ترین پارامتر به‌ازای هر نماد','bt.multiRun':'اجرا برای ۸ نماد',
@@ -1630,7 +1656,7 @@ const T = {
     'bt.cfg':'Backtest configuration','bt.equity':'Initial equity','bt.stopK':'Stop factor (k×ATR)','bt.train':'Train window (bars)','bt.eval':'Eval window (bars)',
     'bt.cfgNote':'Parameters are optimised on the train window only; reported numbers come from the eval window (out-of-sample) · windows auto-fit when fewer than 2 fit · SL/TP collisions inside one candle are resolved pessimistically · reports are saved to backtest_reports/.',
     'bt.sample':'Sample trades (last window)','bt.exit':'Exit','bt.loading':'Running...',
-    'bt.bars':'History (bars)','bt.slip':'Slippage (bps)','bt.basisTaOnly':'TA-only','bt.src':'Candles','bt.srcVenue':'Nobitex (the venue)','bt.srcRef':'Reference venue (dev only)','bt.gateRef':'Reference data','bt.gateTitle':'Promotion gate (ADR-0009):','bt.params':'Params','bt.isR':'Train R',
+    'bt.bars':'History (bars)','bt.slip':'Slippage (bps)','bt.basisTaOnly':'TA-only','ad.title':'Thresholds and regime','ad.measureOnly':'measurement only','ad.measure':'Measure','ad.atr':'ATR / price','ad.percentile':'ATR percentile','ad.regime':'Regime','ad.factor':'Entry factor','ad.long':'LONG (live ← proposed)','ad.neutral':'NEUTRAL (live ← proposed)','ad.share':'LONG share','ad.bars':'scored bars','ad.applied':'applied','ad.notApplied':'not applied — evidence only','ad.needBackend':'measurement needs the backend','ad.failed':'measurement failed','ad.refused':'refused','ad.clamped':'the factor sits at its bound','bt.src':'Candles','bt.srcVenue':'Nobitex (the venue)','bt.srcRef':'Reference venue (dev only)','bt.gateRef':'Reference data','bt.gateTitle':'Promotion gate (ADR-0009):','bt.params':'Params','bt.isR':'Train R',
     'bt.oos':'Out-of-sample','bt.gatePass':'PASS','bt.gateFail':'FAIL','bt.gateShort':'Insufficient data','bt.gateSynth':'Simulated data',
     'bt.grid':'Grid search — parameter sensitivity', 'bt.fallback':'server unreachable; computed locally (simulated)',
 'bt.gridRun':'Run grid','bt.gridBest':'Best combo','bt.gridMeta':'Idle',
@@ -5724,6 +5750,95 @@ function btRender(r){
       refreshIcons();
     }
   });
+})();
+
+/* ================= Adaptive thresholds (ADR-0020) ================= */
+/* `LONG_SCORE_MIN = 68` is one number for every timeframe, so "quiet day" and
+ * "68 is unreachable at 4h" look identical on this page. The backend measures
+ * the difference and *proposes* a factor; nothing here applies it. The card says
+ * so in its own badge, because a panel that shows a better-looking number
+ * without that label is how a measurement becomes a silent policy. */
+(function () {
+  const card = document.getElementById('adCard');
+  const btn = document.getElementById('adBtn');
+  if (!card || !btn) return;
+  const set = (id, text, cls) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = text;
+    if (cls) el.className = cls;
+  };
+  const dash = () => ['adAtr', 'adPct', 'adRegime', 'adFactor', 'adLong', 'adNeutral', 'adShare', 'adBars']
+    .forEach((id) => set(id, '—', 'num font-extrabold text-sm'));
+
+  function render(r) {
+    if (!r || r.ok !== true) {
+      dash();
+      // A refusal is a result, and it is named: never a zero, never a guess.
+      const code = (r && (r.error || r.message)) || 'bad-response';
+      set('adState', `${t('ad.refused')}: ${code}` + (r && r.message && r.message !== code ? ` — ${r.message}` : ''),
+        'mt-1 text-[10px] text-amber-300 leading-5');
+      set('adWhy', '');
+      return;
+    }
+    const v = r.volatility || {};
+    const sc = r.scales || {};
+    const th = r.thresholds || {};
+    const base = th.base || {};
+    const rec = th.recommended || {};
+    const freq = r.frequency || {};
+    const num = (x, d) => (typeof x === 'number' && isFinite(x) ? window.fmtNum(x, d) : '—');
+    set('adSym', r.symbol || '—', 'chip num');
+    set('adTf', `${r.tf || '—'} · ${r.candles_source || ''}`.trim(), 'chip num text-cyan-300 border-cyan-300/30');
+    set('adAtr', `${num(v.atr_pct_price, 2)}%`, 'num font-extrabold text-sm');
+    set('adPct', `${num((v.percentile || 0) * 100, 0)}%`, 'num font-extrabold text-sm');
+    const regimeFa = { calm: 'آرام', normal: 'معمولی', volatile: 'پرنوسان' }[r.regime] || r.regime || '—';
+    set('adRegime', LANG === 'fa' ? regimeFa : (r.regime || '—'), 'font-extrabold text-sm');
+    set('adFactor', num(sc.entry, 2), 'num font-extrabold text-sm');
+    set('adLong', `${num(base.long, 0)} → ${num(rec.long, 1)}`, 'num font-extrabold text-sm text-emerald-300');
+    set('adNeutral', `${num(base.neutral, 0)} → ${num(rec.neutral, 1)}`, 'num font-extrabold text-sm text-amber-300');
+    set('adShare', `${num((freq.long_share || 0) * 100, 1)}%`, 'num font-extrabold text-sm');
+    set('adBars', num(freq.bars, 0), 'num font-extrabold text-sm');
+    set('adWhy', r.why || '');
+    const atBound = sc.entry >= 0.9999 && sc.entry <= 1.0001;
+    set('adState',
+      `${t('ad.notApplied')} · ${t('ad.factor')} ${atBound ? t('ad.clamped') : num(sc.entry, 2)}`,
+      'mt-1 text-[10px] text-zinc-400 leading-5');
+    set('adBadge', t('ad.measureOnly'), 'chip text-violet-300 border-violet-300/30');
+  }
+
+  async function measure() {
+    if (!(window.NBX && NBX.core && NBX.core.api && typeof NBX.core.api.get === 'function')) {
+      set('adState', t('ad.needBackend'), 'mt-1 text-[10px] text-amber-300 leading-5');
+      return;
+    }
+    const sym = (document.getElementById('btSym')?.value || 'BTCIRT').toUpperCase();
+    const tf = (document.getElementById('btTf')?.value || '1h');
+    // Same candle source as the backtest next to it: a measurement on one feed
+    // and a backtest on another is how two panels start disagreeing.
+    const src = (document.getElementById('btSrc')?.value === 'reference') ? 'reference' : 'nobitex';
+    btn.disabled = true;
+    set('adState', t('bt.loading') || '…', 'mt-1 text-[10px] text-zinc-500 leading-5');
+    try {
+      const path = `${NBX.config.pythonApi}/adaptive/thresholds/${encodeURIComponent(sym)}`
+        + `?tf=${encodeURIComponent(tf)}&source=${src}&limit=400`;
+      render(await NBX.core.api.get(path, 1));
+    } catch (e) {
+      dash();
+      set('adState', `${t('ad.failed')}: ${String((e && e.message) || e).slice(0, 120)}`,
+        'mt-1 text-[10px] text-red-300 leading-5');
+    } finally {
+      btn.disabled = false;
+      if (typeof refreshIcons === 'function') refreshIcons();
+    }
+  }
+
+  btn.addEventListener('click', measure);
+  // Cheap and honest: a light request when the lab is opened, nothing on boot.
+  document.querySelectorAll('.navbtn[data-tab="backtest"]').forEach((b) => {
+    b.addEventListener('click', () => setTimeout(measure, 400));
+  });
+  window.adMeasureThresholds = measure;
 })();
 
 /* ================= Grid Search heatmap ================= */
