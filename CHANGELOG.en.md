@@ -2,6 +2,31 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 1.0.27
+
+- **ADR-0023 is written: “Smarter only with evidence”.** The fifth document in this series, and
+  instead of a list of tools it defines an **admission filter**: any change claiming intelligence
+  must (1) produce a number that does not exist today, (2) have a state in which it is wrong, and
+  (3) not change behaviour in its first step. Anything failing that is rejected, however modern it
+  looks.
+- **Six steps, in dependency order:** prefetch the order book on every scan (without it the shadow
+  ledger stays empty), an honest backfill (candle-derived codes only, labelled `backfilled`), score
+  calibration (from number to probability, with a minimum sample per bucket), multi-timeframe
+  confluence, the correlation gate (wiring `portfolio.py` into the ranking), and finally applying
+  thresholds with evidence (executing ADR-0021, under its own ADR).
+- **Five explicit refusals, with reasons:** a machine-learning ranker without out-of-sample
+  evidence, reinforcement learning for sizing (a decision that cannot be audited), lowering the 68
+  threshold for “more signals”, price prediction with a single number, and enabling order submission
+  to feel “complete”.
+- **A hard boundary on the backfill:** `spread-wide` and `book-thin` are never reconstructed — past
+  order books do not exist and inventing them is fabricating data (ADR-0014). Nor can a backfill
+  move any gate's verdict from `insufficient` to `supports`.
+- **Acceptance for the document:** the ADR becomes “accepted” when S1 and S2 ship and, within one
+  working week, the shadow ledger brings at least one gate to ≥30 verdicts over ≥5 days. Until then
+  it is **Proposed**.
+- **Zero behaviour change:** this version is documentation only. No executable line was touched, and
+  `test_docs_bilingual` (5 tests) is green.
+
 ## 1.0.26
 
 - **The gates now have a memory.** Stage 2 of ADR-0022: `server/gate_ledger.py` records each
