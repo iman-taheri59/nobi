@@ -61,3 +61,27 @@ def _no_leaked_kill_switch():
         with contextlib.suppress(Exception):
             main.paper_trading.PAPER_BROKER.halted = False
         pytest.fail("test left the risk kill switch armed; resume it in the test")
+
+
+@pytest.fixture(autouse=True)
+def _documented_exchange_tables():
+    """A network call must not rewrite another test's premises.
+
+    `apply_options()` writes process globals from `/v2/options`. Two tests here
+    start the app's lifespan (`with TestClient(main.app)`), which fetches those
+    options — so on a machine where the exchange is reachable, the *documented*
+    minimums (3,000,000 Rial / 11 USDT) were replaced by the live ones (100,000 / 1)
+    and three later tests that expect a below-minimum order to be refused instead
+    saw it filled. CI has no network, which is exactly why it never showed up there.
+
+    The reset runs *before and after* every test, not only after: a polluting call
+    that happened before the first test (module import, an earlier session, a
+    fixture that started the app) would otherwise still reach it. Every test begins
+    from the documented tables; a test that wants the exchange's values applies them
+    itself.
+    """
+    import units
+
+    units.reset_documented_defaults()
+    yield
+    units.reset_documented_defaults()

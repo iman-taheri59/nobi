@@ -2,6 +2,37 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 1.1.0
+
+> **This release is a MINOR because the number ceiling forced it, not because behaviour changed.**
+> `1.0.30` was the last PATCH on the `1.0.x` line (`docs/releases.md`). The content here is PATCH
+> work — two test fixes and one new guard — and no trading behaviour moved.
+
+- **The tests no longer depend on the network.** Three tests failed on a machine that can reach
+  Nobitex and were green on CI, which cannot: `test_js_parity::test_both_brokers…` and two
+  `test_paper_order_route` tests that expect a below-minimum order to be refused. Cause: two other
+  tests start the app with `with TestClient(main.app)`; the lifespan reads `/v2/options` and
+  `units.apply_options()` writes the exchange's **live** minimums (100,000 Rial / 1 USDT) over the
+  **documented** ones (3,000,000 Rial / 11 USDT) — process-wide. With 1 USDT as the floor a $7.30
+  order is legal, so the broker filled it and three tests broke three files away.
+- **The fix has two halves:** `units.reset_documented_defaults()` restores the shipped tables from a
+  frozen copy, and `conftest` runs it **before and after** every test. The "before" half matters: a
+  pollution that happened prior to the first test would otherwise still reach it. Every test now
+  starts from the documented numbers, and order no longer matters.
+- **Five new tests** pin it: the shipped numbers are the documented SmallOrder, the exchange can
+  still override them, the restore really restores, the same $7.30 order is refused under the
+  documented floor and legal under the live one (the exact trap), and the `min-notional` gate
+  judges with the documented numbers.
+- **The codec guard no longer walks the venv.** `test_no_file_is_read_or_written_with_the_locale_codec`
+  used to report fifty offenders inside `server\.venv\Lib\site-packages` (pip, numpy, pytest) on
+  Windows, where the venv lives inside the checkout. `.venv`, `site-packages`, `node_modules`,
+  `build`, `dist` and the caches are skipped now.
+- **Gates:** ruff 0 · mypy 0 (84 files) · pytest **829 passed** · eslint/dashboard/five JS gates 0 ·
+  parity 0 · release_notes v1.1.0 0 · build 0.
+- **One honest note:** `test_diagnostics::test_a_real_gate_run_leaves_the_configured_database_untouched`
+  runs the `ruff` gate from `PATH`; if `ruff` is installed in the interpreter but not on `PATH`, that
+  test fails — correctly and honestly. I saw it once in a full run, green in the three after.
+
 ## 1.0.30
 
 - **A stale book is not evidence any more.** `gates_block` judged every book in the cache
