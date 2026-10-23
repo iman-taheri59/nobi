@@ -2,7 +2,7 @@
 
 [فارسی](../fa/ADR-0023-هوشمندتر-شدن-فقط-با-شاهد.md) · **English**
 
-**Status:** Proposed — changes no behaviour in this version; it states *what* may be added and *in what order*
+**Status:** Proposed (S1 implemented in 1.0.28) — the document itself changes no behaviour; it states *what* may be added and *in what order*
 **Date:** 2026-10-23
 **Related:** ADR-0005 (technical analysis), ADR-0006 (fundamentals), ADR-0007 (decision engine), ADR-0008 (risk), ADR-0009 (promotion gates), ADR-0012 (journal), ADR-0014 (data honesty), ADR-0020 (timeframe thresholds), ADR-0021 (apply only with evidence), ADR-0022 (gates and the shadow ledger)
 
@@ -145,3 +145,8 @@ sample fills, and a user may read that as a defect — the same cost ADR-0022 ac
 
 This ADR becomes “accepted” when S1 and S2 are implemented and, within one working week, the shadow
 ledger brings at least one gate to `n ≥ 30` and `days ≥ 5`. Until then its status is **Proposed**.
+
+**Implementation status:** S1 shipped in 1.0.28 — the order book is prefetched on every scan under a
+ceiling of `GATE_PREFETCH_MAX=20` (above it a `ValueError`, never a trim), with a TTL and a time
+budget, and the pass is reported under `gates.inputs.prefetch`. The ranking is untouched and
+`applied` stays `false`. S2…S6 remain open.

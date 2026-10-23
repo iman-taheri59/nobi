@@ -2,6 +2,36 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 1.0.28
+
+- **Step S1 of ADR-0023 shipped: the scan reads the order book.** Until now a book was only read
+  when somebody opened the book panel for one symbol, so most rows stayed `no-book` and the shadow
+  ledger built in stage 2 of ADR-0022 was effectively empty. Every scan now fills the books of the
+  **top N symbols** before it writes the ledger.
+- **The ceiling is a refusal, not a trim.** `gate_prefetch_n()` rejects a value above
+  `GATE_PREFETCH_MAX=20`, a negative number, and non-numeric input with `ValueError`. Trimming
+  silently was the worst option: the gates card would look populated while nobody could see why the
+  sample was not growing. Default `10`; `0` means off.
+- **One broken symbol neither kills the scan nor lies in the counts.** A symbol's error only lands
+  in `failed`, and that symbol stays out of the cache — so its gate keeps saying `no-book`. An empty
+  book (no bids or no asks) counts as a failure, not as zero depth.
+- **The ranking is untouched.** This step only fills the input cache: no row is removed, added or
+  reordered, and `applied` stays `false`. A test compares the list's order and length before and
+  after the pass.
+- **One arithmetic, two consumers.** `book_stats()` and `book_record()` were lifted out of the
+  `/api/orderbook/{symbol}` route and the prefetch uses the same functions, so the panel and the gate
+  cannot disagree about one book. Depth of a toman-quoted symbol is converted with the live rate, and
+  stays `None` when there is no rate — tomans are never reported as dollars.
+- **Reuse and a time budget.** A book newer than `BOOK_PREFETCH_TTL_S` (default 120s) is not read
+  again, and a pass stays inside `GATE_PREFETCH_BUDGET_S` (default 8s); both are settable through
+  `NBX_BOOK_TTL_S` and `NBX_BOOK_BUDGET_S`. Concurrency is 4.
+- **Visible in the output.** `/api/signals` reports the last pass under `gates.inputs.prefetch`
+  (`asked/ok/failed/fresh/budget_s/at`), so “there is no book” is distinguishable from “nobody ever
+  asked”.
+- **17 new tests** cover exactly this step: the ceiling, the TTL, one failing symbol, an empty book,
+  an unchanged order, route/prefetch arithmetic agreement, and `unknown` shrinking once the books
+  land.
+
 ## 1.0.27
 
 - **ADR-0023 is written: “Smarter only with evidence”.** The fifth document in this series, and

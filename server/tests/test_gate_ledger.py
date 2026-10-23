@@ -423,7 +423,7 @@ def test_the_signals_block_reports_counts_and_never_rows():
     """/api/signals gets the readiness counts; the expensive join lives on its own route."""
     src = _main_source()
     at = src.index("def gates_block(")
-    body = src[at:at + 2000]
+    body = src[at:src.index("\ndef ", at)]   # the block's own body, however long it grows
     assert "gate_ledger_summary()" in body
     assert "gate_ledger.measure(" not in body
     assert "gate_ledger.record(" not in body

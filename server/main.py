@@ -363,7 +363,7 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(
     title="nobiTrader",
-    version="1.0.27",
+    version="1.0.28",
     lifespan=lifespan,
 )
 
@@ -462,6 +462,19 @@ risk = RiskEngine(risk_config_from_env())
 # hammering Nobitex.
 SIGNALS_TTL_S = int(os.getenv("NBX_SIGNALS_TTL_S", "90"))
 UNIVERSE_TTL_S = int(os.getenv("NBX_UNIVERSE_TTL_S", "120"))
+#: ADR-0023 S1 — how many order books one scan may fetch. Before this, a book was
+#: only read when somebody opened `/api/orderbook/{symbol}`, so on a normal scan
+#: most rows were `no-book` and the spread/depth gates never had evidence. The
+#: ceiling is a rate budget from ADR-0003, not a preference: `gate_prefetch_n()`
+#: **raises** above it rather than shrinking N silently.
+GATE_PREFETCH_MAX = 20
+GATE_PREFETCH_DEFAULT = 10
+#: A book younger than this is reused instead of re-fetched: the scan runs every
+#: 90 s and the same ten books would otherwise be requested every time.
+BOOK_PREFETCH_TTL_S = float(os.getenv("NBX_BOOK_TTL_S", "120"))
+#: Total wall-clock budget for one prefetch pass. Whatever has not arrived by
+#: then is counted as failed, not silently dropped.
+GATE_PREFETCH_BUDGET_S = float(os.getenv("NBX_BOOK_BUDGET_S", "8"))
 UPSTREAM_TTL_S = int(os.getenv("NBX_UPSTREAM_TTL_S", "20"))
 
 #: Read by `paper_trading.market_closed_hook`; kept as its own object so the
@@ -1016,6 +1029,16 @@ async def rescan(tf: str = "15m", top: int = 40):
                 log.info("journal: %d new prediction(s) on %s", added, tf)
         except Exception as e:  # journalling must not break scans
             log.warning("journal write failed: %s", e)
+    # ADR-0023 S1: fill the top books *before* the ledger write, so the verdicts
+    # that get recorded have something to judge. The list itself is not touched.
+    try:
+        ranked_now = sorted(out.values(), key=lambda r: r.get("composite") or 0, reverse=True)
+        pre = await gate_prefetch(ranked_now)
+        if pre.get("ok"):
+            log.info("gates: prefetched %d book(s) (%d failed, %d fresh) on %s",
+                     pre["ok"], pre["failed"], pre["fresh"], tf)
+    except Exception as e:      # a prefetch problem must never break a scan
+        log.warning("gate prefetch failed: %s", e)
     try:
         judged = gate_write(tf)
         if judged:
@@ -1150,6 +1173,151 @@ def _book_levels(raw, limit: int) -> list[dict]:
     return out
 
 
+def book_stats(raw: dict, limit: int = 8) -> dict:
+    """Everything the book route and the prefetch both need, from one place.
+
+    Two copies of this arithmetic is how a panel starts showing a spread that
+    disagrees with the gate that read it, so the route and
+    `gate_prefetch()` call the same function and cannot drift.
+
+    `depth_usd` converts an IRT book to dollars because a toman figure and a
+    dollar figure are not comparable; no rate means `None`, which the gates
+    report as `no-book` rather than comparing tomans to dollars.
+    """
+    bids = _book_levels(raw.get("bids"), limit)
+    asks = _book_levels(raw.get("asks"), limit)
+    best_bid = bids[0]["p"] if bids else None
+    best_ask = asks[0]["p"] if asks else None
+    mid = ((best_bid + best_ask) / 2) if (best_bid and best_ask) else (best_bid or best_ask)
+    spread = (best_ask - best_bid) if (best_bid and best_ask) else None
+    spread_pct = (spread / mid * 100) if (spread is not None and mid) else None
+
+    band = (mid or 0) * 0.01
+    bid_depth = sum(lvl["p"] * lvl["q"] for lvl in bids if abs(lvl["p"] - mid) <= band)
+    ask_depth = sum(lvl["p"] * lvl["q"] for lvl in asks if abs(lvl["p"] - mid) <= band)
+    total = bid_depth + ask_depth
+    return {
+        "bids": bids,
+        "asks": asks,
+        "best_bid": best_bid,
+        "best_ask": best_ask,
+        "mid": mid,
+        "spread": spread,
+        "spread_pct": spread_pct,
+        "bid_depth": bid_depth,
+        "ask_depth": ask_depth,
+        "imbalance": ((bid_depth - ask_depth) / total * 100) if total else None,
+        "spread_bps": (spread / mid * 10_000) if (spread is not None and mid) else None,
+        "depth_usd": None,
+        "total_depth": total,
+    }
+
+
+def book_record(sym: str, stats: dict, *, book_currency_irt: bool) -> dict:
+    """The cache row the gates read: spread in bps, depth in dollars, and when."""
+    depth = None
+    if book_currency_irt:
+        rate = _toman_per_usdt()
+        depth = (stats["total_depth"] / rate) if rate else None
+    else:
+        depth = stats["total_depth"]
+    return {"spread_bps": stats["spread_bps"], "depth_usd": depth,
+            "mid": stats["mid"], "at": time.time()}
+
+
+def gate_prefetch_n(value: int | str | None = None) -> int:
+    """How many books this scan may fetch — or a refusal, never a silent trim.
+
+    ADR-0023 S1 puts a ceiling on N because every extra book is a request against
+    the exchange's rate budget (ADR-0003). A caller asking for more than the
+    ceiling gets `ValueError`: quietly fetching fewer would make the gates look
+    populated while the sample they need is missing.
+    """
+    raw = os.getenv("NBX_GATE_PREFETCH") if value is None else value
+    if raw is None or raw == "":
+        return GATE_PREFETCH_DEFAULT
+    try:
+        n = int(raw)
+    except (TypeError, ValueError) as e:
+        raise ValueError(f"gate prefetch must be an integer, got {raw!r}") from e
+    if n < 0:
+        raise ValueError(f"gate prefetch cannot be negative, got {n}")
+    if n > GATE_PREFETCH_MAX:
+        raise ValueError(f"gate prefetch {n} exceeds the rate ceiling {GATE_PREFETCH_MAX}")
+    return n
+
+
+async def gate_prefetch(ranked: list[dict], *, n: int | None = None,
+                        concurrency: int = 4) -> dict:
+    """ADR-0023 S1 — read the top N books so the gates have something to judge.
+
+    Order of the list is never touched: this fills `_cached["books"]` and returns
+    a count. A symbol that fails is counted as failed and left absent, so the
+    gates keep saying `no-book` for it — the honest answer — instead of being fed
+    a zero that would read as "fine".
+    """
+    try:
+        want = gate_prefetch_n(n)
+    except ValueError as e:
+        log.warning("gate prefetch refused: %s", e)
+        raise
+    result = {"asked": 0, "ok": 0, "failed": 0, "fresh": 0, "budget_s": GATE_PREFETCH_BUDGET_S}
+    if not want:
+        _cached["gate_prefetch"] = {**result, "at": time.time(), "enabled": False}
+        return _cached["gate_prefetch"]
+
+    books = _cached.setdefault("books", {})
+    now = time.time()
+    targets: list[str] = []
+    for snap in ranked:
+        if len(targets) >= want:
+            break
+        sym = str(snap.get("symbol") or "")
+        if not sym:
+            continue
+        seen = books.get(sym)
+        if seen and (now - float(seen.get("at") or 0)) < BOOK_PREFETCH_TTL_S:
+            result["fresh"] += 1
+            continue
+        targets.append(sym)
+
+    sem = asyncio.Semaphore(max(1, concurrency))
+
+    async def one(sym: str) -> bool:
+        async with sem:
+            try:
+                raw = await asyncio.wait_for(client.get_orderbook(sym), timeout=4)
+            except Exception as e:          # one symbol must never fail the pass
+                log.debug("gate prefetch %s failed: %s", sym, e)
+                return False
+            stats = book_stats(raw)
+            if not stats["bids"] and not stats["asks"]:
+                return False
+            books[sym] = book_record(sym, stats, book_currency_irt=sym.endswith("IRT"))
+            return True
+
+    result["asked"] = len(targets)
+    if targets:
+        try:
+            done = await asyncio.wait_for(
+                asyncio.gather(*(one(s) for s in targets)),
+                timeout=GATE_PREFETCH_BUDGET_S,
+            )
+            result["ok"] = sum(1 for d in done if d)
+        except TimeoutError:
+            # The budget ran out. Count what actually landed, and say so: a
+            # prefetch that reports ten books when four arrived is the kind of
+            # number this repository writes ADRs against.
+            result["ok"] = sum(1 for s in targets if s in books
+                               and (now - float(books[s].get("at") or 0)) < 1.0)
+            result["timed_out"] = True
+        result["failed"] = result["asked"] - result["ok"]
+
+    payload = {**result, "at": time.time(), "enabled": True, "n": want}
+    _cached["gate_prefetch"] = payload
+    return payload
+
+
 @app.get("/api/orderbook/{symbol}")
 async def orderbook(symbol: str, limit: int = Query(8, ge=1, le=50)):
     """Depth for one symbol.
@@ -1172,42 +1340,20 @@ async def orderbook(symbol: str, limit: int = Query(8, ge=1, le=50)):
         return {**upstream_error("orderbook", "timeout"), "symbol": sym,
                 "bids": [], "asks": [], "levels": 0}
 
-    bids = _book_levels(raw.get("bids"), limit)
-    asks = _book_levels(raw.get("asks"), limit)
+    stats = book_stats(raw, limit)
+    bids, asks = stats["bids"], stats["asks"]
     if not bids and not asks:
         return {**upstream_error("orderbook", "empty book"), "symbol": sym,
                 "bids": [], "asks": [], "levels": 0}
+    best_bid, best_ask = stats["best_bid"], stats["best_ask"]
+    mid, spread, spread_pct = stats["mid"], stats["spread"], stats["spread_pct"]
+    bid_depth, ask_depth, imbalance = (stats["bid_depth"], stats["ask_depth"],
+                                       stats["imbalance"])
 
-    best_bid = bids[0]["p"] if bids else None
-    best_ask = asks[0]["p"] if asks else None
-    mid = (best_bid + best_ask) / 2 if (best_bid and best_ask) else (best_bid or best_ask)
-    spread = (best_ask - best_bid) if (best_bid and best_ask) else None
-    spread_pct = (spread / mid * 100) if (spread is not None and mid) else None
-
-    # Depth within ±1% of the mid, and the imbalance between the two sides.
-    # Both are computed here from the levels actually returned, so the panel
-    # never shows a statistic that disagrees with the rows above it.
-    band = (mid or 0) * 0.01
-    bid_depth = sum(lvl["p"] * lvl["q"] for lvl in bids if abs(lvl["p"] - mid) <= band)
-    ask_depth = sum(lvl["p"] * lvl["q"] for lvl in asks if abs(lvl["p"] - mid) <= band)
-    total = bid_depth + ask_depth
-    imbalance = ((bid_depth - ask_depth) / total * 100) if total else None
-
-    # ADR-0022: the shadow gate layer reads the spread and the depth a book route
-    # already computed. Keeping them means the gates cost *zero* extra requests;
-    # a symbol nobody has opened stays `no-book`, which is the honest answer.
-    _cached["books"][sym] = {
-        "spread_bps": (spread / mid * 10_000) if (spread is not None and mid) else None,
-        # Both sides of the ±1 % band, because a gate about "can this fill" is not
-        # a gate about one side of the book.
-        # Book prices are quoted in the pair's own quote currency, so an IRT book
-        # is in toman and a USDT book is already in dollars — the same distinction
-        # `market_overview` makes before it adds anything up.
-        "depth_usd": (bid_depth + ask_depth) if not sym.endswith("IRT") else (
-            (bid_depth + ask_depth) / _toman_per_usdt() if _toman_per_usdt() else None),
-        "mid": mid,
-        "at": time.time(),
-    }
+    # ADR-0022: the shadow gate layer reads the spread and the depth this route
+    # computes. ADR-0023 S1 makes the same row land here from the scan's prefetch,
+    # through `book_record()` — one implementation, so the two can never disagree.
+    _cached["books"][sym] = book_record(sym, stats, book_currency_irt=sym.endswith("IRT"))
 
     return {
         "ok": True,
@@ -3193,6 +3339,8 @@ def gates_block(ranked: list[dict], tf: str) -> dict:
         "ages": sum(1 for r in rows if r.get("age_bars") is not None),
         "books": sum(1 for r in rows if r.get("book")),
         "closed": len(closed),
+        # ADR-0023 S1: what the last pass did — "no book" vs "never asked".
+        "prefetch": _cached.get("gate_prefetch"),
     }
     # ADR-0022 stage 2: how much evidence exists so far, per gate. Counting only —
     # this block has never been able to change a verdict, and still cannot.
