@@ -90,6 +90,15 @@ def is_outage(e: ClientError) -> bool:
 
 
 
+#: How long a per-pair UDF refusal is remembered. Nobitex answers 403 for some
+#: pairs' public history (USDTIRT is the usual one) and for delisted symbols;
+#: asking again every five minutes produced the same red error line forever and
+#: buried the errors that actually meant something. Six hours is long enough to
+#: stop the noise and short enough that a pair that becomes public is picked up
+#: the same day.
+UDF_REFUSAL_TTL_S = float(os.getenv("NBX_UDF_REFUSAL_TTL_S", "21600"))
+
+
 class UpstreamUnavailable(ClientError):
     """Nobitex could not be reached and no cached answer exists.
 
@@ -167,6 +176,8 @@ class NobitexClient:
         self._session_factory = session_factory
         self._closed = False
         self._circuit_open_until: float = 0.0
+        # symbol -> monotonic deadline: "the exchange refused this pair's history"
+        self._udf_refused: dict[str, float] = {}
         self.degraded_mode: bool = False
         self.ua = resolve_ua()
 
@@ -387,6 +398,15 @@ class NobitexClient:
         cached = CANDLE_CACHE.load(symbol.upper(), res, from_ts, now)
         if cached:
             return cached, "cache"
+        until = self._udf_refused.get(symbol.upper(), 0.0)
+        if time.monotonic() < until:
+            # Already refused recently. Asking again would cost a request and a
+            # red line in the dashboard for an answer that has not changed.
+            raise UpstreamUnavailable(
+                f"candles {symbol} {tf} unavailable: this pair's public history is "
+                f"refused (remembered, retrying in {int(until - time.monotonic())}s)",
+                {"symbol": symbol, "tf": tf, "refused": True},
+            )
         if not self._is_circuit_open():
             try:
                 raw = await self.get_udf_history(symbol, res, from_ts, now, count=count)
@@ -397,6 +417,7 @@ class NobitexClient:
                     ]
                     rows.sort(key=lambda r: r["t"])
                     CANDLE_CACHE.store(symbol.upper(), res, from_ts, now, rows, synthetic=False)
+                    self._udf_refused.pop(symbol.upper(), None)
                     self.degraded_mode = False
                     return rows, "live"
             except ClientError as e:
@@ -408,10 +429,12 @@ class NobitexClient:
                     # without public UDF history. That refusal says nothing
                     # about the other forty symbols — tripping the shared
                     # breaker here cost a whole scan its candles.
-                    log.info("Nobitex UDF %s/%s refused (%s) — symbol skipped, breaker left closed",
-                             symbol, tf, e)
+                    self._udf_refused[symbol.upper()] = time.monotonic() + UDF_REFUSAL_TTL_S
+                    log.info("Nobitex UDF %s/%s refused (%s) — remembered for %.0f min, "
+                             "other symbols untouched", symbol, tf, e, UDF_REFUSAL_TTL_S / 60)
                 raise UpstreamUnavailable(
-                    f"candles {symbol} {tf} unavailable: {e}", {"symbol": symbol, "tf": tf}) from e
+                    f"candles {symbol} {tf} unavailable: {e}",
+                    {"symbol": symbol, "tf": tf, "refused": not is_outage(e)}) from e
 
             # The exchange answered — it just has no candles (or rejected the
             # resolution). That is not an outage, and saying "circuit breaker is

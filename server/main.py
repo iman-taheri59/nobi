@@ -200,7 +200,15 @@ async def journal_resolve(tf: str = "15m", symbols: list[str] | None = None) -> 
             try:
                 rows, _src = await client.get_candles_ex(sym, tf, 1200)
             except UpstreamUnavailable as e:
-                log.warning("resolve %s skipped: %s", sym, e)
+                # A pair the exchange refuses to publish history for is a fact
+                # about that pair, not a warning to act on: the client has
+                # already remembered it. Reserving `warning` for the cases a
+                # reader should do something about is what keeps the errors tab
+                # worth opening.
+                if (getattr(e, "meta", None) or {}).get("refused"):
+                    log.info("resolve %s skipped: %s", sym, e)
+                else:
+                    log.warning("resolve %s skipped: %s", sym, e)
                 continue
             if not rows:
                 continue

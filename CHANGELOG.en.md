@@ -42,6 +42,22 @@
   `windows-latest` (ruff, mypy, pytest). It is **advisory** for now (`continue-on-error`) so one
   small Windows difference cannot lock the repository on day one; it becomes blocking once it has
   run green.
+- **A 403 on one pair no longer paints the log red every five minutes.** The errors export of a
+  real install carried two fresh lines every five minutes: `error nbx-client … 403` and
+  `warning nbx-app resolve USDTIRT skipped`. The cause is real and **already known** — Nobitex does
+  not publish `USDTIRT`'s public history — but the client had no memory: every `resolve` pass sent
+  the same doomed request again. A tab that is always red is a tab nobody opens, and that is where a
+  real failure gets lost. A per-symbol refusal is now remembered for `UDF_REFUSAL_TTL_S` (default
+  6h, `NBX_UDF_REFUSAL_TTL_S`): the request is not repeated, the request counter does not climb, and
+  the message is logged once at `info`.
+- **The memory lives only as long as its evidence.** A success clears it, and after the TTL the
+  client tries again — so a pair that becomes public is seen the same day. A network error or timeout
+  is **never** recorded as a refusal: an outage says nothing about that pair.
+- **`warning` stays reserved for something to act on.** `resolve` logs `info` for a known refusal
+  and `warning` for everything else; the `refused` key in `meta` separates the two.
+- **Five new tests** (`test_udf_refusal_memory.py`): the refusal is not repeated, the client breaker
+  stays closed and other symbols keep working, the memory expires, success clears it, and a timeout
+  is not recorded as a refusal.
 
 ## 1.0.29
 
