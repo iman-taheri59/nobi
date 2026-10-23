@@ -81,7 +81,7 @@ def _import_in_subprocess(modules: tuple[str, ...], env: dict, cwd: Path) -> str
         "    print(m, getattr(mod, 'CACHE_ROOT', getattr(mod, 'REPORTS', None)))\n"
     )
     out = subprocess.run([sys.executable, "-c", code], cwd=str(cwd), env=env,
-                         capture_output=True, text=True, timeout=120)
+                         capture_output=True, text=True, encoding="utf-8", timeout=120)
     assert out.returncode == 0, out.stderr[-2000:]
     return out.stdout.strip()
 
@@ -169,10 +169,10 @@ def test_a_save_leaves_a_complete_file_and_a_backup(state):
     second.cash = 999.0
     second.save()
 
-    on_disk = json.loads(state.read_text())
+    on_disk = json.loads(state.read_text(encoding="utf-8"))
     assert on_disk["cash"] == 999.0
     backup = state.with_suffix(state.suffix + ".bak")
-    assert json.loads(backup.read_text())["cash"] == 12_345.0
+    assert json.loads(backup.read_text(encoding="utf-8"))["cash"] == 12_345.0
     assert not state.with_suffix(state.suffix + ".tmp").exists(), (
         "the temporary file must be renamed away, not left behind")
 
@@ -187,7 +187,7 @@ def test_a_torn_state_file_falls_back_to_the_backup(state):
     saved.cash = 54_321.0
     saved.save()
     _broker().save()                       # produces the .bak from the good file
-    state.write_text('{"equity": 100000.0, "cash": 543')   # power cut mid-write
+    state.write_text('{"equity": 100000.0, "cash": 543', encoding="utf-8")   # power cut mid-write
 
     restored = _broker()
 
@@ -200,7 +200,7 @@ def test_a_torn_state_file_falls_back_to_the_backup(state):
 def test_an_unreadable_state_file_is_quarantined_and_reported(state):
     """Last resort: start fresh — but keep the damaged file and say so."""
     damaged = '{"equity": 100000.0, "positions": {"pp-1": {"symbol": "BTCIRT"'
-    state.write_text(damaged)
+    state.write_text(damaged, encoding="utf-8")
 
     broker = _broker()
 
@@ -209,7 +209,7 @@ def test_an_unreadable_state_file_is_quarantined_and_reported(state):
     assert recovery is not None, "a silent restart is the bug this test exists for"
     kept = Path(recovery["quarantined"])
     assert kept.exists(), "the damaged document must be kept for recovery"
-    assert kept.read_text() == damaged
+    assert kept.read_text(encoding="utf-8") == damaged
     assert not state.exists(), "the damaged file must be moved aside, not overwritten"
 
 
@@ -329,7 +329,7 @@ def test_the_recovery_is_published_to_the_dashboard(state, monkeypatch):
 
     import main
 
-    state.write_text(textwrap.dedent('{"equity": 100000.0, "cash": 777.0}'))
+    state.write_text(textwrap.dedent('{"equity": 100000.0, "cash": 777.0}'), encoding="utf-8")
     broker = _broker()
 
     monkeypatch.setattr(main, "get_broker", lambda *a, **k: broker)

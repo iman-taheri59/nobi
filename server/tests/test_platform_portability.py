@@ -22,6 +22,7 @@ the same message a Windows user would have seen.
 
 from __future__ import annotations
 
+import ast
 import subprocess
 import sys
 from pathlib import Path
@@ -44,9 +45,48 @@ def test_the_suite_collects_without_posix_only_calls():
         f" {str(TESTS)!r}]))\n"
     )
     out = subprocess.run([sys.executable, "-c", code], cwd=str(ROOT),
-                         capture_output=True, text=True, timeout=300)
+                         capture_output=True, text=True, encoding="utf-8", timeout=300)
     assert out.returncode == 0, (
         "a test module needs a POSIX-only os attribute at import time; on Windows "
         "this aborts collection of the entire suite.\n"
         + (out.stdout[-3000:] + out.stderr[-3000:])
     )
+
+
+def _python_sources() -> list[Path]:
+    out: list[Path] = []
+    for base in ((ROOT / "server"), (ROOT / "scripts")):
+        out.extend(p for p in base.rglob("*.py") if "__pycache__" not in p.parts)
+    return out
+
+
+def _has_encoding(call: ast.Call) -> bool:
+    """`encoding=` keyword, or a positional encoding as the first argument."""
+    if any(k.arg == "encoding" for k in call.keywords):
+        return True
+    return bool(call.args) and isinstance(call.args[0], ast.Constant) and isinstance(
+        call.args[0].value, str)
+
+
+#: `.read_text()` / `.write_text()` without an encoding use the *locale* codec, which
+#: on Windows is cp1252: `UnicodeDecodeError: 'charmap' codec can't decode byte 0x81`
+#: on any file with Persian in it. The advisory Windows job found exactly that in
+#: `test_release_version` and `test_github_release`, and `subprocess(..., text=True)`
+#: had it too — a UTF-8 em dash came back as mojibake.
+def test_no_file_is_read_or_written_with_the_locale_codec():
+    offenders: list[str] = []
+    for path in _python_sources():
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            attr = getattr(node.func, "attr", "")
+            if attr in ("read_text", "write_text") and not _has_encoding(node):
+                what = ".read_text()" if attr == "read_text" else ".write_text()"
+                offenders.append(f"{path.relative_to(ROOT)}:{node.lineno}: {what} without encoding=")
+            if attr in ("run", "check_output", "Popen", "call", "check_call") and any(
+                    k.arg == "text" and isinstance(k.value, ast.Constant) and k.value.value
+                    for k in node.keywords) and not any(k.arg == "encoding" for k in node.keywords):
+                offenders.append(f"{path.relative_to(ROOT)}:{node.lineno}: "
+                                 f"subprocess(text=True) without encoding=")
+    assert not offenders, "decoded with the locale codec (cp1252 on Windows):\n" + "\n".join(offenders)

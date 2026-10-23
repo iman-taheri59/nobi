@@ -62,7 +62,7 @@ def test_key_goes_only_to_api_never_images_or_public_json(tmp_path):
         return handler(request)
     assert refresh(c, check)
     assert "private-demo-key" not in json.dumps(c.view())
-    assert "private-demo-key" not in (tmp_path / "metadata.json").read_text()
+    assert "private-demo-key" not in (tmp_path / "metadata.json").read_text(encoding="utf-8")
 
 
 @pytest.mark.parametrize("url", [
@@ -108,8 +108,22 @@ def test_failures_keep_previous_image_and_age(tmp_path, code):
     assert not refresh(c, lambda _: pytest.fail("no retry before cooldown"))
 
 
-@pytest.mark.parametrize("image", [b"<svg><script>bad</script></svg>", b"not an image", PNG * 50000])
-def test_bad_and_oversized_images_preserve_old_logo(tmp_path, image):
+#: The oversized case is built inside the test on purpose: as a parameter it became
+#: the test's *id*, and pytest writes that id into PYTEST_CURRENT_TEST, an
+#: environment variable Windows caps at 32 767 characters — the whole test then
+#: errored in setup with `ValueError: the environment variable is longer than
+#: 32767 characters`.
+BAD_IMAGES = {
+    "svg-with-script": b"<svg><script>bad</script></svg>",
+    "not-an-image": b"not an image",
+    "oversized": None,
+}
+
+
+@pytest.mark.parametrize("kind", sorted(BAD_IMAGES))
+def test_bad_and_oversized_images_preserve_old_logo(tmp_path, kind):
+    image = BAD_IMAGES[kind] if BAD_IMAGES[kind] is not None else PNG * 50000
+    assert len(image) > 200_000 or kind != "oversized"   # the payload really is huge
     c = cache(tmp_path)
     assert refresh(c, handler)
     def bad(request):
@@ -139,7 +153,7 @@ def test_disabled_does_not_fetch_or_destroy_persistent_cache(tmp_path):
 
 
 def test_corrupt_cache_and_unknown_ids_are_safe(tmp_path):
-    (tmp_path / "metadata.json").write_text("broken json")
+    (tmp_path / "metadata.json").write_text("broken json", encoding="utf-8")
     c = cache(tmp_path)
     assert c.view()["error"] == "cache_unreadable"
     assert c.view()["coins"][0]["name"] is None

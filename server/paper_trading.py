@@ -175,7 +175,7 @@ class PaperBroker:
                 self._recover(_backup_path(STATE_FILE), "state file was missing; restored the backup")
             return
         try:
-            self._apply_state(json.loads(STATE_FILE.read_text()))
+            self._apply_state(json.loads(STATE_FILE.read_text(encoding="utf-8")))
             log.info("loaded paper state: %d positions, equity=%s",
                      len(self.positions), self.equity)
             return
@@ -208,7 +208,7 @@ class PaperBroker:
             "%s — do not delete it before checking the trading record.", problem, kept)
 
     def _recover(self, path: Path, why: str) -> None:
-        raw = json.loads(path.read_text())
+        raw = json.loads(path.read_text(encoding="utf-8"))
         self._apply_state(raw)
         self.state_recovery = {"at": int(time.time()), "reason": why, "recovered_from": str(path)}
         log.warning("paper state: %s (%s)", why, path)

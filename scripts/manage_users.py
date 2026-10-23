@@ -34,6 +34,14 @@ import os
 import sys
 from pathlib import Path
 
+#: Persian and em dashes on a console that is not UTF-8 (Windows cp1252, POSIX C):
+#: printing them raised `UnicodeEncodeError` and the script "failed" for a reason
+#: that had nothing to do with what it was checking. Reconfigure, do not escape.
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8")
+
+
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "server"))
 

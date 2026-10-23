@@ -3698,7 +3698,7 @@ async def backtest_reports(limit: int = 20):
     out = []
     for f in files:
         try:
-            j = _json.loads(f.read_text())
+            j = _json.loads(f.read_text(encoding="utf-8"))
             out.append({
                 "file": f.name,
                 "config_hash": j.get("config_hash"),
@@ -3758,7 +3758,7 @@ async def backtest_promotion_gate():
     latest = None
     for f in files:
         try:
-            j = _json.loads(f.read_text())
+            j = _json.loads(f.read_text(encoding="utf-8"))
             if (j.get("aggregate") or {}).get("trades", 0) > 0:
                 latest = j
                 break

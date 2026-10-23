@@ -136,7 +136,7 @@ def test_allowlist_excludes_secret_and_undocumented_logo_fields(tmp_path):
     body["coins"][0]["logo"] = "https://evil.test/logo.png"
     body["coins"][0]["networkList"]["BTC"]["private_key"] = "do-not-persist"
     assert c.ingest(body)
-    data = c.path.read_text()
+    data = c.path.read_text(encoding="utf-8")
     assert "do-not-persist" not in data
     assert "evil.test" not in data
     assert "logo" not in data
@@ -165,7 +165,7 @@ def test_invalid_numeric_rules_do_not_become_defaults(tmp_path, bad):
 
 def test_corrupt_cache_is_unknown_and_recovers(tmp_path):
     path = tmp_path / "nobitex-options.json"
-    path.write_text("broken")
+    path.write_text("broken", encoding="utf-8")
     c = nm.NobitexMetadata(tmp_path)
     assert c.error == "cache_unreadable"
     assert c.view()["coins"] == {}
@@ -295,7 +295,7 @@ def test_unmeasured_provider_settings_are_not_green(tmp_path, monkeypatch):
 def test_future_timestamp_cache_is_rejected(tmp_path):
     (tmp_path / "nobitex-options.json").write_text(json.dumps({
         "updated_at": 10**20, "options": options(),
-    }))
+    }), encoding="utf-8")
     c = nm.NobitexMetadata(tmp_path)
     assert c.updated_at is None
     assert c.error == "cache_unreadable"

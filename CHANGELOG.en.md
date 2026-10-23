@@ -59,6 +59,25 @@
   stays closed and other symbols keep working, the memory expires, success clears it, and a timeout
   is not recorded as a refusal.
 
+- **The Windows job found three more real defects on its first run.** None of them could be seen
+  on Linux, and all of them happen on the machine `docs/run-windows.md` describes:
+  - **The locale codec instead of UTF-8:** reading the CHANGELOG or a Persian page with
+    `read_text()` and no `encoding` used cp1252 on Windows and raised `UnicodeDecodeError: 'charmap'
+    codec can't decode byte 0x81`. The same defect sat in `subprocess(text=True)` (a UTF-8 em dash
+    came back as mojibake). Twenty files fixed.
+  - **Printing Persian to a cp1252 console:** `scripts/release_notes.py` died with
+    `UnicodeEncodeError`, so "release validation failed" for a reason that had nothing to do with the
+    release. Every script that prints non-ASCII output now reconfigures `stdout`/`stderr` to UTF-8
+    (twelve scripts).
+  - **A test id longer than an environment variable may be:** the `PNG * 50000` parameter in
+    `test_coin_metadata` pushed the test's *id* past 32 767 characters, and pytest then raised
+    `ValueError` while writing `PYTEST_CURRENT_TEST`. The oversized payload is now built inside the
+    test and the id stays short.
+- **A guard for the whole class.** `test_no_file_is_read_or_written_with_the_locale_codec` walks
+  `server/` and `scripts/` with `ast` and finds any `read_text`/`write_text` or
+  `subprocess(text=True)` without `encoding`. `test_docs_bilingual` now decodes file names out of
+  their surrogate escapes, so it also holds under `LANG=C`.
+
 ## 1.0.29
 
 - **The version rule is now numeric and tested.** It used to say "PATCH for a fix, MINOR for a

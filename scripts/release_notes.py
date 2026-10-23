@@ -1,6 +1,15 @@
 """Validate a release tag and emit its changelog section for GitHub Releases."""
 from __future__ import annotations
 
+import sys
+
+#: The CHANGELOG is Persian. On Windows the console encoding is cp1252, so printing
+#: one of those lines raised `UnicodeEncodeError: 'charmap' codec can't encode` and
+#: the release check "failed" for a reason that had nothing to do with the release.
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8")
+
 import argparse
 import json
 import re

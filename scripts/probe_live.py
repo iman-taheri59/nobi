@@ -140,6 +140,13 @@ _DIGITS = str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "01234567890
 _NUM_ONLY = re.compile(
     r"^[\s\u2212+\-]*[0-9\u06F0-\u06F9][0-9\u06F0-\u06F9\u066B\u066C.,٫%٪ـ ]*$"
 )
+#: Persian and em dashes on a console that is not UTF-8 (Windows cp1252, POSIX C):
+#: printing them raised `UnicodeEncodeError` and the script "failed" for a reason
+#: that had nothing to do with what it was checking. Reconfigure, do not escape.
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8")
+
 
 _ERROR_WORDS = re.compile(r"در دسترس نیست|امکان‌پذیر نیست|ذهنی|unreachable|unavailable", re.I)
 

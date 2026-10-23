@@ -132,7 +132,7 @@ def available() -> tuple[bool, str]:
 
 def _git(*argv: str) -> str:
     try:
-        out = subprocess.run(("git", *argv), cwd=ROOT, capture_output=True, text=True,
+        out = subprocess.run(("git", *argv), cwd=ROOT, capture_output=True, text=True, encoding="utf-8",
                              timeout=10, check=False)
         return (out.stdout or "").strip()
     except (OSError, subprocess.SubprocessError):
@@ -216,7 +216,7 @@ def _run_gate(gate: Gate) -> dict[str, Any]:
     cmd = [sys.executable, *gate.argv]
     t0 = time.perf_counter()
     try:
-        proc = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True, timeout=TIMEOUT_S,
+        proc = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True, encoding="utf-8", timeout=TIMEOUT_S,
                               check=False, env=_gate_env())
         out = ((proc.stdout or "") + ("\n" if proc.stderr else "") + (proc.stderr or ""))[-KEEP_CHARS:]
         rc = proc.returncode

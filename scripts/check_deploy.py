@@ -49,6 +49,14 @@ import urllib.request
 from datetime import UTC, datetime
 from pathlib import Path
 
+#: Persian and em dashes on a console that is not UTF-8 (Windows cp1252, POSIX C):
+#: printing them raised `UnicodeEncodeError` and the script "failed" for a reason
+#: that had nothing to do with what it was checking. Reconfigure, do not escape.
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8")
+
+
 ROOT = Path(__file__).resolve().parents[1]
 SERVER = ROOT / "server"
 OK, FAIL, SKIP, ERROR = "ok", "fail", "skip", "error"
@@ -160,7 +168,7 @@ def check_storage() -> dict:
     # A persistent volume is a mount point; the root filesystem is not.
     mounts = {}
     try:
-        for line in Path("/proc/mounts").read_text().splitlines():
+        for line in Path("/proc/mounts").read_text(encoding="utf-8").splitlines():
             parts = line.split()
             if len(parts) > 1:
                 mounts[parts[1]] = parts[0]
@@ -288,7 +296,7 @@ def classify_bind(addr: str) -> str:
 def check_bind() -> dict:
     """Is the *app* reachable from the internet? It must not be."""
     try:
-        out = subprocess.run(["ss", "-lntp"], capture_output=True, text=True,
+        out = subprocess.run(["ss", "-lntp"], capture_output=True, text=True, encoding="utf-8",
                              timeout=10, check=False).stdout
     except (OSError, subprocess.SubprocessError) as e:
         return _row(SKIP, "bind", f"cannot read the socket table: {type(e).__name__}", "")

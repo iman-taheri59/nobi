@@ -49,7 +49,7 @@ class CandleCache:
         if meta.exists():
             try:
                 import json as _json
-                if _json.loads(meta.read_text()).get("synthetic"):
+                if _json.loads(meta.read_text(encoding="utf-8")).get("synthetic"):
                     # Simulated candles must never be replayed as market data.
                     self.misses += 1
                     self.synthetic_rejected = getattr(self, "synthetic_rejected", 0) + 1
@@ -87,7 +87,9 @@ class CandleCache:
             if not df.empty:
                 df.to_parquet(fp, engine="pyarrow", index=False)
                 import json as _json
-                self._meta_path(fp).write_text(_json.dumps({"synthetic": False, "stored_at": __import__("time").time()}))
+                self._meta_path(fp).write_text(
+                    _json.dumps({"synthetic": False, "stored_at": __import__("time").time()}),
+                    encoding="utf-8")
         except Exception as e:
             log.warning("cache write fail %s: %s", fp, e)
 
