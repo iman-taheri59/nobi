@@ -2,6 +2,26 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 1.0.29
+
+- **The version rule is now numeric and tested.** It used to say "PATCH for a fix, MINOR for a
+  feature", but in practice shadow-period capabilities (the shadow ledger in 1.0.26, the book
+  prefetch in 1.0.28) also took a PATCH and nobody said why. The rule is now explicit: as long as no
+  gate actually rejects a row, it is the shadow period and a PATCH is enough; the first gate that
+  filters is a MINOR — in this project, step S6 of ADR-0023.
+- **A numeric ceiling, so the number stays readable.** PATCH runs up to **30** before the `1.0.x`
+  line is crossed: `1.0.30` is allowed and the release after it is `1.1.0`. From `1.1.0` on every
+  field tops out at **10**: `1.1.10` → `1.2.0` and `1.10.4` → `2.0.0`.
+- **A ceiling is the highest value, not a count of releases.** So we do not spend thirty releases to
+  get there; `1.0.30` is still inside the rule and the next step is forced.
+- **The ceiling is enforced by a test, not by memory.**
+  `test_the_release_number_stays_inside_its_ceiling` reads the current `VERSION` and makes CI reject a
+  number outside the rule; a second test keeps the documented tables (fa and en) identical to the
+  numbers the test enforces.
+- **A PATCH-to-MINOR jump means the change was not large.** When a ceiling fills and forces a MINOR,
+  that version's CHANGELOG says "bumped because of the ceiling, not because behaviour changed" — so
+  the project's history does not lie later.
+
 ## 1.0.28
 
 - **Step S1 of ADR-0023 shipped: the scan reads the order book.** Until now a book was only read
