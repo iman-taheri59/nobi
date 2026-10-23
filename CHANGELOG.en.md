@@ -2,6 +2,38 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 1.0.23
+
+- **Twenty-three healthy symbols cannot hide a dead one.** 1.0.21 read the age from the
+  *newest candle across the whole scan* — the optimistic end of the list. If one symbol's feed
+  died three days ago, the list stayed "current" and that symbol's row still carried a score.
+  The age is now kept **per symbol** (`_cached["signals_bars"][tf][symbol]`) and **the worst
+  symbol decides**: a list with one stale name is stale.
+- **The `freshness` block keeps its shape** so no card breaks, and gains two keys: `worst`
+  (which symbol, how many bars) and `symbols` (counts of `current` / `stale` / `no_candles`).
+  The chip now **names the symbol** instead of averaging it away: "the worst symbol in this
+  scan is DEADIRT: its newest candle is 288 bars old (2 more symbols are stale too)" — and if
+  several are stale, the count is said.
+- **A symbol with no candles outranks any age:** an unknown age is not a small one, so
+  `no-candles` sits above any `age_bars`. A symbol with an unusable timestamp refuses only
+  **itself**, not the list: the healthy names keep their measurement.
+- **Two sides, one rule:** `NBX.freshness.assessScan()` performs the same aggregation in the
+  browser, and the card prefers the server's block when it has one (`live.scanFreshness`),
+  because the server measured every symbol and that is what the list on screen was built from.
+- **`nan` in a timestamp has a name, not an exception:** `freshness.assess_bar()` now refuses
+  non-finite values with `bad-candles`; before, the failure surfaced one frame lower as a
+  `ValueError` instead of the named reason.
+- **Documentation debt closed:** `README.md` and `README.en.md` claimed `mypy` runs over "58
+  source files" while the real number is 76. The number is gone from the document and the
+  reason is written in its place: a number that goes stale with every new file is a trap, not
+  documentation.
+- **Tests:** 5 Python tests (one dead symbol among healthy ones, an all-current list, a symbol
+  with no candles, one refused symbol without refusing the list, an empty scan) + 1 wiring test
+  + jsdom scenario 11 (naming the worst symbol, counting the other stale ones, the server block
+  winning over a local recomputation, and the browser aggregation). Two deliberate mutations
+  (aggregating by the newest candle; picking the best instead of the worst) turned the tests
+  red.
+
 ## 1.0.22
 
 - **The ATR percentile is drawn now, not only named.** Since 1.0.13 the card said "ATR sits at

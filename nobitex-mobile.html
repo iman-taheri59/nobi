@@ -680,7 +680,7 @@ html[dir="ltr"] .live-badge { right: auto; left: 14px; }
       </button>
     </div>
     <span class="hidden 2xl:inline-flex chip shrink-0"><span class="dot bg-emerald-400"></span> <span data-i18n="hdr.kill"></span></span>
-    <span id="buildChip" class="hidden lg:inline-flex chip num text-violet-300 border-violet-400/30 shrink-0" title="نسخه واقعی از /api/health">v1.0.22 · core</span>
+    <span id="buildChip" class="hidden lg:inline-flex chip num text-violet-300 border-violet-400/30 shrink-0" title="نسخه واقعی از /api/health">v1.0.23 · core</span>
     <div class="ms-auto flex items-center gap-1.5 shrink-0">
       <span class="hidden xl:inline-flex chip num" id="clock">--:--:--</span>
       <span id="apiChip" class="hidden 2xl:inline-flex chip num text-zinc-400 border-white/10" title=""><i data-lucide="wifi-off" class="w-3.5 h-3.5"></i> <span>API: —</span></span>
@@ -1806,6 +1806,7 @@ const T = {
     'sg.noCandles':'کندلی برای این نماد در حافظه نیست', 'sg.close':'بستن',
     'sg.hdr':'رتبه‌بندی دنیای نوبیتکس', 'sg.scanned':'بدون داده', 'sg.cycle':'چرخه: بستن کندل ۱۵د',
     'sg.weights':'TA ۵۵٪ · FA ۲۵٪ · نقد ۲۰٪ (در نبود FA: وزن‌ها بازتوزیع می‌شود)', 'sg.faCoverage':'بنیادی زنده: —', 'sg.last':'آخرین چرخه: —', 'sg.dataStale':'داده کهنه', 'sg.dataStaleWhy':'آخرین کندلِ این اسکن {bars} کندل عقب است؛ این رتبه‌بندی آن بازه را توصیف می‌کند، نه امروز را', 'sg.dataStaleNone':'کندلی برای سنجش سن نیست',
+    'sg.dataStaleWorst':'بدترین نماد این اسکن {sym} است: آخرین کندلش {bars} کندل عقب است{more}؛ این رتبه‌بندی آن بازه را توصیف می‌کند، نه امروز را', 'sg.dataStaleMore':' ({n} نماد دیگر هم کهنه‌اند)',
     'atr.title':'صدک ATR روی نمودار', 'atr.regimeCalm':'آرام', 'atr.regimeNormal':'معمولی',
     'atr.regimeVolatile':'پرنوسان', 'atr.calmBand':'آرام ≤{cut}', 'atr.volBand':'پرنوسان ≥{cut}',
     'atr.ofPrice':'ATR = {pct} قیمت', 'atr.needBars':'کندل کافی نیست ({bars} از {need})',
@@ -2061,6 +2062,7 @@ const T = {
     'sg.noCandles':'no candles for this symbol in memory', 'sg.close':'close',
     'sg.hdr':'Nobitex Universe Ranking', 'sg.scanned':'no data', 'sg.cycle':'Cycle: 15m candle close',
     'sg.weights':'TA 55% · FA 25% · Liquidity 20% (weights renormalise when FA is missing)', 'sg.faCoverage':'Live FA: —', 'sg.last':'Last cycle: —', 'sg.dataStale':'stale data', 'sg.dataStaleWhy':'the newest candle in this scan is {bars} bars old; this ranking describes that window, not today', 'sg.dataStaleNone':'no candle to measure an age from',
+    'sg.dataStaleWorst':'the worst symbol in this scan is {sym}: its newest candle is {bars} bars old{more}; this ranking describes that window, not today', 'sg.dataStaleMore':' ({n} more symbols are stale too)',
     'atr.title':'ATR percentile on the chart', 'atr.regimeCalm':'calm', 'atr.regimeNormal':'normal',
     'atr.regimeVolatile':'volatile', 'atr.calmBand':'calm ≤{cut}', 'atr.volBand':'volatile ≥{cut}',
     'atr.ofPrice':'ATR = {pct} of price', 'atr.needBars':'not enough candles ({bars} of {need})',
@@ -3460,7 +3462,12 @@ function spark(up, symbol, opts){
  * means something — the same rule the threshold and backtest cards follow. */
 function sgFreshNow(){
   try {
-    const e = window.live;
+    // The server measured every symbol and the ranking on screen *is* its answer,
+    // so its block wins when there is one; the browser engine's own scan is the
+    // fallback for the offline/offline-degraded path.
+    const l = window.live;
+    if (l && l.scanFreshness) return l.scanFreshness;
+    const e = window.NBX && NBX.core && NBX.core.engine;
     return (e && typeof e.freshness === 'function') ? e.freshness() : null;
   } catch (e) { return null; }
 }
@@ -3477,9 +3484,20 @@ function sgRenderFresh(f){
   chip.classList.remove('hidden');
   chip.className = 'chip text-amber-300 border-amber-300/30';
   chip.textContent = t('sg.dataStale');
-  chip.title = (fresh.reason === 'no-candles' || fresh.reason === 'bad-timeframe')
-    ? t('sg.dataStaleNone')
-    : t('sg.dataStaleWhy').replace('{bars}', age == null ? '—' : age);
+  const worst = fresh.worst || null;
+  const alsoStale = (fresh.symbols && fresh.symbols.stale > 1) ? fresh.symbols.stale - 1 : 0;
+  if (worst && worst.age_bars != null){
+    // Name the symbol, not just the average: "some of this list is old" is not
+    // something a reader can act on, "BTCIRT is 41.2 bars old" is.
+    chip.title = t('sg.dataStaleWorst')
+      .replace('{sym}', worst.symbol || '—')
+      .replace('{bars}', age == null ? '—' : age)
+      .replace('{more}', alsoStale ? t('sg.dataStaleMore').replace('{n}', fmtNum(alsoStale, 0)) : '');
+  } else {
+    chip.title = (fresh.reason === 'no-candles' || fresh.reason === 'bad-timeframe')
+      ? t('sg.dataStaleNone')
+      : t('sg.dataStaleWhy').replace('{bars}', age == null ? '—' : age);
+  }
 }
 function renderSignals(){
   sgRenderFresh(sgFreshNow());       // the ranking and the age of its candles, together
@@ -7293,6 +7311,42 @@ window.addEventListener('resize', resizeCharts);
       return Object.prototype.hasOwnProperty.call(TF_MINUTES, key) ? TF_MINUTES[key] : null;
     },
 
+    /* Freshness for a list of symbols: the worst one decides (mirrors
+     * `scan_freshness_block` in server/main.py). Same block shape the cards
+     * already read, plus `symbols` and `worst`. */
+    assessScan(bars, tf, opts) {
+      const map = bars || {};
+      const syms = Object.keys(map);
+      if (!syms.length) {
+        const empty = this.assessBar(null, tf, opts);
+        empty.symbols = { count: 0, current: 0, stale: 0, no_candles: 0 };
+        empty.worst = null;
+        return empty;
+      }
+      const per = {};
+      syms.forEach((sym) => { per[sym] = this.assessBar(map[sym], tf, opts); });
+      const staleSyms = syms.filter((sym) => per[sym].stale);
+      const rank = (sym) => {
+        const age = per[sym].age_bars;
+        return (typeof age === 'number' && isFinite(age)) ? Math.abs(age) : Infinity;
+      };
+      const pool = staleSyms.length ? staleSyms : syms;
+      const worstSym = pool.reduce((a, b) => (rank(b) > rank(a) ? b : a), pool[0]);
+      const worst = per[worstSym];
+      return {
+        ...worst,
+        symbols: {
+          count: syms.length,
+          current: syms.length - staleSyms.length,
+          stale: staleSyms.length,
+          no_candles: syms.filter((sym) => per[sym].reason === 'no-candles').length,
+        },
+        worst: staleSyms.length
+          ? { symbol: worstSym, age_bars: worst.age_bars, reason: worst.reason }
+          : null,
+      };
+    },
+
     /* `barAt` is the open time of the newest candle, in epoch seconds — the same
      * unit candles carry in `t`. An unknown timeframe or a missing bar is a
      * *named answer*, never a throw: a card that disappears because its age
@@ -8930,9 +8984,10 @@ window.addEventListener('resize', resizeCharts);
       this.premium_pct = null;
       this.onUpdate = [];
       this.scanning = false;
-      //: Newest candle open (epoch seconds) across the symbols of the last scan,
-      //: and the timeframe it belongs to. `null` until a scan returns bars.
-      this.scanBarAt = null;
+      //: Newest candle open (epoch seconds) **per symbol** in the last scan, and
+      //: the timeframe it belongs to. A single `max()` across symbols is what let a
+      //: dead feed hide behind twenty-three healthy ones, so the map is kept.
+      this.scanBars = {};
       this.scanTf = null;
     }
     subscribe(fn) {
@@ -9011,9 +9066,9 @@ window.addEventListener('resize', resizeCharts);
       const tf = timeframe || cfg.timeframes[0];
       if (!this.universe.length) await this.loadUniverse();
       const failed = [];
-      // A scan is a claim about the candles it read, so the newest of them is
-      // kept: the rows themselves are not (260 per symbol), the stamp is.
-      let newest = null;
+      // A scan is a claim about the candles it read, so each symbol's newest stamp
+      // is kept: the rows themselves are not (260 per symbol).
+      const seen = {};
       for (const u of this.universe) {
         const sym = u.symbol;
         try {
@@ -9022,7 +9077,7 @@ window.addEventListener('resize', resizeCharts);
           this.candles[sym] = rows;
           this.candles[sym + ':' + tf] = rows;
           const lastT = +rows[rows.length - 1].t;
-          if (isFinite(lastT) && (newest === null || lastT > newest)) newest = lastT;
+          if (isFinite(lastT)) seen[sym] = lastT;
           this.signals[sym] = NBX.TA.signalScore(rows);
         } catch (e) {
           failed.push(sym);
@@ -9032,17 +9087,19 @@ window.addEventListener('resize', resizeCharts);
       this.unavailable = failed.length > 0 && Object.keys(this.signals).length === 0;
       this.unavailable_reason = failed.length ? `${failed.length} symbol(s) had no candles` : null;
       this.scanTf = tf;
-      this.scanBarAt = newest;
+      this.scanBars = seen;
       this.scanning = false;
       this.emit('signals', this.rankSignals());
     }
 
     /* Where the numbers just emitted stand against the clock, in bars of the
      * timeframe they were computed on. Same rule and same vocabulary as the
-     * server: `behind`, `ahead-of-clock`, `no-candles`, `current`. */
+     * server: `behind`, `ahead-of-clock`, `no-candles`, `current` — and the same
+     * aggregation: the worst symbol decides, because a stale row in the list makes
+     * the list stale. */
     freshness(tf) {
       const use = tf || this.scanTf || cfg.timeframes[0];
-      return NBX.freshness.assessBar(this.scanBarAt, use);
+      return NBX.freshness.assessScan(this.scanBars, use);
     }
 
     rankSignals() {
@@ -10197,6 +10254,10 @@ window.addEventListener('resize', resizeCharts);
         live.source = sig.source || live.source;
         live.dataAge = sig.age_s;
         live.dataStale = !!sig.stale;
+        // 1.0.23 — the server measures the age of *each* symbol's candles and
+        // reports the worst; keeping the block means the scan card can name the
+        // symbol whose feed is behind instead of averaging it away.
+        live.scanFreshness = sig.freshness || null;
         live.unavailable = !!(uni.unavailable || sig.unavailable) || !(sig.scored || []).length;
         live.unavailableMsg = (sig.unavailable && sig.message) || (uni.unavailable && uni.message) || '';
         live.unavailableDetail = (sig.detail || uni.detail || '').slice(0, 160);

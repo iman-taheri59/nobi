@@ -277,7 +277,7 @@
       </button>
     </div>
     <span class="hidden 2xl:inline-flex chip shrink-0"><span class="dot bg-emerald-400"></span> <span data-i18n="hdr.kill"></span></span>
-    <span id="buildChip" class="hidden lg:inline-flex chip num text-violet-300 border-violet-400/30 shrink-0" title="نسخه واقعی از /api/health">v1.0.22 · core</span>
+    <span id="buildChip" class="hidden lg:inline-flex chip num text-violet-300 border-violet-400/30 shrink-0" title="نسخه واقعی از /api/health">v1.0.23 · core</span>
     <div class="ms-auto flex items-center gap-1.5 shrink-0">
       <span class="hidden xl:inline-flex chip num" id="clock">--:--:--</span>
       <span id="apiChip" class="hidden 2xl:inline-flex chip num text-zinc-400 border-white/10" title=""><i data-lucide="wifi-off" class="w-3.5 h-3.5"></i> <span>API: —</span></span>
@@ -1403,6 +1403,7 @@ const T = {
     'sg.noCandles':'کندلی برای این نماد در حافظه نیست', 'sg.close':'بستن',
     'sg.hdr':'رتبه‌بندی دنیای نوبیتکس', 'sg.scanned':'بدون داده', 'sg.cycle':'چرخه: بستن کندل ۱۵د',
     'sg.weights':'TA ۵۵٪ · FA ۲۵٪ · نقد ۲۰٪ (در نبود FA: وزن‌ها بازتوزیع می‌شود)', 'sg.faCoverage':'بنیادی زنده: —', 'sg.last':'آخرین چرخه: —', 'sg.dataStale':'داده کهنه', 'sg.dataStaleWhy':'آخرین کندلِ این اسکن {bars} کندل عقب است؛ این رتبه‌بندی آن بازه را توصیف می‌کند، نه امروز را', 'sg.dataStaleNone':'کندلی برای سنجش سن نیست',
+    'sg.dataStaleWorst':'بدترین نماد این اسکن {sym} است: آخرین کندلش {bars} کندل عقب است{more}؛ این رتبه‌بندی آن بازه را توصیف می‌کند، نه امروز را', 'sg.dataStaleMore':' ({n} نماد دیگر هم کهنه‌اند)',
     'atr.title':'صدک ATR روی نمودار', 'atr.regimeCalm':'آرام', 'atr.regimeNormal':'معمولی',
     'atr.regimeVolatile':'پرنوسان', 'atr.calmBand':'آرام ≤{cut}', 'atr.volBand':'پرنوسان ≥{cut}',
     'atr.ofPrice':'ATR = {pct} قیمت', 'atr.needBars':'کندل کافی نیست ({bars} از {need})',
@@ -1658,6 +1659,7 @@ const T = {
     'sg.noCandles':'no candles for this symbol in memory', 'sg.close':'close',
     'sg.hdr':'Nobitex Universe Ranking', 'sg.scanned':'no data', 'sg.cycle':'Cycle: 15m candle close',
     'sg.weights':'TA 55% · FA 25% · Liquidity 20% (weights renormalise when FA is missing)', 'sg.faCoverage':'Live FA: —', 'sg.last':'Last cycle: —', 'sg.dataStale':'stale data', 'sg.dataStaleWhy':'the newest candle in this scan is {bars} bars old; this ranking describes that window, not today', 'sg.dataStaleNone':'no candle to measure an age from',
+    'sg.dataStaleWorst':'the worst symbol in this scan is {sym}: its newest candle is {bars} bars old{more}; this ranking describes that window, not today', 'sg.dataStaleMore':' ({n} more symbols are stale too)',
     'atr.title':'ATR percentile on the chart', 'atr.regimeCalm':'calm', 'atr.regimeNormal':'normal',
     'atr.regimeVolatile':'volatile', 'atr.calmBand':'calm ≤{cut}', 'atr.volBand':'volatile ≥{cut}',
     'atr.ofPrice':'ATR = {pct} of price', 'atr.needBars':'not enough candles ({bars} of {need})',
@@ -3057,7 +3059,12 @@ function spark(up, symbol, opts){
  * means something — the same rule the threshold and backtest cards follow. */
 function sgFreshNow(){
   try {
-    const e = window.live;
+    // The server measured every symbol and the ranking on screen *is* its answer,
+    // so its block wins when there is one; the browser engine's own scan is the
+    // fallback for the offline/offline-degraded path.
+    const l = window.live;
+    if (l && l.scanFreshness) return l.scanFreshness;
+    const e = window.NBX && NBX.core && NBX.core.engine;
     return (e && typeof e.freshness === 'function') ? e.freshness() : null;
   } catch (e) { return null; }
 }
@@ -3074,9 +3081,20 @@ function sgRenderFresh(f){
   chip.classList.remove('hidden');
   chip.className = 'chip text-amber-300 border-amber-300/30';
   chip.textContent = t('sg.dataStale');
-  chip.title = (fresh.reason === 'no-candles' || fresh.reason === 'bad-timeframe')
-    ? t('sg.dataStaleNone')
-    : t('sg.dataStaleWhy').replace('{bars}', age == null ? '—' : age);
+  const worst = fresh.worst || null;
+  const alsoStale = (fresh.symbols && fresh.symbols.stale > 1) ? fresh.symbols.stale - 1 : 0;
+  if (worst && worst.age_bars != null){
+    // Name the symbol, not just the average: "some of this list is old" is not
+    // something a reader can act on, "BTCIRT is 41.2 bars old" is.
+    chip.title = t('sg.dataStaleWorst')
+      .replace('{sym}', worst.symbol || '—')
+      .replace('{bars}', age == null ? '—' : age)
+      .replace('{more}', alsoStale ? t('sg.dataStaleMore').replace('{n}', fmtNum(alsoStale, 0)) : '');
+  } else {
+    chip.title = (fresh.reason === 'no-candles' || fresh.reason === 'bad-timeframe')
+      ? t('sg.dataStaleNone')
+      : t('sg.dataStaleWhy').replace('{bars}', age == null ? '—' : age);
+  }
 }
 function renderSignals(){
   sgRenderFresh(sgFreshNow());       // the ranking and the age of its candles, together

@@ -1097,6 +1097,10 @@
         live.source = sig.source || live.source;
         live.dataAge = sig.age_s;
         live.dataStale = !!sig.stale;
+        // 1.0.23 — the server measures the age of *each* symbol's candles and
+        // reports the worst; keeping the block means the scan card can name the
+        // symbol whose feed is behind instead of averaging it away.
+        live.scanFreshness = sig.freshness || null;
         live.unavailable = !!(uni.unavailable || sig.unavailable) || !(sig.scored || []).length;
         live.unavailableMsg = (sig.unavailable && sig.message) || (uni.unavailable && uni.message) || '';
         live.unavailableDetail = (sig.detail || uni.detail || '').slice(0, 160);

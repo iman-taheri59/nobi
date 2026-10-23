@@ -273,3 +273,21 @@ def test_freshness_is_read_from_every_answer_and_cleared_by_the_next() -> None:
     # A response without the block must leave the card in its plain state rather
     # than guessing "fresh".
     assert "if (!fresh || !fresh.stale) return '';" in script
+
+
+#: 1.0.23 — the scan card must prefer the number the server measured per symbol.
+def test_the_scan_card_prefers_the_servers_per_symbol_answer() -> None:
+    page = (Path(__file__).resolve().parents[2] / "index.html").read_text(encoding="utf-8")
+    fn = page[page.index("function sgFreshNow()"):page.index("function sgRenderFresh(f)")]
+    # The server measured every symbol and the list on screen is its answer.
+    assert "l.scanFreshness" in fn or "live.scanFreshness" in fn
+    # ...with the browser engine's own scan as the fallback, not as the first word.
+    assert fn.index("scanFreshness") < fn.index("freshness()")
+    # And the chip names the worst symbol instead of averaging it away.
+    chip = page[page.index("function sgRenderFresh(f)"):page.index("function renderSignals()")]
+    assert "fresh.worst" in chip and "sg.dataStaleWorst" in chip
+    assert page.count("'sg.dataStaleWorst':") == 2
+    assert page.count("'sg.dataStaleMore':") == 2
+    # The response is kept where the card can read it.
+    app = (Path(__file__).resolve().parents[2] / "nbx-app.js").read_text(encoding="utf-8")
+    assert "live.scanFreshness = sig.freshness || null;" in app

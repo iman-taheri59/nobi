@@ -217,14 +217,18 @@ def test_a_missing_bar_is_an_answer_and_an_unknown_timeframe_is_a_refusal() -> N
 
 def test_the_scan_keeps_the_newest_bar_it_read_and_reports_it() -> None:
     """The scores are a claim about the candles the scan read — including when the
-    venue hands back a series that stopped days ago."""
+    venue hands back a series that stopped days ago.
+
+    1.0.23: per *symbol*, not one number for the whole scan. A single `max()` across
+    symbols is what let one dead feed hide behind twenty-three healthy ones.
+    """
     src = (Path(__file__).resolve().parents[1] / "main.py").read_text(encoding="utf-8")
-    assert '"signals_bar": {}' in src, "the cache has no slot for the newest bar"
+    assert '"signals_bars": {}' in src, "the cache has no slot for the per-symbol bars"
     # Recorded inside the scan, from the rows it just fetched...
-    assert 'newest_bars.append(max(float(r["t"]) for r in rows if r.get("t") is not None))' in src
-    assert '_cached["signals_bar"][tf] = max(newest_bars)' in src
+    assert 'bars_seen[u["symbol"]] = max(float(r["t"]) for r in rows if r.get("t") is not None)' in src
+    assert '_cached["signals_bars"][tf] = dict(bars_seen)' in src
     # ...and attached to both answers of the ranking route, empty or not.
-    assert src.count('"freshness": freshness_block_at(_cached.get("signals_bar", {}).get(tf), tf)') == 2
+    assert src.count('"freshness": scan_freshness_block(_cached.get("signals_bars", {}).get(tf) or {}, tf)') == 2
 
 
 def test_a_failed_scan_age_degrades_instead_of_emptying_the_ranking() -> None:
@@ -249,3 +253,67 @@ def test_the_market_scan_card_names_the_age_and_hides_itself_when_current() -> N
     assert "sgRenderFresh(sgFreshNow());" in page
     assert page.count("'sg.dataStale':") == 2 and page.count("'sg.dataStaleWhy':") == 2
     assert page.count("'sg.dataStaleNone':") == 2
+
+
+#: 1.0.23 — a list of symbols is only as fresh as its worst name.
+def test_one_dead_feed_makes_the_list_stale_and_is_named() -> None:
+    """The failure 1.0.21 could not see: twenty-three current symbols and one whose
+    candles stopped three days ago used to average into "current"."""
+    import main
+
+    now = datetime.now(UTC).replace(microsecond=0)
+    fresh_ts = (now - timedelta(minutes=5)).timestamp()
+    dead_ts = (now - timedelta(days=3)).timestamp()
+    out = main.scan_freshness_block(
+        {"BTCIRT": fresh_ts, "ETHIRT": fresh_ts, "DEADIRT": dead_ts}, "15m", now=now)
+
+    assert out["stale"] is True
+    assert out["reason"] == "behind"
+    assert out["worst"]["symbol"] == "DEADIRT"
+    assert out["worst"]["age_bars"] == out["age_bars"] == pytest.approx(288.0, abs=0.1)
+    assert out["symbols"] == {"count": 3, "current": 2, "stale": 1, "no_candles": 0}
+
+
+def test_a_list_with_no_lagging_symbol_is_current() -> None:
+    import main
+
+    now = datetime.now(UTC).replace(microsecond=0)
+    ts = (now - timedelta(minutes=5)).timestamp()
+    out = main.scan_freshness_block({"BTCIRT": ts, "ETHIRT": ts}, "15m", now=now)
+    assert out["stale"] is False and out["reason"] == "current"
+    assert out["worst"] is None
+    assert out["symbols"]["stale"] == 0
+
+
+def test_a_symbol_with_no_candles_outranks_any_age() -> None:
+    """An unknown age is not a small age: it cannot be hidden by a number."""
+    import main
+
+    now = datetime.now(UTC).replace(microsecond=0)
+    fresh_ts = (now - timedelta(minutes=5)).timestamp()
+    bars: dict[str, float | None] = {"BTCIRT": fresh_ts, "EMPTYIRT": None}
+    out = main.scan_freshness_block(bars, "15m", now=now)
+    assert out["stale"] is True
+    assert out["worst"]["symbol"] == "EMPTYIRT"
+    assert out["worst"]["reason"] == "no-candles"
+    assert out["symbols"]["no_candles"] == 1
+
+
+def test_one_refused_symbol_does_not_refuse_the_list() -> None:
+    """A `nan` stamp belongs to one row; the healthy ones keep their measurement."""
+    import main
+
+    now = datetime.now(UTC).replace(microsecond=0)
+    ts = (now - timedelta(minutes=5)).timestamp()
+    out = main.scan_freshness_block({"BTCIRT": ts, "GHOSTIRT": float("nan")}, "15m", now=now)
+    assert out["worst"]["symbol"] == "GHOSTIRT"
+    assert out["worst"]["reason"] == "bad-candles"
+    assert out["symbols"]["current"] == 1
+
+
+def test_an_empty_scan_reports_no_candles_not_silence() -> None:
+    import main
+
+    out = main.scan_freshness_block({}, "15m")
+    assert out["stale"] is True and out["reason"] == "no-candles"
+    assert out["worst"] is None and out["symbols"]["count"] == 0

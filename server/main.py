@@ -361,7 +361,7 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(
     title="nobiTrader",
-    version="1.0.22",
+    version="1.0.23",
     lifespan=lifespan,
 )
 
@@ -516,10 +516,13 @@ _cached: dict = {
     "signals": {},
     "signals_by_tf": {},
     "signals_ts": {},
-    #: Newest candle open (epoch seconds) per timeframe, as seen by the scan that
-    #: produced `signals_by_tf`. The scan throws away 260 rows per symbol, so this
-    #: stamp is the only thing left that can answer "how old are these numbers".
-    "signals_bar": {},
+    #: Newest candle open (epoch seconds) **per symbol and timeframe**, as seen by
+    #: the scan that produced `signals_by_tf`. The scan throws away 260 rows per
+    #: symbol, so these stamps are the only thing left that can answer "how old are
+    #: these numbers". Per symbol, not one number for the whole scan: a single dead
+    #: symbol behind twenty-three healthy ones is exactly the case a single
+    #: `max()` would hide (1.0.23).
+    "signals_bars": {},
     "refreshing": {},
     "premium": None,
     "premium_pct": None,
@@ -893,10 +896,11 @@ async def rescan(tf: str = "15m", top: int = 40):
     sem = asyncio.Semaphore(6)
     out: dict = {}
     skipped: list[str] = []
-    #: The newest candle any symbol reported this cycle. Not "now": if the venue
-    #: hands back a series that stopped three days ago, the scores describe three
-    #: days ago, and `age_bars` is how the card finds out.
-    newest_bars: list[float] = []
+    #: Newest candle each symbol reported this cycle. Not "now": if the venue hands
+    #: back a series that stopped three days ago, the scores describe three days
+    #: ago, and `age_bars` is how the card finds out. Kept per symbol so one dead
+    #: feed cannot hide behind the others.
+    bars_seen: dict[str, float] = {}
     def _composite(ta: float, liq: float, fa: float | None) -> tuple[float, str]:
         return composite_score(ta, liq, fa)
 
@@ -908,10 +912,10 @@ async def rescan(tf: str = "15m", top: int = 40):
         try:
             async with sem:
                 rows, src = await client.get_candles_ex(u["symbol"], tf, 260)
-            # Unusable stamps are not a failed symbol: the block above will answer
-            # `no-candles`, which is a result the card can print.
+            # Unusable stamps are not a failed symbol: the block below answers
+            # `no-candles` for it, which is a result the card can print.
             with suppress(KeyError, TypeError, ValueError):
-                newest_bars.append(max(float(r["t"]) for r in rows if r.get("t") is not None))
+                bars_seen[u["symbol"]] = max(float(r["t"]) for r in rows if r.get("t") is not None)
             df = candles_to_df(rows)
             sig = ta_score(df)
             vol = u["vol24"]
@@ -995,8 +999,8 @@ async def rescan(tf: str = "15m", top: int = 40):
     _cached["signals_by_tf"][tf] = out
     _cached["scan_skipped"] = skipped
     _cached["signals_ts"][tf] = time.time()
-    if newest_bars:
-        _cached["signals_bar"][tf] = max(newest_bars)
+    if bars_seen:
+        _cached["signals_bars"][tf] = dict(bars_seen)
     _cached["last_scan"] = datetime.now(UTC).isoformat()
     log.info("rescan %s: %d symbols, FA %d/%d", tf, len(out), len(scored), len(out))
     if os.getenv("NBX_JOURNAL", "1") != "0":
@@ -1054,7 +1058,7 @@ async def signals(tf: str = Query("15m", pattern="^(15m|1h|4h|D)$")):
                 "fa_coverage": _cached.get("fa_coverage"),
                 # No scores is not the same as no candles: the block still says
                 # which wall was hit, with a named reason.
-                "freshness": freshness_block_at(_cached.get("signals_bar", {}).get(tf), tf)}
+                "freshness": scan_freshness_block(_cached.get("signals_bars", {}).get(tf) or {}, tf)}
     return {
         "ok": True,
         "ts": datetime.now(UTC).isoformat(),
@@ -1066,9 +1070,11 @@ async def signals(tf: str = Query("15m", pattern="^(15m|1h|4h|D)$")):
         "premium_usdtirt": _cached["premium"],
         "premium_pct": _cached["premium_pct"],
         "fa_coverage": _cached.get("fa_coverage"),
-        # 1.0.21 — the ranking is a claim about the candles the scan read. How old
-        # those candles were travels with it, in bars of this very timeframe.
-        "freshness": freshness_block_at(_cached.get("signals_bar", {}).get(tf), tf),
+        # 1.0.21/1.0.23 — the ranking is a claim about the candles the scan read.
+        # How old those candles were travels with it, in bars of this very
+        # timeframe, and the *worst* symbol decides: a stale name in the list makes
+        # the list stale.
+        "freshness": scan_freshness_block(_cached.get("signals_bars", {}).get(tf) or {}, tf),
         "scored": ranked,
         **provenance(),
     }
@@ -2967,6 +2973,57 @@ def volatility_block(rows: list[dict]) -> dict:
         return {**base, "ok": False, "error": e.code, "message": e.message, **e.meta}
     except Exception as e:                          # pragma: no cover - last resort
         return {**base, "ok": False, "error": type(e).__name__, "message": str(e)}
+
+
+def scan_freshness_block(bars: dict[str, float | None], tf: str,
+                         *, now: datetime | None = None) -> dict:
+    """Freshness for a *list* of symbols: the worst one decides (1.0.23).
+
+    1.0.21 measured the newest candle across the whole scan and called that the
+    answer. It is the wrong end of the list: one symbol whose feed died three days
+    ago sits behind twenty-three healthy ones, the aggregate says "current", and
+    its row still carries a score. So the block keeps the same shape the card
+    already reads (`stale`, `reason`, `age_bars`, ...) and now describes the worst
+    symbol, naming it in `worst`, with `symbols` counting the split.
+
+    A symbol the scan could not read at all is counted in `no_candles` and cannot
+    be made "current" by the others either.
+    """
+    if not bars:
+        out = freshness_block_at(None, tf)
+        out["symbols"] = {"count": 0, "current": 0, "stale": 0, "no_candles": 0}
+        out["worst"] = None
+        return out
+
+    # One refused symbol must not refuse the list: its row is the one that needs a
+    # warning, and dropping the whole block would take the healthy names with it.
+    per: dict[str, dict] = {}
+    for sym, ts in bars.items():
+        try:
+            per[sym] = freshness.assess_bar(ts, tf, now=now)
+        except AdaptiveRefusal as e:
+            per[sym] = {"stale": True, "reason": e.code, "age_bars": None}
+        except Exception as e:                      # pragma: no cover - last resort
+            per[sym] = {"stale": True, "reason": type(e).__name__, "age_bars": None}
+
+    stale = {sym: r for sym, r in per.items() if r.get("stale")}
+    # "Worst" is the oldest bar; a symbol with no usable stamp outranks any age,
+    # because an unknown age is not a small one.
+    def _rank(item: tuple[str, dict]) -> float:
+        age = item[1].get("age_bars")
+        return float("inf") if age is None else abs(float(age))
+
+    worst_sym, worst = max(stale.items(), key=_rank) if stale else max(per.items(), key=_rank)
+    out = dict(worst)
+    out["symbols"] = {
+        "count": len(per),
+        "current": len(per) - len(stale),
+        "stale": len(stale),
+        "no_candles": sum(1 for r in per.values() if r.get("reason") == "no-candles"),
+    }
+    out["worst"] = ({"symbol": worst_sym, "age_bars": worst.get("age_bars"),
+                     "reason": worst.get("reason")} if stale else None)
+    return out
 
 
 def freshness_block_at(bar_at: float | None, tf: str) -> dict:
