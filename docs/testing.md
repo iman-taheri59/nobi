@@ -281,3 +281,28 @@ python scripts/probe_live.py --url http://127.0.0.1:8000
 
 با `NBX_RATE_TTL_S` و `NBX_UNIVERSE_TTL_S` می‌شود حالت «فید مرده» را عمداً
 ساخت و مسیر `no-fx-rate` را دید (بخش ۵).
+
+---
+
+## ۸) دروازه‌ها: سایه، و شاهدشان (ADR-0022)
+
+دو چیز را باید از هم جدا دید: **حکم** (امروز چه چیزی مسدود *می‌شد*) و **شاهد** (آیا آن
+مسدودسازی درست بود).
+
+```bash
+# حکم‌ها، روی هر اسکن: applied باید همیشه false باشد
+curl -s "http://127.0.0.1:8000/api/signals?tf=15m" | python -c \
+  "import json,sys; g=json.load(sys.stdin)['gates']; print(g['mode'], g['applied'], g['counts'], g['ledger']['ready'])"
+
+# شاهد: پیوند دفتر با کندل‌های بعدی، یک حکم جدا برای هر دروازه
+curl -s "http://127.0.0.1:8000/api/gates/evidence?tf=4h&horizon=4" | python -m json.tool | head -40
+```
+
+| چه چیزی را ببین | سالم | خراب |
+|---|---|---|
+| `gates.applied` | همیشه `false` | `true` ⇒ دروازه‌ای بدون ADR عمل کرده |
+| `gates.counts.rows` | برابر طول `scored` | کمتر ⇒ ردیفی حذف شده (نباید) |
+| `gates.verdicts[].code` | یکی از هفت کد | کد ناشناس ⇒ قرارداد شکسته |
+| `gates.ledger.ready` | `[]` تا وقتی نمونه کامل شود | نام دروازه‌ای که یک روزه «آماده» شده ⇒ قاعدهٔ روز شکسته |
+| `evidence.gates[].verdict` | `insufficient` در روزهای اول | `supports` با `blocked.verdicts < 30` ⇒ نمونه‌سازی |
+| `evidence.applied` | `false` | `true` ⇒ شاهد به دستور تبدیل شده |
