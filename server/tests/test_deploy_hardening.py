@@ -40,6 +40,27 @@ import pytest
 SERVER_DIR = Path(__file__).resolve().parents[1]
 REPO_ROOT = SERVER_DIR.parent
 
+#: `ProtectSystem=strict` is a systemd idea: it makes a checkout unwritable and has
+#: no Windows equivalent — `chmod` there only toggles a read-only bit on *files*,
+#: directories stay writable. Root ignores directory permissions too. Both make the
+#: reproduction impossible, so the test says that rather than passing vacuously.
+#: `os.geteuid` does not exist on Windows at all, so it is only reached on POSIX:
+#: calling it at module level is what used to abort collection of the whole suite.
+POSIX_MODES = os.name == "posix"
+
+
+def _cannot_test_file_modes() -> bool:
+    """True when the reproduction is impossible here.
+
+    `getattr` rather than `os.geteuid` on purpose: the skip condition is evaluated
+    while this module is imported, and on Windows the attribute simply is not there
+    — the attribute error used to abort collection for the whole suite.
+    """
+    if not POSIX_MODES:
+        return True
+    geteuid = getattr(os, "geteuid", None)
+    return geteuid is None or geteuid() == 0
+
 
 # --------------------------------------------------------------------------- #
 # 1. Output directories
@@ -60,7 +81,7 @@ def _import_in_subprocess(modules: tuple[str, ...], env: dict, cwd: Path) -> str
         "    print(m, getattr(mod, 'CACHE_ROOT', getattr(mod, 'REPORTS', None)))\n"
     )
     out = subprocess.run([sys.executable, "-c", code], cwd=str(cwd), env=env,
-                         capture_output=True, text=True, timeout=120)
+                         capture_output=True, text=True, encoding="utf-8", timeout=120)
     assert out.returncode == 0, out.stderr[-2000:]
     return out.stdout.strip()
 
@@ -76,7 +97,8 @@ def test_output_directories_are_configurable(tmp_path):
     assert cache.is_dir() and reports.is_dir(), "a nested path must be created, not assumed"
 
 
-@pytest.mark.skipif(os.geteuid() == 0, reason="root ignores directory permissions")
+@pytest.mark.skipif(_cannot_test_file_modes(),
+                    reason="POSIX directory modes: no Windows equivalent, and root ignores them")
 def test_a_read_only_checkout_still_imports(tmp_path):
     """The P0: read-only sources must degrade, not crash at import.
 
@@ -94,7 +116,7 @@ def test_a_read_only_checkout_still_imports(tmp_path):
     # `backtest` imports the analysis engine; the real one is fine to reuse.
     checkout.chmod(0o555)
     try:
-        env = {**os.environ, "PYTHONPATH": f"{checkout}:{SERVER_DIR}"}
+        env = {**os.environ, "PYTHONPATH": os.pathsep.join((str(checkout), str(SERVER_DIR)))}
         env.pop("NBX_CANDLE_CACHE", None)
         env.pop("NBX_BT_DIR", None)
         printed = _import_in_subprocess(OUTPUT_DIRS, env, checkout)
@@ -147,10 +169,10 @@ def test_a_save_leaves_a_complete_file_and_a_backup(state):
     second.cash = 999.0
     second.save()
 
-    on_disk = json.loads(state.read_text())
+    on_disk = json.loads(state.read_text(encoding="utf-8"))
     assert on_disk["cash"] == 999.0
     backup = state.with_suffix(state.suffix + ".bak")
-    assert json.loads(backup.read_text())["cash"] == 12_345.0
+    assert json.loads(backup.read_text(encoding="utf-8"))["cash"] == 12_345.0
     assert not state.with_suffix(state.suffix + ".tmp").exists(), (
         "the temporary file must be renamed away, not left behind")
 
@@ -165,7 +187,7 @@ def test_a_torn_state_file_falls_back_to_the_backup(state):
     saved.cash = 54_321.0
     saved.save()
     _broker().save()                       # produces the .bak from the good file
-    state.write_text('{"equity": 100000.0, "cash": 543')   # power cut mid-write
+    state.write_text('{"equity": 100000.0, "cash": 543', encoding="utf-8")   # power cut mid-write
 
     restored = _broker()
 
@@ -178,7 +200,7 @@ def test_a_torn_state_file_falls_back_to_the_backup(state):
 def test_an_unreadable_state_file_is_quarantined_and_reported(state):
     """Last resort: start fresh — but keep the damaged file and say so."""
     damaged = '{"equity": 100000.0, "positions": {"pp-1": {"symbol": "BTCIRT"'
-    state.write_text(damaged)
+    state.write_text(damaged, encoding="utf-8")
 
     broker = _broker()
 
@@ -187,7 +209,7 @@ def test_an_unreadable_state_file_is_quarantined_and_reported(state):
     assert recovery is not None, "a silent restart is the bug this test exists for"
     kept = Path(recovery["quarantined"])
     assert kept.exists(), "the damaged document must be kept for recovery"
-    assert kept.read_text() == damaged
+    assert kept.read_text(encoding="utf-8") == damaged
     assert not state.exists(), "the damaged file must be moved aside, not overwritten"
 
 
@@ -307,7 +329,7 @@ def test_the_recovery_is_published_to_the_dashboard(state, monkeypatch):
 
     import main
 
-    state.write_text(textwrap.dedent('{"equity": 100000.0, "cash": 777.0}'))
+    state.write_text(textwrap.dedent('{"equity": 100000.0, "cash": 777.0}'), encoding="utf-8")
     broker = _broker()
 
     monkeypatch.setattr(main, "get_broker", lambda *a, **k: broker)

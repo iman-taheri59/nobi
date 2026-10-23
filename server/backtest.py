@@ -852,7 +852,7 @@ def run_and_save(
         "details": windows,
     }
     fp = REPORTS / f"{symbol}-{tf}-{int(time.time())}.json"
-    fp.write_text(json.dumps(report, ensure_ascii=False, indent=1, default=str))
+    fp.write_text(json.dumps(report, ensure_ascii=False, indent=1, default=str), encoding="utf-8")
     report["report_file"] = fp.name
     return report
 

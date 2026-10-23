@@ -76,7 +76,7 @@ class CoinMetadata:
         self.cache_dir = cache_dir
         self.key = key
         self.enabled = enabled
-        self.registry = registry if registry is not None else json.loads(REGISTRY.read_text())
+        self.registry = registry if registry is not None else json.loads(REGISTRY.read_text(encoding="utf-8"))
         if any(not re.fullmatch(r"[A-Z0-9]{1,24}", symbol)
                or not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,99}", coin_id)
                for symbol, coin_id in self.registry.items()):

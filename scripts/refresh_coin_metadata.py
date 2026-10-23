@@ -20,6 +20,14 @@ import coin_metadata
 import nobitex_metadata
 from nobitex_client import ClientError, NobitexClient
 
+#: Persian and em dashes on a console that is not UTF-8 (Windows cp1252, POSIX C):
+#: printing them raised `UnicodeEncodeError` and the script "failed" for a reason
+#: that had nothing to do with what it was checking. Reconfigure, do not escape.
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8")
+
+
 
 async def refresh() -> int:
     exchange = nobitex_metadata.CACHE

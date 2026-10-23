@@ -2,6 +2,82 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 1.0.30
+
+- **A stale book is not evidence any more.** `gates_block` judged every book in the cache
+  regardless of its age, and the cache was never pruned. So a symbol that dropped out of the top N
+  kept its last book for hours, and that book **wrote a fresh verdict on every bar**: `ok`, from a
+  price that no longer existed. A book older than `BOOK_GATE_TTL_S` (default 300s,
+  `NBX_BOOK_GATE_TTL_S`) now counts as unseen — the row is `no-book`, not `ok`.
+- **Two TTLs that were being confused.** `BOOK_PREFETCH_TTL_S` answers "when to fetch again";
+  `BOOK_GATE_TTL_S` answers "may this book still judge a bar". Collapsing them meant any book kept
+  to save a request also counted as current — which is exactly the bug.
+- **The card now says how many books it refused.** `gates.inputs` gained `stale_books`,
+  `book_gate_ttl_s` and `oldest_book_s`; without them "11 books" could not tell a fresh scan from an
+  hour-old cache.
+- **The cache is pruned too.** At the end of each prefetch, books older than `BOOK_EVICT_TTL_S`
+  (default 3600s, `NBX_BOOK_KEEP_S`) are dropped and counted in `prefetch.evicted`, so a symbol that
+  left the list does not sit in memory.
+- **The error direction is under-counting.** Doubt about an old book produces "no verdict from this
+  symbol", never "a fresh verdict from an old price". An under-count can be seen and fixed later;
+  polluted evidence cannot.
+- **Five new tests** cover it: past the gate TTL ⇒ `no-book` and `stale_books`; inside it ⇒ still
+  judged; the two TTLs in the right order; eviction; and that books going stale still cannot move
+  `applied` off `false`.
+- **The number ceiling is now full.** Per `docs/releases.md`, `1.0.30` is the last PATCH on the
+  `1.0.x` line; the next release, whatever it contains, will be `1.1.0`.
+- **The dashboard's "project tests" card now runs on Windows too.**
+  `server/tests/test_deploy_hardening.py` called `os.geteuid()` at line 79 — an attribute that does
+  not exist on Windows — and because a `skipif` condition is evaluated **at import**, the whole
+  suite stopped with `AttributeError`: one error and zero tests. The card went red and said nothing
+  about the other 816 tests. The condition is now read with `getattr`, and the test that reproduces
+  `ProtectSystem=strict` (which has no Windows equivalent) is skipped with a stated reason instead of
+  taking the module down. The hand-written `:` in `PYTHONPATH` became `os.pathsep`.
+- **A new guard, running on the machine CI actually has.**
+  `server/tests/test_platform_portability.py` removes `os.geteuid`/`getegid`/`fork`/`forkpty`/
+  `killpg`/`setsid` in a subprocess and asks pytest to collect the suite; if any module touches one
+  at import it fails here, on Linux, with the message a Windows user would have seen. The real cause
+  of this bug was that CI only ran Linux.
+- **And a `windows` job in CI.** `.github/workflows/ci.yml` now runs the same python gate on
+  `windows-latest` (ruff, mypy, pytest). It is **advisory** for now (`continue-on-error`) so one
+  small Windows difference cannot lock the repository on day one; it becomes blocking once it has
+  run green.
+- **A 403 on one pair no longer paints the log red every five minutes.** The errors export of a
+  real install carried two fresh lines every five minutes: `error nbx-client … 403` and
+  `warning nbx-app resolve USDTIRT skipped`. The cause is real and **already known** — Nobitex does
+  not publish `USDTIRT`'s public history — but the client had no memory: every `resolve` pass sent
+  the same doomed request again. A tab that is always red is a tab nobody opens, and that is where a
+  real failure gets lost. A per-symbol refusal is now remembered for `UDF_REFUSAL_TTL_S` (default
+  6h, `NBX_UDF_REFUSAL_TTL_S`): the request is not repeated, the request counter does not climb, and
+  the message is logged once at `info`.
+- **The memory lives only as long as its evidence.** A success clears it, and after the TTL the
+  client tries again — so a pair that becomes public is seen the same day. A network error or timeout
+  is **never** recorded as a refusal: an outage says nothing about that pair.
+- **`warning` stays reserved for something to act on.** `resolve` logs `info` for a known refusal
+  and `warning` for everything else; the `refused` key in `meta` separates the two.
+- **Five new tests** (`test_udf_refusal_memory.py`): the refusal is not repeated, the client breaker
+  stays closed and other symbols keep working, the memory expires, success clears it, and a timeout
+  is not recorded as a refusal.
+
+- **The Windows job found three more real defects on its first run.** None of them could be seen
+  on Linux, and all of them happen on the machine `docs/run-windows.md` describes:
+  - **The locale codec instead of UTF-8:** reading the CHANGELOG or a Persian page with
+    `read_text()` and no `encoding` used cp1252 on Windows and raised `UnicodeDecodeError: 'charmap'
+    codec can't decode byte 0x81`. The same defect sat in `subprocess(text=True)` (a UTF-8 em dash
+    came back as mojibake). Twenty files fixed.
+  - **Printing Persian to a cp1252 console:** `scripts/release_notes.py` died with
+    `UnicodeEncodeError`, so "release validation failed" for a reason that had nothing to do with the
+    release. Every script that prints non-ASCII output now reconfigures `stdout`/`stderr` to UTF-8
+    (twelve scripts).
+  - **A test id longer than an environment variable may be:** the `PNG * 50000` parameter in
+    `test_coin_metadata` pushed the test's *id* past 32 767 characters, and pytest then raised
+    `ValueError` while writing `PYTEST_CURRENT_TEST`. The oversized payload is now built inside the
+    test and the id stays short.
+- **A guard for the whole class.** `test_no_file_is_read_or_written_with_the_locale_codec` walks
+  `server/` and `scripts/` with `ast` and finds any `read_text`/`write_text` or
+  `subprocess(text=True)` without `encoding`. `test_docs_bilingual` now decodes file names out of
+  their surrogate escapes, so it also holds under `LANG=C`.
+
 ## 1.0.29
 
 - **The version rule is now numeric and tested.** It used to say "PATCH for a fix, MINOR for a

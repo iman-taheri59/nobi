@@ -123,7 +123,7 @@ def test_the_persisted_report_keeps_its_cost_model():
     from backtest import REPORTS
 
     rep = _report(slippage_bps=12)
-    saved = json.loads((REPORTS / rep["report_file"]).read_text())
+    saved = json.loads((REPORTS / rep["report_file"]).read_text(encoding="utf-8"))
     assert saved["slippage_bps"] == pytest.approx(12.0)
     assert saved["costs"]["fee_pct"] > 0
     assert saved["gate"]["checks"]["costs_modeled"]["value"] == pytest.approx(12.0)

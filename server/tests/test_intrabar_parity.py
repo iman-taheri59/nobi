@@ -132,7 +132,7 @@ def test_the_browser_engine_takes_the_stop_when_a_candle_spans_both_levels():
     import json
     import subprocess
 
-    out = subprocess.run(["node", str(script)], capture_output=True, text=True, timeout=120)
+    out = subprocess.run(["node", str(script)], capture_output=True, text=True, encoding="utf-8", timeout=120)
     assert out.returncode == 0, out.stderr[-2000:]
     data = json.loads(out.stdout)
 

@@ -574,7 +574,7 @@ def test_legacy_synthetic_cache_file_is_rejected(tmp_path, monkeypatch):
     import pandas as pd
 
     pd.DataFrame([{"t": 1, "o": 1, "h": 1, "l": 1, "c": 1, "v": 1}]).to_parquet(fp, index=False)
-    fp.with_suffix(".meta.json").write_text(json.dumps({"synthetic": True}))
+    fp.with_suffix(".meta.json").write_text(json.dumps({"synthetic": True}), encoding="utf-8")
     assert cache.load("BTCIRT", "60", 0, 10) is None
 
 

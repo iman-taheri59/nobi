@@ -7,6 +7,8 @@
 #   js      the browser bundle — eslint, the standalone-broker parity test,
 #           the generated mobile file being up to date
 #   ui      the page itself — 45 panels must be able to explain themselves
+#   windows the same python gate on the other documented platform (Laragon,
+#           docs/run-windows.md). Advisory until it has been green once.
 
 name: ci
 
@@ -31,6 +33,30 @@ jobs:
           cache: pip
       - run: pip install -r server/requirements-dev.txt
       # No config path arguments: pyproject.toml decides what is selected.
+      - name: ruff
+        run: ruff check server scripts
+      - name: mypy
+        run: mypy
+      - name: pytest
+        run: python -m pytest -q server/tests
+
+  # The suite passed every Linux gate for months while one module called
+  # `os.geteuid()` at import time and aborted collection on Windows — the machine
+  # `docs/run-windows.md` documents and the dashboard's own test card runs on.
+  # This job is the guard. It is advisory (`continue-on-error`) so a Windows-only
+  # quirk cannot block the whole repository on the first day; flip it to blocking
+  # once it has run green, and add `-W error` here rather than there.
+  windows:
+    name: windows (advisory)
+    runs-on: windows-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r server/requirements-dev.txt
       - name: ruff
         run: ruff check server scripts
       - name: mypy

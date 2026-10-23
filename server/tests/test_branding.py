@@ -56,6 +56,6 @@ def test_exchange_names_and_service_identity_are_not_renamed():
     text = (ROOT / "nbx-app.js").read_text(encoding="utf-8")
     assert "Live Nobitex data" in text
     assert "/download/nobitex-mobile.html" in text
-    unit = (ROOT / "deploy/nobi.service").read_text()
+    unit = (ROOT / "deploy/nobi.service").read_text(encoding="utf-8")
     assert "Description=nobiTrader trading dashboard (FastAPI)" in unit
     assert "WorkingDirectory=/opt/nobi/server" in unit

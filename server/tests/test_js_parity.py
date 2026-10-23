@@ -26,13 +26,13 @@ pytestmark = pytest.mark.skipif(NODE is None, reason="node is not installed")
 
 def _run(*args: str) -> subprocess.CompletedProcess:
     assert NODE is not None, "module is skipped without node"
-    return subprocess.run([NODE, *args], cwd=ROOT, capture_output=True, text=True, timeout=120)
+    return subprocess.run([NODE, *args], cwd=ROOT, capture_output=True, text=True, encoding="utf-8", timeout=120)
 
 
 def test_preflight_gates_match_between_python_and_javascript():
     out = subprocess.run(
         ["python3", str(ROOT / "scripts" / "check_preflight_parity.py")],
-        cwd=ROOT, capture_output=True, text=True, timeout=180,
+        cwd=ROOT, capture_output=True, text=True, encoding="utf-8", timeout=180,
     )
     assert out.returncode == 0, out.stdout + out.stderr
     assert "PASS" in out.stdout

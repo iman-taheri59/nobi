@@ -14,20 +14,20 @@ SCRIPT = ROOT / "scripts" / "release_notes.py"
 
 
 def test_release_notes_match_current_version():
-    version = (ROOT / "VERSION").read_text().strip()
+    version = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
     result = subprocess.run(
         [sys.executable, str(SCRIPT), "--tag", f"v{version}"],
-        capture_output=True, text=True, check=True,
+        capture_output=True, text=True, encoding="utf-8", check=True,
     )
     assert result.stdout.strip()
     assert "## " not in result.stdout
-    assert result.stdout.strip() in (ROOT / "CHANGELOG.md").read_text()
+    assert result.stdout.strip() in (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
 
 
 def test_mismatched_tag_is_rejected():
     result = subprocess.run(
         [sys.executable, str(SCRIPT), "--tag", "v999.0.0"],
-        capture_output=True, text=True,
+        capture_output=True, text=True, encoding="utf-8",
     )
     assert result.returncode == 1
     assert "does not match VERSION" in result.stderr
@@ -47,7 +47,7 @@ def test_extract_only_requested_section():
 
 
 def test_release_workflow_requires_validation_before_publishing():
-    workflow = yaml.load((ROOT / ".github/workflows/release.yml").read_text(), Loader=yaml.BaseLoader)
+    workflow = yaml.load((ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
     assert list(workflow["on"]) == ["push"]
     assert "tags" in workflow["on"]["push"]
     assert workflow["permissions"] == {"contents": "read"}
@@ -61,6 +61,6 @@ def test_release_workflow_requires_validation_before_publishing():
 
 
 def test_current_version_is_documented():
-    version = (ROOT / "VERSION").read_text().strip()
+    version = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
     for name in ("README.md", "docs/README.md", "docs/releases.md"):
-        assert f"**{version}**" in (ROOT / name).read_text()
+        assert f"**{version}**" in (ROOT / name).read_text(encoding="utf-8")
