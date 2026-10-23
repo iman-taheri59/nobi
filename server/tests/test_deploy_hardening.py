@@ -40,6 +40,27 @@ import pytest
 SERVER_DIR = Path(__file__).resolve().parents[1]
 REPO_ROOT = SERVER_DIR.parent
 
+#: `ProtectSystem=strict` is a systemd idea: it makes a checkout unwritable and has
+#: no Windows equivalent — `chmod` there only toggles a read-only bit on *files*,
+#: directories stay writable. Root ignores directory permissions too. Both make the
+#: reproduction impossible, so the test says that rather than passing vacuously.
+#: `os.geteuid` does not exist on Windows at all, so it is only reached on POSIX:
+#: calling it at module level is what used to abort collection of the whole suite.
+POSIX_MODES = os.name == "posix"
+
+
+def _cannot_test_file_modes() -> bool:
+    """True when the reproduction is impossible here.
+
+    `getattr` rather than `os.geteuid` on purpose: the skip condition is evaluated
+    while this module is imported, and on Windows the attribute simply is not there
+    — the attribute error used to abort collection for the whole suite.
+    """
+    if not POSIX_MODES:
+        return True
+    geteuid = getattr(os, "geteuid", None)
+    return geteuid is None or geteuid() == 0
+
 
 # --------------------------------------------------------------------------- #
 # 1. Output directories
@@ -76,7 +97,8 @@ def test_output_directories_are_configurable(tmp_path):
     assert cache.is_dir() and reports.is_dir(), "a nested path must be created, not assumed"
 
 
-@pytest.mark.skipif(os.geteuid() == 0, reason="root ignores directory permissions")
+@pytest.mark.skipif(_cannot_test_file_modes(),
+                    reason="POSIX directory modes: no Windows equivalent, and root ignores them")
 def test_a_read_only_checkout_still_imports(tmp_path):
     """The P0: read-only sources must degrade, not crash at import.
 
@@ -94,7 +116,7 @@ def test_a_read_only_checkout_still_imports(tmp_path):
     # `backtest` imports the analysis engine; the real one is fine to reuse.
     checkout.chmod(0o555)
     try:
-        env = {**os.environ, "PYTHONPATH": f"{checkout}:{SERVER_DIR}"}
+        env = {**os.environ, "PYTHONPATH": os.pathsep.join((str(checkout), str(SERVER_DIR)))}
         env.pop("NBX_CANDLE_CACHE", None)
         env.pop("NBX_BT_DIR", None)
         printed = _import_in_subprocess(OUTPUT_DIRS, env, checkout)

@@ -26,6 +26,22 @@
   `applied` off `false`.
 - **The number ceiling is now full.** Per `docs/releases.md`, `1.0.30` is the last PATCH on the
   `1.0.x` line; the next release, whatever it contains, will be `1.1.0`.
+- **The dashboard's "project tests" card now runs on Windows too.**
+  `server/tests/test_deploy_hardening.py` called `os.geteuid()` at line 79 — an attribute that does
+  not exist on Windows — and because a `skipif` condition is evaluated **at import**, the whole
+  suite stopped with `AttributeError`: one error and zero tests. The card went red and said nothing
+  about the other 816 tests. The condition is now read with `getattr`, and the test that reproduces
+  `ProtectSystem=strict` (which has no Windows equivalent) is skipped with a stated reason instead of
+  taking the module down. The hand-written `:` in `PYTHONPATH` became `os.pathsep`.
+- **A new guard, running on the machine CI actually has.**
+  `server/tests/test_platform_portability.py` removes `os.geteuid`/`getegid`/`fork`/`forkpty`/
+  `killpg`/`setsid` in a subprocess and asks pytest to collect the suite; if any module touches one
+  at import it fails here, on Linux, with the message a Windows user would have seen. The real cause
+  of this bug was that CI only ran Linux.
+- **And a `windows` job in CI.** `.github/workflows/ci.yml` now runs the same python gate on
+  `windows-latest` (ruff, mypy, pytest). It is **advisory** for now (`continue-on-error`) so one
+  small Windows difference cannot lock the repository on day one; it becomes blocking once it has
+  run green.
 
 ## 1.0.29
 
