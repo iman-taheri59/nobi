@@ -2,8 +2,8 @@
 
 [فارسی](releases.md) · **English**
 
-The current version of this change is **1.0.30**; the previously published tag is
-**v1.0.29**, and this change will ship as **v1.0.30**.
+The current version of this change is **1.1.0**; the previously published tag is
+**v1.0.30**, and this change will ship as **v1.1.0**.
 `VERSION` is the source of truth for the release number; the tag name is exactly `v`
 plus that number.
 
@@ -30,9 +30,9 @@ decision comes from the nature of the change, not from how many releases came be
 
 | Change | Number |
 |---|---|
-| Docs, ADR, CHANGELOG, tests, internal refactor, or fixing wrong behaviour | PATCH — `1.0.30` is the ceiling |
+| Docs, ADR, CHANGELOG, tests, internal refactor, or fixing wrong behaviour | PATCH — e.g. `1.0.30` → `1.0.31` |
 | A new capability that **is still in the shadow**: it adds numbers and evidence, but nothing a user can do changes and `applied` stays `false` | PATCH (explicit shadow-period exception) |
-| **Trading behaviour** changes: a gate actually filters, a threshold is applied, a signal or position can differ | MINOR — `1.0.30` → `1.1.0` |
+| **Trading behaviour** changes: a gate actually filters, a threshold is applied, a signal or position can differ | MINOR — `1.1.0` → `1.1.0` |
 | An incompatible interface or API change | MAJOR — `1.9.10` → `2.0.0` |
 
 The short form: as long as no gate rejects a row, it is the shadow period and a PATCH is enough. The
@@ -41,7 +41,7 @@ first gate that really filters is a MINOR — in this project, step S6 of ADR-00
 ## Ceilings
 
 The number has to stay readable, so every field has a ceiling. A ceiling is the **highest value
-allowed**, not a count of releases: `1.0.30` is allowed, and the release **after** it is `1.1.0`.
+allowed**, not a count of releases: `1.1.0` is allowed, and the release **after** it is `1.1.0`.
 
 | Field | Ceiling | When it is reached |
 |---|---|---|

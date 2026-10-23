@@ -199,6 +199,32 @@ _AMOUNT_STEP = {
 
 _PRICE_STEP = {"rls": 10.0, "usdt": 0.01}
 
+#: Frozen copy of what this file ships, so an override can be undone. `apply_options`
+#: writes to the tables above, which are process globals: a dashboard that read the
+#: exchange's real minimums once keeps them, and anything that expected the
+#: documented SmallOrder afterwards is wrong. That is correct in production — the
+#: exchange is authoritative — and a trap in a test process, where one test's
+#: network call silently rewrote what three later tests asserted.
+_DOCUMENTED = {
+    "min": dict(MIN_NOTIONAL_QUOTE),
+    "amount": dict(_AMOUNT_STEP),
+    "price": dict(_PRICE_STEP),
+}
+
+
+def reset_documented_defaults() -> None:
+    """Undo every `apply_options` override, back to what this module documents.
+
+    Exists for the test suite (see `server/tests/conftest.py`) and for any caller
+    that needs the shipped tables rather than the exchange's live ones.
+    """
+    MIN_NOTIONAL_QUOTE.clear()
+    MIN_NOTIONAL_QUOTE.update(_DOCUMENTED["min"])
+    _AMOUNT_STEP.clear()
+    _AMOUNT_STEP.update(_DOCUMENTED["amount"])
+    _PRICE_STEP.clear()
+    _PRICE_STEP.update(_DOCUMENTED["price"])
+
 
 def apply_options(payload: dict) -> int:
     """Load precision overrides from a ``/v2/options`` payload.

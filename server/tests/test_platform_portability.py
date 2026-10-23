@@ -53,10 +53,20 @@ def test_the_suite_collects_without_posix_only_calls():
     )
 
 
+#: Directories that are not this repository's code: a virtualenv on Windows lives
+#: *inside* the checkout (`server\.venv`), so without this the scan reported fifty
+#: offenders in pip, numpy and pytest.
+SKIP_DIRS = {".venv", "venv", "site-packages", "node_modules", "__pycache__",
+             "build", "dist", ".git", ".mypy_cache", ".ruff_cache", ".pytest_cache"}
+
+
 def _python_sources() -> list[Path]:
     out: list[Path] = []
     for base in ((ROOT / "server"), (ROOT / "scripts")):
-        out.extend(p for p in base.rglob("*.py") if "__pycache__" not in p.parts)
+        for p in base.rglob("*.py"):
+            if SKIP_DIRS & set(p.parts):
+                continue
+            out.append(p)
     return out
 
 
