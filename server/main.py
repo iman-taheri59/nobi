@@ -42,6 +42,7 @@ import devsuite
 import diagnostics
 import errorlog
 import freshness
+import gates
 import identity
 import journal as signal_journal
 import nobitex_metadata
@@ -361,7 +362,7 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(
     title="nobiTrader",
-    version="1.0.24",
+    version="1.0.25",
     lifespan=lifespan,
 )
 
@@ -527,6 +528,10 @@ _cached: dict = {
     "premium": None,
     "premium_pct": None,
     "last_scan": None,
+    #: Last book each symbol was *seen* with, keyed by symbol: `{spread_bps,
+    #: depth_usd, mid, at}`. Filled by `/api/orderbook/{symbol}` only — ADR-0022's
+    #: shadow layer must not turn the ranking route into a poller.
+    "books": {},
     "universe_error": None,
     "scan_skipped": [],
 }
@@ -1058,7 +1063,10 @@ async def signals(tf: str = Query("15m", pattern="^(15m|1h|4h|D)$")):
                 "fa_coverage": _cached.get("fa_coverage"),
                 # No scores is not the same as no candles: the block still says
                 # which wall was hit, with a named reason.
-                "freshness": scan_freshness_block(_cached.get("signals_bars", {}).get(tf) or {}, tf)}
+                "freshness": scan_freshness_block(_cached.get("signals_bars", {}).get(tf) or {}, tf),
+                # ADR-0022 stage 1: with no rows there is nothing to judge, and a
+                # block saying so is better than a missing key.
+                "gates": gates_block([], tf)}
     return {
         "ok": True,
         "ts": datetime.now(UTC).isoformat(),
@@ -1075,6 +1083,9 @@ async def signals(tf: str = Query("15m", pattern="^(15m|1h|4h|D)$")):
         # timeframe, and the *worst* symbol decides: a stale name in the list makes
         # the list stale.
         "freshness": scan_freshness_block(_cached.get("signals_bars", {}).get(tf) or {}, tf),
+        # ADR-0022 stage 1 — verdicts in the open. `ranked` below is unchanged: the
+        # gates report, and this route keeps every row it scored.
+        "gates": gates_block(ranked, tf),
         "scored": ranked,
         **provenance(),
     }
@@ -1174,6 +1185,22 @@ async def orderbook(symbol: str, limit: int = Query(8, ge=1, le=50)):
     ask_depth = sum(lvl["p"] * lvl["q"] for lvl in asks if abs(lvl["p"] - mid) <= band)
     total = bid_depth + ask_depth
     imbalance = ((bid_depth - ask_depth) / total * 100) if total else None
+
+    # ADR-0022: the shadow gate layer reads the spread and the depth a book route
+    # already computed. Keeping them means the gates cost *zero* extra requests;
+    # a symbol nobody has opened stays `no-book`, which is the honest answer.
+    _cached["books"][sym] = {
+        "spread_bps": (spread / mid * 10_000) if (spread is not None and mid) else None,
+        # Both sides of the ±1 % band, because a gate about "can this fill" is not
+        # a gate about one side of the book.
+        # Book prices are quoted in the pair's own quote currency, so an IRT book
+        # is in toman and a USDT book is already in dollars — the same distinction
+        # `market_overview` makes before it adds anything up.
+        "depth_usd": (bid_depth + ask_depth) if not sym.endswith("IRT") else (
+            (bid_depth + ask_depth) / _toman_per_usdt() if _toman_per_usdt() else None),
+        "mid": mid,
+        "at": time.time(),
+    }
 
     return {
         "ok": True,
@@ -2973,6 +3000,63 @@ def volatility_block(rows: list[dict]) -> dict:
         return {**base, "ok": False, "error": e.code, "message": e.message, **e.meta}
     except Exception as e:                          # pragma: no cover - last resort
         return {**base, "ok": False, "error": type(e).__name__, "message": str(e)}
+
+
+def _toman_per_usdt() -> float | None:
+    """The USDT/IRT rate the universe already carries, or None.
+
+    Book depth is quoted in the pair's own currency; a toman figure and a dollar
+    figure are not comparable and must not be added, so a missing rate gives
+    `None` — and `None` makes the depth gate answer `no-book` for that symbol
+    rather than compare tomans to dollars.
+    """
+    row = next((r for r in (_cached.get("universe") or [])
+                if r.get("symbol") == "USDTIRT"), None)
+    try:
+        rate = float((row or {}).get("last") or 0.0)
+    except (TypeError, ValueError):
+        return None
+    return rate if rate > 0 else None
+
+
+def gates_block(ranked: list[dict], tf: str) -> dict:
+    """ADR-0022 stage 1 — the gates' verdicts, on rows the ranking already has.
+
+    Every input is something the scan or a book route already produced: the age
+    per symbol (1.0.23), the closed-market set, and whatever book was last read.
+    Nothing here fetches, nothing here filters, and `applied` is false in the
+    block itself so a caller cannot lose that fact.
+    """
+    per_bar = (_cached.get("signals_bars") or {}).get(tf) or {}
+    closed = set(_cached.get("closed_markets") or [])
+    books = _cached.get("books") or {}
+    rows: list[dict] = []
+    for snap in ranked:
+        sym = str(snap.get("symbol") or "")
+        if not sym:
+            continue
+        bar = per_bar.get(sym)
+        age_bars = None
+        if bar is not None:
+            with suppress(AdaptiveRefusal, TypeError, ValueError):
+                age_bars = freshness.assess_bar(bar, tf).get("age_bars")
+        book = books.get(sym)
+        rows.append({
+            "symbol": sym,
+            "age_bars": age_bars,
+            "halted": sym in closed,
+            "book": ({"spread_bps": book.get("spread_bps"),
+                      "depth_usd": book.get("depth_usd")} if book else None),
+        })
+    out = gates.evaluate(rows)
+    # How much of the list could actually be judged, so the card can say "no book
+    # has been read for these yet" instead of implying the market is clean.
+    out["inputs"] = {
+        "ages": sum(1 for r in rows if r.get("age_bars") is not None),
+        "books": sum(1 for r in rows if r.get("book")),
+        "closed": len(closed),
+    }
+    return out
 
 
 def scan_freshness_block(bars: dict[str, float | None], tf: str,

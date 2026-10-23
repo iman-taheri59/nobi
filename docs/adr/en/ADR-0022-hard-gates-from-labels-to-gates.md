@@ -150,3 +150,26 @@ Rollback: drop the `gates` block; no row in any route depends on it, because it 
 1) `gates.py` with those seven codes and its tests, 2) the `gates` block in shadow mode on the
 existing routes, 3) a dashboard that shows the shadow verdicts, 4) and then clause 4's evidence for
 **one** gate. Until that day the status stays as it is: proposed, and nothing is blocked.
+
+---
+
+## Implementation amendment — version 1.0.25 (2026-10-22)
+
+Stage 1 of the decision above is implemented. The decision text is untouched; this section only
+says where things stand today.
+
+**What exists:** `server/gates.py` with the seven codes in the same precedence order
+(`halted` → `no-data` → `stale-data` → `no-book` → `spread-wide` → `book-thin` → `ok`),
+thresholds as parameters with the two money-shaped ones defaulting to off, and a `gates` block on
+`/api/signals` with `mode: "shadow"` and `applied: false` in **every** response. The dashboard has
+a chip that says "gates (shadow): 4 of 24" and puts both the symbol names and the sentence
+"nothing was removed" in its title.
+
+**Every input already existed:** the per-symbol age from 1.0.23, the closed-market set from
+`closed_markets`, and depth/spread from a book the `/api/orderbook/{symbol}` route **already** read
+and now keeps. The result: this layer adds **zero network requests** — and a symbol nobody opened
+gets `no-book`, which is the most honest answer available.
+
+**Status:** still **proposed**. No gate blocks anything and `enforcing` is never read; the test
+`test_the_module_has_no_way_to_apply_anything` guards exactly that. Leaving "proposed" requires
+clause 4 of the main text: the forward-return evidence for **one** gate.

@@ -277,7 +277,7 @@
       </button>
     </div>
     <span class="hidden 2xl:inline-flex chip shrink-0"><span class="dot bg-emerald-400"></span> <span data-i18n="hdr.kill"></span></span>
-    <span id="buildChip" class="hidden lg:inline-flex chip num text-violet-300 border-violet-400/30 shrink-0" title="نسخه واقعی از /api/health">v1.0.24 · core</span>
+    <span id="buildChip" class="hidden lg:inline-flex chip num text-violet-300 border-violet-400/30 shrink-0" title="نسخه واقعی از /api/health">v1.0.25 · core</span>
     <div class="ms-auto flex items-center gap-1.5 shrink-0">
       <span class="hidden xl:inline-flex chip num" id="clock">--:--:--</span>
       <span id="apiChip" class="hidden 2xl:inline-flex chip num text-zinc-400 border-white/10" title=""><i data-lucide="wifi-off" class="w-3.5 h-3.5"></i> <span>API: —</span></span>
@@ -506,6 +506,7 @@
           <span class="chip num" data-i18n="sg.scanned"></span>
           <span class="chip" data-i18n="sg.cycle"></span>
           <span class="chip hidden" id="sgFreshChip" title=""></span>
+          <span class="chip hidden" id="sgGateChip" title=""></span>
           <span class="chip num text-violet-300 border-violet-300/30" id="sgFaCoverage" data-i18n="sg.faCoverage"></span>
           <span class="chip text-emerald-300 hidden sm:inline-flex"><i data-lucide="shield-check" class="w-3.5 h-3.5"></i> <span data-i18n="sg.weights"></span></span>
           <span class="text-[10px] sm:text-[11px] text-zinc-500 self-center" data-i18n="sg.last"></span>
@@ -1403,6 +1404,7 @@ const T = {
     'sg.noCandles':'کندلی برای این نماد در حافظه نیست', 'sg.close':'بستن',
     'sg.hdr':'رتبه‌بندی دنیای نوبیتکس', 'sg.scanned':'بدون داده', 'sg.cycle':'چرخه: بستن کندل ۱۵د',
     'sg.weights':'TA ۵۵٪ · FA ۲۵٪ · نقد ۲۰٪ (در نبود FA: وزن‌ها بازتوزیع می‌شود)', 'sg.faCoverage':'بنیادی زنده: —', 'sg.last':'آخرین چرخه: —', 'sg.dataStale':'داده کهنه', 'sg.dataStaleWhy':'آخرین کندلِ این اسکن {bars} کندل عقب است؛ این رتبه‌بندی آن بازه را توصیف می‌کند، نه امروز را', 'sg.dataStaleNone':'کندلی برای سنجش سن نیست',
+    'sg.gatesChip':'دروازه‌ها (سایه): {blocked} از {rows}', 'sg.gatesWhy':'اگر دروازه‌ها عمل می‌کردند، {names}{more} حذف می‌شدند — چیزی حذف نشد', 'sg.gatesClean':'هیچ دروازه‌ای اعتراضی ندارد', 'sg.gatesUnknown':'{n} نماد را نمی‌شود سنجید (دفتری خوانده نشده)',
     'sg.dataStaleWorst':'بدترین نماد این اسکن {sym} است: آخرین کندلش {bars} کندل عقب است{more}؛ این رتبه‌بندی آن بازه را توصیف می‌کند، نه امروز را', 'sg.dataStaleMore':' ({n} نماد دیگر هم کهنه‌اند)',
     'atr.title':'صدک ATR روی نمودار', 'atr.regimeCalm':'آرام', 'atr.regimeNormal':'معمولی',
     'atr.regimeVolatile':'پرنوسان', 'atr.calmBand':'آرام ≤{cut}', 'atr.volBand':'پرنوسان ≥{cut}',
@@ -1659,6 +1661,7 @@ const T = {
     'sg.noCandles':'no candles for this symbol in memory', 'sg.close':'close',
     'sg.hdr':'Nobitex Universe Ranking', 'sg.scanned':'no data', 'sg.cycle':'Cycle: 15m candle close',
     'sg.weights':'TA 55% · FA 25% · Liquidity 20% (weights renormalise when FA is missing)', 'sg.faCoverage':'Live FA: —', 'sg.last':'Last cycle: —', 'sg.dataStale':'stale data', 'sg.dataStaleWhy':'the newest candle in this scan is {bars} bars old; this ranking describes that window, not today', 'sg.dataStaleNone':'no candle to measure an age from',
+    'sg.gatesChip':'gates (shadow): {blocked} of {rows}', 'sg.gatesWhy':'a gate would have removed {names}{more} — nothing was removed', 'sg.gatesClean':'no gate objects', 'sg.gatesUnknown':'{n} symbol(s) cannot be judged (no book read yet)',
     'sg.dataStaleWorst':'the worst symbol in this scan is {sym}: its newest candle is {bars} bars old{more}; this ranking describes that window, not today', 'sg.dataStaleMore':' ({n} more symbols are stale too)',
     'atr.title':'ATR percentile on the chart', 'atr.regimeCalm':'calm', 'atr.regimeNormal':'normal',
     'atr.regimeVolatile':'volatile', 'atr.calmBand':'calm ≤{cut}', 'atr.volBand':'volatile ≥{cut}',
@@ -2754,6 +2757,7 @@ window.addEventListener('nbx:scan', ()=>{
   try{ if (typeof renderOrders === 'function') renderOrders(); }catch(e){}
   // The market-scan card's numbers arrive with this event; their age does too.
   try{ if (typeof sgRenderFresh === 'function') sgRenderFresh(sgFreshNow()); }catch(e){}
+  try{ if (typeof sgRenderGates === 'function') sgRenderGates(sgGateNow()); }catch(e){}
 });
 // ATR-based sizing needs live candles. Without them the three tiles stay "—"
 // and the panel explains why instead of quoting a remembered 1.9%.
@@ -3096,8 +3100,51 @@ function sgRenderFresh(f){
       : t('sg.dataStaleWhy').replace('{bars}', age == null ? '—' : age);
   }
 }
+/* ADR-0022 stage 1 — the gates in the open.
+ * The chip says how many rows a gate *would* have removed and how many could not be
+ * judged at all. It never says anything was removed, because nothing is: the block
+ * arrives with `applied: false`, and a chip that implied otherwise would be the one
+ * lie this whole series exists to prevent. */
+function sgGateNow(){
+  try {
+    const l = window.live;
+    return (l && l.gates) || null;
+  } catch (e) { return null; }
+}
+function sgRenderGates(g){
+  const chip = document.getElementById('sgGateChip');
+  if (!chip) return;
+  const block = g || null;
+  if (!block || !block.counts || !block.counts.rows){
+    chip.classList.add('hidden');
+    chip.textContent = ''; chip.title = '';
+    return;
+  }
+  const c = block.counts;
+  const blocked = c.would_block || 0;
+  const unknown = c.unknown || 0;
+  chip.classList.remove('hidden');
+  chip.className = blocked
+    ? 'chip text-amber-300 border-amber-300/30'
+    : 'chip text-zinc-400 border-zinc-400/20';
+  chip.textContent = t('sg.gatesChip')
+    .replace('{blocked}', fmtNum(blocked, 0))
+    .replace('{rows}', fmtNum(c.rows, 0));
+  const names = (block.would_block || []).slice(0, 3).join(', ');
+  const alsoBlocked = blocked > 3 ? t('sg.dataStaleMore').replace('{n}', fmtNum(blocked - 3, 0)) : '';
+  const head = blocked
+    ? t('sg.gatesWhy').replace('{names}', names).replace('{more}', alsoBlocked)
+    : t('sg.gatesClean');
+  const tail = unknown
+    ? t('sg.gatesUnknown').replace('{n}', fmtNum(unknown, 0))
+    : '';
+  // The note the server shipped with the block travels in the title, so the
+  // "shadow only" sentence is never lost between the API and the screen.
+  chip.title = [head, tail, block.note || ''].filter(Boolean).join(' — ');
+}
 function renderSignals(){
   sgRenderFresh(sgFreshNow());       // the ranking and the age of its candles, together
+  sgRenderGates(sgGateNow());        // ...and what a gate would have done to them
   byId('sigList').innerHTML = signals.map((s,i)=>{
     const col = s.score>=60?'emerald':s.score>=45?'amber':'red';
     return `<div class="glass p-3.5 sm:p-4 flex flex-col md:flex-row md:items-center gap-3 sm:gap-4">
