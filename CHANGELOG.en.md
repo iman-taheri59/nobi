@@ -2,6 +2,81 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 1.0.29
+
+- **The version rule is now numeric and tested.** It used to say "PATCH for a fix, MINOR for a
+  feature", but in practice shadow-period capabilities (the shadow ledger in 1.0.26, the book
+  prefetch in 1.0.28) also took a PATCH and nobody said why. The rule is now explicit: as long as no
+  gate actually rejects a row, it is the shadow period and a PATCH is enough; the first gate that
+  filters is a MINOR — in this project, step S6 of ADR-0023.
+- **A numeric ceiling, so the number stays readable.** PATCH runs up to **30** before the `1.0.x`
+  line is crossed: `1.0.30` is allowed and the release after it is `1.1.0`. From `1.1.0` on every
+  field tops out at **10**: `1.1.10` → `1.2.0` and `1.10.4` → `2.0.0`.
+- **A ceiling is the highest value, not a count of releases.** So we do not spend thirty releases to
+  get there; `1.0.30` is still inside the rule and the next step is forced.
+- **The ceiling is enforced by a test, not by memory.**
+  `test_the_release_number_stays_inside_its_ceiling` reads the current `VERSION` and makes CI reject a
+  number outside the rule; a second test keeps the documented tables (fa and en) identical to the
+  numbers the test enforces.
+- **A PATCH-to-MINOR jump means the change was not large.** When a ceiling fills and forces a MINOR,
+  that version's CHANGELOG says "bumped because of the ceiling, not because behaviour changed" — so
+  the project's history does not lie later.
+
+## 1.0.28
+
+- **Step S1 of ADR-0023 shipped: the scan reads the order book.** Until now a book was only read
+  when somebody opened the book panel for one symbol, so most rows stayed `no-book` and the shadow
+  ledger built in stage 2 of ADR-0022 was effectively empty. Every scan now fills the books of the
+  **top N symbols** before it writes the ledger.
+- **The ceiling is a refusal, not a trim.** `gate_prefetch_n()` rejects a value above
+  `GATE_PREFETCH_MAX=20`, a negative number, and non-numeric input with `ValueError`. Trimming
+  silently was the worst option: the gates card would look populated while nobody could see why the
+  sample was not growing. Default `10`; `0` means off.
+- **One broken symbol neither kills the scan nor lies in the counts.** A symbol's error only lands
+  in `failed`, and that symbol stays out of the cache — so its gate keeps saying `no-book`. An empty
+  book (no bids or no asks) counts as a failure, not as zero depth.
+- **The ranking is untouched.** This step only fills the input cache: no row is removed, added or
+  reordered, and `applied` stays `false`. A test compares the list's order and length before and
+  after the pass.
+- **One arithmetic, two consumers.** `book_stats()` and `book_record()` were lifted out of the
+  `/api/orderbook/{symbol}` route and the prefetch uses the same functions, so the panel and the gate
+  cannot disagree about one book. Depth of a toman-quoted symbol is converted with the live rate, and
+  stays `None` when there is no rate — tomans are never reported as dollars.
+- **Reuse and a time budget.** A book newer than `BOOK_PREFETCH_TTL_S` (default 120s) is not read
+  again, and a pass stays inside `GATE_PREFETCH_BUDGET_S` (default 8s); both are settable through
+  `NBX_BOOK_TTL_S` and `NBX_BOOK_BUDGET_S`. Concurrency is 4.
+- **Visible in the output.** `/api/signals` reports the last pass under `gates.inputs.prefetch`
+  (`asked/ok/failed/fresh/budget_s/at`), so “there is no book” is distinguishable from “nobody ever
+  asked”.
+- **17 new tests** cover exactly this step: the ceiling, the TTL, one failing symbol, an empty book,
+  an unchanged order, route/prefetch arithmetic agreement, and `unknown` shrinking once the books
+  land.
+
+## 1.0.27
+
+- **ADR-0023 is written: “Smarter only with evidence”.** The fifth document in this series, and
+  instead of a list of tools it defines an **admission filter**: any change claiming intelligence
+  must (1) produce a number that does not exist today, (2) have a state in which it is wrong, and
+  (3) not change behaviour in its first step. Anything failing that is rejected, however modern it
+  looks.
+- **Six steps, in dependency order:** prefetch the order book on every scan (without it the shadow
+  ledger stays empty), an honest backfill (candle-derived codes only, labelled `backfilled`), score
+  calibration (from number to probability, with a minimum sample per bucket), multi-timeframe
+  confluence, the correlation gate (wiring `portfolio.py` into the ranking), and finally applying
+  thresholds with evidence (executing ADR-0021, under its own ADR).
+- **Five explicit refusals, with reasons:** a machine-learning ranker without out-of-sample
+  evidence, reinforcement learning for sizing (a decision that cannot be audited), lowering the 68
+  threshold for “more signals”, price prediction with a single number, and enabling order submission
+  to feel “complete”.
+- **A hard boundary on the backfill:** `spread-wide` and `book-thin` are never reconstructed — past
+  order books do not exist and inventing them is fabricating data (ADR-0014). Nor can a backfill
+  move any gate's verdict from `insufficient` to `supports`.
+- **Acceptance for the document:** the ADR becomes “accepted” when S1 and S2 ship and, within one
+  working week, the shadow ledger brings at least one gate to ≥30 verdicts over ≥5 days. Until then
+  it is **Proposed**.
+- **Zero behaviour change:** this version is documentation only. No executable line was touched, and
+  `test_docs_bilingual` (5 tests) is green.
+
 ## 1.0.26
 
 - **The gates now have a memory.** Stage 2 of ADR-0022: `server/gate_ledger.py` records each
