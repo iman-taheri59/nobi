@@ -254,3 +254,64 @@ def test_the_gates_block_reports_what_the_prefetch_did(monkeypatch):
     assert pre["enabled"] is True and pre["ok"] == 2
     assert block["inputs"]["books"] == 2
     assert block["applied"] is False        # S1 fills a cache; it never applies a gate
+
+
+# --------------------------------------------------------------------------- #
+# 5. A book that is too old is not evidence (1.0.30)
+# --------------------------------------------------------------------------- #
+def test_a_book_past_the_gate_ttl_cannot_judge_a_bar(monkeypatch):
+    """The cache is not a measurement: a four-hour-old book is not a fresh "ok".
+
+    A symbol leaves the top N, its last book stays in `_cached["books"]`, and
+    without an age check every later bar would be judged — and written to the
+    ledger — from a price that no longer exists.
+    """
+    monkeypatch.setattr(main, "client", Feed())
+    run(main.gate_prefetch(ranked(2), n=2))
+    # age both books well past the gate TTL
+    for row in main._cached["books"].values():
+        row["at"] = time.time() - main.BOOK_GATE_TTL_S - 60
+    block = main.gates_block([{"symbol": "S0IRT"}, {"symbol": "S1IRT"}], "15m")
+    assert block["inputs"]["books"] == 0, "a stale book was counted as a usable input"
+    assert block["inputs"]["stale_books"] == 2
+    assert block["inputs"]["oldest_book_s"] > main.BOOK_GATE_TTL_S
+    assert sorted(block["unknown"]) == ["S0IRT", "S1IRT"], "a stale book produced a verdict"
+    assert block["counts"]["ok"] == 0
+
+
+def test_a_book_inside_the_gate_ttl_still_judges(monkeypatch):
+    monkeypatch.setattr(main, "client", Feed())
+    run(main.gate_prefetch(ranked(1), n=1))
+    main._cached["books"]["S0IRT"]["at"] = time.time() - main.BOOK_GATE_TTL_S + 30
+    block = main.gates_block([{"symbol": "S0IRT"}], "15m")
+    assert block["inputs"]["books"] == 1 and block["inputs"]["stale_books"] == 0
+
+
+def test_the_gate_ttl_is_longer_than_the_fetch_ttl():
+    """Otherwise every book would expire before the next scan could reuse it."""
+    assert main.BOOK_GATE_TTL_S > main.BOOK_PREFETCH_TTL_S
+    assert main.BOOK_EVICT_TTL_S > main.BOOK_GATE_TTL_S
+
+
+def test_a_long_forgotten_book_is_evicted_from_the_cache(monkeypatch):
+    monkeypatch.setattr(main, "client", Feed())
+    run(main.gate_prefetch(ranked(3), n=3))
+    main._cached["books"]["S2IRT"]["at"] = time.time() - main.BOOK_EVICT_TTL_S - 60
+    # S2 has dropped out of the top N, so nothing refreshes it: only eviction can
+    # remove it. (Asking for it again would simply fetch a new book.)
+    out = run(main.gate_prefetch(ranked(2), n=2))
+    assert out["evicted"] == 1
+    assert "S2IRT" not in main._cached["books"]
+    assert "S0IRT" in main._cached["books"]
+
+
+def test_nothing_is_applied_even_when_books_go_stale(monkeypatch):
+    """Filling or emptying the input still cannot move a gate out of shadow."""
+    monkeypatch.setattr(main, "client", Feed())
+    run(main.gate_prefetch(ranked(2), n=2))
+    for row in main._cached["books"].values():
+        row["at"] = time.time() - main.BOOK_GATE_TTL_S - 60
+    block = main.gates_block([{"symbol": "S0IRT"}, {"symbol": "S1IRT"}], "15m")
+    assert block["applied"] is False
+    assert block["mode"] == "shadow"
+    assert block["would_block"] == []

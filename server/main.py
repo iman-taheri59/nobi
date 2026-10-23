@@ -363,7 +363,7 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(
     title="nobiTrader",
-    version="1.0.29",
+    version="1.0.30",
     lifespan=lifespan,
 )
 
@@ -475,6 +475,17 @@ BOOK_PREFETCH_TTL_S = float(os.getenv("NBX_BOOK_TTL_S", "120"))
 #: Total wall-clock budget for one prefetch pass. Whatever has not arrived by
 #: then is counted as failed, not silently dropped.
 GATE_PREFETCH_BUDGET_S = float(os.getenv("NBX_BOOK_BUDGET_S", "8"))
+#: How old a book may be and still count as evidence for a gate. This is not the
+#: prefetch TTL: that one decides when to *fetch again*, this one decides whether
+#: an old book may still judge a bar. A book from four hours ago is not evidence
+#: about the bar that just closed, and a symbol that drops out of the top N keeps
+#: its last book in the cache — so without this line the ledger would keep writing
+#: "ok" verdicts from stale prices on every bar. Under-counting is the honest
+#: failure direction; the card names the skipped books instead of hiding them.
+BOOK_GATE_TTL_S = float(os.getenv("NBX_BOOK_GATE_TTL_S", "300"))
+#: Books older than this are dropped from the cache at the end of a prefetch pass,
+#: so a symbol that leaves the top N does not sit in memory all day.
+BOOK_EVICT_TTL_S = float(os.getenv("NBX_BOOK_KEEP_S", "3600"))
 UPSTREAM_TTL_S = int(os.getenv("NBX_UPSTREAM_TTL_S", "20"))
 
 #: Read by `paper_trading.market_closed_hook`; kept as its own object so the
@@ -1313,7 +1324,16 @@ async def gate_prefetch(ranked: list[dict], *, n: int | None = None,
             result["timed_out"] = True
         result["failed"] = result["asked"] - result["ok"]
 
-    payload = {**result, "at": time.time(), "enabled": True, "n": want}
+    # Evict what can no longer be evidence: a symbol that dropped out of the top
+    # N otherwise keeps its last book in memory all day, and `gates_block` would
+    # have to defend against it on every bar.
+    cutoff = time.time() - BOOK_EVICT_TTL_S
+    evicted = [s for s, row in books.items() if float(row.get("at") or 0) < cutoff]
+    for sym in evicted:
+        books.pop(sym, None)
+
+    payload = {**result, "at": time.time(), "enabled": True, "n": want,
+               "evicted": len(evicted)}
     _cached["gate_prefetch"] = payload
     return payload
 
@@ -3314,6 +3334,9 @@ def gates_block(ranked: list[dict], tf: str) -> dict:
     per_bar = (_cached.get("signals_bars") or {}).get(tf) or {}
     closed = set(_cached.get("closed_markets") or [])
     books = _cached.get("books") or {}
+    now = time.time()
+    stale_books = 0
+    oldest: float | None = None
     rows: list[dict] = []
     for snap in ranked:
         sym = str(snap.get("symbol") or "")
@@ -3325,6 +3348,14 @@ def gates_block(ranked: list[dict], tf: str) -> dict:
             with suppress(AdaptiveRefusal, TypeError, ValueError):
                 age_bars = freshness.assess_bar(bar, tf).get("age_bars")
         book = books.get(sym)
+        if book:
+            age_s = now - float(book.get("at") or 0)
+            oldest = age_s if oldest is None else max(oldest, age_s)
+            if age_s > BOOK_GATE_TTL_S:
+                # Too old to judge this bar with. Counted, then dropped: a row
+                # with no usable book is `no-book`, never `ok`.
+                stale_books += 1
+                book = None
         rows.append({
             "symbol": sym,
             "age_bars": age_bars,
@@ -3338,6 +3369,12 @@ def gates_block(ranked: list[dict], tf: str) -> dict:
     out["inputs"] = {
         "ages": sum(1 for r in rows if r.get("age_bars") is not None),
         "books": sum(1 for r in rows if r.get("book")),
+        # Books that exist but are too old to count: without this line a card
+        # reading "11 books" cannot tell a fresh scan from a cache left over
+        # from an hour ago.
+        "stale_books": stale_books,
+        "book_gate_ttl_s": BOOK_GATE_TTL_S,
+        "oldest_book_s": round(oldest, 1) if oldest is not None else None,
         "closed": len(closed),
         # ADR-0023 S1: what the last pass did — "no book" vs "never asked".
         "prefetch": _cached.get("gate_prefetch"),

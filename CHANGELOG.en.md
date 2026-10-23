@@ -2,6 +2,31 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 1.0.30
+
+- **A stale book is not evidence any more.** `gates_block` judged every book in the cache
+  regardless of its age, and the cache was never pruned. So a symbol that dropped out of the top N
+  kept its last book for hours, and that book **wrote a fresh verdict on every bar**: `ok`, from a
+  price that no longer existed. A book older than `BOOK_GATE_TTL_S` (default 300s,
+  `NBX_BOOK_GATE_TTL_S`) now counts as unseen — the row is `no-book`, not `ok`.
+- **Two TTLs that were being confused.** `BOOK_PREFETCH_TTL_S` answers "when to fetch again";
+  `BOOK_GATE_TTL_S` answers "may this book still judge a bar". Collapsing them meant any book kept
+  to save a request also counted as current — which is exactly the bug.
+- **The card now says how many books it refused.** `gates.inputs` gained `stale_books`,
+  `book_gate_ttl_s` and `oldest_book_s`; without them "11 books" could not tell a fresh scan from an
+  hour-old cache.
+- **The cache is pruned too.** At the end of each prefetch, books older than `BOOK_EVICT_TTL_S`
+  (default 3600s, `NBX_BOOK_KEEP_S`) are dropped and counted in `prefetch.evicted`, so a symbol that
+  left the list does not sit in memory.
+- **The error direction is under-counting.** Doubt about an old book produces "no verdict from this
+  symbol", never "a fresh verdict from an old price". An under-count can be seen and fixed later;
+  polluted evidence cannot.
+- **Five new tests** cover it: past the gate TTL ⇒ `no-book` and `stale_books`; inside it ⇒ still
+  judged; the two TTLs in the right order; eviction; and that books going stale still cannot move
+  `applied` off `false`.
+- **The number ceiling is now full.** Per `docs/releases.md`, `1.0.30` is the last PATCH on the
+  `1.0.x` line; the next release, whatever it contains, will be `1.1.0`.
+
 ## 1.0.29
 
 - **The version rule is now numeric and tested.** It used to say "PATCH for a fix, MINOR for a

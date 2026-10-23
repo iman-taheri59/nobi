@@ -2,8 +2,8 @@
 
 [فارسی](releases.md) · **English**
 
-The current version of this change is **1.0.29**; the previously published tag is
-**v1.0.26**, and this change will ship as **v1.0.29**.
+The current version of this change is **1.0.30**; the previously published tag is
+**v1.0.29**, and this change will ship as **v1.0.30**.
 `VERSION` is the source of truth for the release number; the tag name is exactly `v`
 plus that number.
 
@@ -30,7 +30,7 @@ decision comes from the nature of the change, not from how many releases came be
 
 | Change | Number |
 |---|---|
-| Docs, ADR, CHANGELOG, tests, internal refactor, or fixing wrong behaviour | PATCH — `1.0.29` → `1.0.30` |
+| Docs, ADR, CHANGELOG, tests, internal refactor, or fixing wrong behaviour | PATCH — `1.0.30` is the ceiling |
 | A new capability that **is still in the shadow**: it adds numbers and evidence, but nothing a user can do changes and `applied` stays `false` | PATCH (explicit shadow-period exception) |
 | **Trading behaviour** changes: a gate actually filters, a threshold is applied, a signal or position can differ | MINOR — `1.0.30` → `1.1.0` |
 | An incompatible interface or API change | MAJOR — `1.9.10` → `2.0.0` |

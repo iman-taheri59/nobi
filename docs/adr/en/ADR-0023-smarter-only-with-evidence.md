@@ -149,4 +149,5 @@ ledger brings at least one gate to `n ≥ 30` and `days ≥ 5`. Until then its s
 **Implementation status:** S1 shipped in 1.0.28 — the order book is prefetched on every scan under a
 ceiling of `GATE_PREFETCH_MAX=20` (above it a `ValueError`, never a trim), with a TTL and a time
 budget, and the pass is reported under `gates.inputs.prefetch`. The ranking is untouched and
-`applied` stays `false`. S2…S6 remain open.
+`applied` stays `false`. 1.0.30 closed one flaw: a book older than `BOOK_GATE_TTL_S` is no longer
+counted as evidence — the cache had been treated as if it were a measurement. S2…S6 remain open.
