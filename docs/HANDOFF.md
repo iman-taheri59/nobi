@@ -2,8 +2,8 @@
 
 [English](HANDOFF.en.md) · **فارسی**
 
-**آخرین به‌روزرسانی:** ۲۰۲۶-۱۰-۲۵ — مرحله ۶ (primitiveهای B3 کامل)
-**نسخه کاری:** ۱٫۲٫۳
+**آخرین به‌روزرسانی:** ۲۰۲۶-۱۰-۲۵ — مرحله ۷ (روت‌های B3 کامل)
+**نسخه کاری:** ۱٫۲٫۴
 **هدف:** ADR-0027؛ ابتدا محصول پایدار، سپس اجرای واقعی مرحله‌ای و fail-closed.
 
 ## وضعیت
@@ -12,7 +12,8 @@
 - [x] B1: signer مستقل Ed25519؛ هیچ secret در log/ledger.
 - [x] B2: disabled/dry-run/live، ledger، idempotency، unknown-state و reconciliation.
 - [x] B3-primitive: فهرست سفارش و لغو بر اساس `clientOrderId` با cancel-unknown بدون retry.
-- [ ] B3-route: routeهای اپراتوری، اتصال preflight و audit actor.
+- [x] B3-route: روت‌های خصوصی status/list/cancel/reconcile؛ place عمداً وجود ندارد.
+- [ ] B4: dry-run place با preflight اجباری و audit actor.
 - [ ] soak واقعی و contract test خصوصی؛ نیازمند محیط ایران و کلید READ/TRADE محدود به IP.
 - [ ] بازبینی امنیتی مستقل پیش از سرمایه واقعی.
 
@@ -37,8 +38,8 @@
 
 ```text
 ruff: passed
-mypy: success, 97 source files
-pytest: 913 passed, 1 dependency deprecation warning
+mypy: success, 99 source files
+pytest: 916 passed, 1 dependency deprecation warning
 ESLint/dashboard lint: passed
 broker/preflight parity: passed
 mobile artifact: rebuilt for 1.2.3
@@ -51,8 +52,8 @@ mobile artifact: rebuilt for 1.2.3
 
 ## قدم بعدی
 
-1. انتشار ۱٫۲٫۳ و اجرای CI؛
-2. افزودن routeهای فقط اپراتور برای list/cancel/reconcile و dry-run place؛
-3. اتصال همان `risk_engine.preflight` پیش از هر intent؛
+1. انتشار ۱٫۲٫۴ و اجرای CI؛
+2. افزودن dry-run place فقط برای اپراتور؛
+3. اتصال همان `risk_engine.preflight` پیش از ساخت هر intent؛
 4. audit actor/request بدون payload حساس؛
 5. soak dry-run، سپس contract test محدود و بازبینی امنیتی.

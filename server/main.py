@@ -46,6 +46,7 @@ import gate_ledger
 import gates
 import identity
 import journal as signal_journal
+import live_api
 import nobitex_metadata
 import notify
 import paper_trading
@@ -375,7 +376,7 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(
     title="nobiTrader",
-    version="1.2.3",
+    version="1.2.4",
     lifespan=lifespan,
 )
 
@@ -394,6 +395,7 @@ app.add_middleware(
 )
 
 app.include_router(auth_api.router)
+app.include_router(live_api.router)
 
 #: Reachable without a session. `/api/health` stays open because uptime
 #: monitors cannot log in, and it is the endpoint a deployment is checked with.

@@ -2,6 +2,16 @@
 
 [English](CHANGELOG.en.md) · **فارسی**
 
+## 1.2.4
+
+> B3-route: کنترل خصوصی list/cancel/reconcile عرضه شد؛ route ثبت واقعی عمداً وجود ندارد.
+
+- ADR-0031 قرارداد router خصوصی و نبود `/api/live/place` را ثبت می‌کند.
+- `server/live_api.py` با `require_client` از status/orders/cancel/reconcile محافظت می‌کند.
+- حالت پیش‌فرض disabled و پیکربندی ناقص fail-closed است؛ status هیچ credential یا مسیر دیتابیس نشان نمی‌دهد.
+- sender با `httpx` همان raw body امضاشده را ارسال می‌کند؛ خطای transport فقط با نام کلاس گزارش می‌شود.
+- سه آزمون OpenAPI، status بدون secret و رد کنترل در حالت disabled را پوشش می‌دهند.
+
 ## 1.2.3
 
 > مرحله نخست B3: مشاهده و لغو fail-closed پیش از عرضهٔ route ثبت سفارش واقعی.

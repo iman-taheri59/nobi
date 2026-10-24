@@ -2,6 +2,16 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 1.2.4
+
+> B3 routes: private list/cancel/reconcile controls are exposed; a real-placement route deliberately does not exist.
+
+- ADR-0031 records the private-router contract and absence of `/api/live/place`.
+- `server/live_api.py` protects status/orders/cancel/reconcile with `require_client`.
+- Default mode is disabled and incomplete configuration fails closed; status reveals no credential or database path.
+- The `httpx` sender transmits the exact signed raw body; transport failures expose only the exception class.
+- Three tests cover OpenAPI, secret-free status and disabled-mode control refusal.
+
 ## 1.2.3
 
 > First B3 slice: fail-closed observation and cancellation before exposing real placement routes.

@@ -35,6 +35,7 @@ os.environ.setdefault("NBX_JOURNAL_DB", str(_SCRATCH / "journal.db"))
 # to it), because "does the API require a login?" is the question half of these
 # tests answer.
 os.environ.setdefault("NBX_AUTH_DB", str(_SCRATCH / "auth.db"))
+os.environ.setdefault("NBX_LIVE_DB", str(_SCRATCH / "live-execution.db"))
 os.environ.setdefault("NBX_COIN_CACHE", str(_SCRATCH / "coin-cache"))
 os.environ.setdefault("NBX_COIN_METADATA_ENABLED", "0")
 

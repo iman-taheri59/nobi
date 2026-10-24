@@ -2,8 +2,8 @@
 
 [فارسی](HANDOFF.md) · **English**
 
-**Last updated:** 2026-10-25 — stage 6 (B3 primitives complete)
-**Working version:** 1.2.3
+**Last updated:** 2026-10-25 — stage 7 (B3 routes complete)
+**Working version:** 1.2.4
 **Target:** ADR-0027; stable product first, then staged fail-closed live execution.
 
 ## Status
@@ -12,7 +12,8 @@
 - [x] B1: isolated Ed25519 signer; no secret in logs or ledger.
 - [x] B2: disabled/dry-run/live, durable ledger, idempotency, unknown state and reconciliation.
 - [x] B3 primitives: order listing and `clientOrderId` cancellation with no-retry cancel-unknown.
-- [ ] B3 routes: operator endpoints, wired preflight and actor audit.
+- [x] B3 routes: private status/list/cancel/reconcile; place is deliberately absent.
+- [ ] B4: dry-run place with mandatory preflight and actor audit.
 - [ ] Real soak/private contract test; requires an Iran-reachable host and IP-limited READ/TRADE key.
 - [ ] Independent security review before real funds.
 
@@ -37,8 +38,8 @@
 
 ```text
 ruff: passed
-mypy: success, 97 source files
-pytest: 913 passed, 1 dependency deprecation warning
+mypy: success, 99 source files
+pytest: 916 passed, 1 dependency deprecation warning
 ESLint/dashboard lint: passed
 broker/preflight parity: passed
 mobile artifact: rebuilt for 1.2.3
@@ -51,8 +52,8 @@ mobile artifact: rebuilt for 1.2.3
 
 ## Next action
 
-1. Release 1.2.3 and run CI;
-2. add operator-only list/cancel/reconcile and dry-run-place routes;
-3. run the same `risk_engine.preflight` before every intent;
+1. Release 1.2.4 and run CI;
+2. add operator-only dry-run placement;
+3. run the same `risk_engine.preflight` before creating every intent;
 4. audit actor/request without sensitive payloads;
 5. dry-run soak, then limited contract test and security review.
