@@ -375,7 +375,7 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(
     title="nobiTrader",
-    version="1.1.3",
+    version="1.1.4",
     lifespan=lifespan,
 )
 
@@ -3463,6 +3463,9 @@ def gate_ledger_summary(max_age_s: float = 30.0) -> dict:
         conn = gate_ledger.connect()
         try:
             out = gate_ledger.counts(conn)
+            # ADR-0026 — the distribution of the gate inputs, from the same
+            # connection and the same 30-second cache. One query, not one per row.
+            out["distribution"] = gate_ledger.distributions(conn)
         finally:
             conn.close()
     except Exception as e:                      # a ledger problem is not a scan problem

@@ -2,6 +2,44 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 1.1.4
+
+> **A gate's threshold comes from the data, not from taste** (ADR-0026). This release is
+> **measurement only**: no threshold is applied, no gate blocks anything, and `applied` stays `false`.
+
+- **Why S2 was not enough.** Reviewing a real install produced two facts from the code: (1) `days` in
+  the shadow ledger is derived from each verdict's `ts`, and `ts` is the close time of the bar it
+  judged — so backfill would jump `days` from 2 to 5 without a day of market having passed, and if it
+  stayed honest and excluded backfilled rows from the day count, the lock would not move at all.
+  (2) `gates_block` calls `gates.evaluate(rows)` **without limits**, and `GateLimits` defaults
+  `max_spread_bps`/`min_depth_usd` to `None` ("do not judge") — so `spread-wide` and `book-thin` can
+  never fire and read zero forever. The bottleneck was not the sample size; it was **the absence of
+  a number**.
+- **The real distribution of the three gate inputs.** `gate_ledger.distributions()` reads the same
+  ledger table and reports, for `spread_bps`, `depth_usd` and `age_bars`: `n`, `days`, median, `p05`,
+  `p90`, `p95`, `min`, `max`, and `sufficient` (≥30 samples over ≥5 days). It ships in
+  `/api/signals` under `gates.ledger.distribution` on the existing 30-second cache — one query, not
+  one per row.
+- **A proposal, named and labelled.** `max_spread_bps = p95(spread_bps)` and
+  `min_depth_usd = p05(depth_usd)` — the gate would have removed roughly 5% of rows. Every proposal
+  carries `applied: false`, `n`, `days` and its `basis`. When the sample is thin the proposal is
+  **`None`** with a reason, not a number somebody copies into `.env`.
+- **Two refusals, in the code itself:** rows with `source='backfilled'` are excluded from the
+  distribution (a spread taken from reconstructed verdicts is not a measured spread), and percentiles
+  are linearly interpolated rather than nearest-rank — with thirty samples a nearest-rank p95 *is*
+  the maximum and puts the threshold on the single worst observation.
+- **A distribution line in the gates chip's tooltip:** "spread median X and p95 Y bp over N samples ·
+  depth p05 $Z", labelled "measurement only, no threshold applied", in both languages.
+- **Thirteen new tests**, including one pinning that `GateLimits` defaults are still `None` and one
+  pinning that `gates.py` never reads `propose_limits`.
+- **And one defect found while testing live:** the shadow ledger stored `spread_bps`/`depth_usd`
+  only inside the detail of a **failing** verdict. With the limits at `None` nothing failed, so every
+  row was `ok`, its spread and depth columns were `NULL`, and the ADR-0026 distribution could never
+  be built either. `gates.evaluate` now returns the measured inputs separately (`inputs`) and the
+  ledger stores them; live run: `spread n=10, median 12 bp · depth n=10 · age n=16`.
+- **Gates:** ruff 0 · mypy 0 (91 files) · pytest **890 passed** · eslint/dashboard/five JS gates · parity ·
+  notes · build — all with exit code zero.
+
 ## 1.1.3
 
 > **Fundamental coverage now counts honestly, the ID map is one map, and each coin's own Toman
