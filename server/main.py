@@ -342,6 +342,10 @@ async def lifespan(_app: FastAPI):
         _supervise("coin-metadata", coin_metadata.CACHE.run()),
         _supervise("universe", load_universe()),
         _supervise("rescan", rescan("15m")),
+        # ADR-0024: off unless NBX_SCAN_LOOP_S says otherwise, and it never
+        # changes a score — it only makes `days` in the shadow ledger fill
+        # without somebody leaving a browser tab open.
+        _supervise("scan-loop", _scan_loop()),
         _supervise("position-tick", _position_tick_loop()),
         _supervise("digest", _digest_loop()),
         # The exchange publishes its own minimums and tick sizes at /v2/options;
@@ -371,7 +375,7 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(
     title="nobiTrader",
-    version="1.1.0",
+    version="1.1.1",
     lifespan=lifespan,
 )
 
@@ -494,6 +498,14 @@ BOOK_GATE_TTL_S = float(os.getenv("NBX_BOOK_GATE_TTL_S", "300"))
 #: Books older than this are dropped from the cache at the end of a prefetch pass,
 #: so a symbol that leaves the top N does not sit in memory all day.
 BOOK_EVICT_TTL_S = float(os.getenv("NBX_BOOK_KEEP_S", "3600"))
+#: ADR-0024 — how often the server scans *by itself*, in seconds. Default 0 = it
+#: does not: before 1.1.1 the only trigger after startup was `GET /api/signals`,
+#: which only an open dashboard tab calls, so the shadow ledger's `days` count
+#: depended on somebody leaving a browser open. Turning this on is an operational
+#: decision (it spends the ADR-0003 rate budget), which is why the default is off.
+#: The floor is not a preference: a value below it is *refused* rather than
+#: quietly rounded up, the same rule ADR-0023 set for the prefetch count.
+SCAN_LOOP_MIN_S = 60
 UPSTREAM_TTL_S = int(os.getenv("NBX_UPSTREAM_TTL_S", "20"))
 
 #: Read by `paper_trading.market_closed_hook`; kept as its own object so the
@@ -804,6 +816,9 @@ async def health():
                  # a monitor reading this should not have to guess.
                  "accounts": auth.any_users()},
         "provenance": provenance(),
+        # ADR-0024: whether the evidence window is being filled by the process or
+        # by a browser tab. "off" here plus a rising `days` means a tab is doing it.
+        "scan_loop": _cached.get("scan_loop"),
         "stats": {
             "total": client.stats.total,
             "ok": client.stats.ok,
@@ -1264,6 +1279,80 @@ def gate_prefetch_n(value: int | str | None = None) -> int:
     if n > GATE_PREFETCH_MAX:
         raise ValueError(f"gate prefetch {n} exceeds the rate ceiling {GATE_PREFETCH_MAX}")
     return n
+
+
+def scan_loop_seconds(value: int | str | None = None) -> int:
+    """How often the server scans on its own — 0 means never (ADR-0024).
+
+    An invalid or too-small value **raises**: a loop silently spinning every ten
+    seconds would spend the exchange's rate budget and look, in every log line it
+    wrote, exactly like a correct one.
+    """
+    raw = os.getenv("NBX_SCAN_LOOP_S") if value is None else value
+    if raw is None or str(raw).strip() == "":
+        return 0
+    try:
+        n = int(str(raw).strip())
+    except (TypeError, ValueError):
+        raise ValueError(f"NBX_SCAN_LOOP_S={raw!r} is not a whole number of seconds") from None
+    if n == 0:
+        return 0
+    if n < 0:
+        raise ValueError(f"NBX_SCAN_LOOP_S={n} is negative")
+    if n < SCAN_LOOP_MIN_S:
+        raise ValueError(f"NBX_SCAN_LOOP_S={n} is below the floor of {SCAN_LOOP_MIN_S} s")
+    return n
+
+
+async def _scan_loop_tick(tf: str) -> bool:
+    """One scheduled scan, with its outcome recorded for `/api/health`.
+
+    A scan that raises must not kill the loop: the next bar still needs judging,
+    and a dead loop is indistinguishable from a loop that is off — which is the
+    exact confusion ADR-0024 exists to remove.
+    """
+    started = time.time()
+    ok = True
+    try:
+        await rescan(tf)
+    except asyncio.CancelledError:
+        raise
+    except Exception as e:
+        ok = False
+        log.warning("scheduled scan failed: %s", e)
+        errorlog.capture(source="task.scan-loop", exc=e,
+                         message="scheduled scan failed")
+    prev = _cached.get("scan_loop") or {}
+    _cached["scan_loop"] = {**prev, "last_at": started, "last_ok": ok,
+                            "last_duration_s": round(time.time() - started, 1),
+                            "runs": int(prev.get("runs") or 0) + 1}
+    return ok
+
+
+async def _scan_loop() -> None:
+    """ADR-0024 — scan on a timer so evidence does not need an open tab."""
+    try:
+        every = scan_loop_seconds()
+    except ValueError as e:
+        # Refuse loudly and stay off. A bad setting must not stop the service:
+        # `/api/signals` still scans on demand, exactly as before.
+        log.error("scan loop refused: %s (NBX_SCAN_LOOP_S must be 0 or at least %d)",
+                  e, SCAN_LOOP_MIN_S)
+        errorlog.capture(source="task.scan-loop", exc=e,
+                         message="scheduled scan refused")
+        _cached["scan_loop"] = {"enabled": False, "interval_s": None,
+                                "last_at": None, "error": str(e), "runs": 0}
+        return
+    _cached["scan_loop"] = {"enabled": bool(every), "interval_s": every or None,
+                            "last_at": None, "runs": 0}
+    if not every:
+        return
+    tf = os.getenv("NBX_SCAN_LOOP_TF", "15m")
+    log.info("scan loop: every %d s on %s (the ledger no longer needs an open tab)",
+             every, tf)
+    while True:
+        await asyncio.sleep(every)
+        await _scan_loop_tick(tf)
 
 
 async def gate_prefetch(ranked: list[dict], *, n: int | None = None,
@@ -3345,6 +3434,12 @@ def gates_block(ranked: list[dict], tf: str) -> dict:
     now = time.time()
     stale_books = 0
     oldest: float | None = None
+    # ADR-0024: a second age, for the books that actually judged something.
+    # `oldest_book_s` counts every book in the cache, including the ones dropped
+    # two lines later for being too old, so on a real install it printed 499.6 s
+    # while the TTL was 300 — a number that contradicted itself. This one is
+    # bounded by the TTL by construction, so it can be read at face value.
+    oldest_usable: float | None = None
     rows: list[dict] = []
     for snap in ranked:
         sym = str(snap.get("symbol") or "")
@@ -3364,6 +3459,8 @@ def gates_block(ranked: list[dict], tf: str) -> dict:
                 # with no usable book is `no-book`, never `ok`.
                 stale_books += 1
                 book = None
+            else:
+                oldest_usable = age_s if oldest_usable is None else max(oldest_usable, age_s)
         rows.append({
             "symbol": sym,
             "age_bars": age_bars,
@@ -3382,7 +3479,10 @@ def gates_block(ranked: list[dict], tf: str) -> dict:
         # from an hour ago.
         "stale_books": stale_books,
         "book_gate_ttl_s": BOOK_GATE_TTL_S,
+        # Every book in the cache, stale ones included: kept because a consumer
+        # already reads it. `oldest_usable_s` is the one to quote (ADR-0024).
         "oldest_book_s": round(oldest, 1) if oldest is not None else None,
+        "oldest_usable_s": round(oldest_usable, 1) if oldest_usable is not None else None,
         "closed": len(closed),
         # ADR-0023 S1: what the last pass did — "no book" vs "never asked".
         "prefetch": _cached.get("gate_prefetch"),

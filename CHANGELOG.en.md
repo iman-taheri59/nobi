@@ -2,6 +2,40 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 1.1.1
+
+> Evidence must not need an open tab (ADR-0024). The content is **collection and display** only:
+> no threshold, weight, risk gate or ranking moved, and `applied` is still `false`.
+
+- **The server can scan by itself.** Until 1.1.0 the only trigger after startup was
+  `GET /api/signals`, which only an open dashboard tab calls — so the ledger's `days` count (the
+  binding constraint of the S2 decision in ADR-0023) depended on the habit of leaving a tab open.
+  There is now a light, supervised loop that scans every `NBX_SCAN_LOOP_S` seconds; **default 0 =
+  off**, because turning it on spends the ADR-0003 rate budget and that is the user's decision, not
+  an upgrade's side effect. The floor is 60 s and a smaller value is **refused** (one error in the
+  log, loop off, service healthy) — the rule ADR-0023 set for N.
+- **The loop's state is visible:** `scan_loop` in `/api/health` (on/off, interval, last run, run
+  count, success). A loop that died silently is worse than no loop, and `off` next to a rising `days`
+  means a browser is still doing the work.
+- **Two ages, not one.** `gates.inputs.oldest_book_s` is the age of the oldest book **in the cache**,
+  including books dropped in the same pass for exceeding the TTL; on a real install it printed
+  `499.6` while `BOOK_GATE_TTL_S = 300` — a number that contradicted itself. The new
+  `oldest_usable_s` is the age of the oldest book that can actually judge a bar and is bounded by
+  the TTL by construction. The old key was not removed (no consumer is broken), but it is no longer
+  the number to quote.
+- **The same six numbers, in the gates chip's tooltip.** `books`, `stale_books`, `oldest_usable_s`
+  and `prefetch(ok/asked)` were API-only and needed a Python one-liner to see. They now live in the
+  title of the "gates (shadow)" chip on the Signals tab. **No new chip, no new card** (ADR-0019).
+- **The measurement tool is in the repository:** `server/tools/daily_snapshot.py` — one CSV row per
+  run with `days`, `ready`, `books`/`stale_books`, the prefetch pass and the loop state. `GET` only,
+  writes no secret, and when the server does not answer it **refuses to write a row**.
+- **Eighteen new tests** pin all of it: off by default, an invalid value refused without taking the
+  service down, a successful tick and a failing one, `oldest_usable_s <= BOOK_GATE_TTL_S` even with
+  hours of stale books, two runs producing two rows under one header, and the tool issuing `GET`
+  only.
+- **Gates:** ruff 0 · mypy 0 (87 files) · pytest **847 passed** · eslint/dashboard/five JS gates ·
+  parity · notes · build — all with exit code zero.
+
 ## 1.1.0
 
 > **This release is a MINOR because the number ceiling forced it, not because behaviour changed.**
