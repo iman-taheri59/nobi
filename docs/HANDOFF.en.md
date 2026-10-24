@@ -2,65 +2,57 @@
 
 [فارسی](HANDOFF.md) · **English**
 
-**Last updated:** 2026-10-25 — stage 5 (Phase B2 in progress)
-**Baseline:** `main` at `be3d4fe` plus 1.2.0 working changes
-**Target:** ADR-0027; stable 1.2 first, then live-trading 2.0.
+**Last updated:** 2026-10-25 — stage 6 (B3 primitives complete)
+**Working version:** 1.2.3
+**Target:** ADR-0027; stable product first, then staged fail-closed live execution.
 
-## Current status
+## Status
 
-- [x] Scope and acceptance criteria in bilingual ADR-0027.
-- [x] Consistent SQLite backup/restore with checksums and three tests.
-- [x] Paginated, resumable, deduplicated, gap-aware UDF history with four tests.
-- [x] Version 1.2.0 in backend, package, dashboard and mobile artifact.
-- [x] Blocking Windows CI.
-- [x] All locally runnable gates: 897 pytest, ruff, mypy, ESLint, dashboard lint, Python/JS parity, intrabar, display, adaptive and icons.
-- [x] Mock-exchange API smoke: health, signals, orders, backup and restore.
-- [ ] Local browser probe: Chromium closed in this sandbox; CI installs it with `playwright install --with-deps`.
-- [ ] Real 24-hour soak — requires an environment that can reach Nobitex.
-- [x] Phase B1: isolated Ed25519 signer with real verification and secret-safe failures.
-- [x] Phase B2: dry-run client, idempotency, unknown-state handling and base reconciliation.
-- [ ] Phase B3+: operator routes, cancel/list, wired preflight, audit and independent review.
+- [x] Phase A: stable analysis/paper, backup/restore, paginated history and blocking CI.
+- [x] B1: isolated Ed25519 signer; no secret in logs or ledger.
+- [x] B2: disabled/dry-run/live, durable ledger, idempotency, unknown state and reconciliation.
+- [x] B3 primitives: order listing and `clientOrderId` cancellation with no-retry cancel-unknown.
+- [ ] B3 routes: operator endpoints, wired preflight and actor audit.
+- [ ] Real soak/private contract test; requires an Iran-reachable host and IP-limited READ/TRADE key.
+- [ ] Independent security review before real funds.
 
 ## Locked decisions
 
-1. Version 1.2 is the stable analysis/paper product; live stays off.
-2. Adaptive gates remain `shadow` and `applied:false` until evidence is sufficient.
-3. Tests do not depend on the Nobitex network.
-4. Secrets never enter the repository, browser, logs or unencrypted backups.
-5. Missing credentials or a real soak are never replaced by a mock or a fabricated claim.
+1. Live is off by default and requires an explicit confirmation phrase.
+2. No ambiguous placement/cancel timeout is blindly retried; reconcile first.
+3. One idempotency key with a changed payload fails closed.
+4. Real placement routes wait for complete preflight, role controls and audit.
+5. Secrets never enter the repository, browser, diagnostics, error text or backup.
 
-## Main delivery files
+## Files delivered across these stages
 
-- `docs/adr/fa/ADR-0027-تکمیل-مرحله‌ای-محصول.md` and its English peer
-- `scripts/state_backup.py`
-- `scripts/fetch_history.py`
-- `server/tests/test_state_backup.py`
-- `server/tests/test_fetch_history.py`
-- `server/nobitex_signing.py` and `server/tests/test_nobitex_signing.py`
-- `.github/workflows/ci.yml`
+- bilingual ADR-0027 through ADR-0030
+- `server/nobitex_signing.py`
+- `server/live_execution.py`
+- `server/tests/test_nobitex_signing.py`
+- `server/tests/test_live_execution.py`
+- `scripts/state_backup.py` and `scripts/fetch_history.py`
 
-## Verification results
+## Latest verification
 
 ```text
 ruff: passed
 mypy: success, 97 source files
-pytest: 909 passed, 1 dependency deprecation warning
-ESLint/dashboard lint: 0 errors
-broker/intrabar/preflight parity: passed
-display: 306 checks passed
-adaptive card/icons: passed
-API smoke: health + signals + orders + backup + restore passed
+pytest: 913 passed, 1 dependency deprecation warning
+ESLint/dashboard lint: passed
+broker/preflight parity: passed
+mobile artifact: rebuilt for 1.2.3
 ```
 
-## Risks/blockers
+## External limits
 
-- A real soak and private-API contract test require the user's environment and credentials.
-- The browser probe could not launch Chromium in this sandbox; CI installs system dependencies.
-- Live activation before signing, reconciliation, auditing and independent review is prohibited.
+- The earlier local browser probe could not launch Chromium in this sandbox; CI uses `--with-deps`.
+- A soak/private API test cannot honestly run without suitable credentials and network location.
 
-## Exact next action
+## Next action
 
-1. Run the 1.2.1 gates and release B1;
-2. write the B2 ADR for the dry-run/idempotent client;
-3. deploy 1.2 in the user's environment for a 24-hour soak;
-4. run private contract tests only with a READ/TRADE key and IP allowlist.
+1. Release 1.2.3 and run CI;
+2. add operator-only list/cancel/reconcile and dry-run-place routes;
+3. run the same `risk_engine.preflight` before every intent;
+4. audit actor/request without sensitive payloads;
+5. dry-run soak, then limited contract test and security review.

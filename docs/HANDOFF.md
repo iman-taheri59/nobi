@@ -2,65 +2,57 @@
 
 [English](HANDOFF.en.md) · **فارسی**
 
-**آخرین به‌روزرسانی:** ۲۰۲۶-۱۰-۲۵ — مرحله ۵ (فاز B2، در حال اجرا)
-**مبنای کار:** `main` در `be3d4fe` + تغییرات نسخه ۱٫۲٫۰
-**هدف:** ADR-0027؛ ابتدا ۱٫۲ پایدار، سپس ۲٫۰ معاملهٔ واقعی.
+**آخرین به‌روزرسانی:** ۲۰۲۶-۱۰-۲۵ — مرحله ۶ (primitiveهای B3 کامل)
+**نسخه کاری:** ۱٫۲٫۳
+**هدف:** ADR-0027؛ ابتدا محصول پایدار، سپس اجرای واقعی مرحله‌ای و fail-closed.
 
-## وضعیت فعلی
+## وضعیت
 
-- [x] دامنه و معیار پذیرش در ADR-0027 فارسی/انگلیسی.
-- [x] backup/restore سازگار SQLite با checksum و سه آزمون.
-- [x] تاریخچهٔ UDF صفحه‌بندی‌شده، resumable، deduplicated و gap-aware با چهار آزمون.
-- [x] نسخه ۱٫۲٫۰ در backend، package، dashboard و آرتیفکت موبایل.
-- [x] Windows CI مسدودکننده.
-- [x] تمام gateهای قابل اجرای محلی: ۸۹۷ pytest، ruff، mypy، ESLint، dashboard lint، Python/JS parity، intrabar، display، adaptive و icons.
-- [x] smoke API با mock exchange: health، signals، orders، backup و restore.
-- [ ] probe مرورگری محلی: Chromium sandbox این محیط بسته شد؛ همان job در CI با `playwright install --with-deps` تعریف شده است.
-- [ ] soak واقعی ۲۴ ساعته — نیازمند محیط متصل به نوبیتکس.
-- [x] فاز B1: signer مستقل Ed25519 با verify واقعی و خطاهای secret-safe.
-- [ ] فاز B2+: کلاینت dry-run، idempotency، live execution، reconciliation، audit و بازبینی امنیتی مستقل.
+- [x] فاز A: تحلیل/Paper پایدار، backup/restore، تاریخچه صفحه‌بندی‌شده و CI مسدودکننده.
+- [x] B1: signer مستقل Ed25519؛ هیچ secret در log/ledger.
+- [x] B2: disabled/dry-run/live، ledger، idempotency، unknown-state و reconciliation.
+- [x] B3-primitive: فهرست سفارش و لغو بر اساس `clientOrderId` با cancel-unknown بدون retry.
+- [ ] B3-route: routeهای اپراتوری، اتصال preflight و audit actor.
+- [ ] soak واقعی و contract test خصوصی؛ نیازمند محیط ایران و کلید READ/TRADE محدود به IP.
+- [ ] بازبینی امنیتی مستقل پیش از سرمایه واقعی.
 
 ## تصمیم‌های قفل‌شده
 
-1. نسخه ۱٫۲ محصول پایدار تحلیل/Paper است؛ live در آن خاموش می‌ماند.
-2. gateهای adaptive تا شاهد کافی `shadow` و `applied:false` می‌مانند.
-3. تست‌ها به شبکهٔ نوبیتکس وابسته نمی‌شوند.
-4. secret در repository، مرورگر، log یا backup بدون رمز قرار نمی‌گیرد.
-5. نبود credential یا soak با دادهٔ واقعی با mock یا ادعای ساختگی جایگزین نمی‌شود.
+1. live پیش‌فرض خاموش است و عبارت تأیید صریح می‌خواهد.
+2. هیچ timeout ثبت/لغو کور retry نمی‌شود؛ ابتدا reconciliation.
+3. یک idempotency key با payload متفاوت fail-closed است.
+4. route ثبت واقعی تا preflight، نقش و audit کامل عرضه نمی‌شود.
+5. secret وارد repository، مرورگر، diagnostics، error text یا backup نمی‌شود.
 
-## فایل‌های اصلی این تحویل
+## فایل‌های این مراحل
 
-- `docs/adr/fa/ADR-0027-تکمیل-مرحله‌ای-محصول.md` و نسخه انگلیسی
-- `scripts/state_backup.py`
-- `scripts/fetch_history.py`
-- `server/tests/test_state_backup.py`
-- `server/tests/test_fetch_history.py`
-- `server/nobitex_signing.py` و `server/tests/test_nobitex_signing.py`
-- `server/live_execution.py` و `server/tests/test_live_execution.py`
-- `.github/workflows/ci.yml`
+- ADR-0027 تا ADR-0030، فارسی و انگلیسی
+- `server/nobitex_signing.py`
+- `server/live_execution.py`
+- `server/tests/test_nobitex_signing.py`
+- `server/tests/test_live_execution.py`
+- `scripts/state_backup.py` و `scripts/fetch_history.py`
 
-## نتایج تأیید
+## آخرین تأیید
 
 ```text
 ruff: passed
-mypy: success, 95 source files
-pytest: 902 passed, 1 dependency deprecation warning
-ESLint/dashboard lint: 0 errors
-broker/intrabar/preflight parity: passed
-display: 306 checks passed
-adaptive card/icons: passed
-API smoke: health + signals + orders + backup + restore passed
+mypy: success, 97 source files
+pytest: 913 passed, 1 dependency deprecation warning
+ESLint/dashboard lint: passed
+broker/preflight parity: passed
+mobile artifact: rebuilt for 1.2.3
 ```
 
-## ریسک‌ها/مسدودکننده‌ها
+## محدودیت خارجی
 
-- soak واقعی و contract test API خصوصی بدون محیط و credential کاربر ممکن نیست.
-- probe مرورگر در sandbox حاضر به‌علت بسته‌شدن Chromium اجرا نشد؛ CI بسته‌های سیستمی را نصب می‌کند.
-- فعال‌سازی live پیش از signer، reconciliation، audit و بازبینی امنیتی مستقل ممنوع است.
+- probe مرورگر محلی در sandbox قبلی به‌علت بسته‌شدن Chromium اجرا نشد؛ job CI از `--with-deps` استفاده می‌کند.
+- soak و API خصوصی بدون credential و IP مناسب قابل ادعا نیستند.
 
-## قدم بعدی دقیق
+## قدم بعدی
 
-1. انتشار ۱٫۲٫۲ و اجرای CI؛
-2. ADR مرحله B3 برای route اپراتوری، cancel/list و اتصال preflight؛
-3. استقرار dry-run در محیط کاربر و soak بیست‌وچهارساعته؛
-4. contract test خصوصی فقط با API Key محدود به READ/TRADE و IP allowlist.
+1. انتشار ۱٫۲٫۳ و اجرای CI؛
+2. افزودن routeهای فقط اپراتور برای list/cancel/reconcile و dry-run place؛
+3. اتصال همان `risk_engine.preflight` پیش از هر intent؛
+4. audit actor/request بدون payload حساس؛
+5. soak dry-run، سپس contract test محدود و بازبینی امنیتی.

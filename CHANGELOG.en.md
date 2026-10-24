@@ -2,6 +2,16 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 1.2.3
+
+> First B3 slice: fail-closed observation and cancellation before exposing real placement routes.
+
+- ADR-0030 requires exit/observation controls to precede entry routes.
+- `list_orders` signs the full query path and sends a bodyless GET.
+- `cancel` accepts only ledger-known IDs; timeout becomes `cancel-unknown` and is not sent again.
+- Final cancellation becomes `canceled` or `cancel-rejected`; transport error text and secrets are not stored.
+- Four tests cover listing, unknown IDs, no-retry timeout and durable cancellation.
+
 ## 1.2.2
 
 > Stage B2: a recoverable execution client with dry-run and idempotency; no public route or signal-to-live wiring is added.

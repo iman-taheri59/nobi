@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import base64
 from pathlib import Path
+from typing import Any
 
 import pytest
 from cryptography.hazmat.primitives import serialization
@@ -121,6 +122,67 @@ def test_reconciliation_resolves_unknown_by_client_order_id(tmp_path):
     assert resolved["exchange_order_id"] == "42"
     assert resolved["attempts"] == 1
     assert calls == ["/market/orders/add", "/market/orders/status"]
+
+
+def test_list_orders_signs_query_and_sends_bodyless_get(tmp_path):
+    seen: dict[str, Any] = {}
+
+    def sender(method, path, body, headers):
+        seen.update(method=method, path=path, body=body, headers=headers)
+        return {"status": "ok", "orders": []}
+
+    client = _live(tmp_path, sender)
+    result = client.list_orders(status="open")
+    assert result["orders"] == []
+    assert seen["method"] == "GET"
+    assert seen["path"] == "/market/orders/list?status=open"
+    assert seen["body"] == b""
+    assert "Nobitex-Signature" in seen["headers"]
+
+
+def test_cancel_unknown_id_is_refused_before_network(tmp_path):
+    calls = []
+
+    def sender(*args):
+        calls.append(args)
+        return {}
+
+    client = _live(tmp_path, sender)
+    with pytest.raises(ExecutionError, match="unknown clientOrderId"):
+        client.cancel("nobi-not-recorded")
+    assert calls == []
+
+
+def test_cancel_timeout_is_not_blindly_retried(tmp_path):
+    calls = []
+
+    def sender(_method, path, _body, _headers):
+        calls.append(path)
+        if path.endswith("/add"):
+            return {"status": "ok", "order": {"id": 7}}
+        raise TimeoutError("do not persist this text")
+
+    client = _live(tmp_path, sender)
+    placed = client.place(_intent())
+    first = client.cancel(placed["client_order_id"])
+    second = client.cancel(placed["client_order_id"])
+    assert first["state"] == second["state"] == "cancel-unknown"
+    assert first["error_code"] == "cancel:TimeoutError"
+    assert "persist" not in str(first)
+    assert calls.count("/market/orders/update-status") == 1
+
+
+def test_cancel_final_response_is_durable(tmp_path):
+    def sender(_method, path, _body, _headers):
+        if path.endswith("/add"):
+            return {"status": "ok", "order": {"id": 7}}
+        return {"status": "ok", "order": {"id": 7, "status": "Canceled"}}
+
+    client = _live(tmp_path, sender)
+    placed = client.place(_intent())
+    canceled = client.cancel(placed["client_order_id"])
+    assert canceled["state"] == "canceled"
+    assert client.ledger.get(placed["client_order_id"])["state"] == "canceled"
 
 
 def test_client_order_id_matches_exchange_contract():

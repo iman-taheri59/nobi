@@ -207,6 +207,49 @@ class LiveExecutionClient:
             exchange_order_id=exchange_id, increment_attempt=True,
         )
 
+    def list_orders(self, *, status: str = "all") -> dict[str, Any]:
+        if self.mode is not ExecutionMode.LIVE or self._sender is None:
+            raise ExecutionError("listing exchange orders requires confirmed live mode")
+        if status not in {"all", "open", "done"}:
+            raise ExecutionError("unsupported order-list status")
+        full_path = f"/market/orders/list?status={status}"
+        signed = sign_request(
+            self._public_key, self._private_key_b64, "GET", full_path, b""
+        )
+        return self._sender("GET", full_path, b"", signed.headers)
+
+    def cancel(self, client_order_id: str) -> dict[str, Any]:
+        record = self.ledger.get(client_order_id)
+        if record is None:
+            raise ExecutionError("unknown clientOrderId")
+        if record["state"] in {"cancel-unknown", "canceled", "cancel-rejected"}:
+            return record
+        if self.mode is not ExecutionMode.LIVE or self._sender is None:
+            raise ExecutionError("cancellation requires confirmed live mode")
+        raw_body = json.dumps(
+            {"clientOrderId": client_order_id, "status": "canceled"},
+            sort_keys=True, separators=(",", ":"),
+        ).encode("utf-8")
+        signed = sign_request(
+            self._public_key, self._private_key_b64,
+            "POST", "/market/orders/update-status", raw_body,
+        )
+        try:
+            response = self._sender(
+                "POST", "/market/orders/update-status", raw_body,
+                {**signed.headers, "Content-Type": "application/json"},
+            )
+        except Exception as exc:
+            return self.ledger.transition(
+                client_order_id, "cancel-unknown",
+                error_code=f"cancel:{type(exc).__name__}", increment_attempt=True,
+            )
+        return self.ledger.transition(
+            client_order_id,
+            "canceled" if response.get("status") == "ok" else "cancel-rejected",
+            response=response, increment_attempt=True,
+        )
+
     def reconcile(self, client_order_id: str) -> dict[str, Any]:
         record = self.ledger.get(client_order_id)
         if record is None:

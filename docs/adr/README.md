@@ -41,6 +41,7 @@
 | 0027 | **تکمیل مرحله‌ای محصول: ۱٫۲ پایدار، سپس معاملهٔ واقعی** | پذیرفته — کد فاز A کامل، soak در انتظار محیط؛ فاز B آغاز شد | backup/restore، تاریخچهٔ صفحه‌بندی‌شده، CI مسدودکننده و `docs/HANDOFF.md` |
 | 0028 | **مرز امن اجرای واقعی: امضا پیش از سفارش** | پذیرفته — B1 پیاده، ارسال واقعی خاموش | `server/nobitex_signing.py` و `test_nobitex_signing.py` |
 | 0029 | **کلاینت اجرای قابل‌بازیابی** | پذیرفته — B2 پیاده، route/live خاموش | `server/live_execution.py` و `test_live_execution.py` |
+| 0030 | **صفحهٔ کنترل اجرای واقعی** | پذیرفته — list/cancel پیاده، routeها خاموش | `LiveExecutionClient.list_orders/cancel` و آزمون‌ها |
 
 ## چطور این وضعیت‌ها تعیین شدند
 
