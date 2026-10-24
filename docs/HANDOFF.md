@@ -2,7 +2,7 @@
 
 [English](HANDOFF.en.md) · **فارسی**
 
-**آخرین به‌روزرسانی:** ۲۰۲۶-۱۰-۲۵ — مرحله ۳ (فاز A، کد کامل)
+**آخرین به‌روزرسانی:** ۲۰۲۶-۱۰-۲۵ — مرحله ۴ (فاز B1، signer پیاده شد)
 **مبنای کار:** `main` در `be3d4fe` + تغییرات نسخه ۱٫۲٫۰
 **هدف:** ADR-0027؛ ابتدا ۱٫۲ پایدار، سپس ۲٫۰ معاملهٔ واقعی.
 
@@ -17,7 +17,8 @@
 - [x] smoke API با mock exchange: health، signals، orders، backup و restore.
 - [ ] probe مرورگری محلی: Chromium sandbox این محیط بسته شد؛ همان job در CI با `playwright install --with-deps` تعریف شده است.
 - [ ] soak واقعی ۲۴ ساعته — نیازمند محیط متصل به نوبیتکس.
-- [ ] فاز B: signer، live execution، reconciliation، audit و بازبینی امنیتی مستقل.
+- [x] فاز B1: signer مستقل Ed25519 با verify واقعی و خطاهای secret-safe.
+- [ ] فاز B2+: کلاینت dry-run، idempotency، live execution، reconciliation، audit و بازبینی امنیتی مستقل.
 
 ## تصمیم‌های قفل‌شده
 
@@ -34,14 +35,15 @@
 - `scripts/fetch_history.py`
 - `server/tests/test_state_backup.py`
 - `server/tests/test_fetch_history.py`
+- `server/nobitex_signing.py` و `server/tests/test_nobitex_signing.py`
 - `.github/workflows/ci.yml`
 
 ## نتایج تأیید
 
 ```text
 ruff: passed
-mypy: success, 93 source files
-pytest: 897 passed, 1 dependency deprecation warning
+mypy: success, 95 source files
+pytest: 902 passed, 1 dependency deprecation warning
 ESLint/dashboard lint: 0 errors
 broker/intrabar/preflight parity: passed
 display: 306 checks passed
@@ -57,7 +59,7 @@ API smoke: health + signals + orders + backup + restore passed
 
 ## قدم بعدی دقیق
 
-1. push شاخه و اجرای CI؛
-2. استقرار ۱٫۲ در محیط کاربر و soak بیست‌وچهارساعته؛
-3. ثبت نتیجه soak در ADR/HANDOFF؛
-4. فقط پس از پذیرش فاز A، آغاز ADR اجرای واقعی و contract test با credential محدود.
+1. اجرای gateهای ۱٫۲٫۱ و انتشار B1؛
+2. ADR مرحله B2 برای کلاینت dry-run و idempotency؛
+3. استقرار ۱٫۲ در محیط کاربر و soak بیست‌وچهارساعته؛
+4. contract test خصوصی فقط با API Key محدود به READ/TRADE و IP allowlist.

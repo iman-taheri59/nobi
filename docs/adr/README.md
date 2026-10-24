@@ -38,7 +38,8 @@
 | 0024 | **شاهد نباید به تب باز گروگان باشد** | پذیرفته — پیاده‌شده (۱٫۱٫۱) | حلقهٔ اسکن `NBX_SCAN_LOOP_S` (پیش‌فرض خاموش)، `scan_loop` در `/api/health`، `oldest_usable_s`، tooltip چیپ دروازه‌ها، `server/tools/daily_snapshot.py` |
 | 0025 | **پوشش بنیادی: صدق شمارش، رجیستری مشترک، پرمیوم جفتی به‌عنوان شاهد** | پذیرفته — پیاده‌شده (۱٫۱٫۳) | `profile: "none"` + `source: "no-provider"`، `KNOWN_CG_IDS` از `coin_registry.json` (۱۴→۵۱)، `pair_premium` در `/api/signals` و `/api/gates/evidence`، `fa_coverage.unmapped` |
 | 0026 | **آستانهٔ دروازه از داده بیرون می‌آید، نه از سلیقه** | پذیرفته — پیاده‌شده (۱٫۱٫۴)، هیچ آستانه‌ای اعمال نشد | `gate_ledger.distributions()` + `propose_limits()`، `gates.ledger.distribution` در `/api/signals`، خط توزیع در tooltip چیپ دروازه‌ها |
-| 0027 | **تکمیل مرحله‌ای محصول: ۱٫۲ پایدار، سپس معاملهٔ واقعی** | پذیرفته — کد فاز A کامل، soak در انتظار محیط؛ فاز B آغاز نشده | backup/restore، تاریخچهٔ صفحه‌بندی‌شده، CI مسدودکننده و `docs/HANDOFF.md` |
+| 0027 | **تکمیل مرحله‌ای محصول: ۱٫۲ پایدار، سپس معاملهٔ واقعی** | پذیرفته — کد فاز A کامل، soak در انتظار محیط؛ فاز B آغاز شد | backup/restore، تاریخچهٔ صفحه‌بندی‌شده، CI مسدودکننده و `docs/HANDOFF.md` |
+| 0028 | **مرز امن اجرای واقعی: امضا پیش از سفارش** | پذیرفته — B1 پیاده، ارسال واقعی خاموش | `server/nobitex_signing.py` و `test_nobitex_signing.py` |
 
 ## چطور این وضعیت‌ها تعیین شدند
 

@@ -9,8 +9,9 @@ numpy==2.2.1
 pyarrow>=18.0.0
 python-dotenv==1.0.1
 websockets==14.2  # future: Centrifugo streaming wiring
-# Later phases (Auth signing for real trading) — pinned but only loaded when needed:
-# cryptography==44.0.0       # Ed25519 signing
+# Live execution remains disabled; this dependency only provides the isolated
+# Ed25519 signer in nobitex_signing.py (ADR-0028).
+cryptography==44.0.0
 # redis==5.2.1
 # sqlalchemy==2.0.36
 # asyncpg==0.30.0

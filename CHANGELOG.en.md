@@ -2,6 +2,16 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 1.2.1
+
+> Live-trading stage B1: the Ed25519 signing boundary is implemented, but no route or real-order submission is enabled.
+
+- Bilingual ADR-0028 records the signing contract, secret handling and separate live-client boundary.
+- `server/nobitex_signing.py` creates the official `timestamp + METHOD + full_path + raw_body` payload and API-key headers without networking.
+- The raw body is built once and those exact bytes must be signed and transmitted; the query string belongs to the signed path.
+- Five tests cover real Ed25519 verification, payload mutation and secret-safe configuration failures.
+- `cryptography==44.0.0` is pinned for signing; live remains disabled.
+
 ## 1.2.0
 
 > Phased completion under ADR-0027: this is the stable analysis and paper-trading line; real trading remains off by default and belongs to phase 2.
