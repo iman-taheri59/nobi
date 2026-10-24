@@ -321,6 +321,8 @@
       'sg.basisTitle': 'امتیاز ترکیبی فقط از TA و نقدینگی محاسبه شده است',
       'sg.cycle': 'چرخه: {tf} — auto {m}m',
       'sg.last': 'آخرین چرخه: {s} ثانیه پیش',
+      'sg.showAll': 'نمایش همه ({n})',
+      'sg.showLess': 'نمایش کمتر',
       'ov.kpi1sub': 'نسبت به سرمایه اولیه',
       't.connected': 'موتور تحلیلی آماده است',
       't.connectedM': 'دنیای نمادها بارگذاری و با موتور تکنیکال و فاندامنتال امتیازدهی شد.',
@@ -340,6 +342,8 @@
       'sg.basisTitle': 'Composite computed from TA and liquidity only',
       'sg.cycle': 'Cycle: {tf} — auto {m}m',
       'sg.last': 'Last cycle: {s}s ago',
+      'sg.showAll': 'show all ({n})',
+      'sg.showLess': 'show fewer',
       't.connected': 'Analytics engine ready',
       't.connectedM': 'Universe loaded and scored by the TA & FA engines.',
       't.degraded': 'Standalone Mobile Preview Active',
@@ -773,6 +777,26 @@
   }
   window.syncSignalsHeader = syncSignalsHeader;
 
+  /* How many ranked rows the page draws at once.
+   * This used to be a hard-coded `.slice(0, 12)` inside the renderer: the strip
+   * above said "39 symbols scanned" while the list stopped at twelve, and rows
+   * 13..39 had no row, no detail and no way to be seen even though the gates had
+   * already judged them. The number is a *first paint* budget, not the size of
+   * the scan, so it lives here with a name and can be lifted by one click. */
+  const SIG_ROW_LIMIT = 15;
+
+  window.sigShowAll = function sigShowAll(show) {
+    live.showAll = !!show;
+    renderSignalsLive();
+    // Rows beyond the first page never had their sparkline prefetched, so the
+    // charts were requested only for the visible twelve. Ask for the rest when
+    // they become visible — a row with an empty chart is a half-drawn row.
+    const rest = (live.ranked || []).slice(SIG_ROW_LIMIT).map((s) => s.symbol);
+    if (show && rest.length && typeof prefetchSparkCandles === 'function') {
+      prefetchSparkCandles(rest, live.timeframe);
+    }
+  };
+
   function renderSignalsLive() {
     const list = $('sigList');
     if (!list) return;
@@ -836,8 +860,9 @@
       }
     }
 
-    list.innerHTML = ranked
-      .slice(0, 12)
+    const hidden = Math.max(0, ranked.length - SIG_ROW_LIMIT);
+    const shown = live.showAll ? ranked : ranked.slice(0, SIG_ROW_LIMIT);
+    list.innerHTML = shown
       .map((s, i) => {
         const col = s.composite >= 60 ? 'emerald' : s.composite >= 45 ? 'amber' : 'red';
         const comp = s.components || {};
@@ -893,7 +918,14 @@
         </div>
       </div>`;
       })
-      .join('');
+      .join('')
+      + (hidden
+        ? `<button type="button" class="w-full glass p-2.5 text-[11px] font-bold text-zinc-300 hover:text-white"
+                   onclick="window.sigShowAll(${live.showAll ? 'false' : 'true'})">${
+            live.showAll
+              ? inFa('sg.showLess')
+              : inFa('sg.showAll').replace('{n}', faNum(ranked.length))}</button>`
+        : '');
     bindSignalRows();
     if (typeof refreshIcons === 'function') refreshIcons();
   }
@@ -1123,7 +1155,7 @@
         window.dispatchEvent(new CustomEvent('nbx:scan', { detail: { unavailable: live.unavailable } }));
         // fire and forget: the rows paint immediately with a placeholder and
         // fill in when their candles arrive (usually a few hundred ms).
-        prefetchSparkCandles((sig.scored || []).slice(0, 12).map((s) => s.symbol), live.timeframe);
+        prefetchSparkCandles((sig.scored || []).slice(0, SIG_ROW_LIMIT).map((s) => s.symbol), live.timeframe);
         await updateFaPreview();
         if (force && typeof toast === 'function') {
           if (upOk !== false) {
@@ -1573,7 +1605,7 @@
     },
     scanNow: () => scanNow(true),
     ensureSparks: () =>
-      prefetchSparkCandles((live.ranked || []).slice(0, 12).map((s) => s.symbol), live.timeframe),
+      prefetchSparkCandles((live.ranked || []).slice(0, SIG_ROW_LIMIT).map((s) => s.symbol), live.timeframe),
     get intervalSec() { return scanInterval(); },
   };
 
