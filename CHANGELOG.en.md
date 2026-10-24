@@ -2,6 +2,46 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 1.1.3
+
+> **Fundamental coverage now counts honestly, the ID map is one map, and each coin's own Toman
+> premium is measured in shadow.** No score, threshold, gate or ranking moved, and `applied` is still
+> `false`.
+
+- **An unmapped symbol is no longer "live".** `FAEngine.score()` wrote `profile: "live"` whenever the
+  provider call had not failed; "no provider is mapped for this symbol" is never a failure, so an
+  unmapped coin came out `live` and was counted in "live FA". Measured on this repository before the
+  fix: `score 52.6 · fresh True · profile live` with `{'fear_greed': 51}` as its only evidence — a
+  score built from five neutral 50s and one market-wide Fear&Greed value. There is now a third state,
+  `profile: "none"`, `fresh` is `False` for it, and `/api/fa/{symbol}` answers
+  `source: "no-provider"`. **The score did not change** — only the claim about it.
+- **`fa_coverage` gained `unmapped`** so that `live + fallback + unmapped = total`. Note that the
+  `live` number is **lower** than in 1.1.2, and that is correct: the old number was a lie.
+- **The ID map went from 14 to 51 with no extra request.** The engine kept a private map of fourteen
+  while `server/coin_registry.json` already held fifty verified IDs for coin icons. The engine now
+  reads that file; the built-in literals remain only for the case where the file cannot be read. A
+  test pins that every registry ID is present in the engine's map.
+- **Dynamic symbol search at runtime was refused, with numbers:** 2,626 of 17,425 symbols (15%)
+  match more than one coin on CoinGecko (`DOGS` matches four, `NOT` two) and the free tier answers
+  429 after three calls in a row. Taking the first result is a guess, and a guess produces a
+  fundamental score that gets read. New mappings are resolved offline with human confirmation
+  (`scripts/resolve_fa.py` → `coin_registry.json` → commit).
+- **Each coin's own Toman premium, as evidence.** Nobitex quotes a coin in two pairs; the ratio is
+  that coin's premium: `(XIRT / XUSDT) / USDTIRT − 1`. Until today only the market-wide premium on
+  the three BTC legs was computed and handed to everybody. Now `pair_premium` ships beside
+  `/api/signals` and in `/api/gates/evidence`, with a median in basis points and counts for
+  `pairs`/`outliers`/`missing_legs`; a premium above 5% is marked `outlier` and kept out of the
+  median. **It takes no weight**; entering the score follows ADR-0021.
+- **The fundamentals tab also drew six rows.** The same defect as the signals list (1.1.2), one tab
+  over: an unnamed `.slice(0, 6)`. It now uses `SIG_ROW_LIMIT` and the same show-all control. And the
+  message that said "the Nobitex server is unreachable" no longer accuses the exchange: "no
+  fundamental provider is mapped for this coin" is now separate from "the provider did not answer".
+- **Nineteen new tests** (13 + 6) pin all of it, including that the premium never reaches
+  `composite`. One defect in the tests themselves was found and fixed too: `test_core` assigned its
+  double to `main.FA_ENGINE.score` and never restored it, so every later test saw the fake answer.
+- **Gates:** ruff 0 · mypy 0 (90 files) · pytest **874 passed** · eslint/dashboard/five JS gates ·
+  parity · notes · build — all with exit code zero.
+
 ## 1.1.2
 
 > Display only. No score, threshold, gate or ranking moved; `applied` is still `false`.

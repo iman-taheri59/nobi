@@ -277,7 +277,7 @@
       </button>
     </div>
     <span class="hidden 2xl:inline-flex chip shrink-0"><span class="dot bg-emerald-400"></span> <span data-i18n="hdr.kill"></span></span>
-    <span id="buildChip" class="hidden lg:inline-flex chip num text-violet-300 border-violet-400/30 shrink-0" title="نسخه واقعی از /api/health">v1.1.2 · core</span>
+    <span id="buildChip" class="hidden lg:inline-flex chip num text-violet-300 border-violet-400/30 shrink-0" title="نسخه واقعی از /api/health">v1.1.3 · core</span>
     <div class="ms-auto flex items-center gap-1.5 shrink-0">
       <span class="hidden xl:inline-flex chip num" id="clock">--:--:--</span>
       <span id="apiChip" class="hidden 2xl:inline-flex chip num text-zinc-400 border-white/10" title=""><i data-lucide="wifi-off" class="w-3.5 h-3.5"></i> <span>API: —</span></span>
@@ -1407,6 +1407,7 @@ const T = {
     'sg.gatesEvidence':'شاهد تا امروز: {gate} — {n} حکم در {days} روز (کافی: {need} حکم در {needDays} روز)', 'sg.gatesEvidenceReady':'شاهد جمع شد: {gate} — {n} حکم در {days} روز؛ حکمِ خودِ شاهد را در /api/gates/evidence ببینید',
     'sg.gatesChip':'دروازه‌ها (سایه): {blocked} از {rows}', 'sg.gatesWhy':'اگر دروازه‌ها عمل می‌کردند، {names}{more} حذف می‌شدند — چیزی حذف نشد', 'sg.gatesClean':'هیچ دروازه‌ای اعتراضی ندارد', 'sg.gatesUnknown':'{n} نماد را نمی‌شود سنجید (دفتری خوانده نشده)',
     'sg.gatesInputs':'ورودی: {books} دفتر از {rows} نماد (کهنه و دورریخته: {stale}) — پیرترین دفتر قابل‌استفاده {age} ثانیه از {ttl} ثانیه', 'sg.gatesPrefetch':'پیش‌واکشی این اسکن: {ok} از {asked} دفتر رسید، {failed} خطا',
+    'sg.pairPremium':'پرمیوم تومانی هر سکه (از دو جفت خودش): میانه {bp} بیپ در {n} نماد — فقط اندازه‌گیری',
     'sg.dataStaleWorst':'بدترین نماد این اسکن {sym} است: آخرین کندلش {bars} کندل عقب است{more}؛ این رتبه‌بندی آن بازه را توصیف می‌کند، نه امروز را', 'sg.dataStaleMore':' ({n} نماد دیگر هم کهنه‌اند)',
     'atr.title':'صدک ATR روی نمودار', 'atr.regimeCalm':'آرام', 'atr.regimeNormal':'معمولی',
     'atr.regimeVolatile':'پرنوسان', 'atr.calmBand':'آرام ≤{cut}', 'atr.volBand':'پرنوسان ≥{cut}',
@@ -1666,6 +1667,7 @@ const T = {
     'sg.gatesEvidence':'evidence so far: {gate} — {n} verdicts over {days} day(s) (needs {need} over {needDays})', 'sg.gatesEvidenceReady':'evidence collected: {gate} — {n} verdicts over {days} day(s); read its verdict at /api/gates/evidence',
     'sg.gatesChip':'gates (shadow): {blocked} of {rows}', 'sg.gatesWhy':'a gate would have removed {names}{more} — nothing was removed', 'sg.gatesClean':'no gate objects', 'sg.gatesUnknown':'{n} symbol(s) cannot be judged (no book read yet)',
     'sg.gatesInputs':'inputs: {books} book(s) of {rows} symbols ({stale} too old and dropped) — oldest usable book {age}s of {ttl}s', 'sg.gatesPrefetch':'prefetch this scan: {ok} of {asked} books arrived, {failed} failed',
+    'sg.pairPremium':'each coin&#39;s own Toman premium (from its two legs): median {bp} bp over {n} symbols — measurement only',
     'sg.dataStaleWorst':'the worst symbol in this scan is {sym}: its newest candle is {bars} bars old{more}; this ranking describes that window, not today', 'sg.dataStaleMore':' ({n} more symbols are stale too)',
     'atr.title':'ATR percentile on the chart', 'atr.regimeCalm':'calm', 'atr.regimeNormal':'normal',
     'atr.regimeVolatile':'volatile', 'atr.calmBand':'calm ≤{cut}', 'atr.volBand':'volatile ≥{cut}',
@@ -3177,7 +3179,13 @@ function sgRenderGates(g){
     : '';
   // The note the server shipped with the block travels in the title, so the
   // "shadow only" sentence is never lost between the API and the screen.
-  chip.title = [head, tail, inputsLine, prefetchLine, ev, block.note || '']
+  // ADR-0025 — the pair premium rides in the same title: one page, one artifact.
+  const pp = (window.live && window.live.pairPremium) || null;
+  const ppLine = (pp && pp.ok && pp.median_bp != null)
+    ? t('sg.pairPremium').replace('{bp}', fmtNum(pp.median_bp, 0))
+        .replace('{n}', fmtNum((pp.counts || {}).pairs || 0, 0))
+    : '';
+  chip.title = [head, tail, inputsLine, prefetchLine, ppLine, ev, block.note || '']
     .filter(Boolean).join(' — ');
 }
 function renderSignals(){

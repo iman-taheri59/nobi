@@ -1055,17 +1055,28 @@
     if ($('faList')) {
       const faScoreBySym = {};
       fa.forEach((x) => (faScoreBySym[x.symbol] = x));
-      $('faList').innerHTML = live.ranked
-        .slice(0, 6)
+      /* Same defect as the signals list had (1.1.2): a hard-coded `.slice(0, 6)`
+       * drew six rows of a ranked list of thirty-nine, and nothing said the rest
+       * existed. It shares the named constant and the same show-all switch. */
+      const faHidden = Math.max(0, live.ranked.length - SIG_ROW_LIMIT);
+      const faRows = live.ranked.slice(0, live.showAll ? live.ranked.length : SIG_ROW_LIMIT);
+      $('faList').innerHTML = faRows
         .map((x) => {
           const f = faScoreBySym[x.symbol] || NBX.FA.scoreSymbol(x.symbol);
           const sc = f && typeof f.score === 'number' ? f.score : null;
-          if (sc === null) {
+          // ADR-0025: "no provider is mapped for this coin" is a different fact
+          // from "the provider did not answer", and it used to accuse Nobitex —
+          // which is not where fundamentals come from at all.
+          const noProvider = !!(f && (f.source === 'no-provider' || f.profile === 'none'
+            || (f.evidence || {}).profile === 'none'));
+          if (sc === null || noProvider) {
             return `<div class="flex items-center gap-2.5 sm:gap-3">
               <span class="font-bold text-[13px] sm:text-sm shrink-0">${window.coinIcon(x.symbol, 20)}${x.symbol.replace(/IRT|USDT/g, '')}</span>
-              <span class="flex-1 text-[10px] text-red-200/80">${LANG === 'fa'
-                ? 'دادهٔ فاندامنتال در دسترس نیست — سرور تحلیل پاسخ نداد'
-                : 'fundamentals unavailable — the analysis server did not answer'}</span>
+              <span class="flex-1 text-[10px] text-zinc-400">${LANG === 'fa'
+                ? (noProvider ? 'منبع بنیادی برای این نماد نگاشت نشده (امتیاز خنثی)'
+                              : 'منبع بنیادی پاسخ نداد')
+                : (noProvider ? 'no fundamental provider is mapped for this coin (neutral score)'
+                              : 'the fundamental provider did not answer')}</span>
             </div>`;
           }
           const isFallback = f && (f.source === 'fallback' ||
@@ -1087,7 +1098,13 @@
           <span class="text-[10px] text-zinc-500 w-32 lg:w-48 hidden md:block truncate">${extra}</span>
         </div>`;
         })
-        .join('');
+        .join('')
+        + (faHidden
+          ? `<button type="button" class="w-full mt-1 text-[10px] font-bold text-zinc-400 hover:text-white"
+                     onclick="window.sigShowAll(${live.showAll ? 'false' : 'true'})">${
+              live.showAll ? inFa('sg.showLess')
+                           : inFa('sg.showAll').replace('{n}', faNum(live.ranked.length))}</button>`
+          : '');
     }
 
     try {
@@ -1136,6 +1153,9 @@
         // ADR-0022 stage 1 — the gates' verdicts, always `applied: false`. Kept so
         // the card can say what *would* have happened without implying it did.
         live.gates = sig.gates || null;
+        // ADR-0025 — each coin's own Toman premium. A measurement shown beside the
+        // ranking, never inside it.
+        live.pairPremium = sig.pair_premium || null;
         live.unavailable = !!(uni.unavailable || sig.unavailable) || !(sig.scored || []).length;
         live.unavailableMsg = (sig.unavailable && sig.message) || (uni.unavailable && uni.message) || '';
         live.unavailableDetail = (sig.detail || uni.detail || '').slice(0, 160);
