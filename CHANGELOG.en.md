@@ -2,6 +2,16 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 1.2.2
+
+> Stage B2: a recoverable execution client with dry-run and idempotency; no public route or signal-to-live wiring is added.
+
+- ADR-0029 records unknown-state handling, no blind retry and `clientOrderId` reconciliation.
+- `server/live_execution.py`: disabled/dry-run/live modes, mandatory live confirmation phrase and a durable SQLite ledger.
+- Intent and raw body are recorded before networking; the same key/payload never sends twice and a changed payload fails closed.
+- Timeout becomes `unknown`; repeating place does not call the network and only status reconciliation may resolve it.
+- Seven tests cover the interlock, network-free dry-run, conflicts, unknown state and reconciliation.
+
 ## 1.2.1
 
 > Live-trading stage B1: the Ed25519 signing boundary is implemented, but no route or real-order submission is enabled.

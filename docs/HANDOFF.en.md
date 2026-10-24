@@ -2,7 +2,7 @@
 
 [فارسی](HANDOFF.md) · **English**
 
-**Last updated:** 2026-10-25 — stage 4 (Phase B1 signer implemented)
+**Last updated:** 2026-10-25 — stage 5 (Phase B2 in progress)
 **Baseline:** `main` at `be3d4fe` plus 1.2.0 working changes
 **Target:** ADR-0027; stable 1.2 first, then live-trading 2.0.
 
@@ -18,7 +18,8 @@
 - [ ] Local browser probe: Chromium closed in this sandbox; CI installs it with `playwright install --with-deps`.
 - [ ] Real 24-hour soak — requires an environment that can reach Nobitex.
 - [x] Phase B1: isolated Ed25519 signer with real verification and secret-safe failures.
-- [ ] Phase B2+: dry-run client, idempotency, live execution, reconciliation, audit and independent review.
+- [x] Phase B2: dry-run client, idempotency, unknown-state handling and base reconciliation.
+- [ ] Phase B3+: operator routes, cancel/list, wired preflight, audit and independent review.
 
 ## Locked decisions
 
@@ -42,8 +43,8 @@
 
 ```text
 ruff: passed
-mypy: success, 95 source files
-pytest: 902 passed, 1 dependency deprecation warning
+mypy: success, 97 source files
+pytest: 909 passed, 1 dependency deprecation warning
 ESLint/dashboard lint: 0 errors
 broker/intrabar/preflight parity: passed
 display: 306 checks passed

@@ -2,6 +2,16 @@
 
 [English](CHANGELOG.en.md) · **فارسی**
 
+## 1.2.2
+
+> مرحله B2: کلاینت اجرای قابل‌بازیابی با dry-run و idempotency پیاده شد؛ هیچ route عمومی یا اتصال موتور سیگنال به live اضافه نشده است.
+
+- ADR-0029 قرارداد وضعیت نامعلوم، عدم retry کور و reconciliation با `clientOrderId` را ثبت می‌کند.
+- `server/live_execution.py`: حالت‌های disabled/dry-run/live، عبارت تأیید اجباری live و ledger پایدار SQLite.
+- intent و raw body پیش از شبکه ثبت می‌شوند؛ key تکراری با payload یکسان send دوم نمی‌سازد و payload متفاوت fail-closed است.
+- timeout به `unknown` می‌رود؛ تکرار place شبکه را صدا نمی‌زند و فقط status reconciliation مجاز است.
+- هفت آزمون تازه interlock، dry-run بدون شبکه، conflict، unknown و reconciliation را پوشش می‌دهند.
+
 ## 1.2.1
 
 > مرحله B1 معاملهٔ واقعی: مرز امضای Ed25519 پیاده شد، اما هیچ route یا ارسال سفارش واقعی فعال نشده است.

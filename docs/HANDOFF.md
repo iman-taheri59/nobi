@@ -2,7 +2,7 @@
 
 [English](HANDOFF.en.md) · **فارسی**
 
-**آخرین به‌روزرسانی:** ۲۰۲۶-۱۰-۲۵ — مرحله ۴ (فاز B1، signer پیاده شد)
+**آخرین به‌روزرسانی:** ۲۰۲۶-۱۰-۲۵ — مرحله ۵ (فاز B2، در حال اجرا)
 **مبنای کار:** `main` در `be3d4fe` + تغییرات نسخه ۱٫۲٫۰
 **هدف:** ADR-0027؛ ابتدا ۱٫۲ پایدار، سپس ۲٫۰ معاملهٔ واقعی.
 
@@ -36,6 +36,7 @@
 - `server/tests/test_state_backup.py`
 - `server/tests/test_fetch_history.py`
 - `server/nobitex_signing.py` و `server/tests/test_nobitex_signing.py`
+- `server/live_execution.py` و `server/tests/test_live_execution.py`
 - `.github/workflows/ci.yml`
 
 ## نتایج تأیید
@@ -59,7 +60,7 @@ API smoke: health + signals + orders + backup + restore passed
 
 ## قدم بعدی دقیق
 
-1. اجرای gateهای ۱٫۲٫۱ و انتشار B1؛
-2. ADR مرحله B2 برای کلاینت dry-run و idempotency؛
-3. استقرار ۱٫۲ در محیط کاربر و soak بیست‌وچهارساعته؛
+1. انتشار ۱٫۲٫۲ و اجرای CI؛
+2. ADR مرحله B3 برای route اپراتوری، cancel/list و اتصال preflight؛
+3. استقرار dry-run در محیط کاربر و soak بیست‌وچهارساعته؛
 4. contract test خصوصی فقط با API Key محدود به READ/TRADE و IP allowlist.
