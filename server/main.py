@@ -375,7 +375,7 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(
     title="nobiTrader",
-    version="1.1.2",
+    version="1.1.3",
     lifespan=lifespan,
 )
 
@@ -498,6 +498,10 @@ BOOK_GATE_TTL_S = float(os.getenv("NBX_BOOK_GATE_TTL_S", "300"))
 #: Books older than this are dropped from the cache at the end of a prefetch pass,
 #: so a symbol that leaves the top N does not sit in memory all day.
 BOOK_EVICT_TTL_S = float(os.getenv("NBX_BOOK_KEEP_S", "3600"))
+#: ADR-0025 — a per-coin Toman premium above this is a data problem (a stale quote
+#: on one leg, or a pair that is not what its name says), not a premium. Same
+#: ceiling `_premium_pct` already uses, and for the same reason.
+PAIR_PREMIUM_LIMIT_PCT = float(os.getenv("NBX_PAIR_PREMIUM_LIMIT_PCT", "5"))
 #: ADR-0024 — how often the server scans *by itself*, in seconds. Default 0 = it
 #: does not: before 1.1.1 the only trigger after startup was `GET /api/signals`,
 #: which only an open dashboard tab calls, so the shadow ledger's `days` count
@@ -676,6 +680,82 @@ def provenance() -> dict:
         "source": "unavailable" if client.degraded_mode else "live",
         "as_of": datetime.now(UTC).isoformat(),
     }
+
+
+def pair_premium_block(rows: list[dict]) -> dict:
+    """Each coin's own Toman premium, implied by its two legs (ADR-0025).
+
+    Nobitex quotes a coin in both `XIRT` and `XUSDT`, so
+
+        premium(X) = (last(XIRT) / last(XUSDT)) / last(USDTIRT) − 1
+
+    is that coin's premium — not the market's. Until 1.1.3 only the market-wide
+    number on the three BTC legs existed and every symbol was handed the same one,
+    although a small coin's IRT/USDT gap can be entirely different and the
+    difference is information.
+
+    Measurement only: nothing here is a weight, a score or a verdict, and `applied`
+    is false. A symbol with one leg is counted as `missing_legs`; it is never
+    estimated from the other leg, because that would be a number from two
+    non-synchronous quotes.
+    """
+    last = {str(r.get("symbol") or ""): r.get("last") for r in rows}
+    usdt_irt = last.get("USDTIRT")
+    out: dict = {
+        "applied": False,
+        "ok": False,
+        "usdt_irt": usdt_irt,
+        "limit_pct": PAIR_PREMIUM_LIMIT_PCT,
+        "per_base": {},
+        "counts": {"pairs": 0, "outliers": 0, "missing_legs": 0},
+        "median_bp": None,
+        "note": ("shadow measurement: a coin's own premium is reported, never fed "
+                 "into a score; adopting it needs evidence first (ADR-0021)"),
+    }
+    if not usdt_irt:
+        out["reason"] = "no USDTIRT quote in this scan"
+        return out
+    bases: set[str] = set()
+    for sym in last:
+        for quote in ("USDT", "IRT"):
+            if sym.endswith(quote) and len(sym) > len(quote):
+                base = sym[: -len(quote)]
+                # `USDTIRT` would otherwise invent a "USDT" base and then report a
+                # missing leg for it: the quote assets are not coins here.
+                if base not in {"USDT", "USDC", "DAI", "BUSD", "IRT", "RLS"}:
+                    bases.add(base)
+    values: list[float] = []
+    for base in sorted(bases):
+        irt, usd = last.get(base + "IRT"), last.get(base + "USDT")
+        if not irt or not usd:
+            out["counts"]["missing_legs"] += 1
+            continue
+        try:
+            implied = float(irt) / float(usd)
+            if implied <= 0:
+                raise ValueError
+            pct = (implied / float(usdt_irt) - 1.0) * 100.0
+        except (TypeError, ValueError, ZeroDivisionError):
+            out["counts"]["missing_legs"] += 1
+            continue
+        row = {"bp": round(pct * 100.0, 1), "pct": round(pct, 3),
+               "irt": irt, "usdt": usd}
+        if abs(pct) > PAIR_PREMIUM_LIMIT_PCT:
+            # Named, kept, and left out of the median: a 40 % "premium" is a bad
+            # quote, and letting it in would describe the whole board with it.
+            row["outlier"] = True
+            out["counts"]["outliers"] += 1
+        else:
+            values.append(row["bp"])
+        out["per_base"][base] = row
+        out["counts"]["pairs"] += 1
+    if values:
+        values.sort()
+        mid = len(values) // 2
+        median = values[mid] if len(values) % 2 else (values[mid - 1] + values[mid]) / 2
+        out["median_bp"] = round(median, 1)
+    out["ok"] = bool(out["counts"]["pairs"])
+    return out
 
 
 def _premium_pct(rows: list[dict]) -> float | None:
@@ -1040,10 +1120,16 @@ async def rescan(tf: str = "15m", top: int = 40):
 
     await asyncio.gather(*(enrich(sym, snap) for sym, snap in out.items()))
 
+    # ADR-0025: three states, not two. `unmapped` is symbols no provider knows;
+    # counting them as `fallback` (let alone `live`) is how "39 symbols scored
+    # fundamentally" got assembled out of neutral defaults.
+    unmapped = sum(1 for snap in out.values()
+                   if (((snap.get("fa") or {}).get("profile")) == "none"))
     _cached["fa_coverage"] = {
         "scored": len(scored),
         "live": len(live),
-        "fallback": len(scored) - len(live),
+        "fallback": len(scored) - len(live) - unmapped,
+        "unmapped": unmapped,
         "failed": len(failed),
         "total": len(out),
         "ratio": round(len(scored) / len(out), 3) if out else 0.0,
@@ -1125,6 +1211,7 @@ async def signals(tf: str = Query("15m", pattern="^(15m|1h|4h|D)$")):
                 "age_s": round(age or 0.0, 1), "stale": stale, "refreshing": False,
                 "scored": [], "premium_usdtirt": _cached["premium"], "premium_pct": _cached["premium_pct"],
                 "fa_coverage": _cached.get("fa_coverage"),
+                "pair_premium": pair_premium_block([]),
                 # No scores is not the same as no candles: the block still says
                 # which wall was hit, with a named reason.
                 "freshness": scan_freshness_block(_cached.get("signals_bars", {}).get(tf) or {}, tf),
@@ -1142,6 +1229,9 @@ async def signals(tf: str = Query("15m", pattern="^(15m|1h|4h|D)$")):
         "premium_usdtirt": _cached["premium"],
         "premium_pct": _cached["premium_pct"],
         "fa_coverage": _cached.get("fa_coverage"),
+        # ADR-0025 — each coin's own Toman premium, from its two legs. A
+        # measurement beside the ranking, never inside it.
+        "pair_premium": pair_premium_block(ranked),
         # 1.0.21/1.0.23 — the ranking is a claim about the candles the scan read.
         # How old those candles were travels with it, in bars of this very
         # timeframe, and the *worst* symbol decides: a stale name in the list makes
@@ -2140,7 +2230,11 @@ async def fa(symbol: str):
     # Three states, not two: fetched now, served from the cache, or built from a
     # hard-coded profile. `fresh` alone cannot tell cache from fallback.
     profile = (res.evidence or {}).get("profile")
-    if profile == "fallback":
+    if profile == "none":
+        # No provider is mapped for this symbol: the score is the neutral default,
+        # and calling it `live` made an unmapped coin look measured (ADR-0025).
+        source = "no-provider"
+    elif profile == "fallback":
         source = "fallback"
     elif res.cached:
         source = "cached"
@@ -3344,6 +3438,9 @@ async def gates_evidence(
         "horizon_bars": horizon,
         "applied": False,
         "gates": measured,
+        # ADR-0025 — the coin's own premium, the one fundamental number the
+        # exchange itself supplies. Measurement; it has no weight anywhere.
+        "pair_premium": pair_premium_block(list((_cached.get("signals") or {}).values())),
         "ledger": summary,
         "symbols_read": len(frames),
         "source": source,

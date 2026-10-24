@@ -18,12 +18,14 @@ Default v1 weights: 0.25/0.25/0.20/0.20/0.10 (ADR-0006 §7).
 """
 from __future__ import annotations
 
+import json
 import logging
 import math
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -34,13 +36,33 @@ log = logging.getLogger("fa-engine")
 CG_BASE = "https://api.coingecko.com/api/v3"
 LLAMA_BASE = "https://api.llama.fi"
 
+#: The verified map — one source, not two (ADR-0025). `coin_registry.json` was
+#: already curated for the coin icons and held fifty IDs while this module kept
+#: its own fourteen, so 36 mappable symbols went unused and the two copies could
+#: drift apart. The literal below stays as the floor: if the file cannot be read
+#: the engine must still answer for the majors rather than lose every mapping.
+REGISTRY = Path(__file__).with_name("coin_registry.json")
+
+
+def _load_registry() -> dict[str, str]:
+    try:
+        data = json.loads(REGISTRY.read_text(encoding="utf-8"))
+    except Exception as e:                      # a missing registry is not a crash
+        log.warning("coin registry unreadable, using the built-in majors: %s", e)
+        return {}
+    return {str(k).upper(): str(v) for k, v in data.items() if k and v}
+
+
 # Map Nobitex symbols → CoinGecko/DefiLlama ids for majors
-KNOWN_CG_IDS = {
+_BUILTIN_CG_IDS = {
     "BTC": "bitcoin", "ETH": "ethereum", "SOL": "solana", "ADA": "cardano",
     "TON": "the-open-network", "TRX": "tron", "DOGE": "dogecoin",
     "LTC": "litecoin", "XRP": "ripple", "DOT": "polkadot", "LINK": "chainlink",
     "AVAX": "avalanche-2", "SHIB": "shiba-inu", "MATIC": "matic-network",
 }
+#: Registry first, built-ins as the fallback: a curated file always wins over a
+#: literal, and the union means an unreachable file costs nothing.
+KNOWN_CG_IDS: dict[str, str] = {**_BUILTIN_CG_IDS, **_load_registry()}
 LLAMA_CHAINS_MAPPED = {
     "ETH": "Ethereum", "SOL": "Solana", "ADA": "Cardano", "TON": "TON",
     "TRX": "Tron", "AVAX": "Avalanche", "MATIC": "Polygon",
@@ -330,9 +352,22 @@ class FAEngine:
         score = min(score, score + (nobil_depth_score - 50) * 0.2)
         score = max(0, min(100, round(score, 1)))
 
-        ev["profile"] = "fallback" if used_fallback else "live"
+        # ADR-0025: three states, not two. A symbol no provider is mapped for used
+        # to leave here as `profile: "live"` and `fresh: True`, so a score built
+        # from five neutral 50s and one market-wide Fear&Greed was counted as a
+        # measurement (measured: "XYZIRT" -> 52.6, live, evidence {fear_greed: 51}).
+        # The score itself does not change: only the claim about it does.
+        # `cg` is the mapped provider id for this base asset; empty means no
+        # provider is mapped at all, which is what `none` now says out loud.
+        mapped = bool(cg)
+        if used_fallback:
+            ev["profile"] = "fallback"
+        elif not mapped:
+            ev["profile"] = "none"
+        else:
+            ev["profile"] = "live"
         res = FAResult(score=score, market=mkt, tokenomics=tok, onchain=onc, sentiment=sen, macro=mac,
-                       vetoes=vetoes, evidence=ev, fresh=not used_fallback)
+                       vetoes=vetoes, evidence=ev, fresh=ev["profile"] == "live")
         VETO_CACHE[cache_key] = (time.time(), list(vetoes))
         FA_CACHE[cache_key] = (time.time(), res)
         return res

@@ -1661,9 +1661,16 @@ def test_veto_never_raises_a_score():
     assert score == 12.0 and direction == "EXIT"
 
 
-def test_fa_route_reports_the_fundamental_source_not_the_exchange():
+def test_fa_route_reports_the_fundamental_source_not_the_exchange(monkeypatch):
     """`source` on /api/fa used to be Nobitex provenance, so a live CoinGecko
-    read came back as source=unavailable while profile=live."""
+    read came back as source=unavailable while profile=live.
+
+    The doubles go through `monkeypatch`, not straight onto the module singleton:
+    assigning `main.FA_ENGINE.score` left the fake installed for every test that
+    ran afterwards, and a later test on an unmapped symbol was then told it was
+    `live` (1.1.3, ADR-0025). A test that leaks its double makes the *next* test
+    lie, which is worse than the thing it was written to catch.
+    """
     import asyncio
 
     import main
@@ -1679,11 +1686,11 @@ def test_fa_route_reports_the_fundamental_source_not_the_exchange():
                         sentiment=60, macro=60, vetoes=[], evidence={"profile": "fallback"},
                         fresh=False)
 
-    main.FA_ENGINE.score = fake_score
+    monkeypatch.setattr(main.FA_ENGINE, "score", fake_score)
     live = asyncio.run(main.fa("BTC"))
     assert live["source"] == "live" and live["profile"] == "live"
 
-    main.FA_ENGINE.score = fake_fallback
+    monkeypatch.setattr(main.FA_ENGINE, "score", fake_fallback)
     fb = asyncio.run(main.fa("BTC"))
     assert fb["source"] == "fallback", "a hard-coded profile must never be labelled live"
 
@@ -1692,7 +1699,7 @@ def test_fa_route_reports_the_fundamental_source_not_the_exchange():
                         sentiment=70, macro=70, vetoes=[], evidence={"profile": "live"},
                         fresh=False, cached=True)
 
-    main.FA_ENGINE.score = fake_cached
+    monkeypatch.setattr(main.FA_ENGINE, "score", fake_cached)
     cached = asyncio.run(main.fa("BTC"))
     assert cached["source"] == "cached", "a cached live read is not a static profile"
     assert cached["profile"] == "live"
