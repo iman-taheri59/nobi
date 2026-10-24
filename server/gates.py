@@ -145,8 +145,21 @@ def evaluate_symbol(
                 codes.append(_verdict("book-thin", depth_usd=round(depth_usd, 2),
                                       limit=lim.min_depth_usd))
 
+    # ADR-0026: the numbers the gate *saw*, whether or not it objected. The ledger
+    # used to store spread/depth only inside a failing verdict's detail, so with
+    # the money thresholds switched off every row was `ok`, every row had a NULL
+    # spread, and the distribution ADR-0026 needs could never be built. Reporting
+    # the inputs separately is what lets "0 spread-wide verdicts" mean "none was
+    # over a limit" instead of "no spread was ever recorded".
+    inputs = {
+        "spread_bps": _num((book or {}).get("spread_bps")) if book else None,
+        "depth_usd": _num((book or {}).get("depth_usd")) if book else None,
+        "age_bars": None if age_bars is None else round(float(age_bars), 3),
+    }
+
     if not codes:
-        return {"symbol": symbol, "code": "ok", "codes": [], "detail": {}}
+        return {"symbol": symbol, "code": "ok", "codes": [], "detail": {},
+                "inputs": inputs}
 
     ordered = sorted(codes, key=lambda c: CODES.index(c["code"]))
     first = ordered[0]
@@ -155,6 +168,7 @@ def evaluate_symbol(
         "code": first["code"],
         "codes": [c["code"] for c in ordered],
         "detail": {k: v for c in ordered for k, v in c.items() if k != "code"},
+        "inputs": inputs,
     }
 
 
@@ -187,7 +201,8 @@ def evaluate(
             book=row.get("book"),
             limits=lim,
         )
-        verdicts[sym] = {"code": out["code"], "codes": out["codes"], **out["detail"]}
+        verdicts[sym] = {"code": out["code"], "codes": out["codes"],
+                         **out["detail"], "inputs": out.get("inputs") or {}}
         if out["code"] == "ok":
             ok.append(sym)
         elif out["code"] in UNKNOWN_CODES:

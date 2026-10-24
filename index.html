@@ -277,7 +277,7 @@
       </button>
     </div>
     <span class="hidden 2xl:inline-flex chip shrink-0"><span class="dot bg-emerald-400"></span> <span data-i18n="hdr.kill"></span></span>
-    <span id="buildChip" class="hidden lg:inline-flex chip num text-violet-300 border-violet-400/30 shrink-0" title="نسخه واقعی از /api/health">v1.1.3 · core</span>
+    <span id="buildChip" class="hidden lg:inline-flex chip num text-violet-300 border-violet-400/30 shrink-0" title="نسخه واقعی از /api/health">v1.1.4 · core</span>
     <div class="ms-auto flex items-center gap-1.5 shrink-0">
       <span class="hidden xl:inline-flex chip num" id="clock">--:--:--</span>
       <span id="apiChip" class="hidden 2xl:inline-flex chip num text-zinc-400 border-white/10" title=""><i data-lucide="wifi-off" class="w-3.5 h-3.5"></i> <span>API: —</span></span>
@@ -1408,6 +1408,7 @@ const T = {
     'sg.gatesChip':'دروازه‌ها (سایه): {blocked} از {rows}', 'sg.gatesWhy':'اگر دروازه‌ها عمل می‌کردند، {names}{more} حذف می‌شدند — چیزی حذف نشد', 'sg.gatesClean':'هیچ دروازه‌ای اعتراضی ندارد', 'sg.gatesUnknown':'{n} نماد را نمی‌شود سنجید (دفتری خوانده نشده)',
     'sg.gatesInputs':'ورودی: {books} دفتر از {rows} نماد (کهنه و دورریخته: {stale}) — پیرترین دفتر قابل‌استفاده {age} ثانیه از {ttl} ثانیه', 'sg.gatesPrefetch':'پیش‌واکشی این اسکن: {ok} از {asked} دفتر رسید، {failed} خطا',
     'sg.pairPremium':'پرمیوم تومانی هر سکه (از دو جفت خودش): میانه {bp} بیپ در {n} نماد — فقط اندازه‌گیری',
+    'sg.gateDist':'توزیع ورودی دروازه‌ها: اسپرد میانه {med} و p95 {p95} بیپ در {ns} نمونه · عمق p05 {d} دلار در {nd} نمونه — فقط اندازه‌گیری، آستانه‌ای اعمال نشده',
     'sg.dataStaleWorst':'بدترین نماد این اسکن {sym} است: آخرین کندلش {bars} کندل عقب است{more}؛ این رتبه‌بندی آن بازه را توصیف می‌کند، نه امروز را', 'sg.dataStaleMore':' ({n} نماد دیگر هم کهنه‌اند)',
     'atr.title':'صدک ATR روی نمودار', 'atr.regimeCalm':'آرام', 'atr.regimeNormal':'معمولی',
     'atr.regimeVolatile':'پرنوسان', 'atr.calmBand':'آرام ≤{cut}', 'atr.volBand':'پرنوسان ≥{cut}',
@@ -1668,6 +1669,7 @@ const T = {
     'sg.gatesChip':'gates (shadow): {blocked} of {rows}', 'sg.gatesWhy':'a gate would have removed {names}{more} — nothing was removed', 'sg.gatesClean':'no gate objects', 'sg.gatesUnknown':'{n} symbol(s) cannot be judged (no book read yet)',
     'sg.gatesInputs':'inputs: {books} book(s) of {rows} symbols ({stale} too old and dropped) — oldest usable book {age}s of {ttl}s', 'sg.gatesPrefetch':'prefetch this scan: {ok} of {asked} books arrived, {failed} failed',
     'sg.pairPremium':'each coin&#39;s own Toman premium (from its two legs): median {bp} bp over {n} symbols — measurement only',
+    'sg.gateDist':'gate input distribution: spread median {med} and p95 {p95} bp over {ns} samples · depth p05 ${d} over {nd} samples — measurement only, no threshold applied',
     'sg.dataStaleWorst':'the worst symbol in this scan is {sym}: its newest candle is {bars} bars old{more}; this ranking describes that window, not today', 'sg.dataStaleMore':' ({n} more symbols are stale too)',
     'atr.title':'ATR percentile on the chart', 'atr.regimeCalm':'calm', 'atr.regimeNormal':'normal',
     'atr.regimeVolatile':'volatile', 'atr.calmBand':'calm ≤{cut}', 'atr.volBand':'volatile ≥{cut}',
@@ -3185,7 +3187,19 @@ function sgRenderGates(g){
     ? t('sg.pairPremium').replace('{bp}', fmtNum(pp.median_bp, 0))
         .replace('{n}', fmtNum((pp.counts || {}).pairs || 0, 0))
     : '';
-  chip.title = [head, tail, inputsLine, prefetchLine, ppLine, ev, block.note || '']
+  // ADR-0026 — what the gate inputs actually look like, so a threshold can come
+  // from data instead of taste. Reported next to the verdicts, never applied.
+  const dist = (block.ledger && block.ledger.distribution) || null;
+  const sp = (dist && dist.spread_bps) || {};
+  const dp = (dist && dist.depth_usd) || {};
+  const distLine = (sp.n || dp.n)
+    ? t('sg.gateDist').replace('{med}', fmtNum(sp.median == null ? 0 : sp.median, 1))
+        .replace('{p95}', fmtNum(sp.p95 == null ? 0 : sp.p95, 1))
+        .replace('{ns}', fmtNum(sp.n || 0, 0))
+        .replace('{d}', fmtNum(dp.p05 == null ? 0 : dp.p05, 0))
+        .replace('{nd}', fmtNum(dp.n || 0, 0))
+    : '';
+  chip.title = [head, tail, inputsLine, prefetchLine, ppLine, distLine, ev, block.note || '']
     .filter(Boolean).join(' — ');
 }
 function renderSignals(){

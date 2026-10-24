@@ -126,6 +126,15 @@ def ensure(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
+def _first_num(block: Any, key: str, verdict: Mapping[str, Any]) -> float | None:
+    """The measured input when present, else whatever the verdict detail carried."""
+    if isinstance(block, Mapping):
+        value = _num(block.get(key))
+        if value is not None:
+            return value
+    return _num(verdict.get(key))
+
+
 def record(
     conn: sqlite3.Connection,
     verdicts: Mapping[str, Mapping[str, Any]],
@@ -167,9 +176,11 @@ def record(
             stamp_ts,
             str(v.get("code") or "ok"),
             json.dumps(list(v.get("codes") or []), separators=(",", ":")),
-            _num(v.get("spread_bps")),
-            _num(v.get("depth_usd")),
-            _num(v.get("age_bars")),
+            # ADR-0026: the measured inputs first (present on every row now), the
+            # failing verdict's own detail second, for rows written before 1.1.4.
+            _first_num(v.get("inputs"), "spread_bps", v),
+            _first_num(v.get("inputs"), "depth_usd", v),
+            _first_num(v.get("inputs"), "age_bars", v),
             source,
             stamp,
         ))
@@ -256,6 +267,146 @@ def counts(conn: sqlite3.Connection, *, gate: str | None = None,
         # boolean that happens to be absent.
         "ready": sorted(k for k, v in out.items() if v["ready"]),
     }
+
+
+#: ADR-0026 — the metrics a gate threshold has to come from. `spread_bps` and
+#: `depth_usd` are the two codes that never fire today because their limits
+#: default to `None`; `age_bars` is here so the freshness rule can be checked
+#: against the real thing rather than against `DEFAULT_TOLERANCE_BARS`.
+DISTRIBUTED_METRICS = ("spread_bps", "depth_usd", "age_bars")
+
+
+def percentile(values: list[float], q: float) -> float | None:
+    """Linear-interpolated percentile on a sorted copy. `q` in [0, 100].
+
+    Interpolated rather than "nearest rank" on purpose: with thirty samples a
+    nearest-rank p95 is the maximum, which flatters the tail and makes the
+    proposed threshold sit on the single worst observation of the sample.
+    """
+    if not values:
+        return None
+    if not 0 <= q <= 100:
+        raise ValueError(f"percentile q={q} is outside [0, 100]")
+    data = sorted(float(v) for v in values)
+    if len(data) == 1:
+        return data[0]
+    pos = (len(data) - 1) * (q / 100.0)
+    lo = int(pos)
+    hi = min(lo + 1, len(data) - 1)
+    frac = pos - lo
+    return data[lo] + (data[hi] - data[lo]) * frac
+
+
+def distributions(conn: sqlite3.Connection, *, tf: str | None = None) -> dict[str, Any]:
+    """What the gate inputs actually look like, from the ledger (ADR-0026).
+
+    Measurement only. The point is that `max_spread_bps` and `min_depth_usd` are
+    `None` in `gates.GateLimits` — so the two gates that would use them cannot
+    fire, and the ledger would report `spread-wide: 0` forever regardless of the
+    market. A threshold has to come from a distribution, and this is the one the
+    repository has.
+
+    Two refusals are encoded here:
+
+    * `source = 'backfilled'` rows are skipped. A spread distribution taken from
+      verdicts that were reconstructed is not a distribution (ADR-0014), which is
+      also why S2 cannot help this number.
+    * with too few samples the proposal is `None` with a reason, never a number
+      somebody could copy into `.env` and call measured.
+    """
+    sql = "SELECT source, ts, spread_bps, depth_usd, age_bars FROM gate_shadow"
+    args: list[Any] = []
+    if tf:
+        sql += " WHERE timeframe = ?"
+        args.append(tf)
+    samples: dict[str, list[float]] = {m: [] for m in DISTRIBUTED_METRICS}
+    days: dict[str, set[str]] = {m: set() for m in DISTRIBUTED_METRICS}
+    skipped_backfilled = 0
+    for source, ts, *values in conn.execute(sql, args).fetchall():
+        if str(source or "") == "backfilled":
+            skipped_backfilled += 1
+            continue
+        day = datetime.fromtimestamp(int(ts), UTC).date().isoformat()
+        for metric, value in zip(DISTRIBUTED_METRICS, values, strict=False):
+            if value is None:
+                continue
+            try:
+                num = float(value)
+            except (TypeError, ValueError):
+                continue
+            if math.isnan(num) or math.isinf(num):
+                continue
+            samples[metric].append(num)
+            days[metric].add(day)
+
+    out: dict[str, Any] = {
+        "applied": False,
+        "timeframe": tf,
+        "skipped_backfilled": skipped_backfilled,
+        "limits": {"min_samples": MIN_VERDICTS, "min_days": MIN_DAYS},
+        "note": ("measurement only: this describes the inputs the gates have seen; "
+                 "no limit is set from it here (ADR-0026)"),
+    }
+    for metric, values in samples.items():
+        n = len(values)
+        n_days = len(days[metric])
+        if not n:
+            out[metric] = {"n": 0, "days": 0, "sufficient": False,
+                           "reason": "no usable sample in the ledger yet",
+                           "median": None, "p05": None, "p90": None, "p95": None,
+                           "min": None, "max": None}
+            continue
+        data = sorted(values)
+        out[metric] = {
+            "n": n,
+            "days": n_days,
+            "sufficient": n >= MIN_VERDICTS and n_days >= MIN_DAYS,
+            "median": round(percentile(data, 50) or 0.0, 3),
+            "p05": round(percentile(data, 5) or 0.0, 3),
+            "p90": round(percentile(data, 90) or 0.0, 3),
+            "p95": round(percentile(data, 95) or 0.0, 3),
+            "min": round(data[0], 3),
+            "max": round(data[-1], 3),
+        }
+
+    out["proposal"] = propose_limits(out)
+    return out
+
+
+def propose_limits(stats: Mapping[str, Any]) -> dict[str, Any]:
+    """The threshold the distribution suggests — as a proposal, never a setting.
+
+    `max_spread_bps = p95` and `min_depth_usd = p05` are chosen so the gate would
+    have removed roughly 5% of the rows the market actually produced: large enough
+    to matter, small enough not to be a market-wide veto. When either side lacks
+    the ADR-0023 sample, the proposal is `None` **with a reason**, because a
+    number without a sample is exactly the kind of thing somebody copies into a
+    config file and then calls measured.
+    """
+    spread = stats.get("spread_bps") or {}
+    depth = stats.get("depth_usd") or {}
+    out: dict[str, Any] = {
+        "applied": False,
+        "proposed": True,
+        "max_spread_bps": None,
+        "min_depth_usd": None,
+        "basis": {"max_spread_bps": "p95(spread_bps)", "min_depth_usd": "p05(depth_usd)"},
+        "reason": None,
+    }
+    gaps: list[str] = []
+    if spread.get("sufficient"):
+        out["max_spread_bps"] = round(float(spread["p95"]), 1)
+    else:
+        gaps.append(f"spread_bps needs {MIN_VERDICTS} samples over {MIN_DAYS} days, "
+                    f"has {spread.get('n', 0)} over {spread.get('days', 0)}")
+    if depth.get("sufficient"):
+        out["min_depth_usd"] = round(float(depth["p05"]), 0)
+    else:
+        gaps.append(f"depth_usd needs {MIN_VERDICTS} samples over {MIN_DAYS} days, "
+                    f"has {depth.get('n', 0)} over {depth.get('days', 0)}")
+    if gaps:
+        out["reason"] = "; ".join(gaps)
+    return out
 
 
 def forward_bp(frame: Any, ts: int, horizon: int) -> float | None:
