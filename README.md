@@ -2,7 +2,7 @@
 
 **فارسی** · [English](README.en.md)
 
-نسخهٔ جاری: **1.1.4** · تگ: **v1.1.3**
+نسخهٔ جاری: **1.2.0** · تگ انتشار: **v1.2.0**
 
 راهنمای [نسخه‌بندی و GitHub Release](docs/releases.md) شامل قواعد افزایش نسخه، تگ و انتشار فایل موبایل است. [تاریخچهٔ تغییرات](CHANGELOG.md) را نیز ببینید ([English](CHANGELOG.en.md)).
 
@@ -194,6 +194,23 @@ docs/                   ADR، تحلیل، ops، بازبینی‌ها
 جزئیات: `docs/reviews/2026-10-20-whatif-preflight-fa.md`،
 `docs/reviews/2026-10-20-a3-portfolio-allocator-fa.md`،
 `docs/reviews/2026-10-20-a7-benchmark-a6-market-fa.md`.
+
+## عملیات و بازیابی
+
+پشتیبان سازگار از دیتابیس‌های در حال استفاده (بدون `.env` و کلیدهای API):
+
+```bash
+python scripts/state_backup.py backup --output backups/
+python scripts/state_backup.py restore backups/nobitrader-state-....zip --force
+```
+
+دریافت تاریخچهٔ صفحه‌بندی‌شده با checkpoint، حذف تکرار و گزارش شکاف:
+
+```bash
+python scripts/fetch_history.py --symbol BTCIRT --resolution 15 \
+  --from 2026-01-01 --to 2026-10-25 --output data/BTCIRT-15.json \
+  --checkpoint data/BTCIRT-15.checkpoint.json
+```
 
 ## مستندات
 

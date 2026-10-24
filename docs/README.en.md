@@ -2,7 +2,7 @@
 
 [فارسی](README.md) · **English**
 
-Current version: **1.1.4**. See [versioning and GitHub releases](releases.en.md) and the
+Current version: **1.2.0**. See [versioning and GitHub releases](releases.en.md) and the
 [changelog](../CHANGELOG.en.md).
 
 ## Documentation map
@@ -85,7 +85,8 @@ What is written twice, what is written once, and what is pending. The gate in
 | Documentation map | [`README.md`](README.md) | [`README.en.md`](README.en.md) |
 | Versioning and releases | [`releases.md`](releases.md) | [`releases.en.md`](releases.en.md) |
 | Changelog | [`CHANGELOG.md`](../CHANGELOG.md) | [`CHANGELOG.en.md`](../CHANGELOG.en.md) |
-| ADR-0001 … ADR-0018 | [`adr/fa/`](adr/fa) | [`adr/en/`](adr/en) |
+| Live handoff | [`HANDOFF.md`](HANDOFF.md) | [`HANDOFF.en.md`](HANDOFF.en.md) |
+| ADR-0001 … ADR-0027 | [`adr/fa/`](adr/fa) | [`adr/en/`](adr/en) |
 | Free testing servers | [`ops/fa/`](ops/fa) | [`ops/en/`](ops/en) |
 | ArvanCloud deployment | [`deploy-arvan.md`](deploy-arvan.md) | **pending** |
 | ArvanCloud VPC | [`deploy-arvan-vpc.md`](deploy-arvan-vpc.md) | **pending** |

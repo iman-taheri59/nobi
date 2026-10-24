@@ -2,7 +2,7 @@
 
 [فارسی](README.md) · **English**
 
-Current version: **1.1.4** · tag: **v1.1.3**
+Current version: **1.2.0** · release tag: **v1.2.0**
 
 See [versioning and GitHub releases](docs/releases.en.md) for the rules on bumping
 the version, tagging and shipping the mobile file, and the
@@ -199,6 +199,23 @@ runs — so a preview cannot promise something the broker would reject. Details
 (Persian): `docs/reviews/2026-10-20-whatif-preflight-fa.md`,
 `docs/reviews/2026-10-20-a3-portfolio-allocator-fa.md`,
 `docs/reviews/2026-10-20-a7-benchmark-a6-market-fa.md`.
+
+## Operations and recovery
+
+Create a consistent backup of live databases (excluding `.env` and API keys):
+
+```bash
+python scripts/state_backup.py backup --output backups/
+python scripts/state_backup.py restore backups/nobitrader-state-....zip --force
+```
+
+Fetch paginated history with checkpointing, deduplication and gap reporting:
+
+```bash
+python scripts/fetch_history.py --symbol BTCIRT --resolution 15 \
+  --from 2026-01-01 --to 2026-10-25 --output data/BTCIRT-15.json \
+  --checkpoint data/BTCIRT-15.checkpoint.json
+```
 
 ## Documentation
 

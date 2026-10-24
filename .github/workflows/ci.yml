@@ -43,13 +43,10 @@ jobs:
   # The suite passed every Linux gate for months while one module called
   # `os.geteuid()` at import time and aborted collection on Windows — the machine
   # `docs/run-windows.md` documents and the dashboard's own test card runs on.
-  # This job is the guard. It is advisory (`continue-on-error`) so a Windows-only
-  # quirk cannot block the whole repository on the first day; flip it to blocking
-  # once it has run green, and add `-W error` here rather than there.
+  # This job is a release gate: Windows is a documented platform.
   windows:
     name: windows (advisory)
     runs-on: windows-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

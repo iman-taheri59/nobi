@@ -2,6 +2,17 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 1.2.0
+
+> Phased completion under ADR-0027: this is the stable analysis and paper-trading line; real trading remains off by default and belongs to phase 2.
+
+- Bilingual ADR-0027 records stable-phase completion and the non-negotiable prerequisites for real trading.
+- `docs/HANDOFF.md` and its English peer are living status, verification and next-action records.
+- `scripts/state_backup.py` creates consistent online SQLite snapshots for journal/auth with a manifest and SHA-256, plus guarded atomic `--force` restore; environment files and keys are deliberately excluded.
+- `scripts/fetch_history.py` adds paginated UDF ingestion, checkpoint/resume, deduplication, OHLCV-array validation and gap reporting; tests are network-free.
+- Windows CI changes from advisory to a blocking release gate.
+- Product version and release docs are aligned; adaptive gates remain shadow-only and `applied:false`.
+
 ## 1.1.4
 
 > **A gate's threshold comes from the data, not from taste** (ADR-0026). This release is
