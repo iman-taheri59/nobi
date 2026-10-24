@@ -2,6 +2,27 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 1.1.2
+
+> Display only. No score, threshold, gate or ranking moved; `applied` is still `false`.
+
+- **The signals list no longer stops at twelve rows.** `renderSignalsLive` carried an unnamed
+  `.slice(0, 12)`: the strip above the list said "39 symbols scanned" while rows 13..39 had no row,
+  no detail and no way to be seen — even though the engine had scored them and the shadow gates had
+  already written verdicts about them. A reader could not tell a small scan from a short page.
+- **The number has a name now:** `SIG_ROW_LIMIT = 15`, and below the list a **"show all (39)"**
+  button brings the rest and turns into "show fewer". The total is printed on the button, because a
+  control that only says "more" hides the same fact.
+- **The sparklines follow.** Their candle prefetch was cut at the same twelve; it now uses
+  `SIG_ROW_LIMIT` and, when "show all" is pressed, requests the newly visible rows too — a row with
+  an empty chart is a half-drawn row.
+- **Eight new tests** pin it: the size must be a named constant and not a literal, the renderer must
+  not slice on a magic number, the hidden count must be computed and not guessed, the control must
+  name the total, the prefetch must cover the rows it reveals, and both languages must be able to
+  say it.
+- **Gates:** ruff 0 · mypy 0 · pytest **855 passed** · eslint/dashboard/five JS gates · parity ·
+  notes · build — all with exit code zero.
+
 ## 1.1.1
 
 > Evidence must not need an open tab (ADR-0024). The content is **collection and display** only:
