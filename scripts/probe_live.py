@@ -433,9 +433,11 @@ def preflight(base: str, username: str | None = None,
     uni = get("/api/universe")
     sig = get("/api/signals?tf=15m")
     can = get("/api/candles/BTCIRT?tf=15m&count=120")
+    risk = get("/api/risk/state")
     out["universe"] = uni
     out["signals"] = sig
     out["candles"] = can
+    out["risk"] = risk
     out["upstream_live"] = bool(
         not uni.get("unavailable") and (uni.get("symbols") or [])
         and not sig.get("unavailable") and (sig.get("scored") or [])
@@ -600,8 +602,7 @@ def cross_checks(pg, pf: dict) -> list[dict]:
             "() => (document.getElementById('kEquity')||{}).textContent || ''"))
         api_eq = float((pf.get("health") or {}).get("stats", {}).get("equity") or 0) or None
         if api_eq is None:
-            rs = http_json(f"{pf['base']}/api/risk/state", timeout=30)
-            api_eq = float(rs.get("equity") or 0) or None
+            api_eq = float((pf.get("risk") or {}).get("equity") or 0) or None
         ok = ui_eq is not None and api_eq is not None and abs(ui_eq - api_eq) < 1
         add("paper equity", f"{ui_eq}", f"{api_eq}", ok)
     except Exception as e:

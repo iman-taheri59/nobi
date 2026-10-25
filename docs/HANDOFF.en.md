@@ -2,8 +2,8 @@
 
 [فارسی](HANDOFF.md) · **English**
 
-**Last updated:** 2026-10-25 — stage 25 (final authenticated CI correction)
-**Working version:** 1.6.3
+**Last updated:** 2026-10-25 — stage 26 (authenticated equity cross-check)
+**Working version:** 1.6.4
 **Target:** ADR-0027; stable product first, then staged fail-closed live execution.
 
 ## Status

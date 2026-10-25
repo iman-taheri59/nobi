@@ -2,6 +2,12 @@
 
 [English](CHANGELOG.en.md) · **فارسی**
 
+## 1.6.4
+
+> حفظ context احراز‌شده API برای آخرین cross-check سرمایه UI/API.
+
+- preflight ابزار probe اکنون risk state را با cookie احرازشده دریافت و همان شاهد را استفاده می‌کند؛ درخواست fallback ناشناس حذف شد.
+
 ## 1.6.3
 
 > اصلاح نهایی CI پس از خواندن log احرازشده GitHub.

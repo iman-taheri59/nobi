@@ -2,6 +2,12 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 1.6.4
+
+> Preserve the authenticated API context for the final UI/API equity cross-check.
+
+- Probe preflight now fetches risk state through its authenticated cookie jar and reuses that evidence instead of making one anonymous fallback request.
+
 ## 1.6.3
 
 > Final CI correction after reading the authenticated GitHub job logs.
