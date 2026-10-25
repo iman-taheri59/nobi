@@ -9,14 +9,15 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const { execFileSync } = require('child_process');
 
 // jsdom is a devDependency now; the /tmp fallback keeps older checkouts and the
 // sandbox working, where the install lived outside the repo.
-let JSDOM, VirtualConsole;
+let JSDOM, VirtualConsole, CookieJar;
 try {
-  ({ JSDOM, VirtualConsole } = require('jsdom'));
+  ({ JSDOM, VirtualConsole, CookieJar } = require('jsdom'));
 } catch (e) {
-  ({ JSDOM, VirtualConsole } = require('/tmp/node_modules/jsdom'));
+  ({ JSDOM, VirtualConsole, CookieJar } = require('/tmp/node_modules/jsdom'));
 }
 
 // Same default as ui_smoke_prep.py, on every platform.
@@ -54,15 +55,45 @@ process.on('unhandledRejection', (e) => {
   finish(2);
 });
 
+const cookieJar = new CookieJar();
+const smokeUser = process.env.SMOKE_USERNAME;
+const smokePassword = process.env.SMOKE_PASSWORD;
+if (smokeUser && smokePassword) {
+  const payload = JSON.stringify({ username: smokeUser, password: smokePassword });
+  const responseHeaders = execFileSync('curl', [
+    '-sS', '-D', '-', '-o', '/dev/null', '-X', 'POST',
+    '-H', 'Content-Type: application/json', '--data-binary', payload,
+    new URL('/api/auth/login', origin).toString(),
+  ], { encoding: 'utf8' });
+  for (const line of responseHeaders.split(/\r?\n/)) {
+    if (/^set-cookie:/i.test(line)) {
+      cookieJar.setCookieSync(line.replace(/^set-cookie:\s*/i, ''), origin);
+    }
+  }
+}
+
 const dom = new JSDOM(html, {
   url: origin,
+  cookieJar,
   runScripts: 'dangerously',
   pretendToBeVisual: true,
   virtualConsole: vc,
 });
 const { window } = dom;
-// Node's fetch has no document base: resolve the app's relative /api paths.
-window.fetch = (u, o) => fetch(/^[a-z]+:\/\//i.test(String(u)) ? u : new URL(String(u), origin).toString(), o);
+// Node's fetch has no document base or browser cookie integration. Resolve
+// relative URLs and mirror Set-Cookie/Cookie through jsdom's own jar so the
+// smoke test follows the real login flow instead of bypassing authorization.
+window.fetch = async (u, o = {}) => {
+  const url = /^[a-z]+:\/\//i.test(String(u)) ? String(u) : new URL(String(u), origin).toString();
+  const headers = new globalThis.Headers(o.headers || {});
+  const cookie = dom.cookieJar.getCookieStringSync(url);
+  if (cookie) headers.set('cookie', cookie);
+  const response = await fetch(url, { ...o, headers });
+  const setCookies = typeof response.headers.getSetCookie === 'function'
+    ? response.headers.getSetCookie() : [];
+  for (const value of setCookies) dom.cookieJar.setCookieSync(value, url);
+  return response;
+};
 window.onerror = (m) => errors.push('window.onerror: ' + m);
 // jsdom does not implement scrolling; switching tabs would otherwise report
 // "Not implemented: Window's scrollTo()" as an app error.

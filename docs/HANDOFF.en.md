@@ -2,8 +2,8 @@
 
 [فارسی](HANDOFF.md) · **English**
 
-**Last updated:** 2026-10-25 — stage 27 (isolated UI CI contracts)
-**Working version:** 1.6.5
+**Last updated:** 2026-10-25 — stage 28 (authenticated jsdom session)
+**Working version:** 1.6.6
 **Target:** ADR-0027; stable product first, then staged fail-closed live execution.
 
 ## Status

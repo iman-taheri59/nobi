@@ -2,6 +2,12 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 1.6.6
+
+> Run both UI harnesses through the real authenticated session contract.
+
+- jsdom now mirrors cookies through its cookie jar, submits the real login form, and validates protected pages with the same short-lived owner as Playwright.
+
 ## 1.6.5
 
 > Isolate unauthenticated rendering smoke from the authenticated browser contract in CI.

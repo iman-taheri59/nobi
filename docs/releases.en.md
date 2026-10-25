@@ -2,7 +2,7 @@
 
 [فارسی](releases.md) · **English**
 
-The current version is **1.6.5**; the previously published tag is **v1.6.4**, and the isolated UI CI contract will ship as **v1.6.5**.
+The current version is **1.6.6**; the previously published tag is **v1.6.5**, and authenticated jsdom sessions will ship as **v1.6.6**.
 `VERSION` is the source of truth for the release number; the tag name is exactly `v`
 plus that number.
 

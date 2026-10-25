@@ -122,16 +122,19 @@ jobs:
             curl -sf -o /dev/null http://127.0.0.1:8000/api/health && break
             sleep 1
           done
-      # jsdom exercises the backwards-compatible unclaimed local install before
-      # the human-session probe claims it. It validates rendering, not access control.
-      - name: ui smoke — jsdom
-        run: |
-          python3 scripts/ui_smoke_prep.py
-          node scripts/ui_smoke_test.js
-      - name: create short-lived browser probe owner
+      - name: create short-lived UI probe owner
         run: >-
           NBX_AUTH_DB=/tmp/ci-auth.db PYTHONPATH=server python3 -c
           "import auth; auth.create_user('ci-owner', 'CI-browser-probe-password-2026!', role='owner')"
+      # jsdom and the real browser use the same human session contract. The
+      # harness carries cookies through jsdom's jar; no protected API is bypassed.
+      - name: ui smoke — jsdom
+        env:
+          SMOKE_USERNAME: ci-owner
+          SMOKE_PASSWORD: CI-browser-probe-password-2026!
+        run: |
+          python3 scripts/ui_smoke_prep.py
+          node scripts/ui_smoke_test.js
       - name: classifier self-test
         run: python3 scripts/probe_live.py --selftest
       - name: 45 panels explain themselves
