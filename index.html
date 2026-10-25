@@ -295,7 +295,7 @@
       </button>
     </div>
     <span class="hidden 2xl:inline-flex chip shrink-0"><span class="dot bg-emerald-400"></span> <span data-i18n="hdr.kill"></span></span>
-    <span id="buildChip" class="hidden lg:inline-flex chip num text-violet-300 border-violet-400/30 shrink-0" title="نسخه واقعی از /api/health">v1.5.1 · core</span>
+    <span id="buildChip" class="hidden lg:inline-flex chip num text-violet-300 border-violet-400/30 shrink-0" title="نسخه واقعی از /api/health">v1.6.0 · core</span>
     <div class="ms-auto flex items-center gap-1.5 shrink-0">
       <span class="hidden xl:inline-flex chip num" id="clock">--:--:--</span>
       <span id="apiChip" class="hidden 2xl:inline-flex chip num text-zinc-400 border-white/10" title=""><i data-lucide="wifi-off" class="w-3.5 h-3.5"></i> <span>API: —</span></span>
@@ -340,6 +340,7 @@
     <nav class="glass p-2.5 sm:p-3 space-y-1.5 text-start">
       <button class="navbtn active w-full flex items-center gap-3 px-3.5 py-2.5 text-sm" data-tab="overview"><i data-lucide="layout-dashboard" class="w-4.5 h-4.5 shrink-0"></i> <span data-i18n="page.overview.title"></span></button>
       <button class="navbtn w-full flex items-center gap-3 px-3.5 py-2.5 text-sm text-zinc-300" data-tab="signals"><i data-lucide="radar" class="w-4.5 h-4.5 shrink-0"></i> <span data-i18n="page.signals.title"></span></button>
+      <button class="navbtn w-full flex items-center gap-3 px-3.5 py-2.5 text-sm text-zinc-300" data-tab="intelligence"><i data-lucide="brain-circuit" class="w-4.5 h-4.5 shrink-0"></i> <span data-i18n="page.intelligence.title"></span></button>
       <button class="navbtn w-full flex items-center gap-3 px-3.5 py-2.5 text-sm text-zinc-300" data-tab="fa"><i data-lucide="landmark" class="w-4.5 h-4.5 shrink-0"></i> <span data-i18n="page.fa.title"></span></button>
       <button class="navbtn w-full flex items-center gap-3 px-3.5 py-2.5 text-sm text-zinc-300" data-tab="orders"><i data-lucide="list-checks" class="w-4.5 h-4.5 shrink-0"></i> <span data-i18n="page.orders.title"></span></button>
       <button class="navbtn w-full flex items-center gap-3 px-3.5 py-2.5 text-sm text-zinc-300" data-tab="performance"><i data-lucide="bar-chart-3" class="w-4.5 h-4.5 shrink-0"></i> <span data-i18n="page.performance.title"></span></button>
@@ -553,6 +554,15 @@
     </section>
 
     <!-- ======= PAGE: FA ======= -->
+    <section id="page-intelligence" class="tab-page hidden space-y-4 sm:space-y-6">
+      <div class="flex items-center gap-3 flex-wrap"><span class="w-1 h-8 rounded-full bg-gradient-to-b from-cyan-300 to-violet-500/40"></span><div><h1 class="font-extrabold text-base sm:text-xl" data-i18n="page.intelligence.title"></h1><p class="text-[11px] text-zinc-500" data-i18n="page.intelligence.desc"></p></div><div class="ms-auto flex gap-2"><select id="siDays" class="auth-input !w-auto"><option value="7">7d</option><option value="30" selected>30d</option><option value="90">90d</option></select><select id="siHorizon" class="auth-input !w-auto"><option>H1</option><option>H2</option><option>H3</option></select><button id="siRefresh" class="auth-btn !flex-none" data-i18n="users.refresh"></button></div></div>
+      <div id="siSummary" class="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-3"></div>
+      <div class="glass p-4 sm:p-5"><div class="font-bold text-[13px] mb-3" data-i18n="si.funnel"></div><div id="siFunnel" class="grid grid-cols-2 md:grid-cols-5 gap-2"></div><div id="siReasons" class="flex flex-wrap gap-1.5 mt-3"></div></div>
+      <div class="glass p-4 sm:p-5"><div class="font-bold text-[13px] mb-3" data-i18n="si.cohorts"></div><div class="overflow-x-auto"><table class="w-full text-[10px]"><thead><tr class="text-zinc-500"><th>symbol</th><th>TF</th><th>regime</th><th>samples</th><th>win%</th><th>exp R</th><th>config</th></tr></thead><tbody id="siCohorts"></tbody></table></div></div>
+      <div class="glass p-4 sm:p-5"><div class="flex items-center gap-2 mb-3"><span class="font-bold text-[13px]" data-i18n="si.signals"></span><input id="siSymbol" class="auth-input !w-28 ms-auto" placeholder="BTCUSDT"><select id="siTf" class="auth-input !w-auto"><option value="">all TF</option><option>15m</option><option>1h</option><option>4h</option><option>D</option></select></div><div class="overflow-x-auto"><table class="w-full text-[10px]"><thead><tr class="text-zinc-500"><th>time</th><th>symbol</th><th>score</th><th>regime</th><th>R</th><th>MFE</th><th>MAE</th><th>review</th></tr></thead><tbody id="siSignals"></tbody></table></div></div>
+      <div id="siDetail" class="glass p-4 sm:p-5 hidden"></div>
+    </section>
+
     <section id="page-fa" class="tab-page hidden space-y-4 sm:space-y-6">
       <div class="flex items-center gap-3">
         <span class="w-1 h-7 sm:h-8 rounded-full bg-gradient-to-b from-sky-400 to-indigo-400/40 shrink-0"></span>
@@ -1468,6 +1478,7 @@ const T = {
     'hdr.kill':'کلید اضطراری مسلح', 'hdr.api':'ارتباط: {v} میلی‌ثانیه', 'chip.live':'به‌روزرسانی زنده', 'm.lang':'زبان / Language',
     'page.overview.title':'نمای کلی', 'page.overview.desc':'وضعیت سرمایه، پوزیشن‌ها و بازار در یک نگاه',
     'page.signals.title':'کاوشگر سیگنال', 'page.signals.desc':'رتبه‌بندی کاندیداها و تفکیک شواهد امتیاز',
+    'page.intelligence.title':'هوشمندی سیگنال','page.intelligence.desc':'کیفیت، قیف، نتیجه، MFE/MAE، cohort و بازبینی سیگنال‌ها','si.funnel':'قیف سیگنال','si.cohorts':'گروه‌های عملکرد','si.signals':'سیگنال‌های اخیر',
     'page.fa.title':'فاندامنتال', 'page.fa.desc':'امتیاز بنیادی، وتوها و جریان رویدادها',
     'page.orders.title':'سفارش‌ها', 'page.orders.desc':'چرخه‌حیات زنده سفارش‌ها و پرشدگی‌ها',
     'page.risk.title':'ریسک و کنترل', 'page.risk.desc':'سقف‌های سبد، کلیدهای اضطراری و توقف اضطراری',
@@ -1743,6 +1754,7 @@ const T = {
     'hdr.kill':'Kill switch armed', 'hdr.api':'API: {v} ms', 'chip.live':'Live updates', 'm.lang':'Language / زبان',
     'page.overview.title':'Overview', 'page.overview.desc':'Equity, positions and market state at a glance',
     'page.signals.title':'Signals Explorer', 'page.signals.desc':'Candidate ranking and score evidence',
+    'page.intelligence.title':'Signal Intelligence','page.intelligence.desc':'Quality, funnel, outcomes, MFE/MAE, cohorts and signal review','si.funnel':'Signal funnel','si.cohorts':'Performance cohorts','si.signals':'Recent signals',
     'page.fa.title':'Fundamentals', 'page.fa.desc':'FA scores, vetoes and the event stream',
     'page.orders.title':'Orders', 'page.orders.desc':'Live order lifecycle and fills',
     'page.risk.title':'Risk & Controls', 'page.risk.desc':'Portfolio caps, kill switches and panic stop',
@@ -2329,6 +2341,7 @@ document.querySelectorAll('.navbtn').forEach(btn=>{
     if(btn.dataset.tab==='performance' && inited.perf){ requestAnimationFrame(()=>setTimeout(()=>{ if(!bmState) loadBenchmark(); },30)); }
     if(btn.dataset.tab==='desk'){ requestAnimationFrame(()=>setTimeout(()=>{ runBookAlloc(false); loadExecMode(); refreshQueue(); },60)); }
     if(btn.dataset.tab==='overview'){ requestAnimationFrame(()=>setTimeout(()=>{ loadMarketOverview(); },60)); }
+    if(btn.dataset.tab==='intelligence'){ requestAnimationFrame(()=>setTimeout(loadSignalIntelligence,30)); }
     // The order log is read when the page is shown: a stale table is better
     // than none, but the first look after a trade must be current.
     if(btn.dataset.tab==='orders'){ requestAnimationFrame(()=>setTimeout(()=>{ loadOrders(); },30)); }
@@ -5097,6 +5110,34 @@ const _perfExportCsv = byId('perfExportCsv');
 if (_perfExportCsv) _perfExportCsv.addEventListener('click', () => exportPerf('csv'));
 const _perfExportJson = byId('perfExportJson');
 if (_perfExportJson) _perfExportJson.addEventListener('click', () => exportPerf('json'));
+
+async function loadSignalIntelligence(){
+  const api=window.NBX&&NBX.core&&NBX.core.api;if(!api)return;
+  const days=Number((byId('siDays')||{}).value||30),h=(byId('siHorizon')||{}).value||'H1';
+  const symbol=((byId('siSymbol')||{}).value||'').trim().toUpperCase(),tf=(byId('siTf')||{}).value||'';
+  const qs=new URLSearchParams({days:String(days),horizon:h});if(symbol)qs.set('symbol',symbol);if(tf)qs.set('timeframe',tf);
+  try{
+    const [s,f,c,l]=await Promise.all([
+      api.get(NBX.config.pythonApi+'/signal-intelligence/summary?'+qs,1),
+      api.get(NBX.config.pythonApi+'/signal-intelligence/funnel?days='+days,1),
+      api.get(NBX.config.pythonApi+'/signal-intelligence/cohorts?days='+days+'&horizon='+h,1),
+      api.get(NBX.config.pythonApi+'/signal-intelligence/signals?limit=100&'+qs,1)]);
+    const cards=[['signals',s.signals],['resolved',s.resolved],['win %',s.win_rate_pct],['expectancy R',s.expectancy_r],['avg R',s.avg_r],['MFE %',s.avg_mfe_pct],['MAE %',s.avg_mae_pct],['reviews',s.reviews]];
+    byId('siSummary').innerHTML=cards.map(([k,v])=>`<div class="glass p-3"><div class="text-[9px] text-zinc-500">${k}</div><div class="num font-bold text-base">${v??'—'}</div></div>`).join('');
+    byId('siFunnel').innerHTML=(f.stages||[]).map(x=>`<div class="rounded-xl bg-white/[.03] p-3 text-center"><div class="text-[9px] text-zinc-500">${x.id}</div><div class="num font-bold">${x.count}</div></div>`).join('');
+    byId('siReasons').innerHTML=Object.entries(f.gate_reasons||{}).map(([k,v])=>`<span class="chip text-[9px]">${escText(k)}: <b class="num">${v}</b></span>`).join('');
+    byId('siCohorts').innerHTML=(c.rows||[]).map(x=>`<tr class="border-t border-white/5"><td>${escText(x.symbol)}</td><td>${escText(x.timeframe)}</td><td>${escText(x.regime)}</td><td class="num">${x.resolved}/${x.signals}</td><td class="num">${x.win_rate_pct??'—'}</td><td class="num">${x.expectancy_r??'—'}</td><td class="num">${escText(String(x.config_hash).slice(0,10))}</td></tr>`).join('');
+    byId('siSignals').innerHTML=(l.rows||[]).map(x=>`<tr class="border-t border-white/5 cursor-pointer" data-si-id="${x.id}"><td class="num">${new Date(x.ts*1000).toLocaleString()}</td><td>${escText(x.symbol)} · ${escText(x.timeframe)}</td><td class="num">${x.composite??'—'}</td><td>${escText(x.regime||'—')}</td><td class="num">${x.r_multiple??'—'}</td><td class="num">${x.mfe_pct??'—'}</td><td class="num">${x.mae_pct??'—'}</td><td class="num">${x.review_count}</td></tr>`).join('');
+    byId('siSignals').querySelectorAll('[data-si-id]').forEach(row=>row.onclick=()=>loadSignalDetail(row.dataset.siId));
+  }catch(e){byId('siSummary').innerHTML=`<div class="text-red-300 text-[10px]">${String(e.message||e)}</div>`;}
+}
+async function loadSignalDetail(id){
+  const api=NBX.core.api,d=await api.get(NBX.config.pythonApi+'/signal-intelligence/signals/'+id,1),box=byId('siDetail');box.classList.remove('hidden');
+  const s=d.signal||{},can=document.documentElement.dataset.canMutate==='1';
+  box.innerHTML=`<div class="font-bold mb-2">${escText(s.symbol)} · ${escText(s.timeframe)} · #${s.id}</div><pre class="text-[10px] whitespace-pre-wrap max-h-64 overflow-auto">${escText(JSON.stringify({contributions:s.contributions,features:s.features,outcomes:d.outcomes},null,2))}</pre>${can?`<div class="flex gap-2 mt-3"><select id="siReviewTag" class="auth-input !w-auto"><option>good-signal</option><option>bad-data</option><option>late-entry</option><option>false-positive</option><option>execution-issue</option><option>needs-replay</option></select><input id="siReviewNote" class="auth-input" maxlength="1000" placeholder="note"><button id="siReviewSave" class="auth-btn !flex-none">Review</button></div>`:''}`;
+  if(can&&byId('siReviewSave'))byId('siReviewSave').onclick=async()=>{const r=await fetch(NBX.config.pythonApi+'/signal-intelligence/signals/'+id+'/review',{method:'POST',headers:api._authHeaders(),body:JSON.stringify({tag:byId('siReviewTag').value,note:byId('siReviewNote').value})});if(r.ok){await loadSignalDetail(id);await loadSignalIntelligence();}};
+}
+if(byId('siRefresh'))byId('siRefresh').onclick=loadSignalIntelligence;
 
 function renderDynamic(){
   renderPositions(); renderSignals(); renderFaList(); renderNews();

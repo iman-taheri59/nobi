@@ -54,6 +54,7 @@ import operations_api
 import paper_trading
 import reference_feed
 import setup_api
+import signal_intelligence
 from adaptive import AdaptiveError as AdaptiveRefusal
 from backtest import SLIP_BPS, grid_search, run_and_save
 from benchmark import MIN_OBS as BENCH_MIN_OBS
@@ -380,7 +381,7 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(
     title="nobiTrader",
-    version="1.5.1",
+    version="1.6.0",
     lifespan=lifespan,
 )
 
@@ -2025,6 +2026,62 @@ async def diagnostics_run(request: Request, body: dict | None = None):
         return result
     except KeyError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
+
+
+# ---------------- Signal intelligence: quality, funnel, cohorts, reviews ----
+@app.get("/api/signal-intelligence/summary")
+async def signal_intelligence_summary(days: int = Query(30, ge=1, le=3650),
+                                      symbol: str | None = None,
+                                      timeframe: str | None = None,
+                                      horizon: str = Query("H1", pattern="^H[123]$")):
+    return signal_intelligence.summary(days=days, symbol=symbol, timeframe=timeframe,
+                                       horizon=horizon)
+
+
+@app.get("/api/signal-intelligence/funnel")
+async def signal_intelligence_funnel(days: int = Query(30, ge=1, le=3650)):
+    return signal_intelligence.funnel(days=days)
+
+
+@app.get("/api/signal-intelligence/cohorts")
+async def signal_intelligence_cohorts(days: int = Query(30, ge=1, le=3650),
+                                      horizon: str = Query("H1", pattern="^H[123]$")):
+    return {"rows": signal_intelligence.cohorts(days=days, horizon=horizon)}
+
+
+@app.get("/api/signal-intelligence/signals")
+async def signal_intelligence_signals(days: int = Query(30, ge=1, le=3650),
+                                      limit: int = Query(100, ge=1, le=500),
+                                      symbol: str | None = None,
+                                      timeframe: str | None = None,
+                                      horizon: str = Query("H1", pattern="^H[123]$")):
+    return {"rows": signal_intelligence.signals(days=days, limit=limit, symbol=symbol,
+                                                 timeframe=timeframe, horizon=horizon)}
+
+
+@app.get("/api/signal-intelligence/signals/{signal_id}")
+async def signal_intelligence_detail(signal_id: int):
+    result = signal_intelligence.detail(signal_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="signal not found")
+    return result
+
+
+@app.post("/api/signal-intelligence/signals/{signal_id}/review")
+async def signal_intelligence_review(signal_id: int, payload: dict, request: Request):
+    user = install_api.require_operator_mutation(request)
+    try:
+        result = signal_intelligence.review(
+            signal_id, user_id=user.id, username=user.username,
+            tag=str(payload.get("tag") or ""), note=str(payload.get("note") or ""),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    audit("signal.review", actor=user.username,
+          detail={"signal_id": signal_id, "tag": result["tag"]}, request=request)
+    return {"ok": True, "review": result}
 
 
 # ---------------- Dev suite: "is this checkout correct?" -------------------

@@ -2,6 +2,17 @@
 
 [English](CHANGELOG.en.md) · **فارسی**
 
+## 1.6.0
+
+> Signal Intelligence v1 با metrics واقعی، funnel، cohort، detail و review.
+
+- تب جدید برای همه نقش‌ها summary، win rate، expectancy/Average R، return و MFE/MAE را نشان می‌دهد.
+- قیف judged/data-ready/gate-passed/generated/resolved و علت‌های واقعی gate اضافه شد.
+- cohort بر اساس symbol/timeframe/regime/config hash و فیلتر روز/horizon/symbol/TF اضافه شد.
+- detail شامل feature snapshot، contributionها و outcomeهای H1/H2/H3 است.
+- review/tag فقط operator/owner+CSRF با allowlist و audit مرکزی است؛ viewer فقط می‌خواند.
+- sample sufficiency کمتر از ۳۰ صریح است و هیچ metric یا conversion ساختگی تولید نمی‌شود.
+
 ## 1.5.1
 
 > داشبورد «حساب من» برای viewer/operator/owner.

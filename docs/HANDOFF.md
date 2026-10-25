@@ -31,6 +31,7 @@
 - [x] ماتریس کامل دسترسی: settings/cache فقط-owner؛ audit/notify/live-private فقط operator/owner؛ token بدون نقش انسانی.
 - [x] capability مستقل `live_place` برای operator منتخب با limit-only، سقف مالی/تعداد/نماد و بودجه اتمیک.
 - [x] تب «حساب من» برای همه نقش‌ها: capability/policy/usage، session، activity، password و preferences.
+- [x] Signal Intelligence v1: metrics، funnel، cohort، MFE/MAE، detail و review operator/owner.
 - [ ] soak واقعی و contract test خصوصی؛ نیازمند محیط ایران و کلید READ/TRADE محدود به IP.
 - [ ] بازبینی امنیتی مستقل پیش از سرمایه واقعی.
 
@@ -55,8 +56,8 @@
 
 ```text
 ruff: passed
-mypy: success, 113 source files
-pytest: 961 passed, 1 dependency deprecation warning
+mypy: success, 115 source files
+pytest: 963 passed, 1 dependency deprecation warning
 ESLint/dashboard lint: passed
 broker/preflight parity: passed
 mobile artifact: rebuilt for 1.2.3

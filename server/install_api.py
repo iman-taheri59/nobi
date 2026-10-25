@@ -54,6 +54,15 @@ def require_operator(request: Request) -> auth.User:
     return session.user
 
 
+def require_operator_mutation(request: Request) -> auth.User:
+    user = require_operator(request)
+    session = identity.session_of(request)
+    assert session is not None
+    if not identity.csrf_ok(request, session):
+        raise HTTPException(status_code=403, detail="CSRF token required")
+    return user
+
+
 def read_managed() -> dict[str, str]:
     if not MANAGED_ENV.exists():
         return {}
@@ -143,4 +152,4 @@ def save_settings(payload: dict, request: Request):
             "saved_by": user.username}
 
 
-__all__ = ["ALLOWED", "MANAGED_ENV", "read_managed", "require_operator", "require_owner", "require_owner_mutation", "router", "validate", "write_managed"]
+__all__ = ["ALLOWED", "MANAGED_ENV", "read_managed", "require_operator", "require_operator_mutation", "require_owner", "require_owner_mutation", "router", "validate", "write_managed"]

@@ -78,3 +78,4 @@
 | 0041 | **ماتریس دسترسی سامانه** | پذیرفته — ۱٫۴٫۴ | viewer/operator/owner/token برای settings، audit و live private |
 | 0042 | **ثبت واقعی محدود اپراتور** | پذیرفته — ۱٫۵٫۰ | capability مستقل، سقف مالی/تعداد/نماد و رزرو اتمیک |
 | 0043 | **داشبورد حساب کاربری** | پذیرفته — ۱٫۵٫۱ | profile/capability/policy، session، activity، password و preferences |
+| 0044 | **هوشمندی سیگنال v1** | پذیرفته — ۱٫۶٫۰ | summary/funnel/cohort/MFE-MAE/detail و review نقش‌محور |

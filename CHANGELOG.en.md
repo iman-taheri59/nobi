@@ -2,6 +2,17 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 1.6.0
+
+> Signal Intelligence v1 with real metrics, funnel, cohorts, detail and review.
+
+- A new all-role tab reports summary, win rate, expectancy/average R, return and MFE/MAE.
+- Judged/data-ready/gate-passed/generated/resolved funnel and real gate reasons were added.
+- Cohorts group by symbol/timeframe/regime/config hash with day/horizon/symbol/TF filters.
+- Detail exposes feature snapshots, contributions and H1/H2/H3 outcomes.
+- Review/tag requires operator/owner+CSRF, fixed tags and central audit; viewers read only.
+- Sample sufficiency below 30 is explicit and no synthetic metric/conversion is generated.
+
 ## 1.5.1
 
 > My Account dashboard for viewer/operator/owner.
