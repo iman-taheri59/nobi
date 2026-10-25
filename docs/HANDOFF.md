@@ -2,8 +2,8 @@
 
 [English](HANDOFF.en.md) · **فارسی**
 
-**آخرین به‌روزرسانی:** ۲۰۲۶-۱۰-۲۵ — مرحله ۹ (B5 evidence کامل)
-**نسخه کاری:** ۱٫۲٫۶
+**آخرین به‌روزرسانی:** ۲۰۲۶-۱۰-۲۵ — مرحله ۱۰ (B6 عملیات soak کامل)
+**نسخه کاری:** ۱٫۲٫۷
 **هدف:** ADR-0027؛ ابتدا محصول پایدار، سپس اجرای واقعی مرحله‌ای و fail-closed.
 
 ## وضعیت
@@ -15,6 +15,8 @@
 - [x] B3-route: روت‌های خصوصی status/list/cancel/reconcile؛ place عمداً وجود ندارد.
 - [x] B4: dry-run place با preflight اجباری و audit actor؛ بدون ارسال شبکه.
 - [x] B5: دروازه شاهد ۳۰ نمونه/۵ روز/صفر ambiguity؛ `applied:false`.
+- [x] B6: backup هر سه DB، سازگاری قالب قدیمی و snapshot روزانهٔ بدون secret.
+- [ ] اجرای soak واقعی پنج‌روزه در محیط متصل به نوبیتکس.
 - [ ] soak واقعی و contract test خصوصی؛ نیازمند محیط ایران و کلید READ/TRADE محدود به IP.
 - [ ] بازبینی امنیتی مستقل پیش از سرمایه واقعی.
 
@@ -39,8 +41,8 @@
 
 ```text
 ruff: passed
-mypy: success, 99 source files
-pytest: 920 passed, 1 dependency deprecation warning
+mypy: success, 100 source files
+pytest: 923 passed, 1 dependency deprecation warning
 ESLint/dashboard lint: passed
 broker/preflight parity: passed
 mobile artifact: rebuilt for 1.2.3

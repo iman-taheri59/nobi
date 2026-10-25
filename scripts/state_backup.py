@@ -20,7 +20,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_JOURNAL = Path(os.getenv("NBX_JOURNAL_DB") or ROOT / "server" / "journal.db")
 DEFAULT_AUTH = Path(os.getenv("NBX_AUTH_DB") or ROOT / "server" / "auth.db")
-FORMAT_VERSION = 1
+DEFAULT_LIVE = Path(os.getenv("NBX_LIVE_DB") or ROOT / "server" / "live_execution.db")
+FORMAT_VERSION = 2
 
 
 def _sha256(path: Path) -> str:
@@ -49,7 +50,10 @@ def _snapshot(source: Path, destination: Path) -> None:
             raise RuntimeError(f"snapshot integrity check failed for {source}")
 
 
-def create_backup(output: Path, journal: Path = DEFAULT_JOURNAL, auth: Path = DEFAULT_AUTH) -> Path:
+def create_backup(
+    output: Path, journal: Path = DEFAULT_JOURNAL, auth: Path = DEFAULT_AUTH,
+    live: Path = DEFAULT_LIVE,
+) -> Path:
     output = output.resolve()
     if output.suffix.lower() != ".zip":
         output.mkdir(parents=True, exist_ok=True)
@@ -58,7 +62,7 @@ def create_backup(output: Path, journal: Path = DEFAULT_JOURNAL, auth: Path = DE
     output.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="nobi-backup-") as raw_tmp:
         tmp = Path(raw_tmp)
-        files = {"journal.db": journal, "auth.db": auth}
+        files = {"journal.db": journal, "auth.db": auth, "live_execution.db": live}
         manifest_files: dict[str, dict[str, object]] = {}
         for name, source in files.items():
             snap = tmp / name
@@ -76,7 +80,7 @@ def create_backup(output: Path, journal: Path = DEFAULT_JOURNAL, auth: Path = DE
         )
         partial = output.with_suffix(output.suffix + ".partial")
         with zipfile.ZipFile(partial, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-            for name in ("manifest.json", "journal.db", "auth.db"):
+            for name in ("manifest.json", *files):
                 archive.write(tmp / name, name)
         os.replace(partial, output)
     return output
@@ -97,6 +101,7 @@ def restore_backup(
     archive_path: Path,
     journal: Path = DEFAULT_JOURNAL,
     auth: Path = DEFAULT_AUTH,
+    live: Path = DEFAULT_LIVE,
     *,
     force: bool = False,
 ) -> None:
@@ -107,10 +112,14 @@ def restore_backup(
         with zipfile.ZipFile(archive_path, "r") as archive:
             manifest_path = _safe_member(archive, "manifest.json", tmp)
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-            if manifest.get("format") != FORMAT_VERSION or manifest.get("product") != "nobitrader":
+            archive_format = manifest.get("format")
+            if archive_format not in (1, FORMAT_VERSION) or manifest.get("product") != "nobitrader":
                 raise ValueError("unsupported backup format")
+            names = ["journal.db", "auth.db"]
+            if archive_format == FORMAT_VERSION:
+                names.append("live_execution.db")
             extracted: dict[str, Path] = {}
-            for name in ("journal.db", "auth.db"):
+            for name in names:
                 path = _safe_member(archive, name, tmp)
                 expected = manifest.get("files", {}).get(name, {}).get("sha256")
                 if not expected or not secrets_compare(_sha256(path), str(expected)):
@@ -120,8 +129,9 @@ def restore_backup(
                     if not result or result[0] != "ok":
                         raise ValueError(f"database integrity check failed for {name}")
                 extracted[name] = path
-        for name, destination in (("journal.db", journal), ("auth.db", auth)):
-            destination = destination.resolve()
+        destinations = {"journal.db": journal, "auth.db": auth, "live_execution.db": live}
+        for name in extracted:
+            destination = destinations[name].resolve()
             destination.parent.mkdir(parents=True, exist_ok=True)
             partial = destination.with_suffix(destination.suffix + ".restore")
             shutil.copy2(extracted[name], partial)
@@ -142,16 +152,18 @@ def main() -> int:
     backup.add_argument("--output", type=Path, default=Path("backups"))
     backup.add_argument("--journal", type=Path, default=DEFAULT_JOURNAL)
     backup.add_argument("--auth", type=Path, default=DEFAULT_AUTH)
+    backup.add_argument("--live", type=Path, default=DEFAULT_LIVE)
     restore = sub.add_parser("restore")
     restore.add_argument("archive", type=Path)
     restore.add_argument("--journal", type=Path, default=DEFAULT_JOURNAL)
     restore.add_argument("--auth", type=Path, default=DEFAULT_AUTH)
+    restore.add_argument("--live", type=Path, default=DEFAULT_LIVE)
     restore.add_argument("--force", action="store_true")
     args = parser.parse_args()
     if args.command == "backup":
-        print(create_backup(args.output, args.journal, args.auth))
+        print(create_backup(args.output, args.journal, args.auth, args.live))
     else:
-        restore_backup(args.archive, args.journal, args.auth, force=args.force)
+        restore_backup(args.archive, args.journal, args.auth, args.live, force=args.force)
         print("restore complete; restart nobitrader before accepting traffic")
     return 0
 

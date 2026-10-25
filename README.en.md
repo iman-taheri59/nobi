@@ -2,7 +2,7 @@
 
 [فارسی](README.md) · **English**
 
-Current version: **1.2.6** · release tag: **v1.2.6**
+Current version: **1.2.7** · release tag: **v1.2.7**
 
 See [versioning and GitHub releases](docs/releases.en.md) for the rules on bumping
 the version, tagging and shipping the mobile file, and the
@@ -207,6 +207,9 @@ Create a consistent backup of live databases (excluding `.env` and API keys):
 ```bash
 python scripts/state_backup.py backup --output backups/
 python scripts/state_backup.py restore backups/nobitrader-state-....zip --force
+
+# daily soak snapshot; NBX_API_TOKEN is read from the environment only
+python scripts/live_evidence_snapshot.py --csv data/live-evidence.csv
 ```
 
 Fetch paginated history with checkpointing, deduplication and gap reporting:

@@ -2,6 +2,16 @@
 
 [English](CHANGELOG.en.md) · **فارسی**
 
+## 1.2.7
+
+> بستهٔ عملیاتی soak: پشتیبان کامل execution ledger و snapshot روزانهٔ بدون secret.
+
+- ADR-0034 قالب backup نسخه ۲ و CSV evidence را تعریف می‌کند.
+- `state_backup.py` اکنون journal، auth و live execution را snapshot/restore می‌کند؛ archive نسخه ۱ سازگار می‌ماند و live مقصد را دست نمی‌زند.
+- checksum و integrity هر سه DB پیش از جایگزینی بررسی می‌شود.
+- `live_evidence_snapshot.py` فقط health/status/evidence را GET و یک ردیف تجمیعی CSV ثبت می‌کند؛ token فقط از environment خوانده می‌شود.
+- چهار آزمون تازه round-trip سه DB، سازگاری legacy، CSV بدون secret و عدم نوشتن در شکست را پوشش می‌دهند.
+
 ## 1.2.6
 
 > B5: شاهد dry-run برای ارتقای live، بدون فعال‌سازی خودکار.

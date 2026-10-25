@@ -2,6 +2,16 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 1.2.7
+
+> Soak operations pack: complete execution-ledger backup and secret-free daily snapshots.
+
+- ADR-0034 defines backup format 2 and evidence CSV.
+- `state_backup.py` now snapshots/restores journal, auth and live execution; legacy format 1 remains compatible and leaves the live destination untouched.
+- Checksums and integrity for all three databases are verified before replacement.
+- `live_evidence_snapshot.py` GETs health/status/evidence only and appends an aggregate CSV row; token comes only from the environment.
+- Four new tests cover three-DB round-trip, legacy compatibility, secret-free CSV and no write on failure.
+
 ## 1.2.6
 
 > B5: dry-run evidence for live promotion, with no automatic activation.

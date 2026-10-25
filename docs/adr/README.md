@@ -68,3 +68,4 @@
 | 0032 | **ثبت آزمایشی با preflight** | پذیرفته — پیاده‌شده در ۱٫۲٫۵ | `/api/live/dry-run` + `risk_whatif`؛ بدون live place |
 
 | 0033 | **دروازه ارتقای live از شواهد dry-run** | پذیرفته — پیاده‌شده در ۱٫۲٫۶، applied=false | `promotion_evidence()` و `/api/live/evidence` |
+| 0034 | **بسته عملیاتی soak** | پذیرفته — پیاده‌شده در ۱٫۲٫۷ | backup سه DB و `live_evidence_snapshot.py` |

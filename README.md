@@ -2,7 +2,7 @@
 
 **فارسی** · [English](README.en.md)
 
-نسخهٔ جاری: **1.2.6** · تگ انتشار: **v1.2.6**
+نسخهٔ جاری: **1.2.7** · تگ انتشار: **v1.2.7**
 
 راهنمای [نسخه‌بندی و GitHub Release](docs/releases.md) شامل قواعد افزایش نسخه، تگ و انتشار فایل موبایل است. [تاریخچهٔ تغییرات](CHANGELOG.md) را نیز ببینید ([English](CHANGELOG.en.md)).
 
@@ -202,6 +202,9 @@ docs/                   ADR، تحلیل، ops، بازبینی‌ها
 ```bash
 python scripts/state_backup.py backup --output backups/
 python scripts/state_backup.py restore backups/nobitrader-state-....zip --force
+
+# snapshot روزانهٔ soak؛ NBX_API_TOKEN فقط از environment خوانده می‌شود
+python scripts/live_evidence_snapshot.py --csv data/live-evidence.csv
 ```
 
 دریافت تاریخچهٔ صفحه‌بندی‌شده با checkpoint، حذف تکرار و گزارش شکاف:
