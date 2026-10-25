@@ -75,3 +75,4 @@
 | 0038 | **ثبت سفارش واقعی مالک** | پذیرفته — کد ۱٫۴٫۰؛ فعال‌سازی منتظر soak | owner+CSRF، promotion gate، preflight و idempotency |
 | 0039 | **تب مدیریت کاربران** | پذیرفته — ۱٫۴٫۱ | مدیریت حساب/نشست/دعوت و activity فقط-owner |
 | 0040 | **خطایابی سیستم فقط مالک** | پذیرفته — ۱٫۴٫۲؛ audit/UX در ۱٫۴٫۳ | error log، diagnostics و devsuite با owner+CSRF |
+| 0041 | **ماتریس دسترسی سامانه** | پذیرفته — ۱٫۴٫۴ | viewer/operator/owner/token برای settings، audit و live private |

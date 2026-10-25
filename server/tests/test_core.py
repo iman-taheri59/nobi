@@ -750,15 +750,23 @@ def test_max_risk_pct_caps_a_misconfigured_sizing():
 # --------------------------------------------------------------------------- #
 # Audit / export / notifier honesty (ADR-0011 §5, ADR-0012 §2.6)
 # --------------------------------------------------------------------------- #
-def test_audit_endpoint_records_control_actions():
+def test_audit_endpoint_records_control_actions(monkeypatch, tmp_path):
+    import auth
+
+    monkeypatch.setattr(auth, "AUTH_DB", tmp_path / "auth.db")
+    auth.reset_caches()
+    auth.create_user("audit-operator", "A-strong-operator-password!", role="operator")
     c = _client()
-    c.post("/api/paper/halt")
+    login = c.post("/api/auth/login", json={
+        "username": "audit-operator", "password": "A-strong-operator-password!"})
+    csrf = login.cookies.get("nbx_csrf") or c.cookies.get("nbx_csrf") or ""
+    c.post("/api/paper/halt", headers={"X-CSRF-Token": csrf})
     try:
         body = c.get("/api/audit?limit=10").json()
     finally:
         # This test needs a real control action, so it halts. Leaving it armed
         # poisoned every later test in the session.
-        c.post("/api/paper/resume")
+        c.post("/api/paper/resume", headers={"X-CSRF-Token": csrf})
     assert body["counts"].get("paper.halt") == 1
     event = body["events"][0]
     assert event["action"] == "paper.halt"
@@ -767,9 +775,17 @@ def test_audit_endpoint_records_control_actions():
     assert event["client"] == "testclient"
 
 
-def test_notify_status_reports_disabled_not_sent():
-    """The dashboard is allowed to say 'not configured', never to imply delivery."""
-    body = _client().get("/api/notify/status").json()
+def test_notify_status_reports_disabled_not_sent(monkeypatch, tmp_path):
+    """Operators can see honest delivery state without seeing credentials."""
+    import auth
+
+    monkeypatch.setattr(auth, "AUTH_DB", tmp_path / "auth.db")
+    auth.reset_caches()
+    auth.create_user("notify-operator", "A-strong-operator-password!", role="operator")
+    client = _client()
+    client.post("/api/auth/login", json={
+        "username": "notify-operator", "password": "A-strong-operator-password!"})
+    body = client.get("/api/notify/status").json()
     assert body["configured"] is False
     assert body["transport"] == "disabled"
     assert body["sent"] == 0
@@ -1316,8 +1332,16 @@ def test_unhandled_exception_is_logged_and_returns_the_log_id():
                                   if getattr(rt, "path", "") != "/api/__boom__"]
 
 
-def test_settings_endpoint_is_read_only():
-    body = _client().get("/api/settings").json()
+def test_settings_endpoint_is_read_only(monkeypatch, tmp_path):
+    import auth
+
+    monkeypatch.setattr(auth, "AUTH_DB", tmp_path / "auth.db")
+    auth.reset_caches()
+    auth.create_user("settings-owner", "A-strong-owner-password!", role="owner")
+    client = _client()
+    client.post("/api/auth/login", json={
+        "username": "settings-owner", "password": "A-strong-owner-password!"})
+    body = client.get("/api/settings").json()
     assert body["read_only"] is True
     assert body["weights"]["ta_components"]["source"].startswith("ta_engine.")
     assert isinstance(body["flags"], list) and body["flags"]
@@ -1329,7 +1353,7 @@ def test_settings_endpoint_is_read_only():
 
     # The invariant is "no endpoint here writes configuration", not "only GET
     # exists". The single POST is the Telegram probe: it cannot mutate anything,
-    # it is guarded by `require_client`, and it never sends a message.
+    # it is guarded by owner+CSRF, and it never sends a message.
     writes = {(p, m) for (p, m) in routes
               if p.startswith("/api/settings") and m in {"PUT", "PATCH", "DELETE"}}
     assert not writes, f"settings must expose no write verb, found {writes}"

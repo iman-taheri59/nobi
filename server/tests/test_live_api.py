@@ -32,7 +32,7 @@ def test_openapi_exposes_promotion_gated_live_place(monkeypatch, tmp_path):
 
 
 def test_status_is_secret_free_and_placement_is_not_exposed(monkeypatch, tmp_path):
-    monkeypatch.setattr(auth, "AUTH_DB", tmp_path / "auth.db")
+    client, _csrf = _owner_client(monkeypatch, tmp_path)
     monkeypatch.setattr(
         live_api, "CLIENT",
         LiveExecutionClient(
@@ -41,7 +41,7 @@ def test_status_is_secret_free_and_placement_is_not_exposed(monkeypatch, tmp_pat
         ),
     )
     monkeypatch.setattr(live_api, "CONFIG_PROBLEM", None)
-    with TestClient(main.app) as client:
+    with client:
         response = client.get("/api/live/status")
     assert response.status_code == 200
     body = response.json()
@@ -102,7 +102,7 @@ def test_blocked_preflight_creates_no_intent(monkeypatch, tmp_path):
 
 
 def test_disabled_control_fails_before_exchange_network(monkeypatch, tmp_path):
-    monkeypatch.setattr(auth, "AUTH_DB", tmp_path / "auth.db")
+    client, _csrf = _owner_client(monkeypatch, tmp_path)
     monkeypatch.setattr(
         live_api, "CLIENT",
         LiveExecutionClient(
@@ -110,7 +110,7 @@ def test_disabled_control_fails_before_exchange_network(monkeypatch, tmp_path):
             ledger=ExecutionLedger(tmp_path / "live.db"),
         ),
     )
-    with TestClient(main.app) as client:
+    with client:
         response = client.get("/api/live/orders?status=open")
     assert response.status_code == 409
     assert "confirmed live mode" in response.json()["detail"]

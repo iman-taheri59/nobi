@@ -2,8 +2,8 @@
 
 [فارسی](HANDOFF.md) · **English**
 
-**Last updated:** 2026-10-25 — stage 18 (troubleshooting audit and UX hardening)
-**Working version:** 1.4.3
+**Last updated:** 2026-10-25 — stage 19 (full access-matrix review)
+**Working version:** 1.4.4
 **Target:** ADR-0027; stable product first, then staged fail-closed live execution.
 
 ## Status
@@ -28,6 +28,7 @@
 - [x] Dedicated owner-only users tab for roles/state/sessions/invites and activity.
 - [x] Owner-only troubleshooting tab, error logs, diagnostics and devsuite; mutations require CSRF.
 - [x] Secret-free summary audit for self-test, diagnostics and devsuite; explicit owner-only chip.
+- [x] Full matrix: owner-only settings/cache; operator/owner audit/notify/private-live reads; no human role for machine tokens.
 - [ ] Real soak/private contract test; requires an Iran-reachable host and IP-limited READ/TRADE key.
 - [ ] Independent security review before real funds.
 
@@ -52,8 +53,8 @@
 
 ```text
 ruff: passed
-mypy: success, 108 source files
-pytest: 944 passed, 1 dependency deprecation warning
+mypy: success, 110 source files
+pytest: 951 passed, 1 dependency deprecation warning
 ESLint/dashboard lint: passed
 broker/preflight parity: passed
 mobile artifact: rebuilt for 1.2.3

@@ -2,6 +2,17 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 1.4.4
+
+> Full role review and explicit viewer/operator/owner/token matrix.
+
+- Settings, cache internals and Telegram probe are owner-only; mutation requires CSRF.
+- Operational audit, notification status and private live reads require operator/owner.
+- `require_operator` models operational GETs without misusing a mutation dependency.
+- Settings nav is owner-only and the audit panel operator/owner; backend enforces independently.
+- Viewers retain market/paper/report reads; paper/backtest/journal operations remain operator-capable.
+- Role-matrix and no-human-role-for-machine-token tests were added.
+
 ## 1.4.3
 
 > Traceability and UX hardening after making troubleshooting owner-only.

@@ -1359,6 +1359,9 @@
       chip.classList.remove('hidden');
       chip.classList.add('inline-flex');
       chip.title = state.user.username + ' — ' + roleLabel(state.user.role);
+      document.documentElement.dataset.canMutate = state.can_mutate ? '1' : '0';
+      const auditPanel = $('operatorAuditPanel');
+      if (auditPanel) auditPanel.classList.toggle('hidden', !state.can_mutate);
       if (out) {
         out.classList.remove('hidden');
         out.title = inFa('auth.logout');
@@ -1486,9 +1489,10 @@
     const who = $('setAccessWho');
     if (!box || !body) return;
     const st = await AUTH.me();
-    const usersNav = $('usersNav'), errorsNav = $('errorsNav');
+    const usersNav = $('usersNav'), errorsNav = $('errorsNav'), settingsNav = $('settingsNav');
     if (usersNav) usersNav.classList.toggle('hidden', !(st && st.is_owner));
     if (errorsNav) errorsNav.classList.toggle('hidden', !(st && st.is_owner));
+    if (settingsNav) settingsNav.classList.toggle('hidden', !(st && st.is_owner));
     if (!st || !st.user || !st.is_owner) { box.hidden = true; return; }
     box.hidden = false;
     if (who) who.textContent = st.user.username + ' · ' + roleLabel(st.user.role);

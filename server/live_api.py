@@ -125,7 +125,7 @@ async def _checked_intent(body: dict[str, Any], request: Request) -> tuple[Order
     return intent, symbol, projection
 
 
-@router.get("/status", dependencies=[Depends(require_client)])
+@router.get("/status", dependencies=[Depends(install_api.require_operator)])
 def status():
     return {
         "ok": True,
@@ -176,12 +176,12 @@ async def place(payload: dict, request: Request):
     return {"ok": True, "execution": _public_record(record), "preflight": projection}
 
 
-@router.get("/evidence", dependencies=[Depends(require_client)])
+@router.get("/evidence", dependencies=[Depends(install_api.require_operator)])
 def evidence():
     return {"ok": True, **CLIENT.ledger.promotion_evidence()}
 
 
-@router.get("/orders", dependencies=[Depends(require_client)])
+@router.get("/orders", dependencies=[Depends(install_api.require_operator)])
 def orders(status: str = Query("open", pattern="^(all|open|done)$")):
     return _call(lambda: CLIENT.list_orders(status=status))
 

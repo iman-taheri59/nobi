@@ -295,7 +295,7 @@
       </button>
     </div>
     <span class="hidden 2xl:inline-flex chip shrink-0"><span class="dot bg-emerald-400"></span> <span data-i18n="hdr.kill"></span></span>
-    <span id="buildChip" class="hidden lg:inline-flex chip num text-violet-300 border-violet-400/30 shrink-0" title="نسخه واقعی از /api/health">v1.4.3 · core</span>
+    <span id="buildChip" class="hidden lg:inline-flex chip num text-violet-300 border-violet-400/30 shrink-0" title="نسخه واقعی از /api/health">v1.4.4 · core</span>
     <div class="ms-auto flex items-center gap-1.5 shrink-0">
       <span class="hidden xl:inline-flex chip num" id="clock">--:--:--</span>
       <span id="apiChip" class="hidden 2xl:inline-flex chip num text-zinc-400 border-white/10" title=""><i data-lucide="wifi-off" class="w-3.5 h-3.5"></i> <span>API: —</span></span>
@@ -348,7 +348,7 @@
       <button class="navbtn w-full flex items-center gap-3 px-3.5 py-2.5 text-sm text-zinc-300" data-tab="backtest"><i data-lucide="flask-conical" class="w-4.5 h-4.5 shrink-0"></i> <span data-i18n="page.backtest.title"></span></button>
       <button id="errorsNav" class="navbtn hidden w-full flex items-center gap-3 px-3.5 py-2.5 text-sm text-zinc-300" data-tab="errors"><i data-lucide="bug" class="w-4.5 h-4.5 shrink-0"></i> <span data-i18n="page.errors.title"></span> <span id="errBadge" class="ms-auto chip num bg-red-400/15 text-red-300 border-red-300/30 hidden">0</span></button>
       <button id="usersNav" class="navbtn hidden w-full flex items-center gap-3 px-3.5 py-2.5 text-sm text-zinc-300" data-tab="users"><i data-lucide="users-round" class="w-4.5 h-4.5 shrink-0"></i> <span data-i18n="page.users.title"></span></button>
-      <button class="navbtn w-full flex items-center gap-3 px-3.5 py-2.5 text-sm text-zinc-300" data-tab="settings"><i data-lucide="settings-2" class="w-4.5 h-4.5 shrink-0"></i> <span data-i18n="page.settings.title"></span></button>
+      <button id="settingsNav" class="navbtn hidden w-full flex items-center gap-3 px-3.5 py-2.5 text-sm text-zinc-300" data-tab="settings"><i data-lucide="settings-2" class="w-4.5 h-4.5 shrink-0"></i> <span data-i18n="page.settings.title"></span></button>
     </nav>
   </aside>
   <div id="sideOverlay" class="fixed inset-0 bg-black/60 z-40 hidden lg:hidden"></div>
@@ -897,8 +897,8 @@
           </div>
         </div>
       </div>
-      <!-- Audit trail: control actions, server-side (ADR-0011 §5) -->
-      <div class="glass p-4 sm:p-5">
+      <!-- Audit trail: operator/owner control actions, server-side -->
+      <div id="operatorAuditPanel" class="glass p-4 sm:p-5 hidden">
         <div class="flex flex-wrap items-center gap-2 mb-3">
           <span class="w-1 h-5 rounded-full bg-gradient-to-b from-slate-300 to-slate-400/30 shrink-0"></span>
           <span class="font-bold text-[12px] sm:text-[13px]" data-i18n="au.title"></span>
@@ -969,6 +969,7 @@
           <p class="text-[11px] sm:text-xs text-zinc-500" data-i18n="page.settings.desc"></p>
         </div>
         <div class="ms-auto flex flex-wrap items-center justify-end gap-2">
+          <span class="chip text-[9px] text-violet-200 border-violet-300/30" data-i18n="install.ownerOnly"></span>
           <span id="setHash" class="chip num text-[10px] text-zinc-400"></span>
           <button id="setRefresh" type="button" class="text-[10px] sm:text-[11px] font-bold px-2.5 py-1.5 rounded-lg bg-white/5 text-zinc-300 border border-white/10" data-i18n="set.refresh"></button>
         </div>
@@ -5043,6 +5044,7 @@ function renderAuditServer(){
 }
 
 async function loadAudit(){
+  if (document.documentElement.dataset.canMutate !== '1') return;
   const api = window.NBX && NBX.core && NBX.core.api;
   if (!api || typeof api.getAudit !== 'function') return;
   try {

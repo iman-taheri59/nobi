@@ -2,6 +2,17 @@
 
 [English](CHANGELOG.en.md) · **فارسی**
 
+## 1.4.4
+
+> بازبینی کامل نقش‌ها و اعمال ماتریس viewer/operator/owner/token.
+
+- Settings، cache internals و Telegram probe فقط-owner شدند؛ mutation با CSRF.
+- audit عملیاتی، notify status و readهای private live فقط operator/owner شدند.
+- `require_operator` خواندن عملیاتی را بدون سوءاستفاده از dependency mutation مدل می‌کند.
+- Settings nav فقط برای owner و audit panel فقط برای operator/owner نمایش داده می‌شوند؛ backend مستقل enforce می‌کند.
+- viewer دسترسی خواندن بازار، paper state و گزارش‌ها را حفظ کرد؛ عملیات paper/backtest/journal برای operator باقی ماند.
+- آزمون‌های ماتریس نقش و منع ارث‌بری نقش انسانی توسط machine token اضافه شد.
+
 ## 1.4.3
 
 > تکمیل امنیت و قابلیت پیگیری تب خطایابی پس از owner-only شدن.

@@ -380,7 +380,7 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(
     title="nobiTrader",
-    version="1.4.3",
+    version="1.4.4",
     lifespan=lifespan,
 )
 
@@ -879,7 +879,7 @@ def _upstream_snapshot() -> dict:
     }
 
 
-@app.get("/api/cache/stats")
+@app.get("/api/cache/stats", dependencies=[Depends(install_api.require_owner)])
 async def cache_stats():
     from candle_cache import CANDLE_CACHE
     return CANDLE_CACHE.stats() | {"ok": True, "security": {"auth_mode": auth_mode()}}
@@ -2059,7 +2059,7 @@ async def devsuite_get(run_id: str):
     return run.as_dict()
 
 
-@app.get("/api/settings")
+@app.get("/api/settings", dependencies=[Depends(install_api.require_owner)])
 async def settings_snapshot():
     """Read-only view of what the engine is actually configured to do.
 
@@ -2073,7 +2073,7 @@ async def settings_snapshot():
     return {**settings_view.snapshot(upstream=_upstream_snapshot()), **provenance()}
 
 
-@app.post("/api/settings/telegram/test", dependencies=[Depends(require_client)])
+@app.post("/api/settings/telegram/test", dependencies=[Depends(install_api.require_owner_mutation)])
 async def settings_telegram_test():
     """Ask Telegram whether the configured bot token is real.
 
@@ -2119,7 +2119,7 @@ async def settings_telegram_test():
                 "sent_message": False, "error": type(exc).__name__}
 
 
-@app.get("/api/audit")
+@app.get("/api/audit", dependencies=[Depends(install_api.require_operator)])
 async def audit_events(limit: int = Query(50, ge=1, le=500),
                        action: str | None = None,
                        days: int = Query(0, ge=0, le=3650)):
@@ -2134,7 +2134,7 @@ async def audit_events(limit: int = Query(50, ge=1, le=500),
     return {"events": events, "counts": counts, "n": len(events)}
 
 
-@app.get("/api/notify/status")
+@app.get("/api/notify/status", dependencies=[Depends(install_api.require_operator)])
 async def notify_status():
     """Whether Telegram can actually receive anything right now."""
     return notify.status()

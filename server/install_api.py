@@ -45,6 +45,15 @@ def require_owner_mutation(request: Request) -> auth.User:
     return require_owner(request, csrf=True)
 
 
+def require_operator(request: Request) -> auth.User:
+    session = identity.session_of(request)
+    if session is None:
+        raise HTTPException(status_code=401, detail="operator session required")
+    if not session.user.can_mutate:
+        raise HTTPException(status_code=403, detail="operator or owner role required")
+    return session.user
+
+
 def read_managed() -> dict[str, str]:
     if not MANAGED_ENV.exists():
         return {}
@@ -134,4 +143,4 @@ def save_settings(payload: dict, request: Request):
             "saved_by": user.username}
 
 
-__all__ = ["ALLOWED", "MANAGED_ENV", "read_managed", "require_owner", "require_owner_mutation", "router", "validate", "write_managed"]
+__all__ = ["ALLOWED", "MANAGED_ENV", "read_managed", "require_operator", "require_owner", "require_owner_mutation", "router", "validate", "write_managed"]
