@@ -2,6 +2,13 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 1.6.2
+
+> Complete the cross-platform CI repair with authenticated browser fixtures and fully closed SQLite test handles.
+
+- Browser CI creates and signs in a short-lived fixture owner instead of inspecting an uninitialized dashboard behind the setup dialog.
+- Every SQLite connection in backup tests and the empty-snapshot path is explicitly closed, allowing Windows replace/unlink semantics to pass.
+
 ## 1.6.1
 
 > CI portability follow-up for the 1.6.0 release.

@@ -38,7 +38,7 @@ def _snapshot(source: Path, destination: Path) -> None:
     if not source.exists():
         # A valid empty SQLite database is more useful than silently omitting a
         # state domain: restore then has a complete, explicit set.
-        with sqlite3.connect(destination):
+        with contextlib.closing(sqlite3.connect(destination)):
             pass
         return
     # sqlite3.Connection's context manager commits/rolls back but does not

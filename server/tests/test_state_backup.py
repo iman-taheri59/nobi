@@ -1,6 +1,7 @@
 """Backup/restore is part of the release contract, not an operator guess."""
 from __future__ import annotations
 
+import contextlib
 import json
 import sqlite3
 import sys
@@ -14,13 +15,14 @@ import state_backup as sb  # noqa: E402
 
 
 def _database(path: Path, value: str) -> None:
-    with sqlite3.connect(path) as conn:
+    with contextlib.closing(sqlite3.connect(path)) as conn:
         conn.execute("CREATE TABLE sample (value TEXT NOT NULL)")
         conn.execute("INSERT INTO sample VALUES (?)", (value,))
+        conn.commit()
 
 
 def _value(path: Path) -> str:
-    with sqlite3.connect(path) as conn:
+    with contextlib.closing(sqlite3.connect(path)) as conn:
         return str(conn.execute("SELECT value FROM sample").fetchone()[0])
 
 
@@ -108,8 +110,9 @@ def test_legacy_format_one_leaves_live_database_untouched(tmp_path):
         target.writestr("manifest.json", json.dumps(manifest))
         target.writestr("journal.db", source.read("journal.db"))
         target.writestr("auth.db", source.read("auth.db"))
-    with sqlite3.connect(journal) as conn:
+    with contextlib.closing(sqlite3.connect(journal)) as conn:
         conn.execute("UPDATE sample SET value='changed-j'")
+        conn.commit()
     sb.restore_backup(legacy, journal, auth, live, force=True)
     assert _value(journal) == "old-j"
     assert _value(live) == "keep-live"

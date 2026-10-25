@@ -424,7 +424,8 @@ def preflight(base: str) -> dict:
 
 
 def run_probe(base: str, wait_s: float, json_path: str | None, md_path: str | None,
-              channel: str | None = None, executable: str | None = None) -> int:
+              channel: str | None = None, executable: str | None = None,
+              username: str | None = None, password: str | None = None) -> int:
     try:
         from playwright.sync_api import sync_playwright
     except ImportError:
@@ -462,6 +463,11 @@ def run_probe(base: str, wait_s: float, json_path: str | None, md_path: str | No
         js_errors: list[str] = []
         pg.on("pageerror", lambda e: js_errors.append(str(e)[:160]))
         pg.goto(base, wait_until="load")
+        if username and password:
+            pg.locator("#authUser").fill(username)
+            pg.locator("#authPass").fill(password)
+            pg.locator("#authLoginBtn").click()
+            pg.locator("#authGate").wait_for(state="hidden", timeout=10_000)
 
         # Wait for the first scan to settle instead of guessing a delay.
         for _ in range(int(wait_s * 2)):
@@ -474,11 +480,7 @@ def run_probe(base: str, wait_s: float, json_path: str | None, md_path: str | No
 
         for tab in TABS:
             try:
-                # A fresh CI install deliberately opens the mandatory owner-claim
-                # dialog. The probe audits the dashboard behind that security
-                # boundary, not the dialog, so bypass only pointer interception;
-                # no API permission or application state is bypassed.
-                pg.click(f'[data-tab="{tab}"]', timeout=5000, force=True)
+                pg.click(f'[data-tab="{tab}"]', timeout=5000)
             except Exception:
                 rows.append({"tab": tab, "panel": "(tab)", "kind": "-",
                              "verdict": "MISSING", "ok": False,
@@ -637,6 +639,8 @@ def main() -> int:
     ap.add_argument("--wait", type=float, default=30, help="seconds to wait for the first scan")
     ap.add_argument("--json", dest="json_path")
     ap.add_argument("--md", dest="md_path")
+    ap.add_argument("--username", help="optional human session used by authenticated UI probes")
+    ap.add_argument("--password", help="password for --username (prefer a short-lived CI secret)")
     ap.add_argument("--selftest", action="store_true",
                     help="verify the DATA/EXPLAINED/BLANK classifier (no network needed)")
     add_arguments(ap)
@@ -645,7 +649,7 @@ def main() -> int:
         return selftest(None if a.url.startswith("http") else a.url,
                         a.channel, a.executable)
     return run_probe(a.url.rstrip("/"), a.wait, a.json_path, a.md_path,
-                     a.channel, a.executable)
+                     a.channel, a.executable, a.username, a.password)
 
 
 if __name__ == "__main__":

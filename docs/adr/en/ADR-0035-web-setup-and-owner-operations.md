@@ -7,7 +7,7 @@
 
 ## 2026-10-25 portability amendment
 
-The mandatory first-owner dialog remains pointer-blocking in production. Browser CI may force pointer events only to inspect the read-only dashboard behind that dialog; it does not obtain a session or bypass API authorization. SQLite backup helpers explicitly close connections because a context-managed `sqlite3.Connection` does not close itself and Windows refuses to remove an open snapshot. POSIX mode-bit assertions are platform-conditional; secrecy and allowlist assertions remain universal.
+The mandatory first-owner dialog remains pointer-blocking in production. Browser CI creates a short-lived fixture owner and signs in through the real login form before inspecting protected panels; it never bypasses UI or API authorization. SQLite backup helpers and tests explicitly close connections because a context-managed `sqlite3.Connection` does not close itself and Windows refuses to remove or replace an open database. POSIX mode-bit assertions are platform-conditional; secrecy and allowlist assertions remain universal.
 
 ## Context
 
