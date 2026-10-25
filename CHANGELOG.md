@@ -2,6 +2,16 @@
 
 [English](CHANGELOG.en.md) · **فارسی**
 
+## 1.3.1
+
+> W2 نصب وب: owner مسیرهای داده و تنظیمات غیرحساس را بدون کد probe و ذخیره می‌کند.
+
+- `install_api.py` فقط allowlist مسیرها، scan، TTL و disabled/dry-run را می‌پذیرد؛ کلید ناشناخته و مسیر نسبی fail-closed است.
+- `managed.env` اتمیک با مجوز 0600 نوشته و پایین‌تر از environment و `.env` بارگذاری می‌شود؛ secret پذیرفته نمی‌شود.
+- UI فقط برای owner فرم دوزبانه مسیرها، probe نوشتن و ذخیره با پیام restart نشان می‌دهد.
+- operator حتی مسیرهای نصب را نمی‌بیند؛ POST نیازمند CSRF است.
+- سه آزمون owner/probe/save، رد command/relative path و منع operator را پوشش می‌دهند.
+
 ## 1.3.0
 
 > W1 ویزارد نصب: ساخت owner در اولین اجرا از UI با توکن یک‌بارمصرف کنسول.

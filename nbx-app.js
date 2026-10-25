@@ -1589,6 +1589,51 @@
     }
   }
 
+  async function renderInstall() {
+    const box = $('setInstall'), body = $('setInstallBody');
+    if (!box || !body) return;
+    const st = await AUTH.me();
+    if (!st || !st.is_owner) { box.hidden = true; return; }
+    const res = await AUTH.call('/install/settings', null, 'GET');
+    if (!res.ok) { box.hidden = true; return; }
+    box.hidden = false;
+    const values = (res.data && res.data.values) || {};
+    const fields = [
+      ['NBX_AUTH_DB', '/var/lib/nobitrader/auth.db'],
+      ['NBX_JOURNAL_DB', '/var/lib/nobitrader/journal.db'],
+      ['NBX_LIVE_DB', '/var/lib/nobitrader/live_execution.db'],
+      ['NBX_CANDLE_CACHE', '/var/lib/nobitrader/candle_cache'],
+      ['NBX_BT_DIR', '/var/lib/nobitrader/backtests'],
+      ['NBX_EXPORT_DIR', '/var/lib/nobitrader/exports'],
+      ['NBX_SCAN_LOOP_S', '900'], ['NBX_SCAN_LOOP_TF', '15m'],
+      ['NBX_GATE_PREFETCH', '20'], ['NBX_BOOK_TTL_S', '120'],
+      ['NBX_BOOK_GATE_TTL_S', '300'], ['NBX_BOOK_KEEP_S', '3600'],
+      ['NBX_LIVE_MODE', 'disabled'],
+    ];
+    body.innerHTML = `<div class="grid grid-cols-1 lg:grid-cols-2 gap-2">${fields.map(([key, fallback]) => `
+      <label class="auth-field !mb-0"><span class="num">${key}</span>
+        <input data-install="${key}" value="${String(values[key] ?? fallback).replaceAll('&','&amp;').replaceAll('"','&quot;')}">
+      </label>`).join('')}</div>
+      <div class="flex flex-wrap justify-end gap-2 pt-2 border-t border-white/5">
+        <span id="installMsg" class="text-[10px] text-zinc-400 me-auto"></span>
+        <button id="installProbe" class="auth-btn !flex-none" type="button">${inFa('install.probe')}</button>
+        <button id="installSave" class="auth-btn !flex-none" type="button">${inFa('install.save')}</button>
+      </div>`;
+    const payload = () => Object.fromEntries([...body.querySelectorAll('[data-install]')]
+      .map((el) => [el.dataset.install, el.value.trim()]));
+    const run = async (path) => {
+      const msg = $('installMsg');
+      const out = await AUTH.call(path, payload());
+      if (msg) {
+        msg.textContent = out.ok ? (path.endsWith('probe') ? inFa('install.ok') : inFa('install.restart'))
+          : ((out.data && out.data.detail) || inFa('install.failed'));
+        msg.className = `text-[10px] me-auto ${out.ok ? 'text-emerald-300' : 'text-red-300'}`;
+      }
+    };
+    $('installProbe').onclick = () => run('/install/probe');
+    $('installSave').onclick = () => run('/install/settings');
+  }
+
   function bindLogout() {
     const out = $('logoutBtn');
     if (out) out.onclick = () => AUTH.logout();
@@ -1629,7 +1674,10 @@
       return;
     }
     paintUser(authState);
-    if (authState && authState.user) renderAccess();
+    if (authState && authState.user) {
+      renderAccess();
+      renderInstall();
+    }
 
     // A session can end while the tab is open (expired, revoked, password
     // changed elsewhere). Re-ask every few minutes; reload only when the server

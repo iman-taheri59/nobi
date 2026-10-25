@@ -2,7 +2,7 @@
 
 [فارسی](../fa/ADR-0035-ویزارد-نصب-و-مرکز-عملیات.md) · **English**
 
-**Status:** Accepted — W1 implemented in 1.3.0; W2/W3 pending
+**Status:** Accepted — W1 in 1.3.0 and W2 in 1.3.1 implemented; W3 pending
 **Date:** 2026-10-25
 
 ## Context

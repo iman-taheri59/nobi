@@ -2,8 +2,8 @@
 
 [English](HANDOFF.en.md) · **فارسی**
 
-**آخرین به‌روزرسانی:** ۲۰۲۶-۱۰-۲۵ — مرحله ۱۱ (W1 ویزارد owner کامل)
-**نسخه کاری:** ۱٫۳٫۰
+**آخرین به‌روزرسانی:** ۲۰۲۶-۱۰-۲۵ — مرحله ۱۲ (W2 تنظیمات نصب کامل)
+**نسخه کاری:** ۱٫۳٫۱
 **هدف:** ADR-0027؛ ابتدا محصول پایدار، سپس اجرای واقعی مرحله‌ای و fail-closed.
 
 ## وضعیت
@@ -18,7 +18,8 @@
 - [x] B6: backup هر سه DB، سازگاری قالب قدیمی و snapshot روزانهٔ بدون secret.
 - [ ] اجرای soak واقعی پنج‌روزه در محیط متصل به نوبیتکس.
 - [x] W1: ویزارد اولین نصب و ساخت owner با توکن یک‌بارمصرف کنسول.
-- [ ] W2: تنظیمات نصب/مسیرها/reverse proxy از UI.
+- [x] W2: مسیرهای داده، scan/TTL و disabled/dry-run از UI owner؛ managed.env بدون secret.
+- [ ] W2b: بررسی و تولید پیکربندی reverse proxy/systemd با helper غیر-root.
 - [ ] W3: اجرای تمام تست‌ها، build، backup/restore و استقرار از allowlist فقط-owner.
 - [ ] soak واقعی و contract test خصوصی؛ نیازمند محیط ایران و کلید READ/TRADE محدود به IP.
 - [ ] بازبینی امنیتی مستقل پیش از سرمایه واقعی.
@@ -44,8 +45,8 @@
 
 ```text
 ruff: passed
-mypy: success, 102 source files
-pytest: 926 passed, 1 dependency deprecation warning
+mypy: success, 104 source files
+pytest: 929 passed, 1 dependency deprecation warning
 ESLint/dashboard lint: passed
 broker/preflight parity: passed
 mobile artifact: rebuilt for 1.2.3

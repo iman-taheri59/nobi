@@ -295,7 +295,7 @@
       </button>
     </div>
     <span class="hidden 2xl:inline-flex chip shrink-0"><span class="dot bg-emerald-400"></span> <span data-i18n="hdr.kill"></span></span>
-    <span id="buildChip" class="hidden lg:inline-flex chip num text-violet-300 border-violet-400/30 shrink-0" title="نسخه واقعی از /api/health">v1.3.0 · core</span>
+    <span id="buildChip" class="hidden lg:inline-flex chip num text-violet-300 border-violet-400/30 shrink-0" title="نسخه واقعی از /api/health">v1.3.1 · core</span>
     <div class="ms-auto flex items-center gap-1.5 shrink-0">
       <span class="hidden xl:inline-flex chip num" id="clock">--:--:--</span>
       <span id="apiChip" class="hidden 2xl:inline-flex chip num text-zinc-400 border-white/10" title=""><i data-lucide="wifi-off" class="w-3.5 h-3.5"></i> <span>API: —</span></span>
@@ -966,6 +966,17 @@
       </div>
 
 
+      <!-- ===== server installation settings (owner only; allowlisted, no secrets) ===== -->
+      <div id="setInstall" class="glass p-4 sm:p-5" hidden>
+        <div class="flex items-center gap-2 mb-1 flex-wrap">
+          <i data-lucide="server-cog" class="w-4 h-4 text-amber-300"></i>
+          <span class="font-bold text-[13px] sm:text-sm" data-i18n="install.title"></span>
+          <span class="chip text-[9px] text-amber-200 border-amber-300/30 ms-auto" data-i18n="install.ownerOnly"></span>
+        </div>
+        <p class="text-[10px] text-zinc-500 leading-5 mb-3" data-i18n="install.hint"></p>
+        <div id="setInstallBody" class="space-y-3"></div>
+      </div>
+
       <!-- ===== preferences you can actually change ===== -->
       <div class="glass p-4 sm:p-5">
         <div class="flex items-center gap-2 mb-1 flex-wrap">
@@ -1524,6 +1535,10 @@ const T = {
     'set.accessKill':'بستن نشست‌ها',
     'set.inviteNew':'دعوت کاربر جدید','set.inviteNote':'یادداشت (اختیاری)','set.inviteMake':'ساخت کد',
     'set.inviteOnce':'این کد فقط همین یک بار دیده می‌شود؛ همین حالا کپی کنید:','set.inviteRevoke':'باطل',
+    'install.title':'نصب و مسیرهای سرور','install.ownerOnly':'فقط مالک',
+    'install.hint':'تنظیمات غیرحساس در managed.env ذخیره می‌شوند و پس از راه‌اندازی مجدد اعمال می‌شوند. هیچ کلید یا رمز در این فرم پذیرفته نمی‌شود.',
+    'install.probe':'بررسی مسیرها','install.save':'ذخیره تنظیمات','install.restart':'ذخیره شد؛ سرویس را راه‌اندازی مجدد کنید',
+    'install.ok':'همهٔ مسیرها قابل نوشتن‌اند','install.failed':'تنظیمات معتبر نیست',
     'auth.title':'ورود به nobiTrader','auth.sub':'این نصب حساب کاربری دارد؛ برای دیدن پوزیشن‌ها و تغییر تنظیمات وارد شوید.',
     'auth.user':'نام کاربری','auth.pass':'رمز عبور','auth.login':'ورود',
     'setup.token':'توکن یک‌بارمصرف نمایش‌داده‌شده در کنسول سرور','setup.owner':'نام کاربری مالک',
@@ -1789,6 +1804,10 @@ const T = {
     'set.accessKill':'End sessions',
     'set.inviteNew':'Invite someone','set.inviteNote':'Note (optional)','set.inviteMake':'Create code',
     'set.inviteOnce':'This code is shown once — copy it now:','set.inviteRevoke':'Revoke',
+    'install.title':'Server installation and data paths','install.ownerOnly':'Owner only',
+    'install.hint':'Non-secret settings are stored in managed.env and apply after restart. This form never accepts keys or passwords.',
+    'install.probe':'Check paths','install.save':'Save settings','install.restart':'Saved; restart the service to apply',
+    'install.ok':'All paths are writable','install.failed':'Settings are invalid',
     'auth.title':'Sign in to nobiTrader','auth.sub':'This installation has accounts; sign in to see positions and change settings.',
     'auth.user':'Username','auth.pass':'Password','auth.login':'Sign in',
     'setup.token':'One-time token shown in the server console','setup.owner':'Owner username',

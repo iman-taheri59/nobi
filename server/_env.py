@@ -25,6 +25,7 @@ import os
 from pathlib import Path
 
 ENV_PATH = Path(__file__).resolve().with_name(".env")
+MANAGED_ENV_PATH = Path(os.getenv("NBX_MANAGED_ENV") or Path(__file__).resolve().with_name("managed.env"))
 
 STATUS: dict = {
     "path": str(ENV_PATH),
@@ -89,3 +90,27 @@ def load(path: Path | None = None) -> dict:
 
 
 STATUS = load()
+
+
+def load_managed(path: Path | None = None) -> dict:
+    """Load the wizard's non-secret file below real env and server/.env."""
+    target = path or MANAGED_ENV_PATH
+    status = {"path": str(target), "exists": target.is_file(), "loaded": False,
+              "vars": 0, "error": None}
+    if not target.is_file():
+        return status
+    try:
+        values = _parse(target.read_text(encoding="utf-8"))
+    except OSError as exc:
+        status["error"] = f"{type(exc).__name__}: {exc}"
+        return status
+    applied = 0
+    for key, value in values.items():
+        if key not in os.environ or os.environ[key] == "":
+            os.environ[key] = value
+            applied += 1
+    status.update(loaded=True, vars=applied)
+    return status
+
+
+MANAGED_STATUS = load_managed()

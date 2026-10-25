@@ -2,6 +2,16 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 1.3.1
+
+> W2 web installation: owners probe and save non-secret data paths/settings without code.
+
+- `install_api.py` accepts only allowlisted paths, scan, TTL and disabled/dry-run values; unknown keys and relative paths fail closed.
+- `managed.env` is atomically written as 0600 and loads below real environment and `.env`; secrets are not accepted.
+- Owner-only bilingual UI provides path fields, writable probe and save/restart feedback.
+- Operators cannot even read installation paths; POST requires CSRF.
+- Three tests cover owner probe/save, command/relative-path refusal and operator denial.
+
 ## 1.3.0
 
 > W1 setup wizard: create the first owner in UI with a one-time console token.
