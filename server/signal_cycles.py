@@ -12,7 +12,7 @@ from typing import Any
 
 import journal
 
-ENGINE_VERSION = "1.7.0"
+ENGINE_VERSION = "1.8.0"
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS scan_cycles (

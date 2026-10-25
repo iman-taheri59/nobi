@@ -295,7 +295,7 @@
       </button>
     </div>
     <span class="hidden 2xl:inline-flex chip shrink-0"><span class="dot bg-emerald-400"></span> <span data-i18n="hdr.kill"></span></span>
-    <span id="buildChip" class="hidden lg:inline-flex chip num text-violet-300 border-violet-400/30 shrink-0" title="نسخه واقعی از /api/health">v1.7.0 · core</span>
+    <span id="buildChip" class="hidden lg:inline-flex chip num text-violet-300 border-violet-400/30 shrink-0" title="نسخه واقعی از /api/health">v1.8.0 · core</span>
     <div class="ms-auto flex items-center gap-1.5 shrink-0">
       <span class="hidden xl:inline-flex chip num" id="clock">--:--:--</span>
       <span id="apiChip" class="hidden 2xl:inline-flex chip num text-zinc-400 border-white/10" title=""><i data-lucide="wifi-off" class="w-3.5 h-3.5"></i> <span>API: —</span></span>
@@ -5154,9 +5154,10 @@ async function loadSignalDetail(id){
 }
 async function loadSignalDrift(){
   const box=byId('siDrift'),api=NBX.core.api;if(!box)return;
-  try{const d=await api.get(NBX.config.pythonApi+'/v1/signal-intelligence/drift/latest',1),run=d.run||{};
-    box.innerHTML=(d.findings||[]).map(x=>`<div class="rounded-xl bg-white/[.03] p-3"><div class="text-zinc-500">${escText(x.metric)}</div><div class="num font-bold">${x.current_value??'—'}</div><div class="${x.severity==='alert'?'text-red-300':x.severity==='watch'?'text-amber-300':'text-zinc-400'}">${escText(x.severity)} · n ${x.baseline_n}/${x.current_n}</div></div>`).join('')||`<span>${t('si.noDrift')}</span>`;
-    box.dataset.runId=run.id||'';
+  try{const [d,schedule,inventory]=await Promise.all([api.get(NBX.config.pythonApi+'/v1/signal-intelligence/drift/latest',1),api.get(NBX.config.pythonApi+'/v1/signal-intelligence/drift/schedule',1),api.get(NBX.config.pythonApi+'/v1/signal-intelligence/drift/config-inventory?days='+Number((byId('siDays')||{}).value||30),1)]),run=d.run||{};
+    const cards=(d.findings||[]).map(x=>`<div class="rounded-xl bg-white/[.03] p-3"><div class="text-zinc-500">${escText(x.metric)}</div><div class="num font-bold">${x.current_value??'—'}</div><div class="${x.severity==='alert'?'text-red-300':x.severity==='watch'?'text-amber-300':'text-zinc-400'}">${escText(x.severity)} · n ${x.baseline_n}/${x.current_n}</div></div>`).join('');
+    const meta=`<div class="rounded-xl bg-white/[.03] p-3"><div class="text-zinc-500">scheduler</div><div>${schedule.enabled?'on':'off'} · ${Math.round(schedule.interval_s/3600)}h</div><div class="num text-zinc-500">configs ${(inventory.rows||[]).length}</div></div>`;
+    box.innerHTML=cards+meta;box.dataset.runId=run.id||'';
   }catch(e){box.innerHTML=`<span class="text-zinc-500">${t('si.noDrift')}</span>`;}
 }
 async function runSignalDrift(){

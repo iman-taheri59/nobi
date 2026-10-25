@@ -2,8 +2,14 @@
 
 [فارسی](HANDOFF.md) · **English**
 
-**Last updated:** 2026-10-25 — stage 31 (Signal Intelligence v1.2 drift)
-**Working version:** 1.7.0 (unreleased; release only after green CI)
+**Last updated:** 2026-10-25 — stage 32 (drift scheduler hardening)
+**Working version:** 1.8.0 (unreleased; release only after green CI)
+
+### Stage 32 state
+
+- Owner-controlled scheduling is disabled by default with 6/12/24-hour intervals and no missed-run replay storm.
+- Persistent next/last/error state, supervised lifecycle execution and configuration inventory are implemented.
+- Schedule/inventory APIs, CSRF, audit, recovery and due/not-due tests are included.
 
 ### Stage 31 state
 

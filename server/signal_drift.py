@@ -14,7 +14,7 @@ from typing import Any
 import journal
 import signal_cycles
 
-ENGINE_VERSION = "1.7.0"
+ENGINE_VERSION = "1.8.0"
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS drift_runs (
  id INTEGER PRIMARY KEY AUTOINCREMENT, created_at INTEGER NOT NULL,
@@ -33,6 +33,13 @@ CREATE TABLE IF NOT EXISTS drift_findings (
  evidence TEXT NOT NULL, FOREIGN KEY(run_id) REFERENCES drift_runs(id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS ix_drift_findings_run ON drift_findings(run_id,severity,metric);
+CREATE TABLE IF NOT EXISTS drift_schedule (
+ singleton INTEGER PRIMARY KEY CHECK(singleton=1), enabled INTEGER NOT NULL DEFAULT 0,
+ interval_s INTEGER NOT NULL DEFAULT 86400, window_days INTEGER NOT NULL DEFAULT 30,
+ horizon TEXT NOT NULL DEFAULT 'H1', cohort_mode TEXT NOT NULL DEFAULT 'global',
+ updated_at INTEGER NOT NULL, updated_by TEXT NOT NULL, last_run_at INTEGER,
+ next_run_at INTEGER, last_error TEXT
+);
 CREATE TABLE IF NOT EXISTS drift_reviews (
  id INTEGER PRIMARY KEY AUTOINCREMENT, finding_id INTEGER NOT NULL,
  actor_user_id INTEGER NOT NULL, actor_username TEXT NOT NULL,
@@ -54,6 +61,11 @@ REVIEW_TAGS = {"acknowledged", "expected-config-change", "investigate", "false-a
 def ensure(conn: sqlite3.Connection) -> None:
     signal_cycles.ensure(conn)
     conn.executescript(SCHEMA)
+    conn.execute(
+        """INSERT OR IGNORE INTO drift_schedule(singleton,enabled,interval_s,window_days,
+           horizon,cohort_mode,updated_at,updated_by) VALUES(1,0,86400,30,'H1','global',?,'system')""",
+        (int(time.time()),),
+    )
     conn.commit()
 
 
@@ -415,6 +427,100 @@ def latest() -> dict[str, Any] | None:
             "SELECT id FROM drift_runs WHERE status!='running' ORDER BY created_at DESC,id DESC LIMIT 1"
         ).fetchone()
     return detail(int(row[0])) if row else None
+
+
+def schedule() -> dict[str, Any]:
+    with journal.connect() as conn:
+        ensure(conn)
+        row = conn.execute("SELECT * FROM drift_schedule WHERE singleton=1").fetchone()
+        assert row is not None
+        return dict(row)
+
+
+def update_schedule(
+    *,
+    enabled: bool,
+    interval_s: int,
+    window_days: int,
+    horizon: str,
+    cohort_mode: str,
+    actor: str,
+    now: int | None = None,
+) -> dict[str, Any]:
+    if interval_s not in {21600, 43200, 86400}:
+        raise ValueError("interval_s must be 21600, 43200, or 86400")
+    if not 7 <= window_days <= 365 or horizon not in {"H1", "H2", "H3"}:
+        raise ValueError("invalid drift schedule window or horizon")
+    if cohort_mode not in {"global", "config", "symbol", "timeframe", "regime"}:
+        raise ValueError("unsupported cohort mode")
+    now = int(time.time()) if now is None else now
+    with journal.connect() as conn:
+        ensure(conn)
+        conn.execute(
+            """UPDATE drift_schedule SET enabled=?,interval_s=?,window_days=?,horizon=?,
+               cohort_mode=?,updated_at=?,updated_by=?,next_run_at=?,last_error=NULL WHERE singleton=1""",
+            (
+                int(enabled),
+                interval_s,
+                window_days,
+                horizon,
+                cohort_mode,
+                now,
+                actor,
+                now + interval_s if enabled else None,
+            ),
+        )
+        conn.commit()
+    return schedule()
+
+
+def run_due(*, now: int | None = None) -> dict[str, Any] | None:
+    now = int(time.time()) if now is None else now
+    cfg = schedule()
+    if not cfg["enabled"] or (cfg["next_run_at"] is not None and int(cfg["next_run_at"]) > now):
+        return None
+    try:
+        result = run(
+            days=int(cfg["window_days"]), horizon=str(cfg["horizon"]), actor="scheduler", now=now
+        )
+        error = None
+    except Exception as exc:
+        result, error = None, str(exc)[:300]
+    with journal.connect() as conn:
+        ensure(conn)
+        conn.execute(
+            "UPDATE drift_schedule SET last_run_at=?,next_run_at=?,last_error=? WHERE singleton=1",
+            (now, now + int(cfg["interval_s"]), error),
+        )
+        conn.commit()
+    return result
+
+
+def config_inventory(*, days: int = 30, now: int | None = None) -> list[dict[str, Any]]:
+    now = int(time.time()) if now is None else now
+    current, baseline = now - days * 86400, now - 2 * days * 86400
+    with journal.connect() as conn:
+        ensure(conn)
+        rows = conn.execute(
+            """SELECT coalesce(config_hash,'unknown') config_hash,
+               sum(CASE WHEN ts>=? THEN 1 ELSE 0 END) current_signals,
+               sum(CASE WHEN ts<? THEN 1 ELSE 0 END) baseline_signals,
+               min(ts) first_seen,max(ts) last_seen FROM signal_log
+               WHERE ts>=? AND ts<? GROUP BY config_hash ORDER BY current_signals DESC,config_hash""",
+            (current, current, baseline, now),
+        ).fetchall()
+    result = []
+    for row in rows:
+        item = dict(row)
+        item["status"] = (
+            "new-in-current"
+            if not item["baseline_signals"]
+            else "missing-in-current"
+            if not item["current_signals"]
+            else "continued"
+        )
+        result.append(item)
+    return result
 
 
 def review(finding_id: int, *, user_id: int, username: str, tag: str, note: str) -> dict[str, Any]:

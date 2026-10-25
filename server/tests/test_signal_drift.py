@@ -106,6 +106,35 @@ def test_concurrent_run_refusal_and_stale_recovery(monkeypatch, tmp_path):
         signal_drift.run(days=7, horizon="H1", actor="owner", now=10_001)
 
 
+def test_schedule_defaults_validation_due_and_inventory(monkeypatch, tmp_path):
+    _db(monkeypatch, tmp_path)
+    assert signal_drift.schedule()["enabled"] == 0
+    cfg = signal_drift.update_schedule(
+        enabled=True,
+        interval_s=21600,
+        window_days=7,
+        horizon="H1",
+        cohort_mode="config",
+        actor="owner",
+        now=10_000,
+    )
+    assert cfg["next_run_at"] == 31_600
+    assert signal_drift.run_due(now=20_000) is None
+    result = signal_drift.run_due(now=31_600)
+    assert result is not None and result["run"]["actor"] == "scheduler"
+    assert signal_drift.schedule()["next_run_at"] == 53_200
+    assert signal_drift.config_inventory(days=7, now=31_600) == []
+    with pytest.raises(ValueError, match="interval_s"):
+        signal_drift.update_schedule(
+            enabled=True,
+            interval_s=60,
+            window_days=7,
+            horizon="H1",
+            cohort_mode="global",
+            actor="owner",
+        )
+
+
 def test_review_is_append_only_and_allowlisted(monkeypatch, tmp_path):
     _db(monkeypatch, tmp_path)
     run = signal_drift.run(days=30, horizon="H1", actor="owner", now=int(time.time()))

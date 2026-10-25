@@ -304,6 +304,19 @@ async def _digest_loop() -> None:
         await asyncio.sleep(min(300, max(30, interval / 10)))
 
 
+async def _drift_schedule_loop() -> None:
+    while True:
+        try:
+            result = await asyncio.to_thread(signal_drift.run_due)
+            if result:
+                log.info("signal drift scheduler completed run %s", result.get("run", {}).get("id"))
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            log.warning("signal drift scheduler failed: %s", exc)
+        await asyncio.sleep(60)
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     # Any ERROR/FATAL record from any logger now also lands in the error log,
@@ -360,6 +373,7 @@ async def lifespan(_app: FastAPI):
         _supervise("scan-loop", _scan_loop()),
         _supervise("position-tick", _position_tick_loop()),
         _supervise("digest", _digest_loop()),
+        _supervise("signal-drift", _drift_schedule_loop()),
         # The exchange publishes its own minimums and tick sizes at /v2/options;
         # reading them once beats shipping a copy that can silently go stale.
         options_task,
@@ -387,7 +401,7 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(
     title="nobiTrader",
-    version="1.7.0",
+    version="1.8.0",
     lifespan=lifespan,
 )
 
@@ -2168,6 +2182,15 @@ class DriftRunBody(BaseModel):
     config_hash: str | None = Field(default=None, max_length=128)
 
 
+class DriftScheduleBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    enabled: bool = False
+    interval_s: int = Field(default=86400)
+    window_days: int = Field(default=30, ge=7, le=365)
+    horizon: str = Field(default="H1", pattern="^H[123]$")
+    cohort_mode: str = Field(default="global", pattern="^(global|config|symbol|timeframe|regime)$")
+
+
 class DriftReviewBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
     tag: str = Field(min_length=1, max_length=32)
@@ -2180,6 +2203,30 @@ async def signal_drift_latest():
     if result is None:
         raise HTTPException(status_code=404, detail="no drift run exists")
     return result
+
+
+@app.get("/api/v1/signal-intelligence/drift/schedule")
+async def signal_drift_schedule_get():
+    return signal_drift.schedule()
+
+
+@app.put("/api/v1/signal-intelligence/drift/schedule")
+async def signal_drift_schedule_put(payload: DriftScheduleBody, request: Request):
+    user = install_api.require_owner_mutation(request)
+    try:
+        result = signal_drift.update_schedule(enabled=payload.enabled,
+            interval_s=payload.interval_s, window_days=payload.window_days,
+            horizon=payload.horizon, cohort_mode=payload.cohort_mode, actor=user.username)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    audit("signal_intelligence.drift.schedule", actor=user.username,
+          detail={"enabled": payload.enabled, "interval_s": payload.interval_s}, request=request)
+    return result
+
+
+@app.get("/api/v1/signal-intelligence/drift/config-inventory")
+async def signal_drift_config_inventory(days: int = Query(30, ge=7, le=365)):
+    return {"rows": signal_drift.config_inventory(days=days)}
 
 
 @app.get("/api/v1/signal-intelligence/drift/runs")

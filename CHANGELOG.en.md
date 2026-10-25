@@ -2,6 +2,14 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 1.8.0
+
+> Operational hardening for Signal Intelligence drift monitoring.
+
+- An owner-controlled, disabled-by-default 6/12/24-hour scheduler runs one due analysis without replay storms and records failures.
+- Persistent schedule state and config inventory expose next/last run, active hashes and baseline/current continuity.
+- The scheduler is supervised with the existing server lifecycle and keeps trading behavior unchanged.
+
 ## 1.7.0
 
 > Signal Intelligence v1.2 adds immutable, statistically controlled drift evidence.

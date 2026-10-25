@@ -2,7 +2,7 @@
 
 [فارسی](releases.md) · **English**
 
-The working version is **1.7.0**; the currently published tag is **v1.6.8**. Signal Intelligence v1.2 will ship only after branch CI is green.
+The working version is **1.8.0**; the currently published tag is **v1.7.0**. Signal Intelligence v1.2 will ship only after branch CI is green.
 `VERSION` is the source of truth for the release number; the tag name is exactly `v`
 plus that number.
 
