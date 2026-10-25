@@ -295,7 +295,7 @@
       </button>
     </div>
     <span class="hidden 2xl:inline-flex chip shrink-0"><span class="dot bg-emerald-400"></span> <span data-i18n="hdr.kill"></span></span>
-    <span id="buildChip" class="hidden lg:inline-flex chip num text-violet-300 border-violet-400/30 shrink-0" title="نسخه واقعی از /api/health">v1.4.0 · core</span>
+    <span id="buildChip" class="hidden lg:inline-flex chip num text-violet-300 border-violet-400/30 shrink-0" title="نسخه واقعی از /api/health">v1.4.1 · core</span>
     <div class="ms-auto flex items-center gap-1.5 shrink-0">
       <span class="hidden xl:inline-flex chip num" id="clock">--:--:--</span>
       <span id="apiChip" class="hidden 2xl:inline-flex chip num text-zinc-400 border-white/10" title=""><i data-lucide="wifi-off" class="w-3.5 h-3.5"></i> <span>API: —</span></span>
@@ -347,6 +347,7 @@
       <button class="navbtn w-full flex items-center gap-3 px-3.5 py-2.5 text-sm text-zinc-300" data-tab="risk"><i data-lucide="shield-half" class="w-4.5 h-4.5 shrink-0"></i> <span data-i18n="page.risk.title"></span></button>
       <button class="navbtn w-full flex items-center gap-3 px-3.5 py-2.5 text-sm text-zinc-300" data-tab="backtest"><i data-lucide="flask-conical" class="w-4.5 h-4.5 shrink-0"></i> <span data-i18n="page.backtest.title"></span></button>
       <button class="navbtn w-full flex items-center gap-3 px-3.5 py-2.5 text-sm text-zinc-300" data-tab="errors"><i data-lucide="bug" class="w-4.5 h-4.5 shrink-0"></i> <span data-i18n="page.errors.title"></span> <span id="errBadge" class="ms-auto chip num bg-red-400/15 text-red-300 border-red-300/30 hidden">0</span></button>
+      <button id="usersNav" class="navbtn hidden w-full flex items-center gap-3 px-3.5 py-2.5 text-sm text-zinc-300" data-tab="users"><i data-lucide="users-round" class="w-4.5 h-4.5 shrink-0"></i> <span data-i18n="page.users.title"></span></button>
       <button class="navbtn w-full flex items-center gap-3 px-3.5 py-2.5 text-sm text-zinc-300" data-tab="settings"><i data-lucide="settings-2" class="w-4.5 h-4.5 shrink-0"></i> <span data-i18n="page.settings.title"></span></button>
     </nav>
   </aside>
@@ -938,6 +939,27 @@
       </div>
     </section>
 
+    <!-- ======= PAGE: Users (owner only) ======= -->
+    <section id="page-users" class="tab-page hidden space-y-4 sm:space-y-6">
+      <div class="flex items-center gap-3 flex-wrap">
+        <span class="w-1 h-7 sm:h-8 rounded-full bg-gradient-to-b from-violet-300 to-violet-500/40 shrink-0"></span>
+        <div><h1 class="font-extrabold text-base sm:text-xl" data-i18n="page.users.title"></h1>
+          <p class="text-[11px] sm:text-xs text-zinc-500" data-i18n="page.users.desc"></p></div>
+      </div>
+      <div id="setAccess" class="glass p-4 sm:p-5" hidden>
+        <div class="flex items-center gap-2 mb-1 flex-wrap"><i data-lucide="users-round" class="w-4 h-4 text-violet-300"></i>
+          <span class="font-bold text-[13px] sm:text-sm" data-i18n="set.accessTitle"></span>
+          <span id="setAccessWho" class="chip num text-[9px] text-violet-300 border-violet-400/30 ms-auto"></span></div>
+        <p class="text-[10px] text-zinc-500 leading-5 mb-3" data-i18n="set.accessHint"></p>
+        <div id="setAccessBody" class="space-y-3"></div>
+      </div>
+      <div class="glass p-4 sm:p-5"><div class="flex items-center gap-2 mb-3">
+        <i data-lucide="history" class="w-4 h-4 text-cyan-300"></i><span class="font-bold text-[13px] sm:text-sm" data-i18n="users.activity"></span>
+        <button id="usersRefresh" class="ms-auto text-[10px] px-2 py-1 rounded-lg bg-white/5 border border-white/10" data-i18n="users.refresh"></button></div>
+        <div id="usersActivity" class="space-y-1.5"></div>
+      </div>
+    </section>
+
     <!-- ======= PAGE: Settings (read-only, ADR-0011 page 7) ======= -->
     <section id="page-settings" class="tab-page hidden space-y-4 sm:space-y-6">
       <div class="flex items-center gap-3 flex-wrap">
@@ -953,18 +975,6 @@
       </div>
 
       <div id="setReadonly" class="glass px-3.5 py-2.5 border-zinc-400/20 text-[10px] sm:text-[11px] text-zinc-400 leading-5" data-i18n="set.readonly"></div>
-
-      <!-- ===== accounts and access (owner only; filled by nbx-app.js) ===== -->
-      <div id="setAccess" class="glass p-4 sm:p-5" hidden>
-        <div class="flex items-center gap-2 mb-1 flex-wrap">
-          <i data-lucide="users-round" class="w-4 h-4 text-violet-300"></i>
-          <span class="font-bold text-[13px] sm:text-sm" data-i18n="set.accessTitle"></span>
-          <span id="setAccessWho" class="chip num text-[9px] text-violet-300 border-violet-400/30 ms-auto"></span>
-        </div>
-        <p class="text-[10px] text-zinc-500 leading-5 mb-3" data-i18n="set.accessHint"></p>
-        <div id="setAccessBody" class="space-y-3"></div>
-      </div>
-
 
       <!-- ===== server installation settings (owner only; allowlisted, no secrets) ===== -->
       <div id="setInstall" class="glass p-4 sm:p-5" hidden>
@@ -1539,6 +1549,8 @@ const T = {
     'suite.showOut':'خروجی', 'suite.hideOut':'بستن خروجی',
     'suite.raw':'خروجی قابل خلاصه‌شدن نبود — متن خام را ببین',
     'suite.allPassed':'همهٔ دروازه‌ها سبز', 'suite.someFailed':'{n} دروازه قرمز شد',
+    'page.users.title':'کاربران','page.users.desc':'مدیریت حساب‌ها، نقش‌ها، نشست‌ها، دعوت‌ها و مشاهده فعالیت کاربران — فقط مالک',
+    'users.activity':'فعالیت کاربران','users.refresh':'به‌روزرسانی','users.noActivity':'هنوز فعالیتی ثبت نشده است',
     'page.settings.title':'تنظیمات','page.settings.desc':'پیکربندی واقعیِ در حال اجرا — فقط‌خواندنی، با ذکر منبع هر مقدار',
     'set.accessTitle':'کاربران و دسترسی','set.accessHint':'هر کس حساب خودش را دارد و همان حساب معاملاتی مشترک را می‌بیند؛ نقش تعیین می‌کند چه کسی می‌تواند تغییر بدهد.',
     'set.accessNotOwner':'فقط مالک می‌تواند کاربران را ببیند و نقش‌ها را تغییر دهد.',
@@ -1810,6 +1822,8 @@ const T = {
     'suite.showOut':'output', 'suite.hideOut':'hide output',
     'suite.raw':'output could not be summarised — read the raw text',
     'suite.allPassed':'all gates green', 'suite.someFailed':'{n} gate(s) red',
+    'page.users.title':'Users','page.users.desc':'Manage accounts, roles, sessions and invites, and review user activity — owner only',
+    'users.activity':'User activity','users.refresh':'Refresh','users.noActivity':'No user activity has been recorded yet',
     'page.settings.title':'Settings','page.settings.desc':'What the engine is actually running — read-only, with the source of every value',
     'set.accessTitle':'Users and access','set.accessHint':'Everyone signs in with their own account but sees the same trading account; the role decides who may change things.',
     'set.accessNotOwner':'Only the owner can see users and change roles.',

@@ -132,13 +132,17 @@ def login(body: LoginBody, request: Request, response: Response):
     identity.set_session_cookies(
         response, token=token, csrf=csrf,
         max_age=auth.SESSION_DAYS * 86400, secure=identity.is_secure(request))
+    auth.record_activity(user, "auth.login", ip=ip)
     return {"ok": True, "user": user.public(), "can_mutate": user.can_mutate,
             "is_owner": user.is_owner}
 
 
 @router.post("/logout")
 def logout(request: Request, response: Response):
+    session = identity.session_of(request)
     token = request.cookies.get(identity.SESSION_COOKIE, "")
+    if session is not None:
+        auth.record_activity(session.user, "auth.logout", ip=_client_ip(request))
     auth.delete_session(token)
     identity.clear_session_cookies(response)
     return {"ok": True}
@@ -175,6 +179,7 @@ def register(body: RegisterBody, request: Request, response: Response):
     identity.set_session_cookies(
         response, token=token, csrf=csrf,
         max_age=auth.SESSION_DAYS * 86400, secure=identity.is_secure(request))
+    auth.record_activity(user, "auth.register", ip=_client_ip(request))
     return {"ok": True, "user": user.public(), "can_mutate": user.can_mutate,
             "is_owner": user.is_owner}
 
@@ -201,7 +206,7 @@ def change_own_password(body: PasswordBody, request: Request, response: Response
 # --------------------------------------------------------------------------- #
 # Owner area
 # --------------------------------------------------------------------------- #
-def _owner_gate(request: Request) -> Response | None:
+def _owner_gate(request: Request, *, csrf: bool = False) -> Response | None:
     """401 when nobody is signed in, 403 when the wrong person is.
 
     The difference is what the page does with it: 401 shows the login screen,
@@ -209,10 +214,12 @@ def _owner_gate(request: Request) -> Response | None:
     look like a permission problem.
     """
     session = identity.session_of(request)
-    if session is None and not _bearer_ok(request):
-        return _refuse(401, "برای این بخش باید وارد شوید")
-    if session is not None and not session.user.is_owner:
+    if session is None:
+        return _refuse(401, "برای این بخش باید با حساب مالک وارد شوید")
+    if not session.user.is_owner:
         return _refuse(403, "فقط مالک می‌تواند کاربران و دعوت‌ها را مدیریت کند")
+    if csrf and not identity.csrf_ok(request, session):
+        return _refuse(403, "CSRF نامعتبر است")
     return None
 
 
@@ -233,9 +240,16 @@ def list_users(request: Request):
             "sessions": auth.active_sessions()}
 
 
+@router.get("/activity")
+def activity(request: Request, limit: int = 100, user_id: int | None = None):
+    if (denied := _owner_gate(request)) is not None:
+        return denied
+    return {"events": auth.list_activity(limit=limit, user_id=user_id)}
+
+
 @router.patch("/users/{user_id}")
 def patch_user(user_id: int, request: Request, body: dict):
-    if (denied := _owner_gate(request)) is not None:
+    if (denied := _owner_gate(request, csrf=True)) is not None:
         return denied
     session = identity.session_of(request)
     actor = session.user.username if session else "token"
@@ -248,14 +262,19 @@ def patch_user(user_id: int, request: Request, body: dict):
             return _refuse(400, "role یا active لازم است")
     except auth.AuthError as e:
         return _refuse(e.status, e.message)
+    auth.record_activity(session.user if session else None, "user.update",
+                         detail=f"target={user.username}", ip=_client_ip(request))
     return {"ok": True, "user": user.public()}
 
 
 @router.post("/users/{user_id}/logout")
 def logout_user(user_id: int, request: Request):
-    if (denied := _owner_gate(request)) is not None:
+    if (denied := _owner_gate(request, csrf=True)) is not None:
         return denied
     closed = auth.delete_user_sessions(user_id)
+    session = identity.session_of(request)
+    auth.record_activity(session.user if session else None, "user.sessions.revoke",
+                         detail=f"target_id={user_id};closed={closed}", ip=_client_ip(request))
     return {"ok": True, "closed": closed}
 
 
@@ -268,7 +287,7 @@ def list_invites(request: Request):
 
 @router.post("/invites")
 def create_invite(body: InviteBody, request: Request):
-    if (denied := _owner_gate(request)) is not None:
+    if (denied := _owner_gate(request, csrf=True)) is not None:
         return denied
     session = identity.session_of(request)
     who = session.user.username if session else "token"
@@ -277,6 +296,8 @@ def create_invite(body: InviteBody, request: Request):
                                   note=body.note, ttl_hours=body.ttl_hours)
     except auth.AuthError as e:
         return _refuse(e.status, e.message)
+    auth.record_activity(session.user if session else None, "invite.create",
+                         detail=f"role={body.role}", ip=_client_ip(request))
     return {"ok": True, "code": code, "role": body.role, "ttl_hours": body.ttl_hours,
             # The code is shown exactly once; the database keeps only its hash.
             "note": "این کد فقط همین یک بار نمایش داده می‌شود"}
@@ -284,7 +305,7 @@ def create_invite(body: InviteBody, request: Request):
 
 @router.delete("/invites/{invite_id}")
 def delete_invite(invite_id: int, request: Request):
-    if (denied := _owner_gate(request)) is not None:
+    if (denied := _owner_gate(request, csrf=True)) is not None:
         return denied
     return {"ok": auth.revoke_invite(invite_id)}
 

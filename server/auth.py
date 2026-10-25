@@ -141,6 +141,18 @@ CREATE TABLE IF NOT EXISTS sessions (
 );
 CREATE INDEX IF NOT EXISTS ix_sessions_user ON sessions(user_id);
 
+CREATE TABLE IF NOT EXISTS user_activity (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER,
+    username    TEXT NOT NULL,
+    action      TEXT NOT NULL,
+    result      TEXT NOT NULL DEFAULT 'ok',
+    detail      TEXT,
+    ip          TEXT,
+    created_at  INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_user_activity_user_time ON user_activity(user_id, created_at DESC);
+
 CREATE TABLE IF NOT EXISTS invites (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     code_hash   TEXT NOT NULL UNIQUE,
@@ -357,6 +369,34 @@ def list_users() -> list[User]:
     finally:
         conn.close()
     return [_row_to_user(r) for r in rows]
+
+
+def record_activity(user: User | None, action: str, *, username: str = "",
+                    result: str = "ok", detail: str = "", ip: str = "") -> None:
+    """Append a bounded, secret-free account activity event."""
+    who = user.username if user else normalise_username(username) if username else "unknown"
+    user_id = user.id if user else None
+    with connect() as conn:
+        conn.execute(
+            "INSERT INTO user_activity(user_id,username,action,result,detail,ip,created_at) "
+            "VALUES(?,?,?,?,?,?,?)",
+            (user_id, who, action[:64], result[:16], detail[:300], ip[:80], int(time.time())),
+        )
+
+
+def list_activity(*, limit: int = 100, user_id: int | None = None) -> list[dict]:
+    limit = max(1, min(int(limit), 500))
+    with connect() as conn:
+        if user_id is None:
+            rows = conn.execute(
+                "SELECT * FROM user_activity ORDER BY id DESC LIMIT ?", (limit,)
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM user_activity WHERE user_id=? ORDER BY id DESC LIMIT ?",
+                (user_id, limit),
+            ).fetchall()
+    return [dict(row) for row in rows]
 
 
 def any_users() -> bool:
@@ -644,7 +684,7 @@ __all__ = [
     "change_password_as_admin", "check_password_quality", "connect", "count_owners",
     "create_invite", "create_session",
     "create_user", "delete_session", "delete_user_sessions", "get_user", "get_user_by_name",
-    "hash_password", "list_invites", "list_users", "normalise_username", "redeem_invite",
-    "reset_caches", "revoke_invite", "session_from_token", "set_active", "set_role",
+    "hash_password", "list_activity", "list_invites", "list_users", "normalise_username",
+    "record_activity", "redeem_invite", "reset_caches", "revoke_invite", "session_from_token", "set_active", "set_role",
     "verify_password",
 ]

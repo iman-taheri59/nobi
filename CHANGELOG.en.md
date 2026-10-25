@@ -2,6 +2,16 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 1.4.1
+
+> Dedicated owner-only user management and activity tab.
+
+- User role/state/session/invite management moved into its own tab.
+- Append-only activity records login/logout/register and administrative actions.
+- New owner-session-only `GET /api/auth/activity` endpoint.
+- Bearer tokens are removed from user administration and mutations require CSRF.
+- Viewer/operators cannot see the tab and independently receive API 403; no sensitive values are logged.
+
 ## 1.4.0
 
 > Real placement endpoint added with owner/CSRF, promotion gate and explicit confirmation; not operationally enabled yet.

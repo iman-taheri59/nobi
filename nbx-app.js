@@ -1486,7 +1486,9 @@
     const who = $('setAccessWho');
     if (!box || !body) return;
     const st = await AUTH.me();
-    if (!st || !st.user) { box.hidden = true; return; }
+    const usersNav = $('usersNav');
+    if (usersNav) usersNav.classList.toggle('hidden', !(st && st.is_owner));
+    if (!st || !st.user || !st.is_owner) { box.hidden = true; return; }
     box.hidden = false;
     if (who) who.textContent = st.user.username + ' · ' + roleLabel(st.user.role);
 
@@ -1512,6 +1514,7 @@
         ${users.map((u) => `
           <div class="flex flex-wrap items-center gap-2 rounded-xl bg-white/[.03] border border-white/10 px-3 py-2">
             <span class="num text-[11px] font-bold text-zinc-200">${u.username}</span>
+            <span class="text-[9px] text-zinc-500">${u.last_login ? new Date(u.last_login * 1000).toLocaleString() : '—'}</span>
             ${u.active ? '' : `<span class="chip text-[9px] text-red-300 border-red-400/30">${inFa('set.accessOff')}</span>`}
             <select data-role="${u.id}" class="ms-auto text-[10px] bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-zinc-300">
               ${['viewer', 'operator', 'owner'].map((r) =>
@@ -1587,6 +1590,20 @@
           : `<div class="text-red-300">${(r.data && r.data.detail) || inFa('auth.err.net')}</div>`;
       };
     }
+  }
+
+  async function renderUserActivity() {
+    const body = $('usersActivity');
+    if (!body) return;
+    const st = await AUTH.me();
+    if (!st || !st.is_owner) { body.innerHTML = ''; return; }
+    const res = await AUTH.call('/auth/activity?limit=200', null, 'GET');
+    const events = (res.ok && res.data && res.data.events) || [];
+    body.innerHTML = events.length ? events.map((e) => `<div class="grid grid-cols-[auto_1fr_auto] gap-2 rounded-lg bg-white/[.03] border border-white/5 px-3 py-2 text-[10px]">
+      <span class="num text-violet-300">${String(e.username || '—').replaceAll('&','&amp;').replaceAll('<','&lt;')}</span>
+      <span class="text-zinc-300"><b>${String(e.action || '').replaceAll('&','&amp;').replaceAll('<','&lt;')}</b>${e.detail ? ` · ${String(e.detail).replaceAll('&','&amp;').replaceAll('<','&lt;')}` : ''}</span>
+      <span class="num text-zinc-500">${new Date((e.created_at || 0) * 1000).toLocaleString()}</span>
+    </div>`).join('') : `<div class="text-[10px] text-zinc-500">${inFa('users.noActivity')}</div>`;
   }
 
   async function renderInstall() {
@@ -1694,9 +1711,11 @@
   function bindLogout() {
     const out = $('logoutBtn');
     if (out) out.onclick = () => AUTH.logout();
-    document.querySelectorAll('.navbtn[data-tab="settings"]').forEach((b) => {
-      b.addEventListener('click', () => setTimeout(renderAccess, 120));
+    document.querySelectorAll('.navbtn[data-tab="users"]').forEach((b) => {
+      b.addEventListener('click', () => setTimeout(() => { renderAccess(); renderUserActivity(); }, 120));
     });
+    const refresh = $('usersRefresh');
+    if (refresh) refresh.onclick = renderUserActivity;
   }
 
   async function loadCoinMetadata() {

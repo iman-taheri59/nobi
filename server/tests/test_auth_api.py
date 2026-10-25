@@ -377,3 +377,27 @@ def test_the_user_list_is_owner_only_and_anonymous_gets_a_login(client: TestClie
     assert client.get("/api/auth/users").status_code == 401
     _login(client)
     assert client.get("/api/auth/users").status_code == 200
+
+
+def test_owner_can_review_user_activity_but_operator_cannot(client: TestClient) -> None:
+    _owner()
+    _login(client)
+    activity = client.get("/api/auth/activity")
+    assert activity.status_code == 200
+    assert activity.json()["events"][0]["action"] == "auth.login"
+    assert activity.json()["events"][0]["username"] == "owner1"
+    csrf = _csrf(client)
+    client.post("/api/auth/invites", json={"role": "operator"},
+                headers={"X-CSRF-Token": csrf})
+    client.post("/api/auth/logout")
+    auth.create_user("operator-view", "another long password", role="operator")
+    client.post("/api/auth/login", json={"username": "operator-view",
+                                         "password": "another long password"})
+    assert client.get("/api/auth/activity").status_code == 403
+
+
+def test_bearer_token_cannot_manage_users(monkeypatch, client: TestClient) -> None:
+    _owner()
+    monkeypatch.setattr(security, "API_TOKEN", "script-token")
+    response = client.get("/api/auth/users", headers={"X-API-Token": "script-token"})
+    assert response.status_code == 401

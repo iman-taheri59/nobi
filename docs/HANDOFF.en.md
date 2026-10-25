@@ -2,8 +2,8 @@
 
 [فارسی](HANDOFF.md) · **English**
 
-**Last updated:** 2026-10-25 — stage 15 (live placement endpoint, disabled until promotion)
-**Working version:** 1.4.0
+**Last updated:** 2026-10-25 — stage 16 (owner-only users and activity tab)
+**Working version:** 1.4.1
 **Target:** ADR-0027; stable product first, then staged fail-closed live execution.
 
 ## Status
@@ -25,6 +25,7 @@
 - [ ] On the real server: install the helper/sudoers root-owned and set `NBX_INSTALL_HELPER`.
 - [x] Real `/api/live/place`: owner+CSRF, explicit confirmation, preflight and promotion gate.
 - [ ] Run the real 5-day/30-sample soak; do not enable live mode before it passes.
+- [x] Dedicated owner-only users tab for roles/state/sessions/invites and activity.
 - [ ] Real soak/private contract test; requires an Iran-reachable host and IP-limited READ/TRADE key.
 - [ ] Independent security review before real funds.
 
@@ -50,7 +51,7 @@
 ```text
 ruff: passed
 mypy: success, 107 source files
-pytest: 938 passed, 1 dependency deprecation warning
+pytest: 940 passed, 1 dependency deprecation warning
 ESLint/dashboard lint: passed
 broker/preflight parity: passed
 mobile artifact: rebuilt for 1.2.3
