@@ -2,8 +2,8 @@
 
 [فارسی](HANDOFF.md) · **English**
 
-**Last updated:** 2026-10-25 — stage 24 (authenticated UI and Windows CI repair)
-**Working version:** 1.6.2
+**Last updated:** 2026-10-25 — stage 25 (final authenticated CI correction)
+**Working version:** 1.6.3
 **Target:** ADR-0027; stable product first, then staged fail-closed live execution.
 
 ## Status

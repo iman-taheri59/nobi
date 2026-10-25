@@ -2,6 +2,13 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 1.6.3
+
+> Final CI correction after reading the authenticated GitHub job logs.
+
+- The probe preflight now authenticates too, so it does not mistake protected 401 responses for an upstream outage after the browser has logged in.
+- The remaining empty-snapshot and test SQLite handles are explicitly closed, and the operations audit mode assertion is POSIX-only.
+
 ## 1.6.2
 
 > Complete the cross-platform CI repair with authenticated browser fixtures and fully closed SQLite test handles.

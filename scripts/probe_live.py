@@ -38,6 +38,7 @@ will not download, point the script at a browser you already have:
 from __future__ import annotations
 
 import argparse
+import http.cookiejar
 import json
 import re
 import sys
@@ -392,9 +393,25 @@ def _classify_element(pg, element_id: str) -> tuple[str, str]:
 # --------------------------------------------------------------------------- #
 # The probe
 # --------------------------------------------------------------------------- #
-def preflight(base: str) -> dict:
+def preflight(base: str, username: str | None = None,
+              password: str | None = None) -> dict:
     """Ask the backend what it knows before touching the browser."""
     out: dict = {"base": base, "reachable": False, "upstream_live": False}
+    opener = urllib.request.build_opener(
+        urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar())
+    )
+    if username and password:
+        payload = json.dumps({"username": username, "password": password}).encode()
+        request = urllib.request.Request(
+            f"{base}/api/auth/login", data=payload,
+            headers={"Content-Type": "application/json", "User-Agent": "nobi-probe/1.0"},
+        )
+        try:
+            with opener.open(request, timeout=30) as response:
+                response.read()
+        except (urllib.error.URLError, TimeoutError, OSError) as exc:
+            out["error"] = f"probe login failed: {type(exc).__name__}: {exc}"
+            return out
     try:
         health = http_json(f"{base}/api/health")
     except (urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError) as e:
@@ -405,7 +422,11 @@ def preflight(base: str) -> dict:
 
     def get(path: str) -> dict:
         try:
-            return http_json(f"{base}{path}", timeout=60)
+            request = urllib.request.Request(
+                f"{base}{path}", headers={"User-Agent": "nobi-probe/1.0"},
+            )
+            with opener.open(request, timeout=60) as response:
+                return json.loads(response.read().decode("utf-8"))
         except Exception as e:
             return {"ok": False, "error": f"{type(e).__name__}", "detail": str(e)[:120]}
 
@@ -432,7 +453,7 @@ def run_probe(base: str, wait_s: float, json_path: str | None, md_path: str | No
         print(missing_package_message(), file=sys.stderr)
         return 2
 
-    pf = preflight(base)
+    pf = preflight(base, username, password)
     print("Nobi live probe ·", base)
     if not pf["reachable"]:
         print(f"  server unreachable: {pf.get('error')}")

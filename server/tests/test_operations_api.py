@@ -1,6 +1,8 @@
 """Owner backup/restore and privileged-helper boundary tests."""
 from __future__ import annotations
 
+import os
+
 from test_install_api import _owner_client
 
 import operations_api
@@ -27,7 +29,8 @@ def test_owner_backup_and_confirmed_restore(monkeypatch, tmp_path):
     assert bad.status_code == 422
     assert restored.status_code == 200
     assert restored.json()["restart_required"] is True
-    assert operations_api.AUDIT.stat().st_mode & 0o777 == 0o600
+    if os.name != "nt":
+        assert operations_api.AUDIT.stat().st_mode & 0o777 == 0o600
 
 
 def test_restore_rejects_traversal_and_extra_arguments(monkeypatch, tmp_path):

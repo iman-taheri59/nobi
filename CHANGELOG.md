@@ -2,6 +2,13 @@
 
 [English](CHANGELOG.en.md) · **فارسی**
 
+## 1.6.3
+
+> اصلاح نهایی CI پس از خواندن log احرازشده GitHub.
+
+- preflight ابزار probe نیز اکنون login می‌کند تا پاسخ 401 محافظت‌شده را پس از ورود مرورگر با قطعی upstream اشتباه نگیرد.
+- handle باقی‌مانده snapshot خالی و تست‌های SQLite صریح بسته شدند و assertion mode فایل audit فقط روی POSIX اجرا می‌شود.
+
 ## 1.6.2
 
 > تکمیل اصلاح CI چندسکویی با fixture مرورگر احرازشده و بستن کامل handleهای SQLite.

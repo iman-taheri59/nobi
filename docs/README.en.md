@@ -2,7 +2,7 @@
 
 [فارسی](README.md) · **English**
 
-Current version: **1.6.2**. See [versioning and GitHub releases](releases.en.md) and the
+Current version: **1.6.3**. See [versioning and GitHub releases](releases.en.md) and the
 [changelog](../CHANGELOG.en.md).
 
 ## Documentation map
