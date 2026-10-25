@@ -57,10 +57,10 @@
 ```text
 ruff: passed
 mypy: success, 115 source files
-pytest: 963 passed, 1 dependency deprecation warning
+pytest: 968 passed, 1 dependency deprecation warning
 ESLint/dashboard lint: passed
 broker/preflight parity: passed
-mobile artifact: rebuilt for 1.2.3
+mobile artifact: rebuilt for 1.6.0
 ```
 
 ## محدودیت خارجی
@@ -70,8 +70,8 @@ mobile artifact: rebuilt for 1.2.3
 
 ## قدم بعدی
 
-1. انتشار ۱٫۲٫۶ و اجرای CI؛
-2. افزودن dry-run place فقط برای اپراتور؛
-3. اتصال همان `risk_engine.preflight` پیش از ساخت هر intent؛
-4. audit actor/request بدون payload حساس؛
-5. soak dry-run، سپس contract test محدود و بازبینی امنیتی.
+1. شاخه سخت‌سازی‌شده ۱٫۶٫۰ push شود و پیش از جابه‌جایی تگ، CI راه‌دور سبز باشد؛
+2. استقرار با قرار دادن همه مسیرهای قابل‌تغییر روی volume پایدار `/var/lib/nobi` انجام شود؛
+3. soak واقعی پنج‌روزه/۳۰ نمونه‌ای Paper روی میزبان قابل‌دسترسی Nobitex اجرا شود؛
+4. contract test محدود API خصوصی با کلید IP-limited اجرا شود؛
+5. پیش از سرمایه واقعی بازبینی امنیتی مستقل تکمیل شود.

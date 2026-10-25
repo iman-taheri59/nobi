@@ -17,8 +17,15 @@ services:
       NBX_COINGECKO_API_KEY: ${NBX_COINGECKO_API_KEY:-}
       NBX_COIN_METADATA_ENABLED: ${NBX_COIN_METADATA_ENABLED:-1}
       NBX_COIN_CACHE: /var/lib/nobi/coin-cache
+      NBX_AUTH_DB: /var/lib/nobi/auth.db
+      NBX_JOURNAL_DB: /var/lib/nobi/journal.db
+      NBX_LIVE_DB: /var/lib/nobi/live_execution.db
+      NBX_PAPER_STATE: /var/lib/nobi/paper.json
+      NBX_CANDLE_CACHE: /var/lib/nobi/candles
+      NBX_BT_DIR: /var/lib/nobi/backtests
+      NBX_EXPORT_DIR: /var/lib/nobi/exports
     volumes:
-      - coin-cache:/var/lib/nobi/coin-cache
+      - nobi-data:/var/lib/nobi
     ports:
       - "8000:8000"
     restart: unless-stopped
@@ -33,4 +40,4 @@ services:
       retries: 3
 
 volumes:
-  coin-cache:
+  nobi-data:

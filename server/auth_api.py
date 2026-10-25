@@ -61,7 +61,7 @@ class PreferencesBody(BaseModel):
     language: str = Field(pattern="^(fa|en)$")
     timezone: str = Field(max_length=64)
     theme: str = Field(pattern="^(dark|system)$")
-    default_page: str = Field(pattern="^(overview|signals|fa|orders|performance|desk|risk|backtest)$")
+    default_page: str = Field(pattern="^(overview|signals|intelligence|fa|orders|performance|desk|risk|backtest)$")
 
 
 class LivePolicyBody(BaseModel):
@@ -121,6 +121,7 @@ def _capabilities(user: auth.User) -> dict[str, bool]:
     policy = auth.get_live_policy(user.id) if user.role == "operator" else None
     return {
         "market_read": True, "paper_read": True, "reports_read": True,
+        "signal_intelligence_read": True, "signal_intelligence_review": operator,
         "paper_trade": operator, "backtest_run": operator,
         "journal_maintain": operator, "operational_audit": operator,
         "live_view": operator, "live_cancel": operator, "live_reconcile": operator,

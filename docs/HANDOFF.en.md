@@ -57,10 +57,10 @@
 ```text
 ruff: passed
 mypy: success, 115 source files
-pytest: 963 passed, 1 dependency deprecation warning
+pytest: 968 passed, 1 dependency deprecation warning
 ESLint/dashboard lint: passed
 broker/preflight parity: passed
-mobile artifact: rebuilt for 1.2.3
+mobile artifact: rebuilt for 1.6.0
 ```
 
 ## External limits
@@ -70,8 +70,8 @@ mobile artifact: rebuilt for 1.2.3
 
 ## Next action
 
-1. Release 1.2.6 and run CI;
-2. add operator-only dry-run placement;
-3. run the same `risk_engine.preflight` before creating every intent;
-4. audit actor/request without sensitive payloads;
-5. dry-run soak, then limited contract test and security review.
+1. Push the hardened 1.6.0 branch and require green remote CI before moving the release tag;
+2. deploy with every mutable path on the persistent `/var/lib/nobi` volume;
+3. run the real five-day/30-sample paper soak on an Iran-reachable host;
+4. run the limited private API contract test with an IP-limited key;
+5. complete an independent security review before real funds.

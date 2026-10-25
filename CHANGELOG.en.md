@@ -12,6 +12,7 @@
 - Detail exposes feature snapshots, contributions and H1/H2/H3 outcomes.
 - Review/tag requires operator/owner+CSRF, fixed tags and central audit; viewers read only.
 - Sample sufficiency below 30 is explicit and no synthetic metric/conversion is generated.
+- Hardening makes resolved/unresolved/void mutually exclusive, names component scores honestly, exposes dedicated account capabilities, validates review bodies strictly, enables journal foreign keys, and persists all Docker state on one non-root data volume.
 
 ## 1.5.1
 

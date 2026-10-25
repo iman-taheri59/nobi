@@ -1362,6 +1362,8 @@
       chip.classList.add('inline-flex');
       chip.title = state.user.username + ' — ' + roleLabel(state.user.role);
       document.documentElement.dataset.canMutate = state.can_mutate ? '1' : '0';
+      document.documentElement.dataset.signalReview =
+        state.capabilities && state.capabilities.signal_intelligence_review ? '1' : '0';
       const auditPanel = $('operatorAuditPanel');
       if (auditPanel) auditPanel.classList.toggle('hidden', !state.can_mutate);
       if (out) {

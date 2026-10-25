@@ -32,6 +32,7 @@ from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, ConfigDict, Field
 
 import _env  # noqa: F401 — must precede every module that reads os.environ
 import adaptive
@@ -2028,7 +2029,14 @@ async def diagnostics_run(request: Request, body: dict | None = None):
         raise HTTPException(status_code=400, detail=str(e)) from e
 
 
-# ---------------- Signal intelligence: quality, funnel, cohorts, reviews ----
+# ---------------- Signal intelligence: quality, pipeline, cohorts, reviews --
+class SignalReviewBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    tag: str = Field(min_length=1, max_length=32)
+    note: str = Field(default="", max_length=1000)
+
+
 @app.get("/api/signal-intelligence/summary")
 async def signal_intelligence_summary(days: int = Query(30, ge=1, le=3650),
                                       symbol: str | None = None,
@@ -2068,12 +2076,13 @@ async def signal_intelligence_detail(signal_id: int):
 
 
 @app.post("/api/signal-intelligence/signals/{signal_id}/review")
-async def signal_intelligence_review(signal_id: int, payload: dict, request: Request):
+async def signal_intelligence_review(signal_id: int, payload: SignalReviewBody,
+                                     request: Request):
     user = install_api.require_operator_mutation(request)
     try:
         result = signal_intelligence.review(
             signal_id, user_id=user.id, username=user.username,
-            tag=str(payload.get("tag") or ""), note=str(payload.get("note") or ""),
+            tag=payload.tag, note=payload.note,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc

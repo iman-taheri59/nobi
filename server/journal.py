@@ -81,6 +81,7 @@ def connect(path: str | Path | None = None) -> sqlite3.Connection:
     p.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(p, timeout=10)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys=ON")
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=NORMAL")
     init(conn)
@@ -145,6 +146,19 @@ CREATE TABLE IF NOT EXISTS signal_outcomes (
     PRIMARY KEY (signal_id, horizon_key),
     FOREIGN KEY (signal_id) REFERENCES signal_log(id) ON DELETE CASCADE
 );
+
+CREATE TABLE IF NOT EXISTS signal_reviews (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    signal_id INTEGER NOT NULL,
+    actor_user_id INTEGER NOT NULL,
+    actor_username TEXT NOT NULL,
+    tag TEXT NOT NULL,
+    note TEXT,
+    created_at INTEGER NOT NULL,
+    FOREIGN KEY(signal_id) REFERENCES signal_log(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_signal_reviews_signal
+    ON signal_reviews(signal_id, created_at DESC);
 """
 
 

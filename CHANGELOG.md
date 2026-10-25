@@ -12,6 +12,7 @@
 - detail شامل feature snapshot، contributionها و outcomeهای H1/H2/H3 است.
 - review/tag فقط operator/owner+CSRF با allowlist و audit مرکزی است؛ viewer فقط می‌خواند.
 - sample sufficiency کمتر از ۳۰ صریح است و هیچ metric یا conversion ساختگی تولید نمی‌شود.
+- سخت‌سازی، resolved/unresolved/void را مجزا کرد، نام component score را صادقانه اصلاح کرد، capability اختصاصی افزود، review را سخت‌گیرانه اعتبارسنجی کرد، Foreign Key دفتر را فعال کرد و همه stateهای Docker را روی volume واحد non-root پایدار ساخت.
 
 ## 1.5.1
 

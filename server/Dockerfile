@@ -14,6 +14,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 # /assets from Path(__file__).parent.parent, so the whole repo must be present.
 COPY . /app
 
+# Runtime state belongs on the mounted data volume, never in the image layer.
+RUN addgroup --system nobi && adduser --system --ingroup nobi nobi \
+    && mkdir -p /var/lib/nobi/candles /var/lib/nobi/backtests /var/lib/nobi/exports /var/lib/nobi/coin-cache \
+    && chown -R nobi:nobi /var/lib/nobi
+USER nobi
+
 EXPOSE 8000
 
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \

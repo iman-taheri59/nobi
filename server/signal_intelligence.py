@@ -20,48 +20,43 @@ def _where(*, days: int, symbol: str | None, timeframe: str | None) -> tuple[str
     return " AND ".join(clauses), params
 
 
-def ensure(conn) -> None:
-    conn.execute("""CREATE TABLE IF NOT EXISTS signal_reviews (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        signal_id INTEGER NOT NULL,
-        actor_user_id INTEGER NOT NULL,
-        actor_username TEXT NOT NULL,
-        tag TEXT NOT NULL,
-        note TEXT,
-        created_at INTEGER NOT NULL,
-        FOREIGN KEY(signal_id) REFERENCES signal_log(id) ON DELETE CASCADE
-    )""")
-    conn.execute("CREATE INDEX IF NOT EXISTS ix_signal_reviews_signal ON signal_reviews(signal_id, created_at DESC)")
-    conn.commit()
-
-
 def summary(*, days: int = 30, symbol: str | None = None,
             timeframe: str | None = None, horizon: str = "H1") -> dict[str, Any]:
     where, params = _where(days=days, symbol=symbol, timeframe=timeframe)
     with journal.connect() as conn:
-        ensure(conn)
         row = conn.execute(f"""SELECT count(*) signals,
-            count(DISTINCT CASE WHEN o.resolved_at IS NOT NULL THEN s.id END) resolved,
+            count(DISTINCT CASE WHEN s.voided_at IS NULL AND o.resolved_at IS NOT NULL THEN s.id END) resolved,
             sum(CASE WHEN s.voided_at IS NOT NULL THEN 1 ELSE 0 END) voided,
-            avg(CASE WHEN o.resolved_at IS NOT NULL THEN o.r_multiple END) avg_r,
-            avg(CASE WHEN o.resolved_at IS NOT NULL THEN o.return_pct END) avg_return_pct,
-            avg(CASE WHEN o.resolved_at IS NOT NULL THEN o.mfe_pct END) avg_mfe_pct,
-            avg(CASE WHEN o.resolved_at IS NOT NULL THEN o.mae_pct END) avg_mae_pct,
-            avg(CASE WHEN o.resolved_at IS NOT NULL THEN CASE WHEN o.r_multiple>0 THEN 1.0 ELSE 0.0 END END) win_rate
+            sum(CASE WHEN s.voided_at IS NULL AND o.resolved_at IS NOT NULL AND o.r_multiple>0 THEN 1 ELSE 0 END) wins,
+            sum(CASE WHEN s.voided_at IS NULL AND o.resolved_at IS NOT NULL AND o.r_multiple<0 THEN 1 ELSE 0 END) losses,
+            sum(CASE WHEN s.voided_at IS NULL AND o.resolved_at IS NOT NULL AND o.r_multiple=0 THEN 1 ELSE 0 END) flats,
+            avg(CASE WHEN s.voided_at IS NULL AND o.resolved_at IS NOT NULL THEN o.r_multiple END) avg_r,
+            avg(CASE WHEN s.voided_at IS NULL AND o.resolved_at IS NOT NULL AND o.r_multiple>0 THEN o.r_multiple END) avg_win_r,
+            avg(CASE WHEN s.voided_at IS NULL AND o.resolved_at IS NOT NULL AND o.r_multiple<0 THEN o.r_multiple END) avg_loss_r,
+            avg(CASE WHEN s.voided_at IS NULL AND o.resolved_at IS NOT NULL THEN o.return_pct END) avg_return_pct,
+            avg(CASE WHEN s.voided_at IS NULL AND o.resolved_at IS NOT NULL THEN o.mfe_pct END) avg_mfe_pct,
+            avg(CASE WHEN s.voided_at IS NULL AND o.resolved_at IS NOT NULL THEN o.mae_pct END) avg_mae_pct,
+            avg(CASE WHEN s.voided_at IS NULL AND o.resolved_at IS NOT NULL THEN CASE WHEN o.r_multiple>0 THEN 1.0 ELSE 0.0 END END) win_rate
             FROM signal_log s LEFT JOIN signal_outcomes o
               ON o.signal_id=s.id AND o.horizon_key=? WHERE {where}""", [horizon, *params]).fetchone()
         assert row is not None
         reviews = conn.execute(f"SELECT count(*) FROM signal_reviews r JOIN signal_log s ON s.id=r.signal_id WHERE {where}", params).fetchone()[0]
     def rounded(value, digits=4):
         return round(float(value), digits) if value is not None else None
-    return {"window_days": days, "horizon": horizon, "signals": int(row["signals"]),
-            "resolved": int(row["resolved"]), "unresolved": int(row["signals"])-int(row["resolved"]),
-            "voided": int(row["voided"] or 0), "reviews": int(reviews),
-            "win_rate_pct": rounded((row["win_rate"] or 0) * 100, 2) if row["resolved"] else None,
-            "expectancy_r": rounded(row["avg_r"]), "avg_r": rounded(row["avg_r"]),
+    resolved = int(row["resolved"])
+    voided = int(row["voided"] or 0)
+    total = int(row["signals"])
+    return {"window_days": days, "horizon": horizon, "signals": total,
+            "resolved": resolved, "unresolved": total - resolved - voided,
+            "voided": voided, "wins": int(row["wins"] or 0),
+            "losses": int(row["losses"] or 0), "flats": int(row["flats"] or 0),
+            "reviews": int(reviews),
+            "win_rate_pct": rounded((row["win_rate"] or 0) * 100, 2) if resolved else None,
+            "expectancy_r": rounded(row["avg_r"]),
+            "avg_win_r": rounded(row["avg_win_r"]), "avg_loss_r": rounded(row["avg_loss_r"]),
             "avg_return_pct": rounded(row["avg_return_pct"]),
             "avg_mfe_pct": rounded(row["avg_mfe_pct"]), "avg_mae_pct": rounded(row["avg_mae_pct"]),
-            "sample_sufficient": int(row["resolved"]) >= 30}
+            "sample_minimum": 30, "sample_sufficient": resolved >= 30}
 
 
 def funnel(*, days: int = 30) -> dict[str, Any]:
@@ -91,14 +86,16 @@ def cohorts(*, days: int = 30, horizon: str = "H1", limit: int = 50) -> list[dic
     with journal.connect() as conn:
         rows = conn.execute("""SELECT s.symbol,s.timeframe,coalesce(s.regime,'unknown') regime,
             coalesce(s.config_hash,'unknown') config_hash,count(*) signals,
-            count(o.resolved_at) resolved,avg(o.r_multiple) avg_r,
-            avg(CASE WHEN o.resolved_at IS NOT NULL THEN CASE WHEN o.r_multiple>0 THEN 1.0 ELSE 0.0 END END) win_rate
+            count(CASE WHEN s.voided_at IS NULL THEN o.resolved_at END) resolved,
+            avg(CASE WHEN s.voided_at IS NULL THEN o.r_multiple END) avg_r,
+            avg(CASE WHEN s.voided_at IS NULL AND o.resolved_at IS NOT NULL THEN CASE WHEN o.r_multiple>0 THEN 1.0 ELSE 0.0 END END) win_rate
             FROM signal_log s LEFT JOIN signal_outcomes o ON o.signal_id=s.id AND o.horizon_key=?
             WHERE s.ts>=? GROUP BY s.symbol,s.timeframe,s.regime,s.config_hash
             ORDER BY resolved DESC,signals DESC LIMIT ?""", (horizon, since, limit)).fetchall()
     return [{"symbol": r["symbol"], "timeframe": r["timeframe"], "regime": r["regime"],
              "config_hash": r["config_hash"], "signals": int(r["signals"]),
-             "resolved": int(r["resolved"]),
+             "resolved": int(r["resolved"]), "sample_minimum": 30,
+             "sample_sufficient": int(r["resolved"]) >= 30,
              "win_rate_pct": round(float(r["win_rate"])*100, 2) if r["win_rate"] is not None else None,
              "expectancy_r": round(float(r["avg_r"]), 4) if r["avg_r"] is not None else None}
             for r in rows]
@@ -108,7 +105,6 @@ def signals(*, days: int = 30, limit: int = 100, symbol: str | None = None,
             timeframe: str | None = None, horizon: str = "H1") -> list[dict[str, Any]]:
     where, params = _where(days=days, symbol=symbol, timeframe=timeframe)
     with journal.connect() as conn:
-        ensure(conn)
         rows = conn.execute(f"""SELECT s.*,o.resolved_at,o.return_pct,o.r_multiple,o.mfe_pct,o.mae_pct,
             o.hit_tp1,o.hit_sl,(SELECT count(*) FROM signal_reviews r WHERE r.signal_id=s.id) review_count
             FROM signal_log s LEFT JOIN signal_outcomes o ON o.signal_id=s.id AND o.horizon_key=?
@@ -122,7 +118,6 @@ def signals(*, days: int = 30, limit: int = 100, symbol: str | None = None,
 
 def detail(signal_id: int) -> dict[str, Any] | None:
     with journal.connect() as conn:
-        ensure(conn)
         row = conn.execute("SELECT * FROM signal_log WHERE id=?", (signal_id,)).fetchone()
         if row is None:
             return None
@@ -133,21 +128,29 @@ def detail(signal_id: int) -> dict[str, Any] | None:
         item["features"] = json.loads(item.get("features") or "{}")
     except (TypeError, ValueError):
         item["features"] = {}
-    item["contributions"] = {"ta": item.get("ta_score"), "fa": item.get("fa_score"),
-                             "liquidity": item.get("liquidity_score"), "composite": item.get("composite")}
+    item["component_scores"] = {
+        "ta": item.get("ta_score"), "fa": item.get("fa_score"),
+        "liquidity": item.get("liquidity_score"), "composite": item.get("composite"),
+    }
     return {"signal": item, "outcomes": outcomes, "reviews": reviews}
 
 
-def review(signal_id: int, *, user_id: int, username: str, tag: str, note: str) -> dict[str, Any]:
-    allowed = {"good-signal", "bad-data", "late-entry", "risk-block-correct",
+REVIEW_TAGS = {"good-signal", "bad-data", "late-entry", "risk-block-correct",
                "false-positive", "execution-issue", "needs-replay"}
-    if tag not in allowed:
+
+
+def review(signal_id: int, *, user_id: int, username: str, tag: str, note: str) -> dict[str, Any]:
+    if tag not in REVIEW_TAGS:
         raise ValueError("unsupported review tag")
+    if len(note) > 1000:
+        raise ValueError("review note must be at most 1000 characters")
+    clean_note = note.strip()
+    created_at = int(time.time())
     with journal.connect() as conn:
-        ensure(conn)
         if conn.execute("SELECT 1 FROM signal_log WHERE id=?", (signal_id,)).fetchone() is None:
             raise LookupError("signal not found")
         cur = conn.execute("INSERT INTO signal_reviews(signal_id,actor_user_id,actor_username,tag,note,created_at) VALUES(?,?,?,?,?,?)",
-                           (signal_id, user_id, username, tag, note[:1000], int(time.time())))
+                           (signal_id, user_id, username, tag, clean_note, created_at))
         conn.commit()
-        return {"id": cur.lastrowid, "signal_id": signal_id, "tag": tag, "note": note[:1000]}
+        return {"id": cur.lastrowid, "signal_id": signal_id, "tag": tag,
+                "note": clean_note, "created_at": created_at}
