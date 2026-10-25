@@ -2,6 +2,12 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 1.6.5
+
+> Isolate unauthenticated rendering smoke from the authenticated browser contract in CI.
+
+- jsdom now validates the supported unclaimed local-install state before CI creates its temporary owner; the real-browser probe then logs in and validates protected panels.
+
 ## 1.6.4
 
 > Preserve the authenticated API context for the final UI/API equity cross-check.

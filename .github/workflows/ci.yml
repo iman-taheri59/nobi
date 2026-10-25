@@ -115,7 +115,6 @@ jobs:
       - name: fixture exchange + dashboard
         run: |
           export NBX_AUTH_DB=/tmp/ci-auth.db
-          PYTHONPATH=server python3 -c "import auth; auth.create_user('ci-owner', 'CI-browser-probe-password-2026!', role='owner')"
           python3 scripts/mock_upstream.py --port 8010 &
           python3 scripts/run_with_mock_exchange.py --port 8000 \
             --exchange http://127.0.0.1:8010 --journal-db /tmp/ci-journal.db &
@@ -123,17 +122,19 @@ jobs:
             curl -sf -o /dev/null http://127.0.0.1:8000/api/health && break
             sleep 1
           done
+      # jsdom exercises the backwards-compatible unclaimed local install before
+      # the human-session probe claims it. It validates rendering, not access control.
+      - name: ui smoke — jsdom
+        run: |
+          python3 scripts/ui_smoke_prep.py
+          node scripts/ui_smoke_test.js
+      - name: create short-lived browser probe owner
+        run: >-
+          NBX_AUTH_DB=/tmp/ci-auth.db PYTHONPATH=server python3 -c
+          "import auth; auth.create_user('ci-owner', 'CI-browser-probe-password-2026!', role='owner')"
       - name: classifier self-test
         run: python3 scripts/probe_live.py --selftest
       - name: 45 panels explain themselves
         run: >-
           python3 scripts/probe_live.py --url http://127.0.0.1:8000
           --username ci-owner --password 'CI-browser-probe-password-2026!'
-      # jsdom instead of a browser: no CDN, no layout engine — it asserts the
-      # page's own claims (7 KPI cells, an MSI badge that matches its sample
-      # count, a provenance chip that is never a bare number) and that nothing
-      # threw.
-      - name: ui smoke — jsdom
-        run: |
-          python3 scripts/ui_smoke_prep.py
-          node scripts/ui_smoke_test.js
