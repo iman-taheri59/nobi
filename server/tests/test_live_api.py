@@ -45,6 +45,49 @@ def test_status_is_secret_free_and_placement_is_not_exposed(monkeypatch, tmp_pat
     assert "private" not in text
 
 
+def test_dry_run_uses_server_preflight_and_hides_raw_record(monkeypatch, tmp_path):
+    monkeypatch.setattr(auth, "AUTH_DB", tmp_path / "auth.db")
+    ledger = ExecutionLedger(tmp_path / "dry.db")
+    monkeypatch.setattr(
+        live_api, "CLIENT", LiveExecutionClient(mode=ExecutionMode.DRY_RUN, ledger=ledger)
+    )
+
+    async def preflight(_payload, _request):
+        return {
+            "ok": True, "symbol": "BTCUSDT", "side": "buy",
+            "entry": 70000, "qty": 0.01,
+            "projection": {"blocked": False, "blocked_by": None},
+        }
+
+    monkeypatch.setattr(live_api, "_PREFLIGHT", preflight)
+    with TestClient(main.app) as client:
+        response = client.post("/api/live/dry-run", json={"idempotency_key": "ui-action-1"})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["execution"]["state"] == "dry-run"
+    assert "raw_body" not in response.text
+    assert "intent_json" not in response.text
+    assert len(list(ledger._connect().execute("SELECT 1 FROM live_execution"))) == 1
+
+
+def test_blocked_preflight_creates_no_intent(monkeypatch, tmp_path):
+    monkeypatch.setattr(auth, "AUTH_DB", tmp_path / "auth.db")
+    ledger = ExecutionLedger(tmp_path / "dry.db")
+    monkeypatch.setattr(
+        live_api, "CLIENT", LiveExecutionClient(mode=ExecutionMode.DRY_RUN, ledger=ledger)
+    )
+
+    async def blocked(_payload, _request):
+        return {"ok": True, "projection": {"blocked": True, "blocked_by": "heat-cap"}}
+
+    monkeypatch.setattr(live_api, "_PREFLIGHT", blocked)
+    with TestClient(main.app) as client:
+        response = client.post("/api/live/dry-run", json={"idempotency_key": "blocked"})
+    assert response.status_code == 409
+    with ledger._connect() as conn:
+        assert conn.execute("SELECT count(*) FROM live_execution").fetchone()[0] == 0
+
+
 def test_disabled_control_fails_before_exchange_network(monkeypatch, tmp_path):
     monkeypatch.setattr(auth, "AUTH_DB", tmp_path / "auth.db")
     monkeypatch.setattr(

@@ -2,6 +2,16 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 1.2.5
+
+> B4: dry-run placement only after real server preflight; no network submission or real-place route was added.
+
+- ADR-0032 records mandatory preflight and responses without raw payloads.
+- `POST /api/live/dry-run` requires `NBX_LIVE_MODE=dry-run` and `require_client`.
+- Size and entry come from server `risk_whatif`; blocked gates fail before the ledger.
+- IRT intent converts Toman entry to Rial at the order boundary; raw body and intent JSON are omitted from responses.
+- Two route tests cover success and blocked preflight with no record.
+
 ## 1.2.4
 
 > B3 routes: private list/cancel/reconcile controls are exposed; a real-placement route deliberately does not exist.

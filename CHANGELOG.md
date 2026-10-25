@@ -2,6 +2,16 @@
 
 [English](CHANGELOG.en.md) · **فارسی**
 
+## 1.2.5
+
+> B4: ثبت آزمایشی فقط پس از preflight واقعی سرور؛ هیچ ارسال شبکه یا route ثبت واقعی اضافه نشد.
+
+- ADR-0032 قرارداد dry-run، preflight اجباری و پاسخ بدون raw payload را ثبت می‌کند.
+- `POST /api/live/dry-run` فقط با `NBX_LIVE_MODE=dry-run` و `require_client` کار می‌کند.
+- اندازه و entry از همان `risk_whatif` سرور می‌آیند؛ gate بسته پیش از ledger رد می‌شود.
+- intent ریالی قیمت تومان را در مرز سفارش به ریال تبدیل می‌کند؛ پاسخ raw body و intent JSON را حذف می‌کند.
+- دو آزمون route موفق و preflight مسدود بدون ایجاد رکورد را پوشش می‌دهند.
+
 ## 1.2.4
 
 > B3-route: کنترل خصوصی list/cancel/reconcile عرضه شد؛ route ثبت واقعی عمداً وجود ندارد.

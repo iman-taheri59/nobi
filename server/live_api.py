@@ -2,13 +2,20 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
-from live_execution import ExecutionError, ExecutionLedger, ExecutionMode, LiveExecutionClient
+from live_execution import (
+    ExecutionError,
+    ExecutionLedger,
+    ExecutionMode,
+    LiveExecutionClient,
+    OrderIntent,
+)
 from security import require_client
 
 
@@ -57,6 +64,22 @@ def configured_client() -> tuple[LiveExecutionClient, str | None]:
 
 CLIENT, CONFIG_PROBLEM = configured_client()
 router = APIRouter(prefix="/api/live", tags=["live-control"])
+Preflight = Callable[[dict[str, Any], Request], Awaitable[dict[str, Any]]]
+Audit = Callable[..., Any]
+_PREFLIGHT: Preflight | None = None
+_AUDIT: Audit | None = None
+
+
+def configure(*, preflight: Preflight, audit: Audit) -> None:
+    global _PREFLIGHT, _AUDIT
+    _PREFLIGHT, _AUDIT = preflight, audit
+
+
+def _public_record(record: dict[str, Any]) -> dict[str, Any]:
+    return {key: record.get(key) for key in (
+        "client_order_id", "state", "attempts", "exchange_order_id",
+        "error_code", "created_at", "updated_at",
+    )}
 
 
 def _call(action):
@@ -77,6 +100,45 @@ def status():
         "configuration_problem": CONFIG_PROBLEM,
         "placement_exposed": False,
     }
+
+
+@router.post("/dry-run", dependencies=[Depends(require_client)])
+async def dry_run(payload: dict, request: Request):
+    if CLIENT.mode is not ExecutionMode.DRY_RUN:
+        raise HTTPException(status_code=409, detail="dry-run route requires NBX_LIVE_MODE=dry-run")
+    if _PREFLIGHT is None:
+        raise HTTPException(status_code=503, detail="server preflight is not configured")
+    body = payload or {}
+    key = str(body.get("idempotency_key") or "")
+    if not key:
+        raise HTTPException(status_code=422, detail="idempotency_key is required")
+    result = await _PREFLIGHT(body, request)
+    projection_value = result.get("projection")
+    projection: dict[str, Any] = projection_value if isinstance(projection_value, dict) else {}
+    if not result.get("ok") or projection.get("blocked"):
+        raise HTTPException(
+            status_code=409,
+            detail={"error": "preflight-blocked", "blocked_by": projection.get("blocked_by")},
+        )
+    symbol = str(result.get("symbol") or "").upper()
+    quote = "IRT" if symbol.endswith("IRT") else "USDT" if symbol.endswith("USDT") else ""
+    if not quote:
+        raise HTTPException(status_code=422, detail="unsupported market symbol")
+    src = symbol[:-len(quote)]
+    dst = "rls" if quote == "IRT" else "usdt"
+    intent = OrderIntent(
+        side=str(result.get("side") or "buy"), src_currency=src,
+        dst_currency=dst, amount=format(float(result["qty"]), ".12g"),
+        price=format(float(result["entry"]) * (10 if quote == "IRT" else 1), ".12g"),
+        idempotency_key=key,
+    )
+    record = CLIENT.place(intent)
+    if _AUDIT is not None:
+        _AUDIT("live.dry-run", detail={
+            "client_order_id": intent.client_order_id, "symbol": symbol,
+            "blocked": False,
+        }, request=request)
+    return {"ok": True, "execution": _public_record(record), "preflight": projection}
 
 
 @router.get("/orders", dependencies=[Depends(require_client)])

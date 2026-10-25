@@ -2,8 +2,8 @@
 
 [English](HANDOFF.en.md) · **فارسی**
 
-**آخرین به‌روزرسانی:** ۲۰۲۶-۱۰-۲۵ — مرحله ۷ (روت‌های B3 کامل)
-**نسخه کاری:** ۱٫۲٫۴
+**آخرین به‌روزرسانی:** ۲۰۲۶-۱۰-۲۵ — مرحله ۸ (B4 dry-run کامل)
+**نسخه کاری:** ۱٫۲٫۵
 **هدف:** ADR-0027؛ ابتدا محصول پایدار، سپس اجرای واقعی مرحله‌ای و fail-closed.
 
 ## وضعیت
@@ -13,7 +13,7 @@
 - [x] B2: disabled/dry-run/live، ledger، idempotency، unknown-state و reconciliation.
 - [x] B3-primitive: فهرست سفارش و لغو بر اساس `clientOrderId` با cancel-unknown بدون retry.
 - [x] B3-route: روت‌های خصوصی status/list/cancel/reconcile؛ place عمداً وجود ندارد.
-- [ ] B4: dry-run place با preflight اجباری و audit actor.
+- [x] B4: dry-run place با preflight اجباری و audit actor؛ بدون ارسال شبکه.
 - [ ] soak واقعی و contract test خصوصی؛ نیازمند محیط ایران و کلید READ/TRADE محدود به IP.
 - [ ] بازبینی امنیتی مستقل پیش از سرمایه واقعی.
 
@@ -39,7 +39,7 @@
 ```text
 ruff: passed
 mypy: success, 99 source files
-pytest: 916 passed, 1 dependency deprecation warning
+pytest: 918 passed, 1 dependency deprecation warning
 ESLint/dashboard lint: passed
 broker/preflight parity: passed
 mobile artifact: rebuilt for 1.2.3
@@ -52,7 +52,7 @@ mobile artifact: rebuilt for 1.2.3
 
 ## قدم بعدی
 
-1. انتشار ۱٫۲٫۴ و اجرای CI؛
+1. انتشار ۱٫۲٫۵ و اجرای CI؛
 2. افزودن dry-run place فقط برای اپراتور؛
 3. اتصال همان `risk_engine.preflight` پیش از ساخت هر intent؛
 4. audit actor/request بدون payload حساس؛

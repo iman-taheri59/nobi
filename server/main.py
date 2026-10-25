@@ -376,7 +376,7 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(
     title="nobiTrader",
-    version="1.2.4",
+    version="1.2.5",
     lifespan=lifespan,
 )
 
@@ -2398,6 +2398,14 @@ async def risk_whatif(payload: dict, request: Request):
         "projection": out,
         **provenance(),
     }
+
+
+async def _live_preflight(payload: dict[str, Any], request: Request) -> dict[str, Any]:
+    """One risk implementation for what-if and the private dry-run route."""
+    return await risk_whatif(payload, request)
+
+
+live_api.configure(preflight=_live_preflight, audit=audit)
 
 
 @app.post("/api/portfolio/allocate")
