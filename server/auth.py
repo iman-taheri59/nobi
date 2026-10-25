@@ -142,6 +142,15 @@ CREATE TABLE IF NOT EXISTS sessions (
 );
 CREATE INDEX IF NOT EXISTS ix_sessions_user ON sessions(user_id);
 
+CREATE TABLE IF NOT EXISTS user_preferences (
+    user_id       INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    language      TEXT NOT NULL DEFAULT 'fa',
+    timezone      TEXT NOT NULL DEFAULT 'Asia/Tehran',
+    theme         TEXT NOT NULL DEFAULT 'dark',
+    default_page  TEXT NOT NULL DEFAULT 'overview',
+    updated_at    INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS live_policies (
     user_id             INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
     enabled             INTEGER NOT NULL DEFAULT 0,
@@ -703,6 +712,73 @@ def active_sessions() -> int:
         conn.close()
 
 
+def list_user_sessions(user_id: int, *, current_token: str = "") -> list[dict]:
+    current_id = _session_id(current_token) if current_token else ""
+    now = int(time.time())
+    with connect() as conn:
+        rows = conn.execute(
+            "SELECT id,created_at,expires_at,last_seen,ip,ua FROM sessions "
+            "WHERE user_id=? AND expires_at>? ORDER BY last_seen DESC", (user_id, now),
+        ).fetchall()
+    return [{
+        "id": hashlib.sha256(str(row["id"]).encode()).hexdigest()[:24],
+        "created_at": row["created_at"], "expires_at": row["expires_at"],
+        "last_seen": row["last_seen"], "ip": row["ip"] or "",
+        "ua": row["ua"] or "", "current": hmac.compare_digest(str(row["id"]), current_id),
+    } for row in rows]
+
+
+def delete_public_session(user_id: int, public_id: str) -> bool:
+    if len(public_id) != 24:
+        return False
+    conn = connect()
+    try:
+        rows = conn.execute("SELECT id FROM sessions WHERE user_id=?", (user_id,)).fetchall()
+        target = next((str(row["id"]) for row in rows
+                       if hmac.compare_digest(hashlib.sha256(str(row["id"]).encode()).hexdigest()[:24],
+                                              public_id)), None)
+        if target is None:
+            return False
+        cur = conn.execute("DELETE FROM sessions WHERE id=? AND user_id=?", (target, user_id))
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def get_preferences(user_id: int) -> dict:
+    with connect() as conn:
+        row = conn.execute("SELECT * FROM user_preferences WHERE user_id=?", (user_id,)).fetchone()
+    if row is None:
+        return {"language": "fa", "timezone": "Asia/Tehran", "theme": "dark",
+                "default_page": "overview"}
+    return {key: row[key] for key in ("language", "timezone", "theme", "default_page")}
+
+
+def set_preferences(user_id: int, values: dict) -> dict:
+    now = int(time.time())
+    with connect() as conn:
+        conn.execute(
+            """INSERT INTO user_preferences(user_id,language,timezone,theme,default_page,updated_at)
+               VALUES(?,?,?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET
+               language=excluded.language,timezone=excluded.timezone,theme=excluded.theme,
+               default_page=excluded.default_page,updated_at=excluded.updated_at""",
+            (user_id, values["language"], values["timezone"], values["theme"],
+             values["default_page"], now),
+        )
+    return get_preferences(user_id)
+
+
+def live_usage_today(user_id: int) -> dict:
+    day_start = int(time.time()) // 86400 * 86400
+    with connect() as conn:
+        count, spent = conn.execute(
+            "SELECT count(*),coalesce(sum(notional_usdt),0) FROM live_order_usage "
+            "WHERE user_id=? AND created_at>=?", (user_id, day_start),
+        ).fetchone()
+    return {"orders": int(count), "notional_usdt": round(float(spent), 8)}
+
+
 # --------------------------------------------------------------------------- #
 # Invites
 # --------------------------------------------------------------------------- #
@@ -811,15 +887,19 @@ __all__ = [
     "create_invite",
     "create_session",
     "create_user",
+    "delete_public_session",
     "delete_session",
     "delete_user_sessions",
     "get_live_policy",
+    "get_preferences",
     "get_user",
     "get_user_by_name",
     "hash_password",
     "list_activity",
     "list_invites",
+    "list_user_sessions",
     "list_users",
+    "live_usage_today",
     "normalise_username",
     "record_activity",
     "redeem_invite",
@@ -828,6 +908,7 @@ __all__ = [
     "session_from_token",
     "set_active",
     "set_live_policy",
+    "set_preferences",
     "set_role",
     "verify_password",
 ]

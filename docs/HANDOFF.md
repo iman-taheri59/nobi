@@ -2,8 +2,8 @@
 
 [English](HANDOFF.en.md) · **فارسی**
 
-**آخرین به‌روزرسانی:** ۲۰۲۶-۱۰-۲۵ — مرحله ۱۹ (بازبینی کامل ماتریس دسترسی)
-**نسخه کاری:** ۱٫۴٫۴
+**آخرین به‌روزرسانی:** ۲۰۲۶-۱۰-۲۵ — مرحله ۲۱ (داشبورد حساب کاربری)
+**نسخه کاری:** ۱٫۵٫۱
 **هدف:** ADR-0027؛ ابتدا محصول پایدار، سپس اجرای واقعی مرحله‌ای و fail-closed.
 
 ## وضعیت
@@ -30,6 +30,7 @@
 - [x] audit خلاصه و بدون secret برای self-test، diagnostics و devsuite؛ chip صریح owner-only.
 - [x] ماتریس کامل دسترسی: settings/cache فقط-owner؛ audit/notify/live-private فقط operator/owner؛ token بدون نقش انسانی.
 - [x] capability مستقل `live_place` برای operator منتخب با limit-only، سقف مالی/تعداد/نماد و بودجه اتمیک.
+- [x] تب «حساب من» برای همه نقش‌ها: capability/policy/usage، session، activity، password و preferences.
 - [ ] soak واقعی و contract test خصوصی؛ نیازمند محیط ایران و کلید READ/TRADE محدود به IP.
 - [ ] بازبینی امنیتی مستقل پیش از سرمایه واقعی.
 
@@ -54,8 +55,8 @@
 
 ```text
 ruff: passed
-mypy: success, 112 source files
-pytest: 957 passed, 1 dependency deprecation warning
+mypy: success, 113 source files
+pytest: 961 passed, 1 dependency deprecation warning
 ESLint/dashboard lint: passed
 broker/preflight parity: passed
 mobile artifact: rebuilt for 1.2.3

@@ -77,3 +77,4 @@
 | 0040 | **خطایابی سیستم فقط مالک** | پذیرفته — ۱٫۴٫۲؛ audit/UX در ۱٫۴٫۳ | error log، diagnostics و devsuite با owner+CSRF |
 | 0041 | **ماتریس دسترسی سامانه** | پذیرفته — ۱٫۴٫۴ | viewer/operator/owner/token برای settings، audit و live private |
 | 0042 | **ثبت واقعی محدود اپراتور** | پذیرفته — ۱٫۵٫۰ | capability مستقل، سقف مالی/تعداد/نماد و رزرو اتمیک |
+| 0043 | **داشبورد حساب کاربری** | پذیرفته — ۱٫۵٫۱ | profile/capability/policy، session، activity، password و preferences |

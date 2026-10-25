@@ -295,7 +295,7 @@
       </button>
     </div>
     <span class="hidden 2xl:inline-flex chip shrink-0"><span class="dot bg-emerald-400"></span> <span data-i18n="hdr.kill"></span></span>
-    <span id="buildChip" class="hidden lg:inline-flex chip num text-violet-300 border-violet-400/30 shrink-0" title="نسخه واقعی از /api/health">v1.5.0 · core</span>
+    <span id="buildChip" class="hidden lg:inline-flex chip num text-violet-300 border-violet-400/30 shrink-0" title="نسخه واقعی از /api/health">v1.5.1 · core</span>
     <div class="ms-auto flex items-center gap-1.5 shrink-0">
       <span class="hidden xl:inline-flex chip num" id="clock">--:--:--</span>
       <span id="apiChip" class="hidden 2xl:inline-flex chip num text-zinc-400 border-white/10" title=""><i data-lucide="wifi-off" class="w-3.5 h-3.5"></i> <span>API: —</span></span>
@@ -346,6 +346,7 @@
       <button class="navbtn w-full flex items-center gap-3 px-3.5 py-2.5 text-sm text-zinc-300" data-tab="desk"><i data-lucide="sliders-horizontal" class="w-4.5 h-4.5 shrink-0"></i> <span data-i18n="page.desk.title"></span> <span id="deskBadge" class="ms-auto chip num bg-amber-400/15 text-amber-300 border-amber-300/30 hidden">0</span></button>
       <button class="navbtn w-full flex items-center gap-3 px-3.5 py-2.5 text-sm text-zinc-300" data-tab="risk"><i data-lucide="shield-half" class="w-4.5 h-4.5 shrink-0"></i> <span data-i18n="page.risk.title"></span></button>
       <button class="navbtn w-full flex items-center gap-3 px-3.5 py-2.5 text-sm text-zinc-300" data-tab="backtest"><i data-lucide="flask-conical" class="w-4.5 h-4.5 shrink-0"></i> <span data-i18n="page.backtest.title"></span></button>
+      <button id="accountNav" class="navbtn hidden w-full flex items-center gap-3 px-3.5 py-2.5 text-sm text-zinc-300" data-tab="account"><i data-lucide="circle-user-round" class="w-4.5 h-4.5 shrink-0"></i> <span data-i18n="page.account.title"></span></button>
       <button id="errorsNav" class="navbtn hidden w-full flex items-center gap-3 px-3.5 py-2.5 text-sm text-zinc-300" data-tab="errors"><i data-lucide="bug" class="w-4.5 h-4.5 shrink-0"></i> <span data-i18n="page.errors.title"></span> <span id="errBadge" class="ms-auto chip num bg-red-400/15 text-red-300 border-red-300/30 hidden">0</span></button>
       <button id="usersNav" class="navbtn hidden w-full flex items-center gap-3 px-3.5 py-2.5 text-sm text-zinc-300" data-tab="users"><i data-lucide="users-round" class="w-4.5 h-4.5 shrink-0"></i> <span data-i18n="page.users.title"></span></button>
       <button id="settingsNav" class="navbtn hidden w-full flex items-center gap-3 px-3.5 py-2.5 text-sm text-zinc-300" data-tab="settings"><i data-lucide="settings-2" class="w-4.5 h-4.5 shrink-0"></i> <span data-i18n="page.settings.title"></span></button>
@@ -950,6 +951,23 @@
           </button>
         </div>
       </div>
+    </section>
+
+    <!-- ======= PAGE: My account ======= -->
+    <section id="page-account" class="tab-page hidden space-y-4 sm:space-y-6">
+      <div class="flex items-center gap-3"><span class="w-1 h-7 sm:h-8 rounded-full bg-gradient-to-b from-cyan-300 to-violet-500/40"></span>
+        <div><h1 class="font-extrabold text-base sm:text-xl" data-i18n="page.account.title"></h1><p class="text-[11px] text-zinc-500" data-i18n="page.account.desc"></p></div></div>
+      <div id="accountProfile" class="glass p-4 sm:p-5"></div>
+      <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
+        <div class="glass p-4 sm:p-5"><div class="font-bold text-[13px] mb-3" data-i18n="account.capabilities"></div><div id="accountCaps" class="grid grid-cols-1 sm:grid-cols-2 gap-1.5"></div></div>
+        <div class="glass p-4 sm:p-5"><div class="font-bold text-[13px] mb-3" data-i18n="account.livePolicy"></div><div id="accountLivePolicy" class="text-[10px] text-zinc-400"></div></div>
+      </div>
+      <div class="glass p-4 sm:p-5"><div class="flex items-center gap-2 mb-3"><span class="font-bold text-[13px]" data-i18n="account.sessions"></span><button id="accountLogoutAll" class="ms-auto text-[10px] px-2 py-1 rounded-lg bg-red-400/10 border border-red-300/30 text-red-200" data-i18n="account.logoutAll"></button></div><div id="accountSessions" class="space-y-1.5"></div></div>
+      <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
+        <div class="glass p-4 sm:p-5"><div class="font-bold text-[13px] mb-3" data-i18n="account.password"></div><div class="space-y-2"><input id="accountCurrentPassword" class="auth-input" type="password" autocomplete="current-password" data-i18n-ph="account.currentPassword"><input id="accountNewPassword" class="auth-input" type="password" autocomplete="new-password" data-i18n-ph="account.newPassword"><button id="accountPasswordSave" class="auth-btn" data-i18n="account.changePassword"></button><div id="accountPasswordMsg" class="text-[10px]"></div></div></div>
+        <div class="glass p-4 sm:p-5"><div class="font-bold text-[13px] mb-3" data-i18n="account.preferences"></div><div class="grid grid-cols-2 gap-2"><select id="accountLanguage" class="auth-input"><option value="fa">فارسی</option><option value="en">English</option></select><input id="accountTimezone" class="auth-input" placeholder="Asia/Tehran"><select id="accountDefaultPage" class="auth-input"><option value="overview">overview</option><option value="signals">signals</option><option value="orders">orders</option><option value="desk">desk</option><option value="risk">risk</option><option value="backtest">backtest</option></select><button id="accountPrefsSave" class="auth-btn" data-i18n="account.save"></button></div></div>
+      </div>
+      <div class="glass p-4 sm:p-5"><div class="flex items-center gap-2 mb-3"><span class="font-bold text-[13px]" data-i18n="account.activity"></span><button id="accountActivityRefresh" class="ms-auto text-[10px] px-2 py-1 rounded-lg bg-white/5 border border-white/10" data-i18n="users.refresh"></button></div><div id="accountActivity" class="space-y-1.5"></div></div>
     </section>
 
     <!-- ======= PAGE: Users (owner only) ======= -->
@@ -1564,6 +1582,8 @@ const T = {
     'suite.showOut':'خروجی', 'suite.hideOut':'بستن خروجی',
     'suite.raw':'خروجی قابل خلاصه‌شدن نبود — متن خام را ببین',
     'suite.allPassed':'همهٔ دروازه‌ها سبز', 'suite.someFailed':'{n} دروازه قرمز شد',
+    'page.account.title':'حساب من','page.account.desc':'پروفایل، مجوزها، سقف معامله، نشست‌ها، امنیت و فعالیت شخصی',
+    'account.capabilities':'مجوزهای مؤثر','account.livePolicy':'سیاست معامله واقعی','account.sessions':'نشست‌های من','account.logoutAll':'خروج از همه دستگاه‌ها','account.password':'تغییر رمز عبور','account.currentPassword':'رمز فعلی','account.newPassword':'رمز جدید','account.changePassword':'تغییر رمز','account.preferences':'تنظیمات شخصی','account.save':'ذخیره','account.activity':'فعالیت‌های من','account.revoke':'بستن نشست','account.current':'نشست فعلی','account.noPolicy':'مجوز ثبت واقعی اختصاصی ندارید',
     'page.users.title':'کاربران','page.users.desc':'مدیریت حساب‌ها، نقش‌ها، نشست‌ها، دعوت‌ها و مشاهده فعالیت کاربران — فقط مالک',
     'users.activity':'فعالیت کاربران','users.refresh':'به‌روزرسانی','users.noActivity':'هنوز فعالیتی ثبت نشده است',
     'page.settings.title':'تنظیمات','page.settings.desc':'پیکربندی واقعیِ در حال اجرا — فقط‌خواندنی، با ذکر منبع هر مقدار',
@@ -1837,6 +1857,8 @@ const T = {
     'suite.showOut':'output', 'suite.hideOut':'hide output',
     'suite.raw':'output could not be summarised — read the raw text',
     'suite.allPassed':'all gates green', 'suite.someFailed':'{n} gate(s) red',
+    'page.account.title':'My account','page.account.desc':'Profile, effective permissions, trading limits, sessions, security and personal activity',
+    'account.capabilities':'Effective capabilities','account.livePolicy':'Live-trading policy','account.sessions':'My sessions','account.logoutAll':'Sign out all devices','account.password':'Change password','account.currentPassword':'Current password','account.newPassword':'New password','account.changePassword':'Change password','account.preferences':'Personal preferences','account.save':'Save','account.activity':'My activity','account.revoke':'End session','account.current':'Current session','account.noPolicy':'No delegated live-placement policy',
     'page.users.title':'Users','page.users.desc':'Manage accounts, roles, sessions and invites, and review user activity — owner only',
     'users.activity':'User activity','users.refresh':'Refresh','users.noActivity':'No user activity has been recorded yet',
     'page.settings.title':'Settings','page.settings.desc':'What the engine is actually running — read-only, with the source of every value',

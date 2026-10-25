@@ -1353,6 +1353,8 @@
   function paintUser(state) {
     const chip = $('userChip'), name = $('userName'), role = $('userRole'), out = $('logoutBtn');
     if (!state || !chip) return;
+    const accountNav = $('accountNav');
+    if (accountNav) accountNav.classList.toggle('hidden', !(state && state.user));
     if (state.user) {
       name.textContent = state.user.username;
       role.textContent = '· ' + roleLabel(state.user.role);
@@ -1483,6 +1485,32 @@
    * the server keeps a hash, so "show it again" is not an option and the UI
    * must not pretend otherwise.
    * ============================================================ */
+  async function renderAccount() {
+    const profile = $('accountProfile');
+    if (!profile) return;
+    const esc = (v) => String(v ?? '').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
+    const me = await AUTH.me();
+    if (!me || !me.user) return;
+    const u = me.user, caps = me.capabilities || {}, policy = me.live_policy, usage = me.live_usage || {};
+    profile.innerHTML = `<div class="grid grid-cols-2 lg:grid-cols-6 gap-3 text-[10px]"><div><span class="text-zinc-500">ID</span><b class="block num">${u.id}</b></div><div><span class="text-zinc-500">username</span><b class="block num">${esc(u.username)}</b></div><div><span class="text-zinc-500">role</span><b class="block">${esc(roleLabel(u.role))}</b></div><div><span class="text-zinc-500">status</span><b class="block">${u.active ? 'active' : 'disabled'}</b></div><div><span class="text-zinc-500">created</span><b class="block num">${new Date(u.created_at*1000).toLocaleString()}</b></div><div><span class="text-zinc-500">last login</span><b class="block num">${u.last_login ? new Date(u.last_login*1000).toLocaleString() : '—'}</b></div></div>`;
+    $('accountCaps').innerHTML = Object.entries(caps).map(([key, value]) => `<div class="flex items-center gap-2 rounded-lg bg-white/[.03] px-2 py-1.5 text-[10px]"><span class="${value ? 'text-emerald-300' : 'text-zinc-600'}">${value ? '✓' : '—'}</span><span class="num">${esc(key)}</span></div>`).join('');
+    $('accountLivePolicy').innerHTML = policy ? `<div class="grid grid-cols-2 gap-2"><span>live_place: <b>${policy.enabled ? 'enabled' : 'disabled'}</b></span><span>order: <b>${policy.max_order_usdt} USDT</b></span><span>daily: <b>${usage.notional_usdt || 0} / ${policy.max_daily_usdt} USDT</b></span><span>count: <b>${usage.orders || 0} / ${policy.max_daily_orders}</b></span><span class="col-span-2">symbols: <b>${esc((policy.allowed_symbols || []).join(', '))}</b></span></div>` : inFa('account.noPolicy');
+    const sessionsRes = await AUTH.call('/auth/me/sessions', null, 'GET');
+    const sessions = (sessionsRes.ok && sessionsRes.data.sessions) || [];
+    $('accountSessions').innerHTML = sessions.map((s) => `<div class="flex flex-wrap items-center gap-2 rounded-lg bg-white/[.03] px-3 py-2 text-[10px]"><span class="num">${new Date(s.last_seen*1000).toLocaleString()}</span><span class="text-zinc-500">${esc(s.ip)}</span><span class="truncate max-w-sm text-zinc-500">${esc(s.ua)}</span>${s.current ? `<span class="chip text-emerald-300">${inFa('account.current')}</span>` : ''}<button data-my-session="${s.id}" class="ms-auto text-red-300">${inFa('account.revoke')}</button></div>`).join('');
+    $('accountSessions').querySelectorAll('[data-my-session]').forEach((button) => { button.onclick = async () => { const r = await AUTH.call('/auth/me/sessions/' + button.dataset.mySession, null, 'DELETE'); if (r.ok && r.data.reload) location.reload(); else renderAccount(); }; });
+    const prefs = me.preferences || {};
+    $('accountLanguage').value = prefs.language || 'fa'; $('accountTimezone').value = prefs.timezone || 'Asia/Tehran'; $('accountDefaultPage').value = prefs.default_page || 'overview';
+    await renderMyActivity();
+  }
+
+  async function renderMyActivity() {
+    const body = $('accountActivity'); if (!body) return;
+    const res = await AUTH.call('/auth/me/activity?limit=100', null, 'GET');
+    const rows = (res.ok && res.data.events) || [];
+    body.innerHTML = rows.map((e) => `<div class="grid grid-cols-[1fr_auto] gap-2 rounded-lg bg-white/[.03] px-3 py-2 text-[10px]"><span><b>${String(e.action || '').replaceAll('<','&lt;')}</b>${e.detail ? ' · ' + String(e.detail).replaceAll('<','&lt;') : ''}</span><span class="num text-zinc-500">${new Date(e.created_at*1000).toLocaleString()}</span></div>`).join('');
+  }
+
   async function renderAccess() {
     const box = $('setAccess');
     const body = $('setAccessBody');
@@ -1769,6 +1797,24 @@
   function bindLogout() {
     const out = $('logoutBtn');
     if (out) out.onclick = () => AUTH.logout();
+    document.querySelectorAll('.navbtn[data-tab="account"]').forEach((b) => {
+      b.addEventListener('click', () => setTimeout(renderAccount, 120));
+    });
+    const activityRefresh = $('accountActivityRefresh');
+    if (activityRefresh) activityRefresh.onclick = renderMyActivity;
+    const logoutAll = $('accountLogoutAll');
+    if (logoutAll) logoutAll.onclick = async () => { const r = await AUTH.call('/auth/me/logout-all', {}); if (r.ok) location.reload(); };
+    const passwordSave = $('accountPasswordSave');
+    if (passwordSave) passwordSave.onclick = async () => {
+      const r = await AUTH.call('/auth/password', { current: $('accountCurrentPassword').value, new: $('accountNewPassword').value });
+      const msg = $('accountPasswordMsg'); if (msg) msg.textContent = r.ok ? 'OK' : ((r.data && r.data.detail) || 'Failed');
+      if (r.ok) location.reload();
+    };
+    const prefsSave = $('accountPrefsSave');
+    if (prefsSave) prefsSave.onclick = async () => {
+      const r = await AUTH.call('/auth/me/preferences', { language: $('accountLanguage').value, timezone: $('accountTimezone').value.trim(), theme: 'dark', default_page: $('accountDefaultPage').value }, 'PATCH');
+      if (r.ok) renderAccount();
+    };
     document.querySelectorAll('.navbtn[data-tab="users"]').forEach((b) => {
       b.addEventListener('click', () => setTimeout(() => { renderAccess(); renderUserActivity(); }, 120));
     });

@@ -55,6 +55,15 @@ class ActiveBody(BaseModel):
     active: bool
 
 
+class PreferencesBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    language: str = Field(pattern="^(fa|en)$")
+    timezone: str = Field(max_length=64)
+    theme: str = Field(pattern="^(dark|system)$")
+    default_page: str = Field(pattern="^(overview|signals|fa|orders|performance|desk|risk|backtest)$")
+
+
 class LivePolicyBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -106,6 +115,21 @@ def _login_budget(request: Request) -> Response | None:
     )
 
 
+def _capabilities(user: auth.User) -> dict[str, bool]:
+    operator = user.can_mutate
+    owner = user.is_owner
+    policy = auth.get_live_policy(user.id) if user.role == "operator" else None
+    return {
+        "market_read": True, "paper_read": True, "reports_read": True,
+        "paper_trade": operator, "backtest_run": operator,
+        "journal_maintain": operator, "operational_audit": operator,
+        "live_view": operator, "live_cancel": operator, "live_reconcile": operator,
+        "live_place": owner or bool(policy and policy.get("enabled")),
+        "manage_users": owner, "manage_settings": owner,
+        "troubleshooting": owner, "manage_server": owner,
+    }
+
+
 def _me(request: Request) -> dict:
     session = identity.session_of(request)
     if session is not None:
@@ -117,6 +141,9 @@ def _me(request: Request) -> dict:
             "can_mutate": user.can_mutate,
             "is_owner": user.is_owner,
             "live_policy": auth.get_live_policy(user.id) if user.role == "operator" else None,
+            "live_usage": auth.live_usage_today(user.id),
+            "capabilities": _capabilities(user),
+            "preferences": auth.get_preferences(user.id),
         }
     if _bearer_ok(request):
         return {"auth_required": True, "user": None, "method": "token",
@@ -165,6 +192,76 @@ def me(request: Request):
     return _me(request)
 
 
+@router.get("/me/activity")
+def my_activity(request: Request, limit: int = 100):
+    session = identity.session_of(request)
+    if session is None:
+        return _refuse(401, "برای این بخش باید وارد شوید")
+    return {"events": auth.list_activity(limit=limit, user_id=session.user.id)}
+
+
+@router.get("/me/sessions")
+def my_sessions(request: Request):
+    session = identity.session_of(request)
+    if session is None:
+        return _refuse(401, "برای این بخش باید وارد شوید")
+    token = request.cookies.get(identity.SESSION_COOKIE, "")
+    return {"sessions": auth.list_user_sessions(session.user.id, current_token=token)}
+
+
+@router.delete("/me/sessions/{session_id}")
+def delete_my_session(session_id: str, request: Request, response: Response):
+    session = identity.session_of(request)
+    if session is None:
+        return _refuse(401, "برای این بخش باید وارد شوید")
+    if not identity.csrf_ok(request, session):
+        return _refuse(403, "CSRF نامعتبر است")
+    sessions = auth.list_user_sessions(
+        session.user.id, current_token=request.cookies.get(identity.SESSION_COOKIE, ""))
+    current = any(row["id"] == session_id and row["current"] for row in sessions)
+    removed = auth.delete_public_session(session.user.id, session_id)
+    if current and removed:
+        identity.clear_session_cookies(response)
+    auth.record_activity(session.user, "auth.session.revoke",
+                         result="ok" if removed else "not-found", ip=_client_ip(request))
+    return {"ok": removed, "reload": current and removed}
+
+
+@router.post("/me/logout-all")
+def logout_all(request: Request, response: Response):
+    session = identity.session_of(request)
+    if session is None:
+        return _refuse(401, "برای این بخش باید وارد شوید")
+    if not identity.csrf_ok(request, session):
+        return _refuse(403, "CSRF نامعتبر است")
+    user = session.user
+    closed = auth.delete_user_sessions(user.id)
+    auth.record_activity(user, "auth.logout-all", detail=f"closed={closed}", ip=_client_ip(request))
+    identity.clear_session_cookies(response)
+    return {"ok": True, "closed": closed, "reload": True}
+
+
+@router.get("/me/preferences")
+def my_preferences(request: Request):
+    session = identity.session_of(request)
+    if session is None:
+        return _refuse(401, "برای این بخش باید وارد شوید")
+    return {"preferences": auth.get_preferences(session.user.id)}
+
+
+@router.patch("/me/preferences")
+def patch_my_preferences(body: PreferencesBody, request: Request):
+    session = identity.session_of(request)
+    if session is None:
+        return _refuse(401, "برای این بخش باید وارد شوید")
+    if not identity.csrf_ok(request, session):
+        return _refuse(403, "CSRF نامعتبر است")
+    if "/" not in body.timezone or any(ch not in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_-/+" for ch in body.timezone):
+        return _refuse(422, "timezone معتبر نیست")
+    values = auth.set_preferences(session.user.id, body.model_dump())
+    return {"ok": True, "preferences": values}
+
+
 # --------------------------------------------------------------------------- #
 # Sign up — invite only
 # --------------------------------------------------------------------------- #
@@ -206,10 +303,13 @@ def change_own_password(body: PasswordBody, request: Request, response: Response
     session = identity.session_of(request)
     if session is None:
         return _refuse(401, "برای این کار باید وارد شوید")
+    if not identity.csrf_ok(request, session):
+        return _refuse(403, "CSRF نامعتبر است")
     try:
         auth.change_password(session.user.id, body.current, body.new)
     except auth.AuthError as e:
         return _refuse(e.status, e.message)
+    auth.record_activity(session.user, "auth.password.change", ip=_client_ip(request))
     # Changing a password signs every device out — including this one.
     identity.clear_session_cookies(response)
     return {"ok": True, "reload": True}

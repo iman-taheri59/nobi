@@ -2,6 +2,17 @@
 
 [English](CHANGELOG.en.md) · **فارسی**
 
+## 1.5.1
+
+> داشبورد «حساب من» برای viewer/operator/owner.
+
+- profile، نقش، وضعیت، تاریخ ایجاد و آخرین ورود نمایش داده می‌شود.
+- capabilityهای مؤثر از backend، policy live فقط‌خواندنی و مصرف روزانه نمایش داده می‌شوند.
+- فهرست sessionهای شخصی، بستن یک session و خروج از همه دستگاه‌ها با CSRF اضافه شد.
+- تغییر رمز با CSRF و ابطال همه sessionها در UI قرار گرفت.
+- activity شخصی و preferences allowlisted زبان/timezone/theme/default-page اضافه شد.
+- public session id دو بار hash است و endpointهای شخصی هیچ user_id دلخواه نمی‌پذیرند.
+
 ## 1.5.0
 
 > capability محدود `live_place` برای operator منتخب با سقف مالی اتمیک.

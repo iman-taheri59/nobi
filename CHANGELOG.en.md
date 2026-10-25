@@ -2,6 +2,17 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 1.5.1
+
+> My Account dashboard for viewer/operator/owner.
+
+- Profile, role, state, creation and last-login details are visible.
+- Backend-computed capabilities, read-only live policy and daily usage are shown.
+- Personal session listing/revocation and logout-all require CSRF.
+- Password change with CSRF and all-session invalidation is available in UI.
+- Personal activity and allowlisted language/timezone/theme/default-page preferences were added.
+- Public session IDs are double-hashed and personal endpoints accept no arbitrary user_id.
+
 ## 1.5.0
 
 > Bounded `live_place` capability for selected operators with atomic financial limits.
