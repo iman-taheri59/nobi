@@ -51,6 +51,7 @@ import nobitex_metadata
 import notify
 import paper_trading
 import reference_feed
+import setup_api
 from adaptive import AdaptiveError as AdaptiveRefusal
 from backtest import SLIP_BPS, grid_search, run_and_save
 from benchmark import MIN_OBS as BENCH_MIN_OBS
@@ -299,6 +300,7 @@ async def lifespan(_app: FastAPI):
     # Any ERROR/FATAL record from any logger now also lands in the error log,
     # which is what the dashboard's Diagnostics page reads.
     errorlog.install()
+    setup_api.ensure_setup_token()
     # A stale inlined page is a deploy-time problem. Rebuild it here — once,
     # before the first request — when the checkout asks for it; `GET /` must
     # never wait for `npm`.
@@ -376,7 +378,7 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(
     title="nobiTrader",
-    version="1.2.7",
+    version="1.3.0",
     lifespan=lifespan,
 )
 
@@ -395,6 +397,7 @@ app.add_middleware(
 )
 
 app.include_router(auth_api.router)
+app.include_router(setup_api.router)
 app.include_router(live_api.router)
 
 #: Reachable without a session. `/api/health` stays open because uptime
@@ -403,7 +406,7 @@ app.include_router(live_api.router)
 #: open; the owner area checks the role itself). Static files stay open because
 #: the login screen is part of them.
 _PUBLIC_PATHS = {"/api/health"}
-_PUBLIC_PREFIXES = ("/api/auth/",)
+_PUBLIC_PREFIXES = ("/api/auth/", "/api/setup/")
 
 
 @app.middleware("http")

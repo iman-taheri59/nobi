@@ -2,6 +2,16 @@
 
 [English](CHANGELOG.en.md) · **فارسی**
 
+## 1.3.0
+
+> W1 ویزارد نصب: ساخت owner در اولین اجرا از UI با توکن یک‌بارمصرف کنسول.
+
+- ADR-0035 مسیر سه‌مرحله‌ای ویزارد، تنظیمات نصب و مرکز عملیات owner را ثبت می‌کند.
+- `/api/setup/status` فقط نیاز به setup را می‌گوید؛ `/api/setup/claim` با توکن قوی، rate limit و policy رمز owner می‌سازد و نشست/CSRF برقرار می‌کند.
+- token در فایل 0600 کنار auth DB نگه‌داری، در کنسول نشان و پس از claim حذف می‌شود؛ در API/DB/audit برنمی‌گردد.
+- صفحه پیش از login وضعیت setup را می‌خواند و فرم دوزبانه token/username/password/confirm نشان می‌دهد؛ دیگر اجرای CLI برای نصب عادی لازم نیست.
+- سه آزمون permission/token، نشست owner و رد token اشتباه را پوشش می‌دهند.
+
 ## 1.2.7
 
 > بستهٔ عملیاتی soak: پشتیبان کامل execution ledger و snapshot روزانهٔ بدون secret.

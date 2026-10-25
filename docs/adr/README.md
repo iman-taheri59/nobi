@@ -69,3 +69,4 @@
 
 | 0033 | **دروازه ارتقای live از شواهد dry-run** | پذیرفته — پیاده‌شده در ۱٫۲٫۶، applied=false | `promotion_evidence()` و `/api/live/evidence` |
 | 0034 | **بسته عملیاتی soak** | پذیرفته — پیاده‌شده در ۱٫۲٫۷ | backup سه DB و `live_evidence_snapshot.py` |
+| 0035 | **ویزارد نصب و مرکز عملیات مالک** | پذیرفته — W1 در ۱٫۳٫۰؛ W2/W3 در انتظار | setup token + owner wizard؛ operations allowlist بعدی |

@@ -223,6 +223,24 @@
       </div>
     </form>
 
+    <form id="setupOwnerForm" autocomplete="on" hidden>
+      <label class="auth-field"><span data-i18n="setup.token"></span>
+        <input id="setupToken" autocomplete="one-time-code" required minlength="20" maxlength="200" spellcheck="false">
+      </label>
+      <label class="auth-field"><span data-i18n="setup.owner"></span>
+        <input id="setupUser" autocomplete="username" required minlength="3" maxlength="32" spellcheck="false">
+      </label>
+      <label class="auth-field"><span data-i18n="setup.password"></span>
+        <input id="setupPass" type="password" autocomplete="new-password" required minlength="12" maxlength="200">
+      </label>
+      <label class="auth-field"><span data-i18n="setup.confirm"></span>
+        <input id="setupConfirm" type="password" autocomplete="new-password" required minlength="12" maxlength="200">
+      </label>
+      <div class="auth-actions">
+        <button id="setupClaimBtn" class="auth-btn" type="submit" data-i18n="setup.claim"></button>
+      </div>
+    </form>
+
     <form id="authRegisterForm" autocomplete="on" hidden>
       <label class="auth-field"><span data-i18n="auth.code"></span>
         <input id="authCode" name="code" autocomplete="off" required maxlength="128" spellcheck="false">
@@ -277,7 +295,7 @@
       </button>
     </div>
     <span class="hidden 2xl:inline-flex chip shrink-0"><span class="dot bg-emerald-400"></span> <span data-i18n="hdr.kill"></span></span>
-    <span id="buildChip" class="hidden lg:inline-flex chip num text-violet-300 border-violet-400/30 shrink-0" title="نسخه واقعی از /api/health">v1.2.7 · core</span>
+    <span id="buildChip" class="hidden lg:inline-flex chip num text-violet-300 border-violet-400/30 shrink-0" title="نسخه واقعی از /api/health">v1.3.0 · core</span>
     <div class="ms-auto flex items-center gap-1.5 shrink-0">
       <span class="hidden xl:inline-flex chip num" id="clock">--:--:--</span>
       <span id="apiChip" class="hidden 2xl:inline-flex chip num text-zinc-400 border-white/10" title=""><i data-lucide="wifi-off" class="w-3.5 h-3.5"></i> <span>API: —</span></span>
@@ -1508,6 +1526,10 @@ const T = {
     'set.inviteOnce':'این کد فقط همین یک بار دیده می‌شود؛ همین حالا کپی کنید:','set.inviteRevoke':'باطل',
     'auth.title':'ورود به nobiTrader','auth.sub':'این نصب حساب کاربری دارد؛ برای دیدن پوزیشن‌ها و تغییر تنظیمات وارد شوید.',
     'auth.user':'نام کاربری','auth.pass':'رمز عبور','auth.login':'ورود',
+    'setup.token':'توکن یک‌بارمصرف نمایش‌داده‌شده در کنسول سرور','setup.owner':'نام کاربری مالک',
+    'setup.password':'رمز عبور مالک (دست‌کم ۱۲ کاراکتر)','setup.confirm':'تکرار رمز عبور',
+    'setup.claim':'تکمیل نصب و ورود','setup.mismatch':'تکرار رمز عبور یکسان نیست',
+    'setup.title':'راه‌اندازی نخست nobiTrader','setup.sub':'توکن کنسول را وارد و حساب مالک را ایجاد کنید.',
     'auth.code':'کد دعوت','auth.newuser':'نام کاربری دلخواه','auth.newpass':'رمز عبور (دست‌کم ۱۲ کاراکتر)',
     'auth.register':'ساخت حساب','auth.back':'بازگشت','auth.haveCode':'کد دعوت دارم',
     'auth.logout':'خروج','auth.err.bad':'نام کاربری یا رمز عبور درست نیست',
@@ -1769,6 +1791,10 @@ const T = {
     'set.inviteOnce':'This code is shown once — copy it now:','set.inviteRevoke':'Revoke',
     'auth.title':'Sign in to nobiTrader','auth.sub':'This installation has accounts; sign in to see positions and change settings.',
     'auth.user':'Username','auth.pass':'Password','auth.login':'Sign in',
+    'setup.token':'One-time token shown in the server console','setup.owner':'Owner username',
+    'setup.password':'Owner password (at least 12 characters)','setup.confirm':'Confirm password',
+    'setup.claim':'Finish setup and sign in','setup.mismatch':'Password confirmation does not match',
+    'setup.title':'First-run nobiTrader setup','setup.sub':'Enter the console token and create the owner account.',
     'auth.code':'Invite code','auth.newuser':'Choose a username','auth.newpass':'Password (at least 12 characters)',
     'auth.register':'Create account','auth.back':'Back','auth.haveCode':'I have an invite code',
     'auth.logout':'Sign out','auth.err.bad':'Wrong username or password',

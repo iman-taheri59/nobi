@@ -2,7 +2,7 @@
 
 [فارسی](README.md) · **English**
 
-Current version: **1.2.7** · release tag: **v1.2.7**
+Current version: **1.3.0** · release tag: **v1.3.0**
 
 See [versioning and GitHub releases](docs/releases.en.md) for the rules on bumping
 the version, tagging and shipping the mobile file, and the
@@ -17,8 +17,7 @@ signal journal and a FastAPI backend.
 ## Getting into the dashboard
 
 The dashboard has accounts: several people, one shared trading account, three roles
-(`owner` / `operator` / `viewer`). Joining requires an **invite code**, and the first
-account is created on the server:
+(`owner` / `operator` / `viewer`). Joining requires an **invite code**. On first run the server prints a one-time console token and the page automatically opens the owner-creation wizard; a successful claim deletes that token. The CLI remains a recovery path only:
 
 ```bash
 python scripts/manage_users.py create YOURNAME --role owner

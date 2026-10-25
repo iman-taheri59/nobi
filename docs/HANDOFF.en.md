@@ -2,8 +2,8 @@
 
 [فارسی](HANDOFF.md) · **English**
 
-**Last updated:** 2026-10-25 — stage 10 (B6 soak operations complete)
-**Working version:** 1.2.7
+**Last updated:** 2026-10-25 — stage 11 (W1 owner wizard complete)
+**Working version:** 1.3.0
 **Target:** ADR-0027; stable product first, then staged fail-closed live execution.
 
 ## Status
@@ -17,6 +17,9 @@
 - [x] B5: 30-sample/5-day/zero-ambiguity evidence gate; `applied:false`.
 - [x] B6: all-three-DB backup, legacy compatibility and secret-free daily snapshots.
 - [ ] Run the real five-day soak in a Nobitex-reachable environment.
+- [x] W1: first-run owner wizard with a one-time console token.
+- [ ] W2: installation paths/reverse-proxy settings in UI.
+- [ ] W3: owner-only allowlisted tests, build, backup/restore and deployment tasks.
 - [ ] Real soak/private contract test; requires an Iran-reachable host and IP-limited READ/TRADE key.
 - [ ] Independent security review before real funds.
 
@@ -41,8 +44,8 @@
 
 ```text
 ruff: passed
-mypy: success, 100 source files
-pytest: 923 passed, 1 dependency deprecation warning
+mypy: success, 102 source files
+pytest: 926 passed, 1 dependency deprecation warning
 ESLint/dashboard lint: passed
 broker/preflight parity: passed
 mobile artifact: rebuilt for 1.2.3

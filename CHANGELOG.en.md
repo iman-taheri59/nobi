@@ -2,6 +2,16 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 1.3.0
+
+> W1 setup wizard: create the first owner in UI with a one-time console token.
+
+- ADR-0035 records the three-stage wizard, installation settings and owner operations center.
+- `/api/setup/status` reports setup need only; `/api/setup/claim` uses a strong token, rate limit and password policy to create owner and establish session/CSRF.
+- The token lives in a 0600 file beside auth DB, is shown in the console and deleted after claim; it never returns through API/DB/audit.
+- Before login the page checks setup status and shows a bilingual token/username/password/confirmation form; normal installation no longer needs CLI.
+- Three tests cover token permissions/secrecy, owner session and wrong-token refusal.
+
 ## 1.2.7
 
 > Soak operations pack: complete execution-ledger backup and secret-free daily snapshots.

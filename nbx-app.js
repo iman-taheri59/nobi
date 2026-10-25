@@ -1380,6 +1380,39 @@
     }
   }
 
+  function showSetupGate() {
+    const gate = $('authGate'), form = $('setupOwnerForm');
+    if (!gate || !form) return;
+    gate.hidden = false;
+    $('authLoginForm').hidden = true;
+    $('authRegisterForm').hidden = true;
+    form.hidden = false;
+    const alt = $('authToRegister');
+    if (alt && alt.parentElement) alt.parentElement.style.display = 'none';
+    $('authTitle').textContent = inFa('setup.title');
+    const sub = gate.querySelector('p.sub');
+    if (sub) sub.textContent = inFa('setup.sub');
+    form.onsubmit = async (ev) => {
+      ev.preventDefault();
+      const password = $('setupPass').value;
+      if (password !== $('setupConfirm').value) {
+        authSay('bad', inFa('setup.mismatch'));
+        return;
+      }
+      const btn = $('setupClaimBtn');
+      if (btn) btn.disabled = true;
+      const r = await AUTH.call('/setup/claim', {
+        setup_token: $('setupToken').value.trim(),
+        username: $('setupUser').value.trim(),
+        password,
+      });
+      if (r.ok) { location.reload(); return; }
+      if (btn) btn.disabled = false;
+      authSay('bad', (r.data && r.data.detail) || inFa('auth.err.net'));
+    };
+    setTimeout(() => $('setupToken').focus(), 30);
+  }
+
   function showAuthGate(state) {
     const gate = $('authGate');
     if (!gate) return;
@@ -1582,6 +1615,14 @@
     // Ask before booting. `null` means the question could not be asked (server
     // down, older build) — in that case carry on: the app has its own offline
     // handling, and blocking on a failed probe would turn a blip into a wall.
+    const setupState = await fetch(NBX.config.pythonApi + '/setup/status', {
+      credentials: 'same-origin', headers: { Accept: 'application/json' },
+    }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+    if (setupState && setupState.setup_required) {
+      showSetupGate();
+      return;
+    }
+
     const authState = await AUTH.me();
     if (authState && authState.auth_required && !authState.user && !authState.token) {
       showAuthGate(authState);
