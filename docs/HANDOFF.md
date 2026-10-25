@@ -2,8 +2,8 @@
 
 [English](HANDOFF.en.md) · **فارسی**
 
-**آخرین به‌روزرسانی:** ۲۰۲۶-۱۰-۲۵ — مرحله ۲۱ (داشبورد حساب کاربری)
-**نسخه کاری:** ۱٫۵٫۱
+**آخرین به‌روزرسانی:** ۲۰۲۶-۱۰-۲۵ — مرحله ۲۳ (سخت‌سازی سازگاری CI)
+**نسخه کاری:** ۱٫۶٫۱
 **هدف:** ADR-0027؛ ابتدا محصول پایدار، سپس اجرای واقعی مرحله‌ای و fail-closed.
 
 ## وضعیت
@@ -32,6 +32,7 @@
 - [x] capability مستقل `live_place` برای operator منتخب با limit-only، سقف مالی/تعداد/نماد و بودجه اتمیک.
 - [x] تب «حساب من» برای همه نقش‌ها: capability/policy/usage، session، activity، password و preferences.
 - [x] Signal Intelligence v1: metrics، funnel، cohort، MFE/MAE، detail و review operator/owner.
+- [x] اصلاح سازگاری CI: بستن صریح SQLite در Windows، آزمون permission مختص POSIX و probe سازگار با dialog نصب اولیه.
 - [ ] soak واقعی و contract test خصوصی؛ نیازمند محیط ایران و کلید READ/TRADE محدود به IP.
 - [ ] بازبینی امنیتی مستقل پیش از سرمایه واقعی.
 

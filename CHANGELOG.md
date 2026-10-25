@@ -2,6 +2,14 @@
 
 [English](CHANGELOG.en.md) · **فارسی**
 
+## 1.6.1
+
+> اصلاح سازگاری CI پس از انتشار ۱٫۶٫۰.
+
+- Backup/restore اکنون همه اتصال‌های SQLite را صریح می‌بندد تا Windows فایل snapshot موقت را قفل نگه ندارد.
+- assertion مربوط به permission bit فقط روی سیستم‌های POSIX اجرا می‌شود؛ Windows همچنان محرمانگی توکن و allowlist محتوا را می‌آزماید.
+- probe مرورگر می‌تواند داشبورد پشت dialog عمدی ساخت اولین owner را بررسی کند، بدون دورزدن مجوز API.
+
 ## 1.6.0
 
 > Signal Intelligence v1 با metrics واقعی، funnel، cohort، detail و review.

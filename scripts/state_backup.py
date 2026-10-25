@@ -7,6 +7,7 @@ produces a consistent snapshot even while the dashboard is reading/writing.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import hashlib
 import json
 import os
@@ -40,9 +41,14 @@ def _snapshot(source: Path, destination: Path) -> None:
         with sqlite3.connect(destination):
             pass
         return
+    # sqlite3.Connection's context manager commits/rolls back but does not
+    # close. POSIX lets a still-open temporary file be unlinked; Windows does
+    # not, so explicit closing is part of the portability contract.
     with (
-        sqlite3.connect(f"file:{source.resolve()}?mode=ro", uri=True) as src,
-        sqlite3.connect(destination) as dst,
+        contextlib.closing(sqlite3.connect(
+            f"file:{source.resolve()}?mode=ro", uri=True,
+        )) as src,
+        contextlib.closing(sqlite3.connect(destination)) as dst,
     ):
         src.backup(dst)
         result = dst.execute("PRAGMA integrity_check").fetchone()
@@ -124,7 +130,9 @@ def restore_backup(
                 expected = manifest.get("files", {}).get(name, {}).get("sha256")
                 if not expected or not secrets_compare(_sha256(path), str(expected)):
                     raise ValueError(f"checksum mismatch for {name}")
-                with sqlite3.connect(f"file:{path}?mode=ro", uri=True) as conn:
+                with contextlib.closing(sqlite3.connect(
+                    f"file:{path}?mode=ro", uri=True,
+                )) as conn:
                     result = conn.execute("PRAGMA integrity_check").fetchone()
                     if not result or result[0] != "ok":
                         raise ValueError(f"database integrity check failed for {name}")

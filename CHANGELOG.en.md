@@ -2,6 +2,14 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 1.6.1
+
+> CI portability follow-up for the 1.6.0 release.
+
+- SQLite backup and restore now explicitly close every connection, preventing Windows from retaining locks on temporary database snapshots.
+- POSIX permission-bit assertions run only where POSIX modes exist; Windows still verifies token secrecy and allowlisted content.
+- The browser panel probe can inspect the dashboard behind the intentional first-run owner dialog without bypassing any API authorization.
+
 ## 1.6.0
 
 > Signal Intelligence v1 with real metrics, funnel, cohorts, detail and review.

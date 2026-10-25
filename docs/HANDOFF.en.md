@@ -2,8 +2,8 @@
 
 [فارسی](HANDOFF.md) · **English**
 
-**Last updated:** 2026-10-25 — stage 22 (Signal Intelligence v1)
-**Working version:** 1.6.0
+**Last updated:** 2026-10-25 — stage 23 (CI portability hardening)
+**Working version:** 1.6.1
 **Target:** ADR-0027; stable product first, then staged fail-closed live execution.
 
 ## Status
@@ -32,6 +32,7 @@
 - [x] Independent selected-operator `live_place`: limit-only, amount/count/symbol caps and atomic budget reservation.
 - [x] My Account for every role: capabilities/policy/usage, sessions, activity, password and preferences.
 - [x] Signal Intelligence v1: metrics, funnel, cohorts, MFE/MAE, detail and operator/owner review.
+- [x] CI portability follow-up: Windows-safe SQLite connection closure/mode checks and first-run-aware browser probe.
 - [ ] Real soak/private contract test; requires an Iran-reachable host and IP-limited READ/TRADE key.
 - [ ] Independent security review before real funds.
 

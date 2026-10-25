@@ -5,6 +5,10 @@
 **Status:** Accepted — W1 in 1.3.0 and W2 in 1.3.1 implemented; W3 pending
 **Date:** 2026-10-25
 
+## 2026-10-25 portability amendment
+
+The mandatory first-owner dialog remains pointer-blocking in production. Browser CI may force pointer events only to inspect the read-only dashboard behind that dialog; it does not obtain a session or bypass API authorization. SQLite backup helpers explicitly close connections because a context-managed `sqlite3.Connection` does not close itself and Windows refuses to remove an open snapshot. POSIX mode-bit assertions are platform-conditional; secrecy and allowlist assertions remain universal.
+
 ## Context
 
 The current install needs CLI access to create the owner and run tests/deployment tasks. The goal is to remove coding requirements for end users without turning the web app into a remote shell.

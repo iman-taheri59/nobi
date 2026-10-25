@@ -1,6 +1,8 @@
 """Owner installation settings are allowlisted, validated and secret-free."""
 from __future__ import annotations
 
+import os
+
 from fastapi.testclient import TestClient
 
 import auth
@@ -40,7 +42,8 @@ def test_owner_can_probe_and_save_allowlisted_paths(monkeypatch, tmp_path):
     content = install_api.MANAGED_ENV.read_text(encoding="utf-8")
     assert "NBX_LIVE_MODE=dry-run" in content
     assert "SECRET" not in content
-    assert install_api.MANAGED_ENV.stat().st_mode & 0o777 == 0o600
+    if os.name != "nt":
+        assert install_api.MANAGED_ENV.stat().st_mode & 0o777 == 0o600
 
 
 def test_unknown_or_relative_settings_fail_closed(monkeypatch, tmp_path):

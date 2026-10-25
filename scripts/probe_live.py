@@ -474,7 +474,11 @@ def run_probe(base: str, wait_s: float, json_path: str | None, md_path: str | No
 
         for tab in TABS:
             try:
-                pg.click(f'[data-tab="{tab}"]', timeout=5000)
+                # A fresh CI install deliberately opens the mandatory owner-claim
+                # dialog. The probe audits the dashboard behind that security
+                # boundary, not the dialog, so bypass only pointer interception;
+                # no API permission or application state is bypassed.
+                pg.click(f'[data-tab="{tab}"]', timeout=5000, force=True)
             except Exception:
                 rows.append({"tab": tab, "panel": "(tab)", "kind": "-",
                              "verdict": "MISSING", "ok": False,

@@ -1,6 +1,7 @@
 """First-run owner claim is one-time, token-gated and secret-free."""
 from __future__ import annotations
 
+import os
 import stat
 
 from fastapi.testclient import TestClient
@@ -24,7 +25,8 @@ def test_status_creates_console_token_but_never_returns_it(monkeypatch, tmp_path
     token = setup_api.TOKEN_FILE.read_text(encoding="utf-8").strip()
     assert len(token) >= 20
     assert token not in response.text
-    assert stat.S_IMODE(setup_api.TOKEN_FILE.stat().st_mode) == 0o600
+    if os.name != "nt":
+        assert stat.S_IMODE(setup_api.TOKEN_FILE.stat().st_mode) == 0o600
 
 
 def test_valid_token_creates_owner_session_and_closes_setup(monkeypatch, tmp_path):
