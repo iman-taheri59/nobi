@@ -72,3 +72,4 @@
 | 0035 | **ویزارد نصب و مرکز عملیات مالک** | پذیرفته — W1 در ۱٫۳٫۰، W2 در ۱٫۳٫۱ | setup token، owner wizard و managed.env |
 | 0036 | **مرکز عملیات مالک با allowlist ثابت** | پذیرفته — W3 در ۱٫۳٫۲ | ۱۳ gate در devsuite، فقط owner، بدون shell |
 | 0037 | **helper محدود و بازیابی مالک** | پذیرفته — W3b در ۱٫۳٫۳ | backup/restore و systemd/nginx/restart با مرز privilege |
+| 0038 | **ثبت سفارش واقعی مالک** | پذیرفته — کد ۱٫۴٫۰؛ فعال‌سازی منتظر soak | owner+CSRF، promotion gate، preflight و idempotency |

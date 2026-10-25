@@ -1642,6 +1642,10 @@
     const res = await AUTH.call('/operations', null, 'GET');
     if (!res.ok) { box.hidden = true; return; }
     box.hidden = false;
+    const liveStatus = await AUTH.call('/live/status', null, 'GET');
+    const liveEvidence = await AUTH.call('/live/evidence', null, 'GET');
+    const liveOn = !!(liveStatus.ok && liveStatus.data && liveStatus.data.placement_enabled);
+    const evidenceReady = !!(liveEvidence.ok && liveEvidence.data && liveEvidence.data.ready);
     const archives = (res.data.archives || []);
     body.innerHTML = `<div class="flex flex-wrap gap-2">
       <button id="opsBackup" class="auth-btn !flex-none" type="button">${inFa('ops.backup')}</button>
@@ -1653,7 +1657,17 @@
       <button id="opsApply" class="auth-btn !flex-none" type="button" ${res.data.helper_available ? '' : 'disabled'}>${inFa('ops.apply')}</button>
       <input id="opsRestartConfirm" class="auth-input !w-auto" placeholder="RESTART">
       <button id="opsRestart" class="auth-btn !flex-none" type="button" ${res.data.helper_available ? '' : 'disabled'}>${inFa('ops.restart')}</button>
-      <span id="opsMsg" class="text-[10px] text-zinc-400"></span></div>`;
+      <span id="opsMsg" class="text-[10px] text-zinc-400"></span></div>
+    <div class="pt-2 border-t border-rose-400/20 space-y-2">
+      <div class="text-[11px] font-bold text-rose-300">${inFa('ops.live')}</div>
+      <div class="text-[10px] text-zinc-500">${inFa('ops.liveGate')} · ${liveEvidence.ok ? `${liveEvidence.data.samples || 0}/30 · ${liveEvidence.data.days || 0}/5` : '—'}</div>
+      <div class="flex flex-wrap gap-2">
+        <input id="liveSymbol" class="auth-input !w-28" placeholder="BTCUSDT"><select id="liveSide" class="auth-input !w-auto"><option value="buy">buy</option><option value="sell">sell</option></select>
+        <input id="liveEntry" class="auth-input !w-32" inputmode="decimal" placeholder="entry"><input id="liveStop" class="auth-input !w-32" inputmode="decimal" placeholder="stop">
+        <input id="liveSize" class="auth-input !w-32" inputmode="decimal" placeholder="size quote"><input id="liveConfirm" class="auth-input !w-52" placeholder="PLACE-REAL-ORDER">
+        <button id="livePlace" class="auth-btn !flex-none !bg-rose-500/20" type="button" ${(liveOn && evidenceReady) ? '' : 'disabled'}>${inFa('ops.livePlace')}</button>
+      </div><span id="liveMsg" class="text-[10px] text-zinc-500"></span>
+    </div>`;
     const run = async (path, payload) => {
       const out = await AUTH.call('/operations/' + path, payload);
       const msg = $('opsMsg');
@@ -1664,6 +1678,17 @@
     $('opsRestore').onclick = () => run('restore', { archive: $('opsArchive').value, confirmation: $('opsConfirm').value });
     $('opsApply').onclick = () => run('apply-config', { domain: $('opsDomain').value.trim() });
     $('opsRestart').onclick = () => run('restart', { confirmation: $('opsRestartConfirm').value });
+    $('livePlace').onclick = async () => {
+      const key = `owner-${Date.now()}-${crypto.getRandomValues(new Uint32Array(1))[0].toString(16)}`;
+      const out = await AUTH.call('/live/place', {
+        symbol: $('liveSymbol').value.trim().toUpperCase(), side: $('liveSide').value,
+        entry: Number($('liveEntry').value), stop: Number($('liveStop').value),
+        size_quote: Number($('liveSize').value), tf: '15m', idempotency_key: key,
+        confirmation: $('liveConfirm').value,
+      });
+      const msg = $('liveMsg');
+      if (msg) { const detail = out.data && out.data.detail; msg.textContent = out.ok ? `${out.data.execution.state} · ${out.data.execution.client_order_id}` : (typeof detail === 'string' ? detail : JSON.stringify(detail || 'Failed')); msg.className = `text-[10px] ${out.ok ? 'text-emerald-300' : 'text-red-300'}`; }
+    };
   }
 
   function bindLogout() {

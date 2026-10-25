@@ -8,7 +8,7 @@ Public endpoints used in Phase 1:
 
 Private endpoints (Phase 3+) — wired but gated:
   Auth via Ed25519 API key (headers Nobitex-Key/-Signature/-Timestamp)
-  POST /market/orders/add  etc. — NEVER enabled in this repo state.
+  Trading is isolated in live_execution.py behind owner/promotion interlocks.
 """
 from __future__ import annotations
 

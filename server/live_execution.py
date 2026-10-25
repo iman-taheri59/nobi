@@ -1,7 +1,7 @@
 """Recoverable, fail-closed boundary for future Nobitex spot execution.
 
-No FastAPI route imports this module. Live mode needs an explicit interlock,
-credentials and an injected sender; dry-run never invokes the sender.
+Live mode needs an explicit interlock, credentials, promotion evidence and an
+injected sender; dry-run never invokes the sender.
 """
 from __future__ import annotations
 

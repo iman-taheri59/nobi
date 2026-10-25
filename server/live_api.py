@@ -1,4 +1,4 @@
-"""Private live-control routes. Deliberately no order-placement endpoint."""
+"""Private live controls and owner-only promotion-gated order placement."""
 from __future__ import annotations
 
 import os
@@ -9,6 +9,7 @@ from typing import Any
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
+import install_api
 from live_execution import (
     ExecutionError,
     ExecutionLedger,
@@ -68,6 +69,7 @@ Preflight = Callable[[dict[str, Any], Request], Awaitable[dict[str, Any]]]
 Audit = Callable[..., Any]
 _PREFLIGHT: Preflight | None = None
 _AUDIT: Audit | None = None
+PLACE_CONFIRMATION = "PLACE-REAL-ORDER"
 
 
 def configure(*, preflight: Preflight, audit: Audit) -> None:
@@ -91,24 +93,24 @@ def _call(action):
         raise HTTPException(status_code=502, detail=f"exchange transport: {type(exc).__name__}") from exc
 
 
-@router.get("/status", dependencies=[Depends(require_client)])
-def status():
-    return {
-        "ok": True,
-        "mode": CLIENT.mode.value,
-        "configured": CLIENT.mode is ExecutionMode.LIVE and CONFIG_PROBLEM is None,
-        "configuration_problem": CONFIG_PROBLEM,
-        "placement_exposed": False,
-    }
+def _intent(result: dict[str, Any], key: str) -> tuple[OrderIntent, str]:
+    symbol = str(result.get("symbol") or "").upper()
+    quote = "IRT" if symbol.endswith("IRT") else "USDT" if symbol.endswith("USDT") else ""
+    if not quote:
+        raise HTTPException(status_code=422, detail="unsupported market symbol")
+    src = symbol[:-len(quote)]
+    dst = "rls" if quote == "IRT" else "usdt"
+    return OrderIntent(
+        side=str(result.get("side") or "buy"), src_currency=src,
+        dst_currency=dst, amount=format(float(result["qty"]), ".12g"),
+        price=format(float(result["entry"]) * (10 if quote == "IRT" else 1), ".12g"),
+        idempotency_key=key,
+    ), symbol
 
 
-@router.post("/dry-run", dependencies=[Depends(require_client)])
-async def dry_run(payload: dict, request: Request):
-    if CLIENT.mode is not ExecutionMode.DRY_RUN:
-        raise HTTPException(status_code=409, detail="dry-run route requires NBX_LIVE_MODE=dry-run")
+async def _checked_intent(body: dict[str, Any], request: Request) -> tuple[OrderIntent, str, dict[str, Any]]:
     if _PREFLIGHT is None:
         raise HTTPException(status_code=503, detail="server preflight is not configured")
-    body = payload or {}
     key = str(body.get("idempotency_key") or "")
     if not key:
         raise HTTPException(status_code=422, detail="idempotency_key is required")
@@ -116,27 +118,60 @@ async def dry_run(payload: dict, request: Request):
     projection_value = result.get("projection")
     projection: dict[str, Any] = projection_value if isinstance(projection_value, dict) else {}
     if not result.get("ok") or projection.get("blocked"):
-        raise HTTPException(
-            status_code=409,
-            detail={"error": "preflight-blocked", "blocked_by": projection.get("blocked_by")},
-        )
-    symbol = str(result.get("symbol") or "").upper()
-    quote = "IRT" if symbol.endswith("IRT") else "USDT" if symbol.endswith("USDT") else ""
-    if not quote:
-        raise HTTPException(status_code=422, detail="unsupported market symbol")
-    src = symbol[:-len(quote)]
-    dst = "rls" if quote == "IRT" else "usdt"
-    intent = OrderIntent(
-        side=str(result.get("side") or "buy"), src_currency=src,
-        dst_currency=dst, amount=format(float(result["qty"]), ".12g"),
-        price=format(float(result["entry"]) * (10 if quote == "IRT" else 1), ".12g"),
-        idempotency_key=key,
-    )
+        raise HTTPException(status_code=409, detail={
+            "error": "preflight-blocked", "blocked_by": projection.get("blocked_by"),
+        })
+    intent, symbol = _intent(result, key)
+    return intent, symbol, projection
+
+
+@router.get("/status", dependencies=[Depends(require_client)])
+def status():
+    return {
+        "ok": True,
+        "mode": CLIENT.mode.value,
+        "configured": CLIENT.mode is ExecutionMode.LIVE and CONFIG_PROBLEM is None,
+        "configuration_problem": CONFIG_PROBLEM,
+        "placement_exposed": True,
+        "placement_enabled": CLIENT.mode is ExecutionMode.LIVE and CONFIG_PROBLEM is None,
+    }
+
+
+@router.post("/dry-run", dependencies=[Depends(require_client)])
+async def dry_run(payload: dict, request: Request):
+    if CLIENT.mode is not ExecutionMode.DRY_RUN:
+        raise HTTPException(status_code=409, detail="dry-run route requires NBX_LIVE_MODE=dry-run")
+    body = payload or {}
+    intent, symbol, projection = await _checked_intent(body, request)
     record = CLIENT.place(intent)
     if _AUDIT is not None:
         _AUDIT("live.dry-run", detail={
             "client_order_id": intent.client_order_id, "symbol": symbol,
             "blocked": False,
+        }, request=request)
+    return {"ok": True, "execution": _public_record(record), "preflight": projection}
+
+
+@router.post("/place")
+async def place(payload: dict, request: Request):
+    user = install_api.require_owner(request, csrf=True)
+    if CLIENT.mode is not ExecutionMode.LIVE or CONFIG_PROBLEM is not None:
+        raise HTTPException(status_code=409, detail="confirmed live mode is not enabled")
+    body = payload or {}
+    if body.get("confirmation") != PLACE_CONFIRMATION:
+        raise HTTPException(status_code=422, detail=f"confirmation must be {PLACE_CONFIRMATION}")
+    evidence = CLIENT.ledger.promotion_evidence()
+    if not evidence["ready"]:
+        raise HTTPException(status_code=409, detail={
+            "error": "promotion-gate-blocked", "reasons": evidence["reasons"],
+            "required": evidence["required"],
+        })
+    intent, symbol, projection = await _checked_intent(body, request)
+    record = _call(lambda: CLIENT.place(intent))
+    if _AUDIT is not None:
+        _AUDIT("live.place", detail={
+            "client_order_id": intent.client_order_id, "symbol": symbol,
+            "state": record.get("state"), "owner": user.username,
         }, request=request)
     return {"ok": True, "execution": _public_record(record), "preflight": projection}
 

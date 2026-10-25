@@ -2,6 +2,17 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 1.4.0
+
+> Real placement endpoint added with owner/CSRF, promotion gate and explicit confirmation; not operationally enabled yet.
+
+- `POST /api/live/place` works only for owners and only in confirmed live mode.
+- The server enforces 30 dry runs over 5 days with zero ambiguous outcomes.
+- Dry/live share preflight and reserve ledger/idempotency before network I/O.
+- Ambiguous timeout is never blindly retried and requires reconciliation; responses contain no secret/raw request.
+- Owner UI shows evidence and a real-order form disabled until the gate is ready.
+- Tests pin the gate, exact confirmation and one mocked exchange submission.
+
 ## 1.3.3
 
 > W3b: owner UI backup/restore and constrained systemd/nginx/restart management.

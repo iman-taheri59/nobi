@@ -2,6 +2,17 @@
 
 [English](CHANGELOG.en.md) · **فارسی**
 
+## 1.4.0
+
+> endpoint واقعی سفارش با کنترل owner، CSRF، promotion gate و تأیید صریح اضافه شد؛ هنوز فعال نشده است.
+
+- `POST /api/live/place` فقط owner و فقط در live mode تأییدشده کار می‌کند.
+- حداقل ۳۰ dry-run در ۵ روز و صفر outcome مبهم داخل سرور enforce می‌شود.
+- dry-run/live از preflight مشترک استفاده می‌کنند و ledger/idempotency پیش از شبکه رزرو می‌شود.
+- timeout مبهم retry نمی‌شود و به reconciliation نیاز دارد؛ پاسخ secret و raw request ندارد.
+- کارت owner evidence و فرم سفارش واقعی را نشان می‌دهد و تا آماده شدن gate غیرفعال است.
+- آزمون‌ها gate، تأیید دقیق و یک ارسال واقعی mock‌شده را قفل می‌کنند.
+
 ## 1.3.3
 
 > W3b: backup/restore و مدیریت محدود systemd/nginx/restart از UI مالک.

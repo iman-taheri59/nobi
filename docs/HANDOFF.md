@@ -23,6 +23,8 @@
 - [x] W3: ۱۳ gate تست/lint/parity/build/deploy-check از allowlist فقط-owner.
 - [x] W3b: backup/restore/restart و systemd/nginx با helper محدود سیستم‌عامل.
 - [ ] روی سرور واقعی: helper و sudoers باید root-owned نصب و `NBX_INSTALL_HELPER` تنظیم شود.
+- [x] endpoint واقعی `/api/live/place` فقط-owner با CSRF، تأیید صریح، preflight و promotion gate.
+- [ ] اجرای soak واقعی ۵روزه/۳۰نمونه؛ تا آن زمان live mode فعال نشود.
 - [ ] soak واقعی و contract test خصوصی؛ نیازمند محیط ایران و کلید READ/TRADE محدود به IP.
 - [ ] بازبینی امنیتی مستقل پیش از سرمایه واقعی.
 
@@ -48,7 +50,7 @@
 ```text
 ruff: passed
 mypy: success, 107 source files
-pytest: 936 passed, 1 dependency deprecation warning
+pytest: 938 passed, 1 dependency deprecation warning
 ESLint/dashboard lint: passed
 broker/preflight parity: passed
 mobile artifact: rebuilt for 1.2.3
