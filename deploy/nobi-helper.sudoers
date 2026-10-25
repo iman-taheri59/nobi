@@ -1,0 +1,4 @@
+# Install as /etc/sudoers.d/nobi-helper, owner root:root, mode 0440; validate with visudo -cf.
+# The Python helper independently rejects every action/payload outside its exact schema.
+Cmnd_Alias NOBI_HELPER = /usr/local/libexec/nobi-privileged-helper apply-config *, /usr/local/libexec/nobi-privileged-helper restart *
+nobi ALL=(root) NOPASSWD: NOBI_HELPER

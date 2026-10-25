@@ -2,6 +2,17 @@
 
 [English](CHANGELOG.en.md) · **فارسی**
 
+## 1.3.3
+
+> W3b: backup/restore و مدیریت محدود systemd/nginx/restart از UI مالک.
+
+- API فقط-owner+CSRF برای فهرست/ساخت backup، restore با تأیید دقیق، apply-config و restart افزوده شد.
+- archive فقط در مسیر مدیریت‌شده، با نام ثابت، checksum/SQLite integrity و بدون secret پذیرفته می‌شود.
+- helper مستقل root-owned فقط دو action schema-validated دارد؛ shell یا command/argument آزاد وجود ندارد.
+- پیکربندی systemd/nginx پیش از reload اعتبارسنجی و در خطا rollback می‌شود.
+- audit append-only با mode 0600، timeout و output tail محدود است.
+- کارت دوزبانه owner برای backup، restore، دامنه، apply و restart اضافه شد.
+
 ## 1.3.2
 
 > W3 مرکز عملیات: تمام gateهای Python/JS، build و deploy-check از UI و فقط برای owner.

@@ -2,8 +2,8 @@
 
 [فارسی](HANDOFF.md) · **English**
 
-**Last updated:** 2026-10-25 — stage 13 (W3 operations center complete)
-**Working version:** 1.3.2
+**Last updated:** 2026-10-25 — stage 14 (W3b helper and backup/restore complete)
+**Working version:** 1.3.3
 **Target:** ADR-0027; stable product first, then staged fail-closed live execution.
 
 ## Status
@@ -21,7 +21,8 @@
 - [x] W2: owner UI for data paths, scan/TTL and disabled/dry-run; secret-free managed.env.
 - [ ] W2b: reverse-proxy/systemd validation and generation through a non-root helper.
 - [x] W3: 13 owner-only allowlisted test/lint/parity/build/deploy-check gates.
-- [ ] W3b: backup/restore/restart and systemd/nginx generation through a constrained OS helper.
+- [x] W3b: backup/restore/restart and systemd/nginx through a constrained OS helper.
+- [ ] On the real server: install the helper/sudoers root-owned and set `NBX_INSTALL_HELPER`.
 - [ ] Real soak/private contract test; requires an Iran-reachable host and IP-limited READ/TRADE key.
 - [ ] Independent security review before real funds.
 
@@ -46,8 +47,8 @@
 
 ```text
 ruff: passed
-mypy: success, 105 source files
-pytest: 932 passed, 1 dependency deprecation warning
+mypy: success, 107 source files
+pytest: 936 passed, 1 dependency deprecation warning
 ESLint/dashboard lint: passed
 broker/preflight parity: passed
 mobile artifact: rebuilt for 1.2.3

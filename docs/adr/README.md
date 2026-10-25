@@ -70,4 +70,5 @@
 | 0033 | **دروازه ارتقای live از شواهد dry-run** | پذیرفته — پیاده‌شده در ۱٫۲٫۶، applied=false | `promotion_evidence()` و `/api/live/evidence` |
 | 0034 | **بسته عملیاتی soak** | پذیرفته — پیاده‌شده در ۱٫۲٫۷ | backup سه DB و `live_evidence_snapshot.py` |
 | 0035 | **ویزارد نصب و مرکز عملیات مالک** | پذیرفته — W1 در ۱٫۳٫۰، W2 در ۱٫۳٫۱ | setup token، owner wizard و managed.env |
-| 0036 | **مرکز عملیات مالک با allowlist ثابت** | پذیرفته — W3 در ۱٫۳٫۲؛ W3b در انتظار | ۱۳ gate در devsuite، فقط owner، بدون shell |
+| 0036 | **مرکز عملیات مالک با allowlist ثابت** | پذیرفته — W3 در ۱٫۳٫۲ | ۱۳ gate در devsuite، فقط owner، بدون shell |
+| 0037 | **helper محدود و بازیابی مالک** | پذیرفته — W3b در ۱٫۳٫۳ | backup/restore و systemd/nginx/restart با مرز privilege |

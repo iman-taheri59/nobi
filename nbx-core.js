@@ -1784,6 +1784,24 @@
       }
     }
 
+    async getOperations() {
+      if (this.standaloneMobile) return { error: 'offline', archives: [] };
+      try { return await this.get(cfg.pythonApi + '/operations', 1); }
+      catch (e) { return { error: 'unreachable', archives: [] }; }
+    }
+
+    async runOperation(action, body) {
+      if (this.standaloneMobile) return { error: 'offline' };
+      try {
+        const res = await fetch(cfg.pythonApi + '/operations/' + encodeURIComponent(action), {
+          method: 'POST', headers: this._authHeaders(), body: JSON.stringify(body || {}),
+        });
+        const data = await res.json();
+        if (!res.ok) return { error: (data && data.detail) || ('HTTP ' + res.status) };
+        return data;
+      } catch (e) { return { error: 'unreachable' }; }
+    }
+
     async getAudit(opts) {
       const o = opts || {};
       if (this.standaloneMobile) return { events: [], counts: {}, standalone: true };

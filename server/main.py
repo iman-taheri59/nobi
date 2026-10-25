@@ -50,6 +50,7 @@ import journal as signal_journal
 import live_api
 import nobitex_metadata
 import notify
+import operations_api
 import paper_trading
 import reference_feed
 import setup_api
@@ -379,7 +380,7 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(
     title="nobiTrader",
-    version="1.3.2",
+    version="1.3.3",
     lifespan=lifespan,
 )
 
@@ -400,6 +401,7 @@ app.add_middleware(
 app.include_router(auth_api.router)
 app.include_router(setup_api.router)
 app.include_router(install_api.router)
+app.include_router(operations_api.router)
 app.include_router(live_api.router)
 
 #: Reachable without a session. `/api/health` stays open because uptime

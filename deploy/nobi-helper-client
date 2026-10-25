@@ -1,0 +1,7 @@
+#!/usr/bin/env python3
+"""Root-owned non-setuid client installed as /usr/local/bin/nobi-helper-client."""
+import os
+import sys
+
+HELPER = "/usr/local/libexec/nobi-privileged-helper"
+os.execv("/usr/bin/sudo", ["sudo", "--non-interactive", HELPER, *sys.argv[1:]])

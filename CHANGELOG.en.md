@@ -2,6 +2,17 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 1.3.3
+
+> W3b: owner UI backup/restore and constrained systemd/nginx/restart management.
+
+- Owner+CSRF API lists/creates backups, restores with exact confirmation, applies config and restarts.
+- Archives are constrained to the managed directory/name, checksummed and SQLite-integrity checked, with no secrets.
+- A separate root-owned helper exposes two schema-validated actions; no shell or free command/argument exists.
+- systemd/nginx configuration is verified before reload and rolled back on failure.
+- Audit is append-only mode 0600; helper execution has timeout and bounded output.
+- A bilingual owner card exposes backup, restore, domain, apply and restart.
+
 ## 1.3.2
 
 > W3 operations center: all Python/JS gates, build and deploy-check from UI, owner-only.

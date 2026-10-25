@@ -1634,6 +1634,38 @@
     $('installSave').onclick = () => run('/install/settings');
   }
 
+  async function renderOperations() {
+    const box = $('setOperations'), body = $('setOperationsBody');
+    if (!box || !body) return;
+    const st = await AUTH.me();
+    if (!st || !st.is_owner) { box.hidden = true; return; }
+    const res = await AUTH.call('/operations', null, 'GET');
+    if (!res.ok) { box.hidden = true; return; }
+    box.hidden = false;
+    const archives = (res.data.archives || []);
+    body.innerHTML = `<div class="flex flex-wrap gap-2">
+      <button id="opsBackup" class="auth-btn !flex-none" type="button">${inFa('ops.backup')}</button>
+      <select id="opsArchive" class="auth-input !w-auto">${archives.map((a) => `<option value="${a.name}">${a.name} · ${a.bytes} B</option>`).join('')}</select>
+      <input id="opsConfirm" class="auth-input !w-auto" placeholder="RESTORE filename.zip">
+      <button id="opsRestore" class="auth-btn !flex-none" type="button">${inFa('ops.restore')}</button>
+    </div><div class="flex flex-wrap gap-2 pt-2 border-t border-white/5">
+      <input id="opsDomain" class="auth-input !w-auto" placeholder="${inFa('ops.domain')}">
+      <button id="opsApply" class="auth-btn !flex-none" type="button" ${res.data.helper_available ? '' : 'disabled'}>${inFa('ops.apply')}</button>
+      <input id="opsRestartConfirm" class="auth-input !w-auto" placeholder="RESTART">
+      <button id="opsRestart" class="auth-btn !flex-none" type="button" ${res.data.helper_available ? '' : 'disabled'}>${inFa('ops.restart')}</button>
+      <span id="opsMsg" class="text-[10px] text-zinc-400"></span></div>`;
+    const run = async (path, payload) => {
+      const out = await AUTH.call('/operations/' + path, payload);
+      const msg = $('opsMsg');
+      if (msg) { msg.textContent = out.ok ? 'OK' : ((out.data && out.data.detail) || 'Failed'); msg.className = `text-[10px] ${out.ok ? 'text-emerald-300' : 'text-red-300'}`; }
+      if (out.ok && path === 'backup') renderOperations();
+    };
+    $('opsBackup').onclick = () => run('backup', {});
+    $('opsRestore').onclick = () => run('restore', { archive: $('opsArchive').value, confirmation: $('opsConfirm').value });
+    $('opsApply').onclick = () => run('apply-config', { domain: $('opsDomain').value.trim() });
+    $('opsRestart').onclick = () => run('restart', { confirmation: $('opsRestartConfirm').value });
+  }
+
   function bindLogout() {
     const out = $('logoutBtn');
     if (out) out.onclick = () => AUTH.logout();
@@ -1677,6 +1709,7 @@
     if (authState && authState.user) {
       renderAccess();
       renderInstall();
+      renderOperations();
     }
 
     // A session can end while the tab is open (expired, revoked, password
