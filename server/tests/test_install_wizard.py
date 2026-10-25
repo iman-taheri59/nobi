@@ -50,14 +50,23 @@ def test_mutations_require_csrf_confirmation_and_allowlist(monkeypatch, tmp_path
 def test_helper_argv_is_fixed_output_redacted_and_state_persists(monkeypatch, tmp_path):
     client, csrf = _client(monkeypatch, tmp_path)
     helper = tmp_path / "helper"
-    helper.write_text("#!/bin/sh\necho 'token=never-return-this'\necho ok\n", encoding="utf-8")
-    helper.chmod(0o755)
+    helper.write_text("fixture", encoding="utf-8")
     monkeypatch.setattr(install_wizard, "HELPER", helper)
+    seen = []
+
+    def fake_run(argv, **kwargs):
+        seen.append(argv)
+        return install_wizard.subprocess.CompletedProcess(
+            argv, 0, stdout="token=never-return-this\nok\n", stderr=""
+        )
+
+    monkeypatch.setattr(install_wizard.subprocess, "run", fake_run)
     with client:
         response = client.post("/api/install/wizard/action", json={"action": "install-service"},
                                headers={"X-CSRF-Token": csrf})
         status = client.get("/api/install/wizard/status")
     assert response.status_code == 200 and response.json()["state"] == "passed"
+    assert seen == [[str(helper), "--protocol", "1", "install-service"]]
     assert "never-return-this" not in response.json()["output"]
     assert "[redacted]" in response.json()["output"]
     step = {row["step"]: row for row in status.json()["steps"]}["service-install"]
