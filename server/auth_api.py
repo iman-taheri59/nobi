@@ -19,7 +19,7 @@ from __future__ import annotations
 import json
 
 from fastapi import APIRouter, Request, Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 import auth
 import identity
@@ -53,6 +53,17 @@ class RoleBody(BaseModel):
 
 class ActiveBody(BaseModel):
     active: bool
+
+
+class LivePolicyBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = False
+    max_order_usdt: float = Field(ge=1, le=1_000_000)
+    max_daily_usdt: float = Field(ge=1, le=10_000_000)
+    max_daily_orders: int = Field(ge=1, le=1000)
+    allowed_symbols: list[str] = Field(min_length=1, max_length=50)
+    allowed_execution: list[str] = Field(default_factory=lambda: ["limit"], min_length=1, max_length=2)
 
 
 class InviteBody(BaseModel):
@@ -105,6 +116,7 @@ def _me(request: Request) -> dict:
             "method": "session",
             "can_mutate": user.can_mutate,
             "is_owner": user.is_owner,
+            "live_policy": auth.get_live_policy(user.id) if user.role == "operator" else None,
         }
     if _bearer_ok(request):
         return {"auth_required": True, "user": None, "method": "token",
@@ -236,8 +248,12 @@ def _json(payload: dict) -> str:
 def list_users(request: Request):
     if (denied := _owner_gate(request)) is not None:
         return denied
-    return {"users": [u.public() for u in auth.list_users()],
-            "sessions": auth.active_sessions()}
+    users = []
+    for user in auth.list_users():
+        item = user.public()
+        item["live_policy"] = auth.get_live_policy(user.id) if user.role == "operator" else None
+        users.append(item)
+    return {"users": users, "sessions": auth.active_sessions()}
 
 
 @router.get("/activity")
@@ -245,6 +261,42 @@ def activity(request: Request, limit: int = 100, user_id: int | None = None):
     if (denied := _owner_gate(request)) is not None:
         return denied
     return {"events": auth.list_activity(limit=limit, user_id=user_id)}
+
+
+@router.get("/users/{user_id}/live-policy")
+def get_user_live_policy(user_id: int, request: Request):
+    if (denied := _owner_gate(request)) is not None:
+        return denied
+    if auth.get_user(user_id) is None:
+        return _refuse(404, "کاربر پیدا نشد")
+    return {"policy": auth.get_live_policy(user_id)}
+
+
+@router.patch("/users/{user_id}/live-policy")
+def patch_user_live_policy(user_id: int, body: LivePolicyBody, request: Request):
+    if (denied := _owner_gate(request, csrf=True)) is not None:
+        return denied
+    symbols = [str(value).strip().upper() for value in body.allowed_symbols]
+    if any(not value.isalnum() or not value.endswith(("USDT", "IRT")) for value in symbols):
+        return _refuse(422, "نماد مجاز معتبر نیست")
+    executions = sorted(set(body.allowed_execution))
+    if not set(executions) <= {"limit"}:
+        return _refuse(422, "در این مرحله فقط سفارش limit مجاز است")
+    if body.max_daily_usdt < body.max_order_usdt:
+        return _refuse(422, "سقف روزانه باید حداقل برابر سقف هر سفارش باشد")
+    session = identity.session_of(request)
+    assert session is not None
+    try:
+        policy = auth.set_live_policy(user_id, {
+            **body.model_dump(), "allowed_symbols": symbols,
+            "allowed_execution": executions,
+        }, actor=session.user.username)
+    except auth.AuthError as exc:
+        return _refuse(exc.status, exc.message)
+    auth.record_activity(session.user, "user.live-policy.update",
+                         detail=f"target_id={user_id};enabled={int(body.enabled)}",
+                         ip=_client_ip(request))
+    return {"ok": True, "policy": policy}
 
 
 @router.patch("/users/{user_id}")

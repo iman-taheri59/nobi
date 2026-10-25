@@ -40,6 +40,7 @@ import base64
 import contextlib
 import hashlib
 import hmac
+import json
 import os
 import secrets
 import sqlite3
@@ -140,6 +141,26 @@ CREATE TABLE IF NOT EXISTS sessions (
     ua          TEXT
 );
 CREATE INDEX IF NOT EXISTS ix_sessions_user ON sessions(user_id);
+
+CREATE TABLE IF NOT EXISTS live_policies (
+    user_id             INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    enabled             INTEGER NOT NULL DEFAULT 0,
+    max_order_usdt      REAL NOT NULL,
+    max_daily_usdt      REAL NOT NULL,
+    max_daily_orders    INTEGER NOT NULL,
+    allowed_symbols     TEXT NOT NULL,
+    allowed_execution   TEXT NOT NULL,
+    updated_at          INTEGER NOT NULL,
+    updated_by          TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS live_order_usage (
+    client_order_id TEXT PRIMARY KEY,
+    user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    notional_usdt   REAL NOT NULL,
+    created_at      INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_live_usage_user_time ON live_order_usage(user_id, created_at);
 
 CREATE TABLE IF NOT EXISTS user_activity (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -397,6 +418,97 @@ def list_activity(*, limit: int = 100, user_id: int | None = None) -> list[dict]
                 (user_id, limit),
             ).fetchall()
     return [dict(row) for row in rows]
+
+
+def get_live_policy(user_id: int) -> dict | None:
+    with connect() as conn:
+        row = conn.execute("SELECT * FROM live_policies WHERE user_id=?", (user_id,)).fetchone()
+    if row is None:
+        return None
+    out = dict(row)
+    out["enabled"] = bool(out["enabled"])
+    out["allowed_symbols"] = json.loads(out["allowed_symbols"])
+    out["allowed_execution"] = json.loads(out["allowed_execution"])
+    return out
+
+
+def set_live_policy(user_id: int, policy: dict, *, actor: str) -> dict:
+    user = get_user(user_id)
+    if user is None:
+        raise AuthError("کاربر پیدا نشد", status=404)
+    if user.role != "operator":
+        raise AuthError("مجوز ثبت واقعی فقط برای operator قابل تخصیص است", status=409)
+    symbols = sorted(set(policy["allowed_symbols"]))
+    executions = sorted(set(policy["allowed_execution"]))
+    now = int(time.time())
+    with connect() as conn:
+        conn.execute(
+            """INSERT INTO live_policies(user_id,enabled,max_order_usdt,max_daily_usdt,
+               max_daily_orders,allowed_symbols,allowed_execution,updated_at,updated_by)
+               VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET
+               enabled=excluded.enabled,max_order_usdt=excluded.max_order_usdt,
+               max_daily_usdt=excluded.max_daily_usdt,max_daily_orders=excluded.max_daily_orders,
+               allowed_symbols=excluded.allowed_symbols,allowed_execution=excluded.allowed_execution,
+               updated_at=excluded.updated_at,updated_by=excluded.updated_by""",
+            (user_id, int(policy["enabled"]), policy["max_order_usdt"],
+             policy["max_daily_usdt"], policy["max_daily_orders"],
+             json.dumps(symbols, separators=(",", ":")),
+             json.dumps(executions, separators=(",", ":")), now, actor),
+        )
+    return get_live_policy(user_id) or {}
+
+
+def authorize_live_order(user: User, *, client_order_id: str, symbol: str,
+                         execution: str, notional_usdt: float) -> dict:
+    """Atomically enforce and reserve an operator's daily real-order budget."""
+    if user.is_owner:
+        return {"owner_override": True}
+    if user.role != "operator" or not user.active:
+        raise AuthError("ثبت سفارش واقعی برای این نقش مجاز نیست", status=403)
+    now = int(time.time())
+    day_start = now - (now % 86400)
+    conn = connect()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        policy = conn.execute("SELECT * FROM live_policies WHERE user_id=?", (user.id,)).fetchone()
+        if policy is None or not policy["enabled"]:
+            raise AuthError("مجوز live_place برای این operator فعال نیست", status=403)
+        symbols = set(json.loads(policy["allowed_symbols"]))
+        executions = set(json.loads(policy["allowed_execution"]))
+        if symbol not in symbols or execution not in executions:
+            raise AuthError("نماد یا نوع سفارش خارج از policy است", status=403)
+        amount = float(notional_usdt)
+        if amount <= 0 or amount > float(policy["max_order_usdt"]):
+            raise AuthError("مبلغ سفارش از سقف operator بیشتر است", status=409)
+        existing = conn.execute(
+            "SELECT user_id,notional_usdt FROM live_order_usage WHERE client_order_id=?",
+            (client_order_id,),
+        ).fetchone()
+        if existing is not None:
+            if existing["user_id"] != user.id or abs(float(existing["notional_usdt"]) - amount) > 1e-9:
+                raise AuthError("idempotency key با رزرو قبلی تعارض دارد", status=409)
+            conn.commit()
+            return {"reserved": False, "idempotent": True}
+        count, spent = conn.execute(
+            "SELECT count(*),coalesce(sum(notional_usdt),0) FROM live_order_usage "
+            "WHERE user_id=? AND created_at>=?", (user.id, day_start),
+        ).fetchone()
+        if int(count) >= int(policy["max_daily_orders"]):
+            raise AuthError("سقف تعداد سفارش روزانه operator پر شده است", status=409)
+        if float(spent) + amount > float(policy["max_daily_usdt"]):
+            raise AuthError("سقف مبلغ روزانه operator پر شده است", status=409)
+        conn.execute(
+            "INSERT INTO live_order_usage(client_order_id,user_id,notional_usdt,created_at) VALUES(?,?,?,?)",
+            (client_order_id, user.id, amount, now),
+        )
+        conn.commit()
+        return {"reserved": True, "daily_orders": int(count) + 1,
+                "daily_usdt": round(float(spent) + amount, 8)}
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 def any_users() -> bool:
@@ -679,12 +791,43 @@ def revoke_invite(invite_id: int) -> bool:
 
 
 __all__ = [
-    "AUTH_DB", "MIN_PASSWORD", "ROLES", "SESSION_DAYS", "AuthError", "Session", "User",
-    "active_sessions", "any_users", "attempts_left", "authenticate", "change_password",
-    "change_password_as_admin", "check_password_quality", "connect", "count_owners",
-    "create_invite", "create_session",
-    "create_user", "delete_session", "delete_user_sessions", "get_user", "get_user_by_name",
-    "hash_password", "list_activity", "list_invites", "list_users", "normalise_username",
-    "record_activity", "redeem_invite", "reset_caches", "revoke_invite", "session_from_token", "set_active", "set_role",
+    "AUTH_DB",
+    "MIN_PASSWORD",
+    "ROLES",
+    "SESSION_DAYS",
+    "AuthError",
+    "Session",
+    "User",
+    "active_sessions",
+    "any_users",
+    "attempts_left",
+    "authenticate",
+    "authorize_live_order",
+    "change_password",
+    "change_password_as_admin",
+    "check_password_quality",
+    "connect",
+    "count_owners",
+    "create_invite",
+    "create_session",
+    "create_user",
+    "delete_session",
+    "delete_user_sessions",
+    "get_live_policy",
+    "get_user",
+    "get_user_by_name",
+    "hash_password",
+    "list_activity",
+    "list_invites",
+    "list_users",
+    "normalise_username",
+    "record_activity",
+    "redeem_invite",
+    "reset_caches",
+    "revoke_invite",
+    "session_from_token",
+    "set_active",
+    "set_live_policy",
+    "set_role",
     "verify_password",
 ]

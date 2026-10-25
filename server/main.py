@@ -380,7 +380,7 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(
     title="nobiTrader",
-    version="1.4.4",
+    version="1.5.0",
     lifespan=lifespan,
 )
 
@@ -2409,6 +2409,7 @@ async def risk_whatif(payload: dict, request: Request):
         "entry": round(entry, 8), "stop": round(stop, 8),
         "stop_pct": round(abs(entry - stop) / entry * 100, 3),
         "size_quote": round(notional_quote, 2),
+        "notional_usdt": round(notional_usd, 8),
         "qty": qty,
         "quote": "IRT" if sym.endswith("IRT") else "USDT",
         "sized_by": sized_by,

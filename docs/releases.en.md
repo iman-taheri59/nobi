@@ -2,8 +2,8 @@
 
 [فارسی](releases.md) · **English**
 
-The current version of this change is **1.4.4**; the previously published tag is
-**v1.4.3**, and this change will ship as **v1.4.4**.
+The current version of this change is **1.5.0**; the previously published tag is
+**v1.4.4**, and this change will ship as **v1.5.0**.
 `VERSION` is the source of truth for the release number; the tag name is exactly `v`
 plus that number.
 

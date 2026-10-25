@@ -9,6 +9,8 @@ from typing import Any
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
+import auth
+import identity
 import install_api
 from live_execution import (
     ExecutionError,
@@ -108,7 +110,9 @@ def _intent(result: dict[str, Any], key: str) -> tuple[OrderIntent, str]:
     ), symbol
 
 
-async def _checked_intent(body: dict[str, Any], request: Request) -> tuple[OrderIntent, str, dict[str, Any]]:
+async def _checked_intent(
+    body: dict[str, Any], request: Request,
+) -> tuple[OrderIntent, str, dict[str, Any], float]:
     if _PREFLIGHT is None:
         raise HTTPException(status_code=503, detail="server preflight is not configured")
     key = str(body.get("idempotency_key") or "")
@@ -122,7 +126,8 @@ async def _checked_intent(body: dict[str, Any], request: Request) -> tuple[Order
             "error": "preflight-blocked", "blocked_by": projection.get("blocked_by"),
         })
     intent, symbol = _intent(result, key)
-    return intent, symbol, projection
+    notional_usdt = float(result.get("notional_usdt") or 0)
+    return intent, symbol, projection, notional_usdt
 
 
 @router.get("/status", dependencies=[Depends(install_api.require_operator)])
@@ -142,7 +147,7 @@ async def dry_run(payload: dict, request: Request):
     if CLIENT.mode is not ExecutionMode.DRY_RUN:
         raise HTTPException(status_code=409, detail="dry-run route requires NBX_LIVE_MODE=dry-run")
     body = payload or {}
-    intent, symbol, projection = await _checked_intent(body, request)
+    intent, symbol, projection, _notional_usdt = await _checked_intent(body, request)
     record = CLIENT.place(intent)
     if _AUDIT is not None:
         _AUDIT("live.dry-run", detail={
@@ -154,7 +159,11 @@ async def dry_run(payload: dict, request: Request):
 
 @router.post("/place")
 async def place(payload: dict, request: Request):
-    user = install_api.require_owner(request, csrf=True)
+    user = install_api.require_operator(request)
+    session = identity.session_of(request)
+    assert session is not None
+    if not identity.csrf_ok(request, session):
+        raise HTTPException(status_code=403, detail="CSRF token required")
     if CLIENT.mode is not ExecutionMode.LIVE or CONFIG_PROBLEM is not None:
         raise HTTPException(status_code=409, detail="confirmed live mode is not enabled")
     body = payload or {}
@@ -166,14 +175,25 @@ async def place(payload: dict, request: Request):
             "error": "promotion-gate-blocked", "reasons": evidence["reasons"],
             "required": evidence["required"],
         })
-    intent, symbol, projection = await _checked_intent(body, request)
+    intent, symbol, projection, notional_usdt = await _checked_intent(body, request)
+    if notional_usdt <= 0:
+        raise HTTPException(status_code=422, detail="preflight did not produce USD notional")
+    try:
+        policy_use = auth.authorize_live_order(
+            user, client_order_id=intent.client_order_id, symbol=symbol,
+            execution=intent.execution, notional_usdt=notional_usdt,
+        )
+    except auth.AuthError as exc:
+        raise HTTPException(status_code=exc.status, detail=exc.message) from exc
     record = _call(lambda: CLIENT.place(intent))
     if _AUDIT is not None:
         _AUDIT("live.place", detail={
             "client_order_id": intent.client_order_id, "symbol": symbol,
-            "state": record.get("state"), "owner": user.username,
+            "state": record.get("state"), "actor": user.username,
+            "owner_override": bool(policy_use.get("owner_override")),
         }, request=request)
-    return {"ok": True, "execution": _public_record(record), "preflight": projection}
+    return {"ok": True, "execution": _public_record(record), "preflight": projection,
+            "authorization": {"role": user.role, **policy_use}}
 
 
 @router.get("/evidence", dependencies=[Depends(install_api.require_operator)])

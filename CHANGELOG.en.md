@@ -2,6 +2,17 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 1.5.0
+
+> Bounded `live_place` capability for selected operators with atomic financial limits.
+
+- Owners grant/revoke per-order/day amount, daily count and symbol allowlists from Users.
+- General operators still cannot place live orders; policy targets operators only and machine tokens are denied.
+- Only limit orders are permitted; promotion, preflight, CSRF, confirmation and idempotency remain mandatory.
+- Daily usage is atomically reserved under unique clientOrderId; identical retries do not consume twice.
+- Authorized operators get the real-order form on the Trading Desk.
+- Tests cover policy, limits, symbols, revocation, owner override and end-to-end operator submission.
+
 ## 1.4.4
 
 > Full role review and explicit viewer/operator/owner/token matrix.

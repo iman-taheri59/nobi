@@ -19,7 +19,8 @@ After making users and troubleshooting owner-only, remaining routes were reviewe
 | Live status/evidence/private orders | deny | read | read | deny |
 | Live dry-run/cancel/reconcile | deny | mutate+CSRF | mutate+CSRF | `require_client` policy |
 | Runtime settings, cache internals, Telegram credential probe | deny | deny | owner; mutations+CSRF | deny |
-| Users, installation, privileged operations, troubleshooting and live placement | deny | deny | owner; mutations+CSRF | deny |
+| Users, installation, privileged operations and troubleshooting | deny | deny | owner; mutations+CSRF | deny |
+| Live placement | deny | selected operator with policy+CSRF only | owner+CSRF | deny |
 
 - New `require_operator` accepts only active operator/owner sessions and does not demand CSRF for operational GETs.
 - Settings navigation and the audit card are hidden according to role; the backend enforces independently.

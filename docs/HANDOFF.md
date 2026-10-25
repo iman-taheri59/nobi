@@ -29,6 +29,7 @@
 - [x] تب خطایابی، error log، diagnostics و devsuite فقط-owner؛ mutationها با CSRF.
 - [x] audit خلاصه و بدون secret برای self-test، diagnostics و devsuite؛ chip صریح owner-only.
 - [x] ماتریس کامل دسترسی: settings/cache فقط-owner؛ audit/notify/live-private فقط operator/owner؛ token بدون نقش انسانی.
+- [x] capability مستقل `live_place` برای operator منتخب با limit-only، سقف مالی/تعداد/نماد و بودجه اتمیک.
 - [ ] soak واقعی و contract test خصوصی؛ نیازمند محیط ایران و کلید READ/TRADE محدود به IP.
 - [ ] بازبینی امنیتی مستقل پیش از سرمایه واقعی.
 
@@ -53,8 +54,8 @@
 
 ```text
 ruff: passed
-mypy: success, 110 source files
-pytest: 951 passed, 1 dependency deprecation warning
+mypy: success, 112 source files
+pytest: 957 passed, 1 dependency deprecation warning
 ESLint/dashboard lint: passed
 broker/preflight parity: passed
 mobile artifact: rebuilt for 1.2.3

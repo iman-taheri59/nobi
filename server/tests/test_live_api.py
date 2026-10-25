@@ -132,7 +132,7 @@ def test_live_place_requires_owner_csrf_and_promotion_evidence(monkeypatch, tmp_
 
     async def preflight(_payload, _request):
         return {"ok": True, "symbol": "BTCUSDT", "side": "buy", "entry": 70000,
-                "qty": 0.001, "projection": {"blocked": False}}
+                "qty": 0.001, "notional_usdt": 70.0, "projection": {"blocked": False}}
 
     monkeypatch.setattr(live_api, "_PREFLIGHT", preflight)
     client, csrf = _owner_client(monkeypatch, tmp_path)
@@ -151,6 +151,49 @@ def test_live_place_requires_owner_csrf_and_promotion_evidence(monkeypatch, tmp_
     assert placed.status_code == 200
     assert placed.json()["execution"]["state"] == "accepted"
     assert calls == ["/market/orders/add"]
+
+
+def test_selected_operator_can_place_within_policy(monkeypatch, tmp_path):
+    monkeypatch.setattr(auth, "AUTH_DB", tmp_path / "auth.db")
+    auth.reset_caches()
+    user = auth.create_user("selected-live", "A-strong-operator-password!", role="operator")
+    auth.set_live_policy(user.id, {
+        "enabled": True, "max_order_usdt": 25, "max_daily_usdt": 100,
+        "max_daily_orders": 5, "allowed_symbols": ["BTCUSDT"],
+        "allowed_execution": ["limit"],
+    }, actor="owner")
+    token, csrf, _ = auth.create_session(user, ip="testclient", ua="pytest")
+    ledger = ExecutionLedger(tmp_path / "operator-live.db")
+    sent = []
+
+    def sender(method, path, body, headers):
+        sent.append(path)
+        return {"status": "ok", "order": {"id": 77}}
+
+    monkeypatch.setattr(live_api, "CLIENT", LiveExecutionClient(
+        mode=ExecutionMode.LIVE, ledger=ledger, sender=sender, public_key="public",
+        private_key_b64=_secret(), confirmation=LIVE_CONFIRMATION))
+    monkeypatch.setattr(live_api, "CONFIG_PROBLEM", None)
+    monkeypatch.setattr(ledger, "promotion_evidence", lambda: {
+        "ready": True, "samples": 30, "days": 5, "ambiguous": 0,
+        "states": {"dry-run": 30}, "required": {}, "reasons": [], "applied": False,
+    })
+
+    async def preflight(_payload, _request):
+        return {"ok": True, "symbol": "BTCUSDT", "side": "buy", "entry": 10000,
+                "qty": 0.001, "notional_usdt": 10.0, "projection": {"blocked": False}}
+
+    monkeypatch.setattr(live_api, "_PREFLIGHT", preflight)
+    with TestClient(main.app) as client:
+        client.cookies.set("nbx_session", token)
+        client.cookies.set("nbx_csrf", csrf)
+        response = client.post("/api/live/place", json={
+            "idempotency_key": "selected-operator-order",
+            "confirmation": live_api.PLACE_CONFIRMATION,
+        }, headers={"X-CSRF-Token": csrf})
+    assert response.status_code == 200
+    assert response.json()["authorization"]["role"] == "operator"
+    assert sent == ["/market/orders/add"]
 
 
 def test_live_place_rejects_missing_explicit_confirmation(monkeypatch, tmp_path):

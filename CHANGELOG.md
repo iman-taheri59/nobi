@@ -2,6 +2,17 @@
 
 [English](CHANGELOG.en.md) · **فارسی**
 
+## 1.5.0
+
+> capability محدود `live_place` برای operator منتخب با سقف مالی اتمیک.
+
+- owner از تب کاربران مجوز، سقف هر سفارش/روز، تعداد روزانه و نمادهای مجاز را تنظیم یا لغو می‌کند.
+- operator عمومی همچنان حق ثبت واقعی ندارد؛ policy فقط برای role operator قابل تخصیص است و machine token رد می‌شود.
+- فقط limit order مجاز است؛ promotion gate، preflight، CSRF، تأیید و idempotency بدون تغییر اجباری‌اند.
+- مصرف روزانه در transaction اتمیک با clientOrderId یکتا رزرو می‌شود؛ retry یکسان دوباره بودجه مصرف نمی‌کند.
+- فرم سفارش واقعی برای operator مجاز در میز معاملات نمایش داده می‌شود.
+- آزمون‌های policy، سقف‌ها، symbol، revoke، owner override و ارسال end-to-end اپراتور اضافه شد.
+
 ## 1.4.4
 
 > بازبینی کامل نقش‌ها و اعمال ماتریس viewer/operator/owner/token.

@@ -2,7 +2,7 @@
 
 [فارسی](README.md) · **English**
 
-Current version: **1.4.4** · release tag: **v1.4.4**
+Current version: **1.5.0** · release tag: **v1.5.0**
 
 See [versioning and GitHub releases](docs/releases.en.md) for the rules on bumping
 the version, tagging and shipping the mobile file, and the

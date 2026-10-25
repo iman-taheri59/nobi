@@ -1531,6 +1531,15 @@
             <button data-kill="${u.id}"
               class="text-[10px] px-2 py-1 rounded-lg bg-amber-400/10 border border-amber-300/30 text-amber-200">
               ${inFa('set.accessKill')}</button>
+            ${u.role === 'operator' ? (() => { const p = u.live_policy || { enabled:false, max_order_usdt:25, max_daily_usdt:100, max_daily_orders:5, allowed_symbols:['BTCUSDT','ETHUSDT'] }; return `
+              <div class="basis-full grid grid-cols-2 lg:grid-cols-6 gap-1.5 pt-2 border-t border-white/5">
+                <label class="text-[9px] text-zinc-500"><input data-live-enabled="${u.id}" type="checkbox" ${p.enabled ? 'checked' : ''}> live_place</label>
+                <input data-live-order="${u.id}" class="auth-input" type="number" min="1" value="${p.max_order_usdt}" placeholder="max/order USDT">
+                <input data-live-day="${u.id}" class="auth-input" type="number" min="1" value="${p.max_daily_usdt}" placeholder="max/day USDT">
+                <input data-live-count="${u.id}" class="auth-input" type="number" min="1" value="${p.max_daily_orders}" placeholder="orders/day">
+                <input data-live-symbols="${u.id}" class="auth-input" value="${(p.allowed_symbols || []).join(',')}" placeholder="BTCUSDT,ETHUSDT">
+                <button data-live-save="${u.id}" class="text-[10px] rounded-lg bg-rose-400/10 border border-rose-300/30 text-rose-200">${inFa('set.livePolicySave')}</button>
+              </div>`; })() : ''}
           </div>`).join('')}
       </div>
 
@@ -1572,6 +1581,22 @@
     body.querySelectorAll('button[data-kill]').forEach((el) => {
       el.onclick = async () => { await AUTH.call('/auth/users/' + el.dataset.kill + '/logout'); };
     });
+    body.querySelectorAll('button[data-live-save]').forEach((el) => {
+      el.onclick = async () => {
+        const id = el.dataset.liveSave;
+        const policy = {
+          enabled: body.querySelector(`[data-live-enabled="${id}"]`).checked,
+          max_order_usdt: Number(body.querySelector(`[data-live-order="${id}"]`).value),
+          max_daily_usdt: Number(body.querySelector(`[data-live-day="${id}"]`).value),
+          max_daily_orders: Number(body.querySelector(`[data-live-count="${id}"]`).value),
+          allowed_symbols: body.querySelector(`[data-live-symbols="${id}"]`).value.split(',').map((v) => v.trim().toUpperCase()).filter(Boolean),
+          allowed_execution: ['limit'],
+        };
+        const r = await AUTH.call('/auth/users/' + id + '/live-policy', policy, 'PATCH');
+        if (!r.ok) alert((r.data && r.data.detail) || 'Policy rejected');
+        else renderAccess();
+      };
+    });
     body.querySelectorAll('button[data-revoke]').forEach((el) => {
       el.onclick = async () => {
         await AUTH.call('/auth/invites/' + el.dataset.revoke, null, 'DELETE');
@@ -1609,6 +1634,34 @@
       <span class="text-zinc-300"><b>${String(e.action || '').replaceAll('&','&amp;').replaceAll('<','&lt;')}</b>${e.detail ? ` · ${String(e.detail).replaceAll('&','&amp;').replaceAll('<','&lt;')}` : ''}</span>
       <span class="num text-zinc-500">${new Date((e.created_at || 0) * 1000).toLocaleString()}</span>
     </div>`).join('') : `<div class="text-[10px] text-zinc-500">${inFa('users.noActivity')}</div>`;
+  }
+
+  async function renderDeskLive() {
+    const panel = $('deskLivePanel'), button = $('deskLivePlace');
+    if (!panel || !button) return;
+    const me = await AUTH.me();
+    const policy = me && me.live_policy;
+    const eligibleRole = !!(me && (me.is_owner || (me.user && me.user.role === 'operator' && policy && policy.enabled)));
+    if (!eligibleRole) { panel.classList.add('hidden'); return; }
+    panel.classList.remove('hidden');
+    const [status, evidence] = await Promise.all([
+      AUTH.call('/live/status', null, 'GET'), AUTH.call('/live/evidence', null, 'GET'),
+    ]);
+    const ready = !!(status.ok && status.data.placement_enabled && evidence.ok && evidence.data.ready);
+    button.disabled = !ready;
+    const policyChip = $('deskLivePolicy');
+    if (policyChip) policyChip.textContent = me.is_owner ? 'owner' : `${policy.max_order_usdt} / ${policy.max_daily_usdt} USDT`;
+    button.onclick = async () => {
+      const key = `operator-${Date.now()}-${crypto.getRandomValues(new Uint32Array(1))[0].toString(16)}`;
+      const out = await AUTH.call('/live/place', {
+        symbol: $('deskLiveSymbol').value.trim().toUpperCase(), side: $('deskLiveSide').value,
+        entry: Number($('deskLiveEntry').value), stop: Number($('deskLiveStop').value),
+        size_quote: Number($('deskLiveSize').value), tf: '15m', idempotency_key: key,
+        confirmation: $('deskLiveConfirm').value,
+      });
+      const msg = $('deskLiveMsg'), detail = out.data && out.data.detail;
+      if (msg) { msg.textContent = out.ok ? `${out.data.execution.state} · ${out.data.execution.client_order_id}` : (typeof detail === 'string' ? detail : JSON.stringify(detail || 'Failed')); msg.className = `text-[10px] mt-2 ${out.ok ? 'text-emerald-300' : 'text-red-300'}`; }
+    };
   }
 
   async function renderInstall() {
@@ -1721,6 +1774,9 @@
     });
     const refresh = $('usersRefresh');
     if (refresh) refresh.onclick = renderUserActivity;
+    document.querySelectorAll('.navbtn[data-tab="desk"]').forEach((b) => {
+      b.addEventListener('click', () => setTimeout(renderDeskLive, 120));
+    });
   }
 
   async function loadCoinMetadata() {

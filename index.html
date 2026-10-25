@@ -295,7 +295,7 @@
       </button>
     </div>
     <span class="hidden 2xl:inline-flex chip shrink-0"><span class="dot bg-emerald-400"></span> <span data-i18n="hdr.kill"></span></span>
-    <span id="buildChip" class="hidden lg:inline-flex chip num text-violet-300 border-violet-400/30 shrink-0" title="نسخه واقعی از /api/health">v1.4.4 · core</span>
+    <span id="buildChip" class="hidden lg:inline-flex chip num text-violet-300 border-violet-400/30 shrink-0" title="نسخه واقعی از /api/health">v1.5.0 · core</span>
     <div class="ms-auto flex items-center gap-1.5 shrink-0">
       <span class="hidden xl:inline-flex chip num" id="clock">--:--:--</span>
       <span id="apiChip" class="hidden 2xl:inline-flex chip num text-zinc-400 border-white/10" title=""><i data-lucide="wifi-off" class="w-3.5 h-3.5"></i> <span>API: —</span></span>
@@ -766,6 +766,19 @@
           <div class="flex flex-wrap gap-2 lg:ms-auto" id="execSeg"></div>
         </div>
         <div class="mt-3 pt-3 border-t border-white/5 text-[11px] leading-6 text-zinc-400" id="execHint"></div>
+      </div>
+
+      <div id="deskLivePanel" class="glass p-4 sm:p-5 border-rose-400/20 hidden">
+        <div class="flex items-center gap-2 mb-2"><i data-lucide="badge-dollar-sign" class="w-4 h-4 text-rose-300"></i>
+          <span class="font-bold text-[13px] sm:text-sm" data-i18n="ops.live"></span>
+          <span id="deskLivePolicy" class="chip text-[9px] text-zinc-400 ms-auto"></span></div>
+        <p class="text-[10px] text-zinc-500 mb-2" data-i18n="ops.liveGate"></p>
+        <div class="flex flex-wrap gap-2">
+          <input id="deskLiveSymbol" class="auth-input !w-28" placeholder="BTCUSDT"><select id="deskLiveSide" class="auth-input !w-auto"><option value="buy">buy</option><option value="sell">sell</option></select>
+          <input id="deskLiveEntry" class="auth-input !w-32" inputmode="decimal" placeholder="entry"><input id="deskLiveStop" class="auth-input !w-32" inputmode="decimal" placeholder="stop">
+          <input id="deskLiveSize" class="auth-input !w-32" inputmode="decimal" placeholder="size quote"><input id="deskLiveConfirm" class="auth-input !w-52" placeholder="PLACE-REAL-ORDER">
+          <button id="deskLivePlace" class="auth-btn !flex-none !bg-rose-500/20" type="button" disabled data-i18n="ops.livePlace"></button>
+        </div><div id="deskLiveMsg" class="text-[10px] text-zinc-500 mt-2"></div>
       </div>
 
       <div class="grid grid-cols-1 xl:grid-cols-3 gap-3 sm:gap-4">
@@ -1557,7 +1570,7 @@ const T = {
     'set.accessTitle':'کاربران و دسترسی','set.accessHint':'هر کس حساب خودش را دارد و همان حساب معاملاتی مشترک را می‌بیند؛ نقش تعیین می‌کند چه کسی می‌تواند تغییر بدهد.',
     'set.accessNotOwner':'فقط مالک می‌تواند کاربران را ببیند و نقش‌ها را تغییر دهد.',
     'set.accessOff':'غیرفعال','set.accessDisable':'غیرفعال کن','set.accessEnable':'فعال کن',
-    'set.accessKill':'بستن نشست‌ها',
+    'set.accessKill':'بستن نشست‌ها','set.livePolicySave':'ذخیره مجوز واقعی',
     'set.inviteNew':'دعوت کاربر جدید','set.inviteNote':'یادداشت (اختیاری)','set.inviteMake':'ساخت کد',
     'set.inviteOnce':'این کد فقط همین یک بار دیده می‌شود؛ همین حالا کپی کنید:','set.inviteRevoke':'باطل',
     'install.title':'نصب و مسیرهای سرور','install.ownerOnly':'فقط مالک',
@@ -1830,7 +1843,7 @@ const T = {
     'set.accessTitle':'Users and access','set.accessHint':'Everyone signs in with their own account but sees the same trading account; the role decides who may change things.',
     'set.accessNotOwner':'Only the owner can see users and change roles.',
     'set.accessOff':'disabled','set.accessDisable':'Disable','set.accessEnable':'Enable',
-    'set.accessKill':'End sessions',
+    'set.accessKill':'End sessions','set.livePolicySave':'Save live policy',
     'set.inviteNew':'Invite someone','set.inviteNote':'Note (optional)','set.inviteMake':'Create code',
     'set.inviteOnce':'This code is shown once — copy it now:','set.inviteRevoke':'Revoke',
     'install.title':'Server installation and data paths','install.ownerOnly':'Owner only',
