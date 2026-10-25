@@ -2,6 +2,14 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 1.7.0
+
+> Signal Intelligence v1.2 adds immutable, statistically controlled drift evidence.
+
+- Equal non-overlapping baseline/current windows compare outcome, score-distribution and linked pipeline metrics.
+- Benjamini–Hochberg correction, unequal-variance expectancy intervals, PSI and explicit minimum samples prevent unsupported alerts.
+- Auditable drift runs/findings, append-only review, role-gated execution and a bilingual dashboard panel were added.
+
 ## 1.6.8
 
 > Signal Intelligence v1.1 with deterministic Scan→Gate→Signal linkage and auditable statistics.

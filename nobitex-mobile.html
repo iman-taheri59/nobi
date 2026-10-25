@@ -698,7 +698,7 @@ html[dir="ltr"] .live-badge { right: auto; left: 14px; }
       </button>
     </div>
     <span class="hidden 2xl:inline-flex chip shrink-0"><span class="dot bg-emerald-400"></span> <span data-i18n="hdr.kill"></span></span>
-    <span id="buildChip" class="hidden lg:inline-flex chip num text-violet-300 border-violet-400/30 shrink-0" title="نسخه واقعی از /api/health">v1.6.8 · core</span>
+    <span id="buildChip" class="hidden lg:inline-flex chip num text-violet-300 border-violet-400/30 shrink-0" title="نسخه واقعی از /api/health">v1.7.0 · core</span>
     <div class="ms-auto flex items-center gap-1.5 shrink-0">
       <span class="hidden xl:inline-flex chip num" id="clock">--:--:--</span>
       <span id="apiChip" class="hidden 2xl:inline-flex chip num text-zinc-400 border-white/10" title=""><i data-lucide="wifi-off" class="w-3.5 h-3.5"></i> <span>API: —</span></span>
@@ -962,6 +962,7 @@ html[dir="ltr"] .live-badge { right: auto; left: 14px; }
       <div id="siStatus" class="text-[11px] text-zinc-400" aria-live="polite"></div>
       <div id="siSummary" class="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-6 gap-3"></div>
       <div class="glass p-4 sm:p-5"><div class="font-bold text-[13px] mb-1" data-i18n="si.funnel"></div><p class="text-[10px] text-amber-300/80 mb-3" data-i18n="si.funnelNote"></p><div id="siFunnel" class="grid grid-cols-2 md:grid-cols-5 gap-2"></div><div id="siReasons" class="flex flex-wrap gap-1.5 mt-3"></div></div>
+      <div class="glass p-4 sm:p-5"><div class="flex items-center gap-2 mb-3"><div class="font-bold text-[13px]" data-i18n="si.drift"></div><button id="siRunDrift" class="auth-btn !flex-none ms-auto" data-i18n="si.runDrift"></button></div><div id="siDrift" class="grid grid-cols-2 md:grid-cols-3 gap-2 text-[10px]"><span class="text-zinc-500" data-i18n="si.noDrift"></span></div></div>
       <div class="glass p-4 sm:p-5"><div class="font-bold text-[13px] mb-3" data-i18n="si.cohorts"></div><div class="overflow-x-auto"><table class="w-full text-[10px]"><thead><tr class="text-zinc-500"><th scope="col" data-i18n="si.symbol"></th><th scope="col">TF</th><th scope="col" data-i18n="si.regime"></th><th scope="col" data-i18n="si.samples"></th><th scope="col">Win%</th><th scope="col">Exp R</th><th scope="col" data-i18n="si.config"></th></tr></thead><tbody id="siCohorts"></tbody></table></div><div id="siCohortsEmpty" class="hidden text-[11px] text-zinc-500 py-4" data-i18n="si.empty"></div></div>
       <div class="glass p-4 sm:p-5"><div class="flex items-center gap-2 mb-3"><span class="font-bold text-[13px]" data-i18n="si.signals"></span><label class="sr-only" for="siSymbol" data-i18n="si.symbol"></label><input id="siSymbol" class="auth-input !w-28 ms-auto" placeholder="BTCUSDT"><label class="sr-only" for="siTf">Timeframe</label><select id="siTf" class="auth-input !w-auto"><option value="" data-i18n="si.allTf"></option><option>15m</option><option>1h</option><option>4h</option><option>D</option></select></div><div class="overflow-x-auto"><table class="w-full text-[10px]"><thead><tr class="text-zinc-500"><th scope="col" data-i18n="si.time"></th><th scope="col" data-i18n="si.symbol"></th><th scope="col" data-i18n="si.score"></th><th scope="col" data-i18n="si.regime"></th><th scope="col">R</th><th scope="col">MFE</th><th scope="col">MAE</th><th scope="col" data-i18n="si.review"></th></tr></thead><tbody id="siSignals"></tbody></table></div><div id="siSignalsEmpty" class="hidden text-[11px] text-zinc-500 py-4" data-i18n="si.empty"></div></div>
       <div id="siDetail" class="glass p-4 sm:p-5 hidden" tabindex="-1"></div>
@@ -1882,7 +1883,7 @@ const T = {
     'hdr.kill':'کلید اضطراری مسلح', 'hdr.api':'ارتباط: {v} میلی‌ثانیه', 'chip.live':'به‌روزرسانی زنده', 'm.lang':'زبان / Language',
     'page.overview.title':'نمای کلی', 'page.overview.desc':'وضعیت سرمایه، پوزیشن‌ها و بازار در یک نگاه',
     'page.signals.title':'کاوشگر سیگنال', 'page.signals.desc':'رتبه‌بندی کاندیداها و تفکیک شواهد امتیاز',
-    'page.intelligence.title':'هوشمندی سیگنال','page.intelligence.desc':'کیفیت، مراحل پردازش، نتیجه، MFE/MAE، گروه‌ها و بازبینی سیگنال‌ها','si.funnel':'شمارش مراحل پردازش','si.funnelNote':'این مراحل از دفترهای واقعی مستقل می‌آیند و نرخ تبدیل یک‌به‌یک نیستند.','si.cohorts':'گروه‌های عملکرد','si.signals':'سیگنال‌های اخیر','si.window':'بازه تحلیل','si.horizon':'افق نتیجه','si.symbol':'نماد','si.regime':'رژیم','si.samples':'نمونه‌ها','si.config':'پیکربندی','si.time':'زمان','si.score':'امتیاز','si.review':'بازبینی','si.allTf':'همه بازه‌ها','si.empty':'برای فیلتر انتخاب‌شده داده‌ای وجود ندارد.','si.loading':'در حال دریافت شواهد واقعی…','si.insufficient':'نمونه ناکافی','si.sufficient':'نمونه کافی','si.saved':'بازبینی ذخیره شد.','si.componentScores':'امتیازهای مؤلفه','si.rawEvidence':'شواهد خام ذخیره‌شده','si.note':'یادداشت','si.saveReview':'ثبت بازبینی',
+    'page.intelligence.title':'هوشمندی سیگنال','page.intelligence.desc':'کیفیت، مراحل پردازش، نتیجه، MFE/MAE، گروه‌ها و بازبینی سیگنال‌ها','si.funnel':'شمارش مراحل پردازش','si.funnelNote':'این مراحل از دفترهای واقعی مستقل می‌آیند و نرخ تبدیل یک‌به‌یک نیستند.','si.cohorts':'گروه‌های عملکرد','si.signals':'سیگنال‌های اخیر','si.window':'بازه تحلیل','si.horizon':'افق نتیجه','si.symbol':'نماد','si.regime':'رژیم','si.samples':'نمونه‌ها','si.config':'پیکربندی','si.time':'زمان','si.score':'امتیاز','si.review':'بازبینی','si.allTf':'همه بازه‌ها','si.empty':'برای فیلتر انتخاب‌شده داده‌ای وجود ندارد.','si.loading':'در حال دریافت شواهد واقعی…','si.insufficient':'نمونه ناکافی','si.sufficient':'نمونه کافی','si.saved':'بازبینی ذخیره شد.','si.componentScores':'امتیازهای مؤلفه','si.rawEvidence':'شواهد خام ذخیره‌شده','si.note':'یادداشت','si.saveReview':'ثبت بازبینی','si.drift':'پایش تغییر کیفیت','si.runDrift':'اجرای تحلیل تغییر','si.noDrift':'هنوز تحلیل تغییری ثبت نشده است.',
     'page.fa.title':'فاندامنتال', 'page.fa.desc':'امتیاز بنیادی، وتوها و جریان رویدادها',
     'page.orders.title':'سفارش‌ها', 'page.orders.desc':'چرخه‌حیات زنده سفارش‌ها و پرشدگی‌ها',
     'page.risk.title':'ریسک و کنترل', 'page.risk.desc':'سقف‌های سبد، کلیدهای اضطراری و توقف اضطراری',
@@ -2158,7 +2159,7 @@ const T = {
     'hdr.kill':'Kill switch armed', 'hdr.api':'API: {v} ms', 'chip.live':'Live updates', 'm.lang':'Language / زبان',
     'page.overview.title':'Overview', 'page.overview.desc':'Equity, positions and market state at a glance',
     'page.signals.title':'Signals Explorer', 'page.signals.desc':'Candidate ranking and score evidence',
-    'page.intelligence.title':'Signal Intelligence','page.intelligence.desc':'Quality, pipeline stages, outcomes, MFE/MAE, cohorts and signal review','si.funnel':'Pipeline stage counts','si.funnelNote':'Stages come from independent real ledgers; they are not a one-to-one conversion rate.','si.cohorts':'Performance cohorts','si.signals':'Recent signals','si.window':'Analysis window','si.horizon':'Outcome horizon','si.symbol':'Symbol','si.regime':'Regime','si.samples':'Samples','si.config':'Config','si.time':'Time','si.score':'Score','si.review':'Review','si.allTf':'All timeframes','si.empty':'No evidence exists for the selected filters.','si.loading':'Loading stored evidence…','si.insufficient':'Insufficient sample','si.sufficient':'Sufficient sample','si.saved':'Review saved.','si.componentScores':'Component scores','si.rawEvidence':'Stored raw evidence','si.note':'Note','si.saveReview':'Save review',
+    'page.intelligence.title':'Signal Intelligence','page.intelligence.desc':'Quality, pipeline stages, outcomes, MFE/MAE, cohorts and signal review','si.funnel':'Pipeline stage counts','si.funnelNote':'Stages come from independent real ledgers; they are not a one-to-one conversion rate.','si.cohorts':'Performance cohorts','si.signals':'Recent signals','si.window':'Analysis window','si.horizon':'Outcome horizon','si.symbol':'Symbol','si.regime':'Regime','si.samples':'Samples','si.config':'Config','si.time':'Time','si.score':'Score','si.review':'Review','si.allTf':'All timeframes','si.empty':'No evidence exists for the selected filters.','si.loading':'Loading stored evidence…','si.insufficient':'Insufficient sample','si.sufficient':'Sufficient sample','si.saved':'Review saved.','si.componentScores':'Component scores','si.rawEvidence':'Stored raw evidence','si.note':'Note','si.saveReview':'Save review','si.drift':'Quality drift monitoring','si.runDrift':'Run drift analysis','si.noDrift':'No drift analysis has been recorded yet.',
     'page.fa.title':'Fundamentals', 'page.fa.desc':'FA scores, vetoes and the event stream',
     'page.orders.title':'Orders', 'page.orders.desc':'Live order lifecycle and fills',
     'page.risk.title':'Risk & Controls', 'page.risk.desc':'Portfolio caps, kill switches and panic stop',
@@ -5541,6 +5542,7 @@ async function loadSignalIntelligence(){
     const rows=l.rows||[];byId('siSignalsEmpty').classList.toggle('hidden',rows.length>0);
     byId('siSignals').innerHTML=rows.map(x=>`<tr class="border-t border-white/5"><td class="num">${new Date(x.ts*1000).toLocaleString()}</td><td><button class="text-cyan-300 hover:underline" data-si-id="${x.id}">${escText(x.symbol)} · ${escText(x.timeframe)}</button></td><td class="num">${x.composite??'—'}</td><td>${escText(x.regime||'—')}</td><td class="num">${x.r_multiple??'—'}</td><td class="num">${x.mfe_pct??'—'}</td><td class="num">${x.mae_pct??'—'}</td><td class="num">${x.review_count}</td></tr>`).join('');
     byId('siSignals').querySelectorAll('[data-si-id]').forEach(button=>button.onclick=()=>loadSignalDetail(button.dataset.siId));
+    await loadSignalDrift();
   }catch(e){status.textContent=String(e.message||e);status.className='text-[11px] text-red-300';byId('siSummary').innerHTML='';}
 }
 async function loadSignalDetail(id){
@@ -5553,6 +5555,19 @@ async function loadSignalDetail(id){
     if(can&&byId('siReviewSave'))byId('siReviewSave').onclick=async()=>{const msg=byId('siReviewMessage'),button=byId('siReviewSave');button.disabled=true;try{const r=await fetch(NBX.config.pythonApi+'/signal-intelligence/signals/'+id+'/review',{method:'POST',headers:api._authHeaders(),body:JSON.stringify({tag:byId('siReviewTag').value,note:byId('siReviewNote').value})});const body=await r.json();if(!r.ok)throw new Error(body.detail||`HTTP ${r.status}`);msg.textContent=t('si.saved');msg.className='text-[10px] mt-2 text-emerald-300';await loadSignalIntelligence();setTimeout(()=>loadSignalDetail(id),300);}catch(e){msg.textContent=String(e.message||e);msg.className='text-[10px] mt-2 text-red-300';button.disabled=false;}};
   }catch(e){box.textContent=String(e.message||e);box.classList.add('text-red-300');}
 }
+async function loadSignalDrift(){
+  const box=byId('siDrift'),api=NBX.core.api;if(!box)return;
+  try{const d=await api.get(NBX.config.pythonApi+'/v1/signal-intelligence/drift/latest',1),run=d.run||{};
+    box.innerHTML=(d.findings||[]).map(x=>`<div class="rounded-xl bg-white/[.03] p-3"><div class="text-zinc-500">${escText(x.metric)}</div><div class="num font-bold">${x.current_value??'—'}</div><div class="${x.severity==='alert'?'text-red-300':x.severity==='watch'?'text-amber-300':'text-zinc-400'}">${escText(x.severity)} · n ${x.baseline_n}/${x.current_n}</div></div>`).join('')||`<span>${t('si.noDrift')}</span>`;
+    box.dataset.runId=run.id||'';
+  }catch(e){box.innerHTML=`<span class="text-zinc-500">${t('si.noDrift')}</span>`;}
+}
+async function runSignalDrift(){
+  const button=byId('siRunDrift'),api=NBX.core.api;button.disabled=true;
+  try{const days=Number((byId('siDays')||{}).value||30),h=(byId('siHorizon')||{}).value||'H1';const r=await fetch(NBX.config.pythonApi+'/v1/signal-intelligence/drift/run',{method:'POST',headers:api._authHeaders(),body:JSON.stringify({days,horizon:h})});const body=await r.json();if(!r.ok)throw new Error(body.detail||`HTTP ${r.status}`);await loadSignalDrift();}catch(e){byId('siDrift').textContent=String(e.message||e);}finally{button.disabled=false;}
+}
+if(byId('siRunDrift'))byId('siRunDrift').onclick=runSignalDrift;
+
 async function exportSignalIntelligence(format){
   const days=Number((byId('siDays')||{}).value||30),api=NBX.core.api;
   const r=await fetch(`${NBX.config.pythonApi}/v1/signal-intelligence/export?days=${days}&format=${format}`,{headers:api._authHeaders()});

@@ -2,7 +2,7 @@
 
 [فارسی](README.md) · **English**
 
-Release candidate: **1.6.8** · published tag: **v1.6.7**
+Working version: **1.7.0** · published tag: **v1.6.8**
 
 See [versioning and GitHub releases](docs/releases.en.md) for the rules on bumping
 the version, tagging and shipping the mobile file, and the

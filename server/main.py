@@ -56,6 +56,7 @@ import paper_trading
 import reference_feed
 import setup_api
 import signal_cycles
+import signal_drift
 import signal_intelligence
 from adaptive import AdaptiveError as AdaptiveRefusal
 from backtest import SLIP_BPS, grid_search, run_and_save
@@ -386,7 +387,7 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(
     title="nobiTrader",
-    version="1.6.8",
+    version="1.7.0",
     lifespan=lifespan,
 )
 
@@ -2158,6 +2159,94 @@ async def signal_intelligence_v1_export(request: Request,
     return Response(signal_intelligence.export_linked_csv(days=days),
                     media_type="text/csv; charset=utf-8",
                     headers={"Content-Disposition": "attachment; filename=signal-intelligence.csv"})
+
+
+class DriftRunBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    days: int = Field(default=30, ge=7, le=365)
+    horizon: str = Field(default="H1", pattern="^H[123]$")
+    config_hash: str | None = Field(default=None, max_length=128)
+
+
+class DriftReviewBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    tag: str = Field(min_length=1, max_length=32)
+    note: str = Field(default="", max_length=1000)
+
+
+@app.get("/api/v1/signal-intelligence/drift/latest")
+async def signal_drift_latest():
+    result = signal_drift.latest()
+    if result is None:
+        raise HTTPException(status_code=404, detail="no drift run exists")
+    return result
+
+
+@app.get("/api/v1/signal-intelligence/drift/runs")
+async def signal_drift_runs(limit: int = Query(50, ge=1, le=200)):
+    return {"rows": signal_drift.list_runs(limit=limit)}
+
+
+@app.get("/api/v1/signal-intelligence/drift/export")
+async def signal_drift_export(request: Request, run_id: int = Query(..., ge=1)):
+    try:
+        body = signal_drift.export_csv(run_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    session = identity.session_of(request)
+    actor = session.user.username if session else "machine-token"
+    audit("signal_intelligence.drift.export", actor=actor, detail={"run_id": run_id}, request=request)
+    return Response(body, media_type="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": "attachment; filename=signal-drift.csv"})
+
+
+@app.get("/api/v1/signal-intelligence/drift/runs/{run_id}")
+async def signal_drift_detail(run_id: int):
+    result = signal_drift.detail(run_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="drift run not found")
+    return result
+
+
+@app.post("/api/v1/signal-intelligence/drift/run")
+async def signal_drift_run(payload: DriftRunBody, request: Request):
+    user = install_api.require_operator_mutation(request)
+    try:
+        result = signal_drift.run(
+            days=payload.days,
+            horizon=payload.horizon,
+            config_hash=payload.config_hash,
+            actor=user.username,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    audit(
+        "signal_intelligence.drift.run",
+        actor=user.username,
+        detail={"days": payload.days, "horizon": payload.horizon},
+        request=request,
+    )
+    return result
+
+
+@app.post("/api/v1/signal-intelligence/drift/findings/{finding_id}/review")
+async def signal_drift_review(finding_id: int, payload: DriftReviewBody, request: Request):
+    user = install_api.require_operator_mutation(request)
+    try:
+        result = signal_drift.review(
+            finding_id, user_id=user.id, username=user.username, tag=payload.tag, note=payload.note
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    audit(
+        "signal_intelligence.drift.review",
+        actor=user.username,
+        detail={"finding_id": finding_id, "tag": payload.tag},
+        request=request,
+    )
+    return {"ok": True, "review": result}
 
 
 # ---------------- Dev suite: "is this checkout correct?" -------------------

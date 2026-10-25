@@ -1,0 +1,434 @@
+"""Auditable drift analysis for Signal Intelligence v1.2 (ADR-0046)."""
+
+from __future__ import annotations
+
+import csv
+import io
+import json
+import math
+import sqlite3
+import time
+from collections.abc import Iterable
+from typing import Any
+
+import journal
+import signal_cycles
+
+ENGINE_VERSION = "1.7.0"
+SCHEMA = """
+CREATE TABLE IF NOT EXISTS drift_runs (
+ id INTEGER PRIMARY KEY AUTOINCREMENT, created_at INTEGER NOT NULL,
+ actor TEXT NOT NULL, current_start INTEGER NOT NULL, current_end INTEGER NOT NULL,
+ baseline_start INTEGER NOT NULL, baseline_end INTEGER NOT NULL,
+ horizon TEXT NOT NULL, filters TEXT NOT NULL, engine_version TEXT NOT NULL,
+ correction_method TEXT NOT NULL, thresholds TEXT NOT NULL, status TEXT NOT NULL,
+ completed_at INTEGER, error_summary TEXT
+);
+CREATE INDEX IF NOT EXISTS ix_drift_runs_created ON drift_runs(created_at DESC,id DESC);
+CREATE TABLE IF NOT EXISTS drift_findings (
+ id INTEGER PRIMARY KEY AUTOINCREMENT, run_id INTEGER NOT NULL, cohort_key TEXT NOT NULL,
+ metric TEXT NOT NULL, baseline_n INTEGER NOT NULL, current_n INTEGER NOT NULL,
+ baseline_value REAL, current_value REAL, delta REAL, ci_low REAL, ci_high REAL,
+ p_value REAL, q_value REAL, severity TEXT NOT NULL, suppression_reason TEXT,
+ evidence TEXT NOT NULL, FOREIGN KEY(run_id) REFERENCES drift_runs(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_drift_findings_run ON drift_findings(run_id,severity,metric);
+CREATE TABLE IF NOT EXISTS drift_reviews (
+ id INTEGER PRIMARY KEY AUTOINCREMENT, finding_id INTEGER NOT NULL,
+ actor_user_id INTEGER NOT NULL, actor_username TEXT NOT NULL,
+ tag TEXT NOT NULL, note TEXT NOT NULL, created_at INTEGER NOT NULL,
+ FOREIGN KEY(finding_id) REFERENCES drift_findings(id) ON DELETE CASCADE
+);
+"""
+THRESHOLDS = {
+    "q_alert": 0.05,
+    "psi_watch": 0.10,
+    "psi_alert": 0.25,
+    "performance_min": 30,
+    "pipeline_min": 50,
+    "psi_min": 100,
+}
+REVIEW_TAGS = {"acknowledged", "expected-config-change", "investigate", "false-alarm"}
+
+
+def ensure(conn: sqlite3.Connection) -> None:
+    signal_cycles.ensure(conn)
+    conn.executescript(SCHEMA)
+    conn.commit()
+
+
+def bh_adjust(values: Iterable[float]) -> list[float]:
+    vals = list(values)
+    n = len(vals)
+    out = [1.0] * n
+    ranked = sorted(enumerate(vals), key=lambda item: item[1])
+    running = 1.0
+    for rank, (idx, value) in reversed(list(enumerate(ranked, 1))):
+        running = min(running, value * n / rank)
+        out[idx] = round(min(1.0, running), 8)
+    return out
+
+
+def _normal_p(z: float) -> float:
+    return math.erfc(abs(z) / math.sqrt(2.0))
+
+
+def proportion_test(a_wins: int, a_n: int, b_wins: int, b_n: int) -> tuple[float, float]:
+    if min(a_n, b_n) <= 0:
+        return 0.0, 1.0
+    delta = b_wins / b_n - a_wins / a_n
+    pooled = (a_wins + b_wins) / (a_n + b_n)
+    se = math.sqrt(pooled * (1 - pooled) * (1 / a_n + 1 / b_n))
+    return delta, (_normal_p(delta / se) if se else (0.0 if delta else 1.0))
+
+
+def mean_difference(
+    a: list[float], b: list[float]
+) -> tuple[float | None, list[float] | None, float]:
+    if not a or not b:
+        return None, None, 1.0
+    ma, mb = sum(a) / len(a), sum(b) / len(b)
+    va = sum((x - ma) ** 2 for x in a) / (len(a) - 1) if len(a) > 1 else 0.0
+    vb = sum((x - mb) ** 2 for x in b) / (len(b) - 1) if len(b) > 1 else 0.0
+    se = math.sqrt(va / len(a) + vb / len(b))
+    delta = mb - ma
+    return (
+        delta,
+        ([delta - 1.96 * se, delta + 1.96 * se] if se else [delta, delta]),
+        (_normal_p(delta / se) if se else (0.0 if delta else 1.0)),
+    )
+
+
+def psi(
+    baseline: list[float], current: list[float], bins: int = 10
+) -> tuple[float | None, list[float]]:
+    if not baseline or not current:
+        return None, []
+    ordered = sorted(baseline)
+    edges = [
+        ordered[min(len(ordered) - 1, math.ceil(i * len(ordered) / bins) - 1)]
+        for i in range(1, bins)
+    ]
+    edges = sorted(set(edges))
+
+    def counts(values: list[float]) -> list[int]:
+        result = [0] * (len(edges) + 1)
+        for value in values:
+            idx = 0
+            while idx < len(edges) and value > edges[idx]:
+                idx += 1
+            result[idx] += 1
+        return result
+
+    bc, cc = counts(baseline), counts(current)
+    eps = 0.0001
+    score = 0.0
+    for x, y in zip(bc, cc, strict=True):
+        bp, cp = max(eps, x / len(baseline)), max(eps, y / len(current))
+        score += (cp - bp) * math.log(cp / bp)
+    return round(score, 6), edges
+
+
+def _window_values(
+    conn: sqlite3.Connection, start: int, end: int, horizon: str, config_hash: str | None
+) -> list[float]:
+    extra, args = "", [horizon, start, end]
+    if config_hash:
+        extra, args = " AND s.config_hash=?", [*args, config_hash]
+    return [
+        float(r[0])
+        for r in conn.execute(
+            """SELECT o.r_multiple FROM signal_log s JOIN signal_outcomes o ON o.signal_id=s.id
+           WHERE o.horizon_key=? AND s.ts>=? AND s.ts<? AND s.voided_at IS NULL
+           AND o.resolved_at IS NOT NULL AND o.r_multiple IS NOT NULL"""
+            + extra,
+            args,
+        )
+    ]
+
+
+def _pipeline(
+    conn: sqlite3.Connection, start: int, end: int, config_hash: str | None
+) -> dict[str, int]:
+    extra = ""
+    args: list[Any] = [start, end]
+    if config_hash:
+        extra = " AND cy.config_hash=?"
+        args.append(config_hash)
+    rows = conn.execute(
+        """SELECT c.state,count(*) n FROM scan_candidates c
+           JOIN scan_cycles cy ON cy.id=c.scan_cycle_id
+           WHERE c.created_at>=? AND c.created_at<?"""
+        + extra
+        + " GROUP BY c.state",
+        args,
+    ).fetchall()
+    return {str(row["state"]): int(row["n"]) for row in rows}
+
+
+def _scores(conn: sqlite3.Connection, start: int, end: int, config_hash: str | None) -> list[float]:
+    extra = ""
+    args: list[Any] = [start, end]
+    if config_hash:
+        extra, args = " AND config_hash=?", [*args, config_hash]
+    return [
+        float(r[0])
+        for r in conn.execute(
+            "SELECT composite FROM signal_log WHERE ts>=? AND ts<? AND composite IS NOT NULL"
+            + extra,
+            args,
+        )
+    ]
+
+
+def run(
+    *, days: int, horizon: str, actor: str, config_hash: str | None = None, now: int | None = None
+) -> dict[str, Any]:
+    now = int(time.time()) if now is None else now
+    current_start, baseline_start = now - days * 86400, now - 2 * days * 86400
+    with journal.connect() as conn:
+        ensure(conn)
+        conn.execute(
+            """UPDATE drift_runs SET status='partial',completed_at=?,
+               error_summary='process interrupted before drift completion'
+               WHERE status='running' AND created_at<?""",
+            (now, now - 3600),
+        )
+        active = conn.execute("SELECT id FROM drift_runs WHERE status='running'").fetchone()
+        if active:
+            raise RuntimeError("a drift run is already active")
+        cur = conn.execute(
+            """INSERT INTO drift_runs(created_at,actor,current_start,current_end,baseline_start,
+               baseline_end,horizon,filters,engine_version,correction_method,thresholds,status)
+               VALUES(?,?,?,?,?,?,?,?,?,?,?,'running')""",
+            (
+                now,
+                actor,
+                current_start,
+                now,
+                baseline_start,
+                current_start,
+                horizon,
+                json.dumps({"config_hash": config_hash}),
+                ENGINE_VERSION,
+                "benjamini-hochberg",
+                json.dumps(THRESHOLDS, sort_keys=True),
+            ),
+        )
+        run_id = int(cur.lastrowid or 0)
+        baseline = _window_values(conn, baseline_start, current_start, horizon, config_hash)
+        current = _window_values(conn, current_start, now, horizon, config_hash)
+        findings: list[dict[str, Any]] = []
+        delta, ci, p = mean_difference(baseline, current)
+        findings.append(
+            {
+                "metric": "expectancy_r",
+                "bn": len(baseline),
+                "cn": len(current),
+                "bv": sum(baseline) / len(baseline) if baseline else None,
+                "cv": sum(current) / len(current) if current else None,
+                "delta": delta,
+                "ci": ci,
+                "p": p,
+                "minimum": THRESHOLDS["performance_min"],
+            }
+        )
+        aw, bw = sum(x > 0 for x in baseline), sum(x > 0 for x in current)
+        wd, wp = proportion_test(aw, len(baseline), bw, len(current))
+        findings.append(
+            {
+                "metric": "win_rate",
+                "bn": len(baseline),
+                "cn": len(current),
+                "bv": aw / len(baseline) if baseline else None,
+                "cv": bw / len(current) if current else None,
+                "delta": wd,
+                "ci": None,
+                "p": wp,
+                "minimum": THRESHOLDS["performance_min"],
+            }
+        )
+        bs, cs = (
+            _scores(conn, baseline_start, current_start, config_hash),
+            _scores(conn, current_start, now, config_hash),
+        )
+        pv, edges = psi(bs, cs)
+        findings.append(
+            {
+                "metric": "composite_psi",
+                "bn": len(bs),
+                "cn": len(cs),
+                "bv": 0.0,
+                "cv": pv,
+                "delta": pv,
+                "ci": None,
+                "p": 1.0,
+                "minimum": THRESHOLDS["psi_min"],
+                "edges": edges,
+            }
+        )
+        bp = _pipeline(conn, baseline_start, current_start, config_hash)
+        cp = _pipeline(conn, current_start, now, config_hash)
+        bn, cn = sum(bp.values()), sum(cp.values())
+        for metric, states in (
+            ("scan_error_rate", {"scan-error"}),
+            ("gate_block_rate", {"gate-blocked"}),
+            ("signal_emission_rate", {"signal-emitted"}),
+        ):
+            ax, bx = (
+                sum(bp.get(state, 0) for state in states),
+                sum(cp.get(state, 0) for state in states),
+            )
+            pd, pp = proportion_test(ax, bn, bx, cn)
+            findings.append(
+                {
+                    "metric": metric,
+                    "bn": bn,
+                    "cn": cn,
+                    "bv": ax / bn if bn else None,
+                    "cv": bx / cn if cn else None,
+                    "delta": pd,
+                    "ci": None,
+                    "p": pp,
+                    "minimum": THRESHOLDS["pipeline_min"],
+                }
+            )
+        statistical = [i for i, f in enumerate(findings) if f["metric"] != "composite_psi"]
+        adjusted = bh_adjust([findings[i]["p"] for i in statistical])
+        q_by_index = dict(zip(statistical, adjusted, strict=True))
+        severities: list[str] = []
+        for idx, finding in enumerate(findings):
+            insufficient = min(finding["bn"], finding["cn"]) < finding["minimum"]
+            q = q_by_index.get(idx)
+            if insufficient:
+                severity, suppression = "insufficient", "sample-low"
+            elif finding["metric"] == "composite_psi":
+                severity = (
+                    "alert"
+                    if (finding["cv"] or 0) >= THRESHOLDS["psi_alert"]
+                    else ("watch" if (finding["cv"] or 0) >= THRESHOLDS["psi_watch"] else "stable")
+                )
+                suppression = None
+            else:
+                severity, suppression = (
+                    ("alert" if q is not None and q <= THRESHOLDS["q_alert"] else "stable"),
+                    None,
+                )
+            severities.append(severity)
+            conn.execute(
+                """INSERT INTO drift_findings(run_id,cohort_key,metric,baseline_n,current_n,
+                   baseline_value,current_value,delta,ci_low,ci_high,p_value,q_value,severity,
+                   suppression_reason,evidence) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (
+                    run_id,
+                    config_hash or "all",
+                    finding["metric"],
+                    finding["bn"],
+                    finding["cn"],
+                    finding["bv"],
+                    finding["cv"],
+                    finding["delta"],
+                    finding["ci"][0] if finding["ci"] else None,
+                    finding["ci"][1] if finding["ci"] else None,
+                    finding["p"],
+                    q,
+                    severity,
+                    suppression,
+                    json.dumps({"edges": finding.get("edges", [])}),
+                ),
+            )
+        overall = (
+            "alert"
+            if "alert" in severities
+            else ("watch" if "watch" in severities else "completed")
+        )
+        conn.execute(
+            "UPDATE drift_runs SET status=?,completed_at=? WHERE id=?", (overall, now, run_id)
+        )
+        conn.commit()
+    return detail(run_id) or {}
+
+
+def detail(run_id: int) -> dict[str, Any] | None:
+    with journal.connect() as conn:
+        ensure(conn)
+        run_row = conn.execute("SELECT * FROM drift_runs WHERE id=?", (run_id,)).fetchone()
+        if not run_row:
+            return None
+        rows = [
+            dict(r)
+            for r in conn.execute(
+                "SELECT * FROM drift_findings WHERE run_id=? ORDER BY id", (run_id,)
+            )
+        ]
+    return {"run": dict(run_row), "findings": rows}
+
+
+def list_runs(*, limit: int = 50) -> list[dict[str, Any]]:
+    with journal.connect() as conn:
+        ensure(conn)
+        return [
+            dict(row)
+            for row in conn.execute(
+                "SELECT * FROM drift_runs ORDER BY created_at DESC,id DESC LIMIT ?", (limit,)
+            )
+        ]
+
+
+def export_csv(run_id: int) -> str:
+    result = detail(run_id)
+    if result is None:
+        raise LookupError("drift run not found")
+    fields = [
+        "id",
+        "run_id",
+        "cohort_key",
+        "metric",
+        "baseline_n",
+        "current_n",
+        "baseline_value",
+        "current_value",
+        "delta",
+        "ci_low",
+        "ci_high",
+        "p_value",
+        "q_value",
+        "severity",
+        "suppression_reason",
+    ]
+    output = io.StringIO()
+    writer = csv.DictWriter(output, fieldnames=fields)
+    writer.writeheader()
+    for row in result["findings"]:
+        safe = {key: row.get(key) for key in fields}
+        for key, value in safe.items():
+            if isinstance(value, str) and value.lstrip(" \t\r\n").startswith(("=", "+", "-", "@")):
+                safe[key] = "'" + value
+        writer.writerow(safe)
+    return output.getvalue()
+
+
+def latest() -> dict[str, Any] | None:
+    with journal.connect() as conn:
+        ensure(conn)
+        row = conn.execute(
+            "SELECT id FROM drift_runs WHERE status!='running' ORDER BY created_at DESC,id DESC LIMIT 1"
+        ).fetchone()
+    return detail(int(row[0])) if row else None
+
+
+def review(finding_id: int, *, user_id: int, username: str, tag: str, note: str) -> dict[str, Any]:
+    if tag not in REVIEW_TAGS:
+        raise ValueError("unsupported drift review tag")
+    if len(note) > 1000:
+        raise ValueError("note exceeds 1000 characters")
+    with journal.connect() as conn:
+        ensure(conn)
+        if not conn.execute("SELECT 1 FROM drift_findings WHERE id=?", (finding_id,)).fetchone():
+            raise LookupError("finding not found")
+        cur = conn.execute(
+            "INSERT INTO drift_reviews(finding_id,actor_user_id,actor_username,tag,note,created_at) VALUES(?,?,?,?,?,?)",
+            (finding_id, user_id, username, tag, note.strip(), int(time.time())),
+        )
+        conn.commit()
+        return {"id": cur.lastrowid, "finding_id": finding_id, "tag": tag}

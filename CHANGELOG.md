@@ -2,6 +2,14 @@
 
 [English](CHANGELOG.en.md) · **فارسی**
 
+## 1.7.0
+
+> هوشمندی سیگنال ۱٫۲ شواهد immutable و کنترل‌شدهٔ آماری برای drift اضافه می‌کند.
+
+- پنجره‌های هم‌اندازه و بدون هم‌پوشانی baseline/current، outcome، توزیع score و pipeline پیوندی را مقایسه می‌کنند.
+- اصلاح Benjamini–Hochberg، بازهٔ expectancy با variance نابرابر، PSI و کف نمونه از alert بدون شاهد جلوگیری می‌کنند.
+- run/finding قابل ممیزی، review افزایشی، اجرای role-gated و پنل دوزبانه اضافه شد.
+
 ## 1.6.8
 
 > هوشمندی سیگنال ۱٫۱ با linkage قطعی Scan→Gate→Signal و سنجه‌های آماری قابل ممیزی.

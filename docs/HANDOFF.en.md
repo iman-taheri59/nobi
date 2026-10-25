@@ -2,8 +2,15 @@
 
 [فارسی](HANDOFF.md) · **English**
 
-**Last updated:** 2026-10-25 — stage 30 (Signal Intelligence v1.1)
-**Working version:** 1.6.8 (candidate; release only after green CI)
+**Last updated:** 2026-10-25 — stage 31 (Signal Intelligence v1.2 drift)
+**Working version:** 1.7.0 (unreleased; release only after green CI)
+
+### Stage 31 state
+
+- Equal non-overlapping baseline/current windows compare outcome, PSI and linked pipeline rates.
+- BH-adjusted findings and explicit sample suppression are persisted in immutable runs.
+- Operator/owner execution and append-only review use CSRF and audit; UI is bilingual.
+- ADR-0046 and dedicated statistics/integrity tests are included.
 
 ### Stage 30 state
 
