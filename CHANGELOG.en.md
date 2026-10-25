@@ -2,6 +2,15 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 1.6.8
+
+> Signal Intelligence v1.1 with deterministic Scan→Gate→Signal linkage and auditable statistics.
+
+- Cycles, candidates and normalized multi-cause gate reasons use an idempotent schema; old data stays explicitly `legacy-unlinked` without inference.
+- Versioned summary/pipeline/reasons/cursor APIs and audited, 10,000-row bounded CSV/JSON export were added.
+- Wilson 95%, approximate expectancy CI, linkage coverage, and pending-not-due versus resolver backlog are reported.
+- The UI exposes coverage, intervals, linked funnel, taxonomy and export; migration, provenance, pagination and CSV-injection tests were added.
+
 ## 1.6.7
 
 > Remove an accidentally staged empty runtime database from the 1.6.6 source tree.

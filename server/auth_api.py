@@ -121,7 +121,8 @@ def _capabilities(user: auth.User) -> dict[str, bool]:
     policy = auth.get_live_policy(user.id) if user.role == "operator" else None
     return {
         "market_read": True, "paper_read": True, "reports_read": True,
-        "signal_intelligence_read": True, "signal_intelligence_review": operator,
+        "signal_intelligence_read": True, "signal_intelligence_export": True,
+        "signal_intelligence_review": operator, "signal_intelligence_admin": owner,
         "paper_trade": operator, "backtest_run": operator,
         "journal_maintain": operator, "operational_audit": operator,
         "live_view": operator, "live_cancel": operator, "live_reconcile": operator,

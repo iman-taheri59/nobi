@@ -296,8 +296,10 @@ def make_row(snapshot: dict, bar_ts: int, *, rank: int | None = None,
     )
 
 
-def insert_rows(conn: sqlite3.Connection, rows: Iterable[JournalRow | None]) -> int:
-    """Insert rows, ignoring bars already journalled. Returns the insert count."""
+def insert_rows(conn: sqlite3.Connection, rows: Iterable[JournalRow | None], *,
+                scan_cycle_id: str | None = None,
+                engine_version: str | None = None) -> int:
+    """Insert rows and optionally link only rows newly emitted by this cycle."""
     n = 0
     now = int(time.time())
     for r in rows:
@@ -316,6 +318,11 @@ def insert_rows(conn: sqlite3.Connection, rows: Iterable[JournalRow | None]) -> 
              json.dumps(r.features or {}, ensure_ascii=False), r.source, r.origin,
              r.config_hash, now),
         )
+        if cur.rowcount and scan_cycle_id is not None:
+            conn.execute(
+                """UPDATE signal_log SET scan_cycle_id=?,engine_version=?,linkage_status='linked'
+                   WHERE id=?""", (scan_cycle_id, engine_version, cur.lastrowid),
+            )
         n += cur.rowcount
     conn.commit()
     return n

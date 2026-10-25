@@ -2,8 +2,17 @@
 
 [English](HANDOFF.en.md) · **فارسی**
 
-**آخرین به‌روزرسانی:** ۲۰۲۶-۱۰-۲۵ — مرحله ۲۹ (پاک‌سازی artifact runtime)
-**نسخه کاری:** ۱٫۶٫۷
+**آخرین به‌روزرسانی:** ۲۰۲۶-۱۰-۲۵ — مرحله ۳۰ (Signal Intelligence v1.1)
+**نسخه کاری:** ۱٫۶٫۸ (کاندید؛ انتشار فقط پس از CI سبز)
+
+### وضعیت مرحلهٔ ۳۰
+
+- linkage قطعی هنگام insert دفتر با `scan_cycle_id`؛ کندل تکراری provenance چرخهٔ نخست را بازنویسی نمی‌کند.
+- schema چرخه/candidate/reason و migration `legacy-unlinked` idempotent است؛ candidateهای شکست upstream و recovery چرخهٔ رهاشده بر اثر crash صریح هستند.
+- API نسخه‌دار، cursor پایدار، CSV/JSON امن و audit export پیاده‌سازی شد.
+- coverage، Wilson 95%، CI تقریبی expectancy و maturity تفکیک‌شده در UI/API موجود است.
+- ADR-0045 فارسی/انگلیسی و تست‌های v1.1 افزوده شد.
+- gate محلی: Ruff و mypy سبز؛ pytest برابر ۹۷۳ passed؛ lint/parity/display/icon/adaptive جاوااسکریپت سبز؛ standalone بازسازی شد و smoke احرازشدهٔ jsdom گذشت. Chromium در sandbox اجرا نشد، پس probe مرورگر gate الزامی CI شاخه می‌ماند.
 **هدف:** ADR-0027؛ ابتدا محصول پایدار، سپس اجرای واقعی مرحله‌ای و fail-closed.
 
 ## وضعیت

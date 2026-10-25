@@ -2,8 +2,17 @@
 
 [فارسی](HANDOFF.md) · **English**
 
-**Last updated:** 2026-10-25 — stage 29 (runtime-artifact cleanup)
-**Working version:** 1.6.7
+**Last updated:** 2026-10-25 — stage 30 (Signal Intelligence v1.1)
+**Working version:** 1.6.8 (candidate; release only after green CI)
+
+### Stage 30 state
+
+- Deterministic journal-insert linkage uses `scan_cycle_id`; a duplicate closed bar cannot overwrite first-cycle provenance.
+- Cycle/candidate/reason schema and `legacy-unlinked` migration are idempotent; skipped upstream candidates and crash-orphan recovery are explicit.
+- Versioned APIs, stable cursor, safe CSV/JSON and export audit are implemented.
+- Coverage, Wilson 95%, approximate expectancy CI and split maturity are exposed by API/UI.
+- Bilingual ADR-0045 and v1.1 tests were added.
+- Local gate: Ruff and mypy passed; pytest 973 passed; JS lint/parity/display/icon/adaptive checks passed; standalone rebuilt. jsdom authenticated UI smoke passed. Chromium could not launch in this sandbox, so browser probe remains a branch-CI gate.
 **Target:** ADR-0027; stable product first, then staged fail-closed live execution.
 
 ## Status

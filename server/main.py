@@ -55,6 +55,7 @@ import operations_api
 import paper_trading
 import reference_feed
 import setup_api
+import signal_cycles
 import signal_intelligence
 from adaptive import AdaptiveError as AdaptiveRefusal
 from backtest import SLIP_BPS, grid_search, run_and_save
@@ -134,7 +135,7 @@ async def _last_bar_ts(symbol: str, tf: str) -> int | None:
     return int(last["t"]) + step
 
 
-async def journal_scan(tf: str = "15m") -> int:
+async def journal_scan(tf: str = "15m", *, scan_cycle_id: str | None = None) -> int:
     """Record one journalled row per symbol for the last closed bar.
 
     Runs after every live rescan. The timestamp is the bar's **close**, so a
@@ -160,7 +161,10 @@ async def journal_scan(tf: str = "15m") -> int:
         return 0
     conn = signal_journal.connect()
     try:
-        return signal_journal.insert_rows(conn, rows)
+        return signal_journal.insert_rows(
+            conn, rows, scan_cycle_id=scan_cycle_id,
+            engine_version=signal_cycles.ENGINE_VERSION if scan_cycle_id else None,
+        )
     finally:
         conn.close()
 
@@ -382,7 +386,7 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(
     title="nobiTrader",
-    version="1.6.7",
+    version="1.6.8",
     lifespan=lifespan,
 )
 
@@ -1037,6 +1041,9 @@ async def rescan(tf: str = "15m", top: int = 40):
     """
     if not _cached["universe"]:
         await load_universe()
+    cycle_id = signal_cycles.start(
+        timeframe=tf, origin="scan", universe_count=min(top, len(_cached["universe"]))
+    )
     sem = asyncio.Semaphore(6)
     out: dict = {}
     skipped: list[str] = []
@@ -1082,7 +1089,11 @@ async def rescan(tf: str = "15m", top: int = 40):
         except ClientError as e:
             log.warning("scan %s: %s", u["symbol"], e)
 
-    await asyncio.gather(*(one(u) for u in _cached["universe"][:top]))
+    try:
+        await asyncio.gather(*(one(u) for u in _cached["universe"][:top]))
+    except Exception as exc:
+        signal_cycles.abandon(cycle_id, str(exc))
+        raise
 
     # Fundamentals for the whole scan set, at most 4 in flight (providers
     # rate-limit aggressively). Failures degrade the composite instead of
@@ -1155,7 +1166,7 @@ async def rescan(tf: str = "15m", top: int = 40):
     log.info("rescan %s: %d symbols, FA %d/%d", tf, len(out), len(scored), len(out))
     if os.getenv("NBX_JOURNAL", "1") != "0":
         try:
-            added = await journal_scan(tf)
+            added = await journal_scan(tf, scan_cycle_id=cycle_id)
             if added:
                 log.info("journal: %d new prediction(s) on %s", added, tf)
         except Exception as e:  # journalling must not break scans
@@ -1176,6 +1187,16 @@ async def rescan(tf: str = "15m", top: int = 40):
             log.info("gates: %d shadow verdict(s) on %s", judged, tf)
     except Exception as e:      # the ledger must never break a scan
         log.warning("gate ledger write failed: %s", e)
+    try:
+        ranked_now = sorted(out.values(), key=lambda r: r.get("composite") or 0, reverse=True)
+        linked_block = gates_block(ranked_now, tf)
+        signal_cycles.complete(
+            cycle_id, snapshots=out, verdicts=linked_block.get("verdicts") or {},
+            skipped=skipped, source=_scan_source(ranked_now),
+        )
+    except Exception as e:
+        signal_cycles.abandon(cycle_id, str(e))
+        log.warning("scan-cycle evidence failed: %s", e)
     return out
 
 
@@ -2091,6 +2112,52 @@ async def signal_intelligence_review(signal_id: int, payload: SignalReviewBody,
     audit("signal.review", actor=user.username,
           detail={"signal_id": signal_id, "tag": result["tag"]}, request=request)
     return {"ok": True, "review": result}
+
+
+# ---------------- Signal Intelligence v1.1 linked evidence ------------------
+@app.get("/api/v1/signal-intelligence/summary")
+async def signal_intelligence_v1_summary(days: int = Query(30, ge=1, le=3650),
+                                         horizon: str = Query("H1", pattern="^H[123]$")):
+    return signal_intelligence.linked_summary(days=days, horizon=horizon)
+
+
+@app.get("/api/v1/signal-intelligence/pipeline")
+async def signal_intelligence_v1_pipeline(days: int = Query(30, ge=1, le=3650)):
+    return signal_intelligence.linked_pipeline(days=days)
+
+
+@app.get("/api/v1/signal-intelligence/gate-reasons")
+async def signal_intelligence_v1_gate_reasons(days: int = Query(30, ge=1, le=3650),
+                                              mode: str = Query("primary", pattern="^(primary|all)$")):
+    return {"rows": signal_intelligence.gate_reason_counts(days=days, mode=mode)}
+
+
+@app.get("/api/v1/signal-intelligence/signals")
+async def signal_intelligence_v1_signals(days: int = Query(30, ge=1, le=3650),
+                                         limit: int = Query(100, ge=1, le=500),
+                                         cursor: str | None = None):
+    try:
+        return signal_intelligence.paged_signals(days=days, limit=limit, cursor=cursor)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.get("/api/v1/signal-intelligence/export")
+async def signal_intelligence_v1_export(request: Request,
+                                        days: int = Query(30, ge=1, le=3650),
+                                        format: str = Query("csv", pattern="^(csv|json)$")):
+    session = identity.session_of(request)
+    actor = session.user.username if session else "machine-token"
+    audit("signal_intelligence.export", actor=actor,
+          detail={"days": days, "format": format}, request=request)
+    if format == "json":
+        return JSONResponse(
+            {"rows": signal_intelligence.export_linked_rows(days=days), "limit": 10_000},
+            headers={"Content-Disposition": "attachment; filename=signal-intelligence.json"},
+        )
+    return Response(signal_intelligence.export_linked_csv(days=days),
+                    media_type="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": "attachment; filename=signal-intelligence.csv"})
 
 
 # ---------------- Dev suite: "is this checkout correct?" -------------------

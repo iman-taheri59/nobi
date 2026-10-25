@@ -2,6 +2,15 @@
 
 [English](CHANGELOG.en.md) · **فارسی**
 
+## 1.6.8
+
+> هوشمندی سیگنال ۱٫۱ با linkage قطعی Scan→Gate→Signal و سنجه‌های آماری قابل ممیزی.
+
+- چرخه‌ها، candidateها و علت‌های چندگانهٔ Gate در schema idempotent ثبت می‌شوند؛ دادهٔ قدیمی بدون inference با `legacy-unlinked` مشخص است.
+- API نسخه‌دار summary/pipeline/reasons/cursor و export امن CSV/JSON با سقف ۱۰هزار و audit اضافه شد.
+- Wilson 95%، CI تقریبی expectancy، پوشش linkage و تفکیک pending-not-due از backlog ارائه می‌شود.
+- UI پوشش، بازه‌ها، funnel پیوندی، taxonomy و export را نمایش می‌دهد؛ تست‌های migration، provenance، pagination و CSV injection افزوده شدند.
+
 ## 1.6.7
 
 > حذف دیتابیس runtime خالی که سهواً در source نسخه ۱٫۶٫۶ stage شده بود.

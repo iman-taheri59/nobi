@@ -698,7 +698,7 @@ html[dir="ltr"] .live-badge { right: auto; left: 14px; }
       </button>
     </div>
     <span class="hidden 2xl:inline-flex chip shrink-0"><span class="dot bg-emerald-400"></span> <span data-i18n="hdr.kill"></span></span>
-    <span id="buildChip" class="hidden lg:inline-flex chip num text-violet-300 border-violet-400/30 shrink-0" title="نسخه واقعی از /api/health">v1.6.7 · core</span>
+    <span id="buildChip" class="hidden lg:inline-flex chip num text-violet-300 border-violet-400/30 shrink-0" title="نسخه واقعی از /api/health">v1.6.8 · core</span>
     <div class="ms-auto flex items-center gap-1.5 shrink-0">
       <span class="hidden xl:inline-flex chip num" id="clock">--:--:--</span>
       <span id="apiChip" class="hidden 2xl:inline-flex chip num text-zinc-400 border-white/10" title=""><i data-lucide="wifi-off" class="w-3.5 h-3.5"></i> <span>API: —</span></span>
@@ -958,7 +958,7 @@ html[dir="ltr"] .live-badge { right: auto; left: 14px; }
 
     <!-- ======= PAGE: FA ======= -->
     <section id="page-intelligence" class="tab-page hidden space-y-4 sm:space-y-6">
-      <div class="flex items-center gap-3 flex-wrap"><span class="w-1 h-8 rounded-full bg-gradient-to-b from-cyan-300 to-violet-500/40"></span><div><h1 class="font-extrabold text-base sm:text-xl" data-i18n="page.intelligence.title"></h1><p class="text-[11px] text-zinc-500" data-i18n="page.intelligence.desc"></p></div><div class="ms-auto flex gap-2"><label class="sr-only" for="siDays" data-i18n="si.window"></label><select id="siDays" class="auth-input !w-auto"><option value="7">7d</option><option value="30" selected>30d</option><option value="90">90d</option></select><label class="sr-only" for="siHorizon" data-i18n="si.horizon"></label><select id="siHorizon" class="auth-input !w-auto"><option>H1</option><option>H2</option><option>H3</option></select><button id="siRefresh" class="auth-btn !flex-none" data-i18n="users.refresh"></button></div></div>
+      <div class="flex items-center gap-3 flex-wrap"><span class="w-1 h-8 rounded-full bg-gradient-to-b from-cyan-300 to-violet-500/40"></span><div><h1 class="font-extrabold text-base sm:text-xl" data-i18n="page.intelligence.title"></h1><p class="text-[11px] text-zinc-500" data-i18n="page.intelligence.desc"></p></div><div class="ms-auto flex gap-2"><label class="sr-only" for="siDays" data-i18n="si.window"></label><select id="siDays" class="auth-input !w-auto"><option value="7">7d</option><option value="30" selected>30d</option><option value="90">90d</option></select><label class="sr-only" for="siHorizon" data-i18n="si.horizon"></label><select id="siHorizon" class="auth-input !w-auto"><option>H1</option><option>H2</option><option>H3</option></select><button id="siExportCsv" class="auth-btn !flex-none">CSV</button><button id="siExportJson" class="auth-btn !flex-none">JSON</button><button id="siRefresh" class="auth-btn !flex-none" data-i18n="users.refresh"></button></div></div>
       <div id="siStatus" class="text-[11px] text-zinc-400" aria-live="polite"></div>
       <div id="siSummary" class="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-6 gap-3"></div>
       <div class="glass p-4 sm:p-5"><div class="font-bold text-[13px] mb-1" data-i18n="si.funnel"></div><p class="text-[10px] text-amber-300/80 mb-3" data-i18n="si.funnelNote"></p><div id="siFunnel" class="grid grid-cols-2 md:grid-cols-5 gap-2"></div><div id="siReasons" class="flex flex-wrap gap-1.5 mt-3"></div></div>
@@ -5522,18 +5522,20 @@ async function loadSignalIntelligence(){
   const symbol=((byId('siSymbol')||{}).value||'').trim().toUpperCase(),tf=(byId('siTf')||{}).value||'';
   const qs=new URLSearchParams({days:String(days),horizon:h});if(symbol)qs.set('symbol',symbol);if(tf)qs.set('timeframe',tf);
   try{
-    const [s,f,c,l]=await Promise.all([
-      api.get(NBX.config.pythonApi+'/signal-intelligence/summary?'+qs,1),
-      api.get(NBX.config.pythonApi+'/signal-intelligence/funnel?days='+days,1),
+    const [s,f,g,c,l]=await Promise.all([
+      api.get(NBX.config.pythonApi+'/v1/signal-intelligence/summary?days='+days+'&horizon='+h,1),
+      api.get(NBX.config.pythonApi+'/v1/signal-intelligence/pipeline?days='+days,1),
+      api.get(NBX.config.pythonApi+'/v1/signal-intelligence/gate-reasons?days='+days+'&mode=all',1),
       api.get(NBX.config.pythonApi+'/signal-intelligence/cohorts?days='+days+'&horizon='+h,1),
       api.get(NBX.config.pythonApi+'/signal-intelligence/signals?limit=100&'+qs,1)]);
-    const cards=[['signals',s.signals],['resolved',s.resolved],['unresolved',s.unresolved],['voided',s.voided],['win %',s.win_rate_pct],['expectancy R',s.expectancy_r],['return %',s.avg_return_pct],['MFE %',s.avg_mfe_pct],['MAE %',s.avg_mae_pct],['wins / losses / flat',`${s.wins} / ${s.losses} / ${s.flats}`],['reviews',s.reviews]];
+    const maturity=s.outcome_maturity||{},link=s.linkage||{};
+    const cards=[['signals',s.signals],['resolved',s.resolved],['pending / due',`${maturity.pending_not_due??0} / ${maturity.due_unresolved??0}`],['linked %',link.coverage_pct],['win %',s.win_rate_pct],['win CI 95%',(s.win_rate_ci95_pct||[]).join(' – ')||'—'],['expectancy R',s.expectancy_r],['expectancy CI',(s.expectancy_ci95_r||[]).join(' – ')||'—'],['median R',s.median_r],['MFE %',s.avg_mfe_pct],['MAE %',s.avg_mae_pct],['reviews',s.reviews]];
     byId('siSummary').innerHTML=cards.map(([k,v])=>`<div class="glass p-3"><div class="text-[9px] text-zinc-500">${escText(k)}</div><div class="num font-bold text-base">${v??'—'}</div></div>`).join('');
     const sampleLabel=s.sample_sufficient?t('si.sufficient'):t('si.insufficient');
     status.textContent=`${h} · ${days}d · ${s.resolved}/${s.sample_minimum} · ${sampleLabel}`;
     status.className=`text-[11px] ${s.sample_sufficient?'text-emerald-300':'text-amber-300'}`;
     byId('siFunnel').innerHTML=(f.stages||[]).map(x=>`<div class="rounded-xl bg-white/[.03] p-3 text-center"><div class="text-[9px] text-zinc-500">${escText(x.id)}</div><div class="num font-bold">${x.count}</div></div>`).join('');
-    byId('siReasons').innerHTML=Object.entries(f.gate_reasons||{}).map(([k,v])=>`<span class="chip text-[9px]">${escText(k)}: <b class="num">${v}</b></span>`).join('');
+    byId('siReasons').innerHTML=(g.rows||[]).map(x=>`<span class="chip text-[9px]">${escText(x.group||'unknown')} · ${escText(x.code)}: <b class="num">${x.count}</b></span>`).join('');
     const cohorts=c.rows||[];byId('siCohortsEmpty').classList.toggle('hidden',cohorts.length>0);
     byId('siCohorts').innerHTML=cohorts.map(x=>`<tr class="border-t border-white/5"><td>${escText(x.symbol)}</td><td>${escText(x.timeframe)}</td><td>${escText(x.regime)}</td><td class="num ${x.sample_sufficient?'text-emerald-300':'text-amber-300'}">${x.resolved}/${x.signals}</td><td class="num">${x.win_rate_pct??'—'}</td><td class="num">${x.expectancy_r??'—'}</td><td class="num">${escText(String(x.config_hash).slice(0,10))}</td></tr>`).join('');
     const rows=l.rows||[];byId('siSignalsEmpty').classList.toggle('hidden',rows.length>0);
@@ -5551,6 +5553,14 @@ async function loadSignalDetail(id){
     if(can&&byId('siReviewSave'))byId('siReviewSave').onclick=async()=>{const msg=byId('siReviewMessage'),button=byId('siReviewSave');button.disabled=true;try{const r=await fetch(NBX.config.pythonApi+'/signal-intelligence/signals/'+id+'/review',{method:'POST',headers:api._authHeaders(),body:JSON.stringify({tag:byId('siReviewTag').value,note:byId('siReviewNote').value})});const body=await r.json();if(!r.ok)throw new Error(body.detail||`HTTP ${r.status}`);msg.textContent=t('si.saved');msg.className='text-[10px] mt-2 text-emerald-300';await loadSignalIntelligence();setTimeout(()=>loadSignalDetail(id),300);}catch(e){msg.textContent=String(e.message||e);msg.className='text-[10px] mt-2 text-red-300';button.disabled=false;}};
   }catch(e){box.textContent=String(e.message||e);box.classList.add('text-red-300');}
 }
+async function exportSignalIntelligence(format){
+  const days=Number((byId('siDays')||{}).value||30),api=NBX.core.api;
+  const r=await fetch(`${NBX.config.pythonApi}/v1/signal-intelligence/export?days=${days}&format=${format}`,{headers:api._authHeaders()});
+  if(!r.ok)throw new Error(`HTTP ${r.status}`);
+  const a=document.createElement('a');a.href=URL.createObjectURL(await r.blob());a.download=`signal-intelligence.${format}`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+}
+if(byId('siExportCsv'))byId('siExportCsv').onclick=()=>exportSignalIntelligence('csv').catch(e=>{byId('siStatus').textContent=String(e.message||e);});
+if(byId('siExportJson'))byId('siExportJson').onclick=()=>exportSignalIntelligence('json').catch(e=>{byId('siStatus').textContent=String(e.message||e);});
 if(byId('siRefresh'))byId('siRefresh').onclick=loadSignalIntelligence;
 ['siDays','siHorizon','siTf'].forEach(id=>{if(byId(id))byId(id).onchange=loadSignalIntelligence;});
 

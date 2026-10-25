@@ -2,7 +2,7 @@
 
 [فارسی](releases.md) · **English**
 
-The current version is **1.6.7**; the previously published tag is **v1.6.6**, and the runtime-artifact cleanup will ship as **v1.6.7**.
+The working release candidate is **1.6.8**; the currently published tag is **v1.6.7**, and Signal Intelligence v1.1 will ship as **v1.6.8** only after branch CI is green.
 `VERSION` is the source of truth for the release number; the tag name is exactly `v`
 plus that number.
 

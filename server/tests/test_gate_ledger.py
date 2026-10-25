@@ -400,7 +400,7 @@ def test_the_scan_writes_the_ledger_after_the_journal():
     src = _main_source()
     assert "judged = gate_write(tf)" in src
     # After the journal write, so a crash in one recorder cannot cost the other.
-    assert src.index("added = await journal_scan(tf)") < src.index("judged = gate_write(tf)")
+    assert src.index("added = await journal_scan(") < src.index("judged = gate_write(tf)")
 
 
 def test_a_ledger_failure_cannot_break_a_scan():
