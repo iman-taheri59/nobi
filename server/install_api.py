@@ -30,7 +30,7 @@ ALLOWED = PATH_KEYS | set(INT_RANGES) | set(CHOICES)
 router = APIRouter(prefix="/api/install", tags=["installation"])
 
 
-def _owner(request: Request, *, csrf: bool = False) -> auth.User:
+def require_owner(request: Request, *, csrf: bool = False) -> auth.User:
     session = identity.session_of(request)
     if session is None:
         raise HTTPException(status_code=401, detail="owner session required")
@@ -39,6 +39,10 @@ def _owner(request: Request, *, csrf: bool = False) -> auth.User:
     if csrf and not identity.csrf_ok(request, session):
         raise HTTPException(status_code=403, detail="CSRF token required")
     return session.user
+
+
+def require_owner_mutation(request: Request) -> auth.User:
+    return require_owner(request, csrf=True)
 
 
 def read_managed() -> dict[str, str]:
@@ -102,14 +106,14 @@ def write_managed(values: dict[str, str]) -> None:
 
 @router.get("/settings")
 def settings(request: Request):
-    _owner(request)
+    require_owner(request)
     return {"ok": True, "values": read_managed(), "allowed": sorted(ALLOWED),
             "restart_required": False}
 
 
 @router.post("/probe")
 def probe(payload: dict, request: Request):
-    _owner(request, csrf=True)
+    require_owner(request, csrf=True)
     try:
         clean = validate(payload or {}, create_dirs=True)
     except (ValueError, OSError) as exc:
@@ -119,7 +123,7 @@ def probe(payload: dict, request: Request):
 
 @router.post("/settings")
 def save_settings(payload: dict, request: Request):
-    user = _owner(request, csrf=True)
+    user = require_owner(request, csrf=True)
     try:
         clean = validate(payload or {}, create_dirs=True)
         merged = {**read_managed(), **clean}
@@ -130,4 +134,4 @@ def save_settings(payload: dict, request: Request):
             "saved_by": user.username}
 
 
-__all__ = ["ALLOWED", "MANAGED_ENV", "read_managed", "router", "validate", "write_managed"]
+__all__ = ["ALLOWED", "MANAGED_ENV", "read_managed", "require_owner", "require_owner_mutation", "router", "validate", "write_managed"]

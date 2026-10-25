@@ -2,6 +2,17 @@
 
 [English](CHANGELOG.en.md) · **فارسی**
 
+## 1.3.2
+
+> W3 مرکز عملیات: تمام gateهای Python/JS، build و deploy-check از UI و فقط برای owner.
+
+- ADR-0036 allowlist ثابت و ممنوعیت remote shell را ثبت می‌کند.
+- devsuite از ۳ gate به ۱۳ عملیات رسید: pytest/ruff/mypy، دو lint JS، broker، intrabar، display، adaptive، icons، preflight parity، build و deploy-check.
+- runner فقط `python` یا `npm` با argv ثابت است؛ command/argument کاربر و `shell=True` وجود ندارد.
+- هر سه endpoint status/run/result فقط session owner را می‌پذیرند؛ operator و API token کافی نیست.
+- محدودیت یک run، timeout، tail خروجی و دیتابیس‌های تست ایزوله حفظ شد.
+- چهار آزمون پوشش allowlist، نبود metacharacter و دسترسی نقش را قفل می‌کنند.
+
 ## 1.3.1
 
 > W2 نصب وب: owner مسیرهای داده و تنظیمات غیرحساس را بدون کد probe و ذخیره می‌کند.

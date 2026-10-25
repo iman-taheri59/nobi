@@ -2,6 +2,17 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 1.3.2
+
+> W3 operations center: all Python/JS gates, build and deploy-check from UI, owner-only.
+
+- ADR-0036 records the fixed allowlist and remote-shell refusal.
+- Devsuite grows from 3 gates to 13 operations: pytest/ruff/mypy, two JS lints, broker, intrabar, display, adaptive, icons, preflight parity, build and deploy-check.
+- Runners are fixed `python` or `npm` argv; no user command/argument and no `shell=True` exist.
+- Status/run/result endpoints require an owner session; operator and API token are insufficient.
+- Single-run locking, timeout, bounded output tail and isolated test databases remain.
+- Four tests pin allowlist coverage, no metacharacters and role access.
+
 ## 1.3.1
 
 > W2 web installation: owners probe and save non-secret data paths/settings without code.

@@ -295,7 +295,7 @@
       </button>
     </div>
     <span class="hidden 2xl:inline-flex chip shrink-0"><span class="dot bg-emerald-400"></span> <span data-i18n="hdr.kill"></span></span>
-    <span id="buildChip" class="hidden lg:inline-flex chip num text-violet-300 border-violet-400/30 shrink-0" title="نسخه واقعی از /api/health">v1.3.1 · core</span>
+    <span id="buildChip" class="hidden lg:inline-flex chip num text-violet-300 border-violet-400/30 shrink-0" title="نسخه واقعی از /api/health">v1.3.2 · core</span>
     <div class="ms-auto flex items-center gap-1.5 shrink-0">
       <span class="hidden xl:inline-flex chip num" id="clock">--:--:--</span>
       <span id="apiChip" class="hidden 2xl:inline-flex chip num text-zinc-400 border-white/10" title=""><i data-lucide="wifi-off" class="w-3.5 h-3.5"></i> <span>API: —</span></span>
@@ -1521,7 +1521,7 @@ const T = {
     'diag.allOk':'همه‌چیز سالم است', 'diag.someBad':'{n} بررسی خراب است',
     'diag.someError':'{n} بررسی خودش خطا داد', 'diag.someSkip':'{n} مورد قابل سنجش نبود',
     'suite.title':'تست‌های پروژه', 'suite.run':'اجرا',
-    'suite.note':'همان سه دستوری که CI اجرا می‌کند: pytest، ruff، mypy — روی همین کد. فقط وقتی سرور از پوشهٔ کد منبع اجرا شده باشد کار می‌کند.',
+    'suite.note':'تمام gateهای allowlist پروژه: تست و lint پایتون/جاوااسکریپت، parity، build و بررسی استقرار. فقط مالک می‌تواند اجرا کند؛ command دلخواه پذیرفته نمی‌شود.',
     'suite.unavailable':'اجرای تست از این‌جا ممکن نیست',
     'suite.running':'در حال اجرا…', 'suite.done':'تمام شد', 'suite.timeout':'از مهلت گذشت',
     'suite.failed':'اجرا نشد', 'suite.commit':'کامیت {c}', 'suite.dirty':'تغییرات کامیت‌نشده',
@@ -1790,7 +1790,7 @@ const T = {
     'diag.allOk':'everything is healthy', 'diag.someBad':'{n} check(s) broken',
     'diag.someError':'{n} check(s) crashed', 'diag.someSkip':'{n} could not be measured',
     'suite.title':'Project tests', 'suite.run':'Run',
-    'suite.note':'The same three commands CI runs — pytest, ruff, mypy — against this checkout. Only available when the server runs from the source tree.',
+    'suite.note':'Every allowlisted project gate: Python/JavaScript tests and lint, parity, build and deployment checks. Owner-only; arbitrary commands are never accepted.',
     'suite.unavailable':'tests cannot run from here',
     'suite.running':'running…', 'suite.done':'finished', 'suite.timeout':'timed out',
     'suite.failed':'did not run', 'suite.commit':'commit {c}', 'suite.dirty':'uncommitted changes',

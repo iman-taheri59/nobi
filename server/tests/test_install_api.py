@@ -63,3 +63,16 @@ def test_non_owner_cannot_read_installation_paths(monkeypatch, tmp_path):
         client.cookies.set("nbx_session", token)
         response = client.get("/api/install/settings")
     assert response.status_code == 403
+    with TestClient(main.app) as client:
+        client.cookies.set("nbx_session", token)
+        suite = client.get("/api/devsuite")
+    assert suite.status_code == 403
+
+
+def test_owner_can_see_fixed_operations_allowlist(monkeypatch, tmp_path):
+    client, _csrf = _owner_client(monkeypatch, tmp_path)
+    with client:
+        response = client.get("/api/devsuite")
+    assert response.status_code == 200
+    names = {gate["name"] for gate in response.json()["gates"]}
+    assert {"pytest", "eslint", "build", "deploy-check"} <= names

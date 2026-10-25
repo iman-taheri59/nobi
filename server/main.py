@@ -379,7 +379,7 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(
     title="nobiTrader",
-    version="1.3.1",
+    version="1.3.2",
     lifespan=lifespan,
 )
 
@@ -2018,12 +2018,12 @@ async def diagnostics_run(body: dict | None = None):
 
 
 # ---------------- Dev suite: "is this checkout correct?" -------------------
-@app.get("/api/devsuite")
+@app.get("/api/devsuite", dependencies=[Depends(install_api.require_owner)])
 async def devsuite_status():
     return devsuite.status()
 
 
-@app.post("/api/devsuite/run", dependencies=[Depends(require_client)])
+@app.post("/api/devsuite/run", dependencies=[Depends(install_api.require_owner_mutation)])
 async def devsuite_run(body: dict | None = None):
     gates = (body or {}).get("gates") or None
     try:
@@ -2038,7 +2038,7 @@ async def devsuite_run(body: dict | None = None):
     return {"run_id": run.id, "state": run.state}
 
 
-@app.get("/api/devsuite/{run_id}")
+@app.get("/api/devsuite/{run_id}", dependencies=[Depends(install_api.require_owner)])
 async def devsuite_get(run_id: str):
     run = devsuite.get(run_id)
     if run is None:

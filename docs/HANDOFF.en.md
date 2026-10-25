@@ -2,8 +2,8 @@
 
 [فارسی](HANDOFF.md) · **English**
 
-**Last updated:** 2026-10-25 — stage 12 (W2 installation settings complete)
-**Working version:** 1.3.1
+**Last updated:** 2026-10-25 — stage 13 (W3 operations center complete)
+**Working version:** 1.3.2
 **Target:** ADR-0027; stable product first, then staged fail-closed live execution.
 
 ## Status
@@ -20,7 +20,8 @@
 - [x] W1: first-run owner wizard with a one-time console token.
 - [x] W2: owner UI for data paths, scan/TTL and disabled/dry-run; secret-free managed.env.
 - [ ] W2b: reverse-proxy/systemd validation and generation through a non-root helper.
-- [ ] W3: owner-only allowlisted tests, build, backup/restore and deployment tasks.
+- [x] W3: 13 owner-only allowlisted test/lint/parity/build/deploy-check gates.
+- [ ] W3b: backup/restore/restart and systemd/nginx generation through a constrained OS helper.
 - [ ] Real soak/private contract test; requires an Iran-reachable host and IP-limited READ/TRADE key.
 - [ ] Independent security review before real funds.
 
@@ -45,8 +46,8 @@
 
 ```text
 ruff: passed
-mypy: success, 104 source files
-pytest: 929 passed, 1 dependency deprecation warning
+mypy: success, 105 source files
+pytest: 932 passed, 1 dependency deprecation warning
 ESLint/dashboard lint: passed
 broker/preflight parity: passed
 mobile artifact: rebuilt for 1.2.3

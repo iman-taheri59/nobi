@@ -33,6 +33,7 @@ import asyncio
 import importlib.util
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -53,17 +54,38 @@ class Gate:
     name: str
     fa: str
     argv: tuple[str, ...]     # after the interpreter
-    module: str               # import-checked before the run
+    module: str               # import-checked before the run; empty for npm tasks
     fa_fix: str
+    runner: str = "python"    # python | npm; never shell
 
 
 GATES: tuple[Gate, ...] = (
-    Gate("pytest", "تست‌های واحد", ("-m", "pytest", "-q", "server/tests"), "pytest",
+    Gate("pytest", "تست‌های Python", ("-m", "pytest", "-q", "server/tests"), "pytest",
          "python -m pip install -r server/requirements-dev.txt"),
-    Gate("ruff", "لینت (ruff)", ("-m", "ruff", "check", "server", "scripts"), "ruff",
+    Gate("ruff", "لینت Python", ("-m", "ruff", "check", "server", "scripts"), "ruff",
          "python -m pip install -r server/requirements-dev.txt"),
-    Gate("mypy", "تایپ‌ها (mypy)", ("-m", "mypy"), "mypy",
+    Gate("mypy", "تایپ‌های Python", ("-m", "mypy"), "mypy",
          "python -m pip install -r server/requirements-dev.txt"),
+    Gate("eslint", "لینت JavaScript", ("run", "lint", "--silent"), "",
+         "npm ci", "npm"),
+    Gate("dashboard-lint", "لینت کد درون صفحه", ("run", "lint:dashboard", "--silent"), "",
+         "npm ci", "npm"),
+    Gate("js-broker", "برابری بروکر مرورگر", ("run", "test:js", "--silent"), "",
+         "npm ci", "npm"),
+    Gate("intrabar", "قاعده خروج intrabar", ("run", "test:intrabar", "--silent"), "",
+         "npm ci", "npm"),
+    Gate("display", "نمایش مالی و زبان", ("run", "test:display", "--silent"), "",
+         "npm ci", "npm"),
+    Gate("adaptive-card", "کارت آستانه تطبیقی", ("run", "test:adaptive-card", "--silent"), "",
+         "npm ci", "npm"),
+    Gate("icons", "آیکون‌ها", ("run", "test:icons", "--silent"), "",
+         "npm ci", "npm"),
+    Gate("preflight-parity", "برابری preflight", ("scripts/check_preflight_parity.py",), "",
+         "runtime dependency", "python"),
+    Gate("build", "ساخت کامل آرتیفکت", ("run", "build", "--silent"), "",
+         "npm ci", "npm"),
+    Gate("deploy-check", "بررسی استقرار", ("scripts/check_deploy.py",), "",
+         "runtime dependency", "python"),
 )
 BY_NAME = {g.name: g for g in GATES}
 
@@ -123,10 +145,12 @@ def available() -> tuple[bool, str]:
         return False, "این نصب از کد منبع اجرا نشده — تست‌ها در بستهٔ نهایی وجود ندارند"
     if not _enabled_by_env():
         return False, "با NBX_DEV_TOOLS=0 خاموش شده است"
-    missing = [g.name for g in GATES if importlib.util.find_spec(g.module) is None]
+    missing = [g.name for g in GATES if g.module and importlib.util.find_spec(g.module) is None]
     if missing:
         return False, (f"{', '.join(missing)} نصب نیست — "
                        "python -m pip install -r server/requirements-dev.txt")
+    if any(g.runner == "npm" for g in GATES) and shutil.which("npm") is None:
+        return False, "npm نصب نیست"
     return True, ""
 
 
@@ -175,7 +199,8 @@ PARSERS = {"pytest": _parse_pytest, "ruff": _parse_ruff, "mypy": _parse_mypy}
 
 def _summarise(name: str, text: str, rc: int) -> tuple[str, dict[str, Any] | None]:
     """A one-line summary the UI can print, or None when the output is opaque."""
-    parsed = PARSERS[name](text)
+    parser = PARSERS.get(name)
+    parsed = parser(text) if parser else None
     if parsed is None:
         last = next((ln.strip() for ln in reversed(text.splitlines()) if ln.strip()), "")
         return (last[:160] or f"exit {rc}"), None
@@ -213,7 +238,11 @@ def _gate_env() -> dict[str, str]:
 
 
 def _run_gate(gate: Gate) -> dict[str, Any]:
-    cmd = [sys.executable, *gate.argv]
+    if gate.runner == "npm":
+        npm = shutil.which("npm") or "npm"
+        cmd = [npm, *gate.argv]
+    else:
+        cmd = [sys.executable, *gate.argv]
     t0 = time.perf_counter()
     try:
         proc = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True, encoding="utf-8", timeout=TIMEOUT_S,
@@ -305,7 +334,9 @@ def status() -> dict[str, Any]:
     prev = last()
     return {
         "available": ok, "reason": why,
-        "gates": [{"name": g.name, "fa": g.fa, "cmd": " ".join(g.argv)} for g in GATES],
+        "gates": [{"name": g.name, "fa": g.fa,
+                   "cmd": ("npm " if g.runner == "npm" else "python ") + " ".join(g.argv)}
+                  for g in GATES],
         "busy": bool(_current),
         "last": prev.as_dict(tail=True) if prev else None,
         "root": str(ROOT),
