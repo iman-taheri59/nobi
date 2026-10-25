@@ -2,6 +2,15 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 1.2.6
+
+> B5: dry-run evidence for live promotion, with no automatic activation.
+
+- ADR-0033 requires 30 samples over 5 days and zero ambiguous outcomes.
+- The ledger reports state distribution, sample/day counts and refusal reasons.
+- `/api/live/evidence` is private and remains `applied:false`.
+- Two tests cover sample/day floors and the unknown-state veto.
+
 ## 1.2.5
 
 > B4: dry-run placement only after real server preflight; no network submission or real-place route was added.

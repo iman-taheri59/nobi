@@ -185,6 +185,36 @@ def test_cancel_final_response_is_durable(tmp_path):
     assert client.ledger.get(placed["client_order_id"])["state"] == "canceled"
 
 
+def test_promotion_evidence_requires_samples_days_and_no_unknown(tmp_path):
+    ledger = ExecutionLedger(tmp_path / "evidence.db")
+    client = LiveExecutionClient(mode=ExecutionMode.DRY_RUN, ledger=ledger)
+    for day in range(5):
+        for item in range(6):
+            record = client.place(_intent(key=f"day-{day}-item-{item}"))
+            with ledger._connect() as conn:
+                conn.execute(
+                    "UPDATE live_execution SET created_at=? WHERE client_order_id=?",
+                    (f"2026-10-{20 + day:02d} 12:00:00", record["client_order_id"]),
+                )
+    evidence = ledger.promotion_evidence()
+    assert evidence["ready"] is True
+    assert evidence["samples"] == 30
+    assert evidence["days"] == 5
+    first = client.place(_intent(key="ambiguous"))
+    ledger.transition(first["client_order_id"], "unknown")
+    evidence = ledger.promotion_evidence()
+    assert evidence["ready"] is False
+    assert "ambiguous-outcomes" in evidence["reasons"]
+    assert evidence["applied"] is False
+
+
+def test_empty_promotion_evidence_is_an_explicit_refusal(tmp_path):
+    evidence = ExecutionLedger(tmp_path / "empty.db").promotion_evidence()
+    assert evidence["samples"] == evidence["days"] == 0
+    assert evidence["ready"] is False
+    assert evidence["reasons"] == ["insufficient-samples", "insufficient-days"]
+
+
 def test_client_order_id_matches_exchange_contract():
     value = _intent().client_order_id
     assert len(value) <= 32

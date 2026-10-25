@@ -66,3 +66,5 @@
 جدول بالا ثبتش کن. چیزی که فقط «چه» را می‌گوید، جای‌اش README است نه ADR.
 
 | 0032 | **ثبت آزمایشی با preflight** | پذیرفته — پیاده‌شده در ۱٫۲٫۵ | `/api/live/dry-run` + `risk_whatif`؛ بدون live place |
+
+| 0033 | **دروازه ارتقای live از شواهد dry-run** | پذیرفته — پیاده‌شده در ۱٫۲٫۶، applied=false | `promotion_evidence()` و `/api/live/evidence` |

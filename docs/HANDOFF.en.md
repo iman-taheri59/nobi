@@ -2,8 +2,8 @@
 
 [فارسی](HANDOFF.md) · **English**
 
-**Last updated:** 2026-10-25 — stage 8 (B4 dry-run complete)
-**Working version:** 1.2.5
+**Last updated:** 2026-10-25 — stage 9 (B5 evidence complete)
+**Working version:** 1.2.6
 **Target:** ADR-0027; stable product first, then staged fail-closed live execution.
 
 ## Status
@@ -14,6 +14,7 @@
 - [x] B3 primitives: order listing and `clientOrderId` cancellation with no-retry cancel-unknown.
 - [x] B3 routes: private status/list/cancel/reconcile; place is deliberately absent.
 - [x] B4: dry-run place with mandatory preflight and actor audit; no network submission.
+- [x] B5: 30-sample/5-day/zero-ambiguity evidence gate; `applied:false`.
 - [ ] Real soak/private contract test; requires an Iran-reachable host and IP-limited READ/TRADE key.
 - [ ] Independent security review before real funds.
 
@@ -39,7 +40,7 @@
 ```text
 ruff: passed
 mypy: success, 99 source files
-pytest: 918 passed, 1 dependency deprecation warning
+pytest: 920 passed, 1 dependency deprecation warning
 ESLint/dashboard lint: passed
 broker/preflight parity: passed
 mobile artifact: rebuilt for 1.2.3
@@ -52,7 +53,7 @@ mobile artifact: rebuilt for 1.2.3
 
 ## Next action
 
-1. Release 1.2.5 and run CI;
+1. Release 1.2.6 and run CI;
 2. add operator-only dry-run placement;
 3. run the same `risk_engine.preflight` before creating every intent;
 4. audit actor/request without sensitive payloads;

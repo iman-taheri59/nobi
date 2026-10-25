@@ -141,6 +141,11 @@ async def dry_run(payload: dict, request: Request):
     return {"ok": True, "execution": _public_record(record), "preflight": projection}
 
 
+@router.get("/evidence", dependencies=[Depends(require_client)])
+def evidence():
+    return {"ok": True, **CLIENT.ledger.promotion_evidence()}
+
+
 @router.get("/orders", dependencies=[Depends(require_client)])
 def orders(status: str = Query("open", pattern="^(all|open|done)$")):
     return _call(lambda: CLIENT.list_orders(status=status))

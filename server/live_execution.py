@@ -157,6 +157,34 @@ class ExecutionLedger:
             ).fetchone()
             return dict(row) if row else None
 
+    def promotion_evidence(self, *, min_samples: int = 30, min_days: int = 5) -> dict[str, Any]:
+        with self._connect() as conn:
+            total = int(conn.execute("SELECT count(*) FROM live_execution").fetchone()[0])
+            days = int(conn.execute(
+                "SELECT count(DISTINCT date(created_at)) FROM live_execution"
+            ).fetchone()[0])
+            states = {str(row[0]): int(row[1]) for row in conn.execute(
+                "SELECT state,count(*) FROM live_execution GROUP BY state"
+            )}
+        ambiguous = states.get("unknown", 0) + states.get("cancel-unknown", 0)
+        reasons = []
+        if total < min_samples:
+            reasons.append("insufficient-samples")
+        if days < min_days:
+            reasons.append("insufficient-days")
+        if ambiguous:
+            reasons.append("ambiguous-outcomes")
+        return {
+            "ready": not reasons,
+            "samples": total,
+            "days": days,
+            "ambiguous": ambiguous,
+            "states": states,
+            "required": {"samples": min_samples, "days": min_days, "ambiguous": 0},
+            "reasons": reasons,
+            "applied": False,
+        }
+
 
 class LiveExecutionClient:
     def __init__(
