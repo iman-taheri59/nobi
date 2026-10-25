@@ -119,3 +119,9 @@ mobile artifact: rebuilt for 1.6.0
 - Drift runs accept an allowlisted cohort mode and persist expectancy, win-rate, and PSI per comparable cohort.
 - Global and cohort hypothesis tests use one BH correction family; PSI bins remain auditable.
 - Neutral successful runs now aggregate to `stable`; full local gate passed with `984 passed`.
+
+## Stage 37 — complete browser server installer (working 1.9.0)
+- Added resumable SQLite installation steps and recent action history.
+- Added owner/CSRF host preflight and a fixed protocol helper boundary for systemd/nginx install, validation, restart/reload, and rollback.
+- Sudo policy has exact argv and no wildcard; output is bounded/redacted and mutations are locked.
+- Paper remains default; release requires full CI green.

@@ -629,3 +629,16 @@ sudo journalctl -u nobi -f
 برای این قابلیت، `NBX_COIN_CACHE=/srv/nobi-data/coin-cache` را در `/etc/nobi/nobi.env` نگه دارید؛ مسیر داخل checkout با `ProtectSystem=strict` قابل نوشتن نیست. اسکریپت نصب، این متغیر را به env قدیمی هم اضافه می‌کند و به رازهای موجود دست نمی‌زند. `NBX_COINGECKO_API_KEY` اختیاری و مخصوص کلید Demo است؛ فقط در env سرور تنظیم شود، نه UI یا مخزن. بعد از تغییر env، سرویس را restart کنید.
 
 این کش قابل بازسازی است و بخشی از اطلاعات حساب/معامله نیست. خطای دریافت آن نباید مانع کار بازار شود؛ کش قبلی، سپس لوگوهای همراه برنامه و در آخر متن نماد نمایش داده می‌شوند. کارت `coin_metadata` در تنظیمات وضعیت واقعی پوشش را نشان می‌دهد. راهنمای کامل: [مشخصات و لوگوی نمادها](coin-metadata.md).
+
+## نصب helper محدود ویزارد مرورگری (v1.9.0)
+
+فرایند وب را هرگز با root اجرا نکنید. فایل‌های helper باید توسط root و خارج از کنترل کاربر سرویس نصب شوند:
+
+```bash
+sudo install -o root -g root -m 0755 deploy/nobi-privileged-helper /usr/local/libexec/nobi-privileged-helper
+sudo install -o root -g root -m 0755 deploy/nobi-helper-client /usr/local/bin/nobi-helper-client
+sudo install -o root -g root -m 0440 deploy/nobi-helper.sudoers /etc/sudoers.d/nobi-helper
+sudo visudo -cf /etc/sudoers.d/nobi-helper
+```
+
+ویزارد فقط actionهای دقیق تعریف‌شده در sudoers را اجرا می‌کند. wildcard، فرمان shell، path، package یا service دلخواه پذیرفته نمی‌شود. templateها از `/opt/nobi/deploy` و targetهای systemd/nginx ثابت‌اند. قبل از Apply، Host preflight را در Settings اجرا کنید. restart/reload/rollback تأیید جدا می‌خواهند و Live Mode را فعال نمی‌کنند.

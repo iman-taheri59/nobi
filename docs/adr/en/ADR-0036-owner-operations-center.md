@@ -2,7 +2,7 @@
 
 [فارسی](../fa/ADR-0036-مرکز-عملیات-مالک.md) · **English**
 
-**Status:** Accepted — W3 implemented in 1.3.2; OS helper W3b pending
+**Status:** Accepted — W3 implemented in 1.3.2; OS helper W3b implemented in 1.9.0
 **Date:** 2026-10-25
 **Related:** ADR-0016, ADR-0017, ADR-0035
 

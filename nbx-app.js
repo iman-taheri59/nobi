@@ -1737,6 +1737,23 @@
     };
     $('installProbe').onclick = () => run('/install/probe');
     $('installSave').onclick = () => run('/install/settings');
+    const wizard = await AUTH.call('/install/wizard/status', null, 'GET');
+    if (wizard.ok) {
+      const steps = wizard.data.steps || [];
+      body.insertAdjacentHTML('beforeend', `<div class="pt-3 border-t border-white/5 space-y-2">
+        <div class="font-bold text-[11px]">${inFa('install.wizard')}</div>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-2">${steps.map((x) => `<div class="rounded-lg bg-white/[.03] p-2"><div>${x.step}</div><div class="num text-zinc-500">${x.state}</div></div>`).join('')}</div>
+        <div class="flex flex-wrap gap-2"><button id="wizardPreflight" class="auth-btn !flex-none">${inFa('install.preflight')}</button>
+        ${['install-service','install-proxy','restart-service','reload-proxy','rollback'].map((a) => `<button class="auth-btn !flex-none" data-wizard-action="${a}" ${(wizard.data.helper || {}).available ? '' : 'disabled'}>${a}</button>`).join('')}</div>
+        <pre id="wizardOut" class="max-h-48 overflow-auto rounded-lg bg-black/40 p-2 text-[10px] whitespace-pre-wrap" dir="ltr"></pre></div>`);
+      const show = (out) => { const el = $('wizardOut'); if (el) el.textContent = out.ok ? JSON.stringify(out.data, null, 2) : JSON.stringify((out.data || {}).detail || 'Failed'); };
+      $('wizardPreflight').onclick = async () => { show(await AUTH.call('/install/wizard/preflight', {})); };
+      body.querySelectorAll('[data-wizard-action]').forEach((button) => { button.onclick = async () => {
+        const action = button.dataset.wizardAction;
+        const confirmed = !['restart-service','reload-proxy','rollback'].includes(action) || window.confirm(`${action}?`);
+        if (confirmed) show(await AUTH.call('/install/wizard/action', {action, confirm: confirmed}));
+      }; });
+    }
   }
 
   async function renderOperations() {

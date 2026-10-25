@@ -2,7 +2,7 @@
 
 **فارسی** · [English](README.en.md)
 
-نسخهٔ کاری: **1.8.0**. راهنمای [نسخه‌بندی و انتشار GitHub](releases.md) ([English](releases.en.md)) و [تاریخچهٔ تغییرات](../CHANGELOG.md) ([English](../CHANGELOG.en.md)).
+نسخهٔ کاری: **1.9.0**. راهنمای [نسخه‌بندی و انتشار GitHub](releases.md) ([English](releases.en.md)) و [تاریخچهٔ تغییرات](../CHANGELOG.md) ([English](../CHANGELOG.en.md)).
 
 ## نقشهٔ مستندات
 

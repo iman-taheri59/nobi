@@ -1,0 +1,101 @@
+#!/usr/bin/env python3
+"""Root policy helper for Nobi W3b. No user paths, argv, or shell text."""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import shutil
+import subprocess
+import time
+from pathlib import Path
+
+PROTOCOL = 1
+SOURCE = Path("/opt/nobi/deploy")
+BACKUPS = Path("/var/lib/nobi/install-backups")
+TARGETS = {
+    "install-service": (SOURCE / "nobi.service", Path("/etc/systemd/system/nobi.service")),
+    "install-proxy": (SOURCE / "nginx.conf", Path("/etc/nginx/sites-available/nobi.conf")),
+}
+COMMANDS = {
+    "restart-service": ["/usr/bin/systemctl", "restart", "nobi.service"],
+    "reload-proxy": ["/usr/sbin/nginx", "-s", "reload"],
+}
+
+
+def atomic_install(source: Path, target: Path) -> None:
+    if not source.is_file() or source.is_symlink():
+        raise RuntimeError("managed source is missing or unsafe")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    BACKUPS.mkdir(parents=True, exist_ok=True)
+    if target.exists():
+        shutil.copy2(target, BACKUPS / (target.name + ".previous"))
+    partial = target.with_name(target.name + ".partial")
+    shutil.copyfile(source, partial)
+    os.chmod(partial, 0o644)
+    os.replace(partial, target)
+
+
+def rollback() -> None:
+    restored = 0
+    for _action, (_source, target) in TARGETS.items():
+        backup = BACKUPS / (target.name + ".previous")
+        if backup.is_file() and not backup.is_symlink():
+            partial = target.with_name(target.name + ".rollback")
+            shutil.copyfile(backup, partial)
+            os.replace(partial, target)
+            restored += 1
+    if not restored:
+        raise RuntimeError("no rollback backup exists")
+
+
+def execute(action: str) -> None:
+    if os.geteuid() != 0:
+        raise RuntimeError("helper must run as root through the constrained sudo policy")
+    if action in TARGETS:
+        atomic_install(*TARGETS[action])
+        if action == "install-service":
+            subprocess.run(["/usr/bin/systemctl", "daemon-reload"], check=True, timeout=30)
+            subprocess.run(
+                ["/usr/bin/systemctl", "enable", "--now", "nobi.service"],
+                check=True, timeout=60,
+            )
+        else:
+            enabled = Path("/etc/nginx/sites-enabled/nobi.conf")
+            enabled.parent.mkdir(parents=True, exist_ok=True)
+            if enabled.is_symlink() and enabled.resolve() != TARGETS[action][1]:
+                raise RuntimeError("nginx enabled link points to an unmanaged target")
+            if not enabled.exists():
+                enabled.symlink_to(TARGETS[action][1])
+            subprocess.run(["/usr/sbin/nginx", "-t"], check=True, timeout=30)
+    elif action == "rollback":
+        rollback()
+        subprocess.run(["/usr/bin/systemctl", "daemon-reload"], check=True, timeout=30)
+        subprocess.run(["/usr/sbin/nginx", "-t"], check=True, timeout=30)
+    elif action in COMMANDS:
+        if action == "reload-proxy":
+            subprocess.run(["/usr/sbin/nginx", "-t"], check=True, timeout=30)
+        subprocess.run(COMMANDS[action], check=True, timeout=60)
+    else:
+        raise RuntimeError("unsupported action")
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("--protocol", type=int, required=True)
+    parser.add_argument("action", choices=sorted([*TARGETS, *COMMANDS, "rollback"]))
+    args = parser.parse_args()
+    if args.protocol != PROTOCOL:
+        print(json.dumps({"ok": False, "error": "protocol mismatch"}))
+        return 2
+    try:
+        execute(args.action)
+    except Exception as exc:
+        print(json.dumps({"ok": False, "action": args.action, "error": str(exc)[:300]}))
+        return 1
+    print(json.dumps({"ok": True, "action": args.action, "finished_at": int(time.time())}))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -79,3 +79,7 @@
 | 0042 | **ثبت واقعی محدود اپراتور** | پذیرفته — ۱٫۵٫۰ | capability مستقل، سقف مالی/تعداد/نماد و رزرو اتمیک |
 | 0043 | **داشبورد حساب کاربری** | پذیرفته — ۱٫۵٫۱ | profile/capability/policy، session، activity، password و preferences |
 | 0044 | **هوشمندی سیگنال v1** | پذیرفته — ۱٫۶٫۰ | summary/funnel/cohort/MFE-MAE/detail و review نقش‌محور |
+| 0045 | **Signal Intelligence v1.1** | پذیرفته — ۱٫۶٫۸ | linkage، taxonomy و export محدود |
+| 0046 | **Drift آماری Signal Intelligence** | پذیرفته — ۱٫۷٫۰ | BH، PSI، CI و شواهد immutable |
+| 0047 | **زمان‌بند و cohortهای Drift** | پذیرفته — ۱٫۸٫۰ | schedule، inventory، cohort و PSI bins |
+| 0048 | **نصبگر کامل سرور از مرورگر** | پذیرفته — نسخه کاری ۱٫۹٫۰ | state machine، preflight و helper محدود بدون shell |

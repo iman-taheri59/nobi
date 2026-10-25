@@ -119,3 +119,9 @@ mobile artifact: rebuilt for 1.6.0
 - اجرای Drift حالت cohort مجاز می‌پذیرد و expectancy، win-rate و PSI هر cohort قابل مقایسه را ذخیره می‌کند.
 - آزمون‌های global و cohort یک خانواده اصلاح BH دارند و binهای PSI قابل ممیزی هستند.
 - اجرای موفق خنثی اکنون `stable` است؛ full gate محلی با `984 passed` موفق شد.
+
+## مرحله ۳۷ — نصبگر کامل سرور از مرورگر (نسخه کاری ۱٫۹٫۰)
+- مراحل قابل ادامه نصب و تاریخچه actionها در SQLite افزوده شد.
+- preflight مالک/CSRF و مرز helper ثابت برای نصب، validation، restart/reload و rollback systemd/nginx اضافه شد.
+- sudo دارای argv دقیق و بدون wildcard است؛ خروجی محدود/redacted و mutationها lock می‌شوند.
+- Paper پیش‌فرض می‌ماند و انتشار به CI کاملاً سبز وابسته است.

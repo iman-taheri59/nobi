@@ -2,6 +2,14 @@
 
 [English](CHANGELOG.en.md) · **فارسی**
 
+## 1.9.0
+
+- state machine فقط-Owner و قابل ادامه برای نصب کامل سرور از مرورگر افزوده شد.
+- preflight بدون mutation برای سیستم‌عامل، سطح دسترسی، Python، دیسک، مسیرها، پورت‌ها، helper، systemd و nginx اضافه شد.
+- helper دارای protocol version و allowlist دقیق action/argv با مسیر ثابت، نوشتن atomic، backup، validation، restart/reload و rollback افزوده شد.
+- خروجی محدود و redacted، lock mutation، تأیید عملیات حساس، تاریخچه پایدار، UI دوزبانه و تست‌های امنیتی اضافه شد.
+- معامله واقعی همچنان disabled/dry-run است و ویزارد آن را فعال نمی‌کند.
+
 ## 1.8.0
 
 > سخت‌سازی عملیاتی پایش drift هوشمندی سیگنال.

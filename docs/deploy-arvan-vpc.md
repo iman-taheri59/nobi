@@ -288,3 +288,7 @@ sudo -u nobi /opt/nobi/.venv/bin/python /opt/nobi/scripts/check_deploy.py --publ
 - NAT Gateway: `https://docs.arvancloud.ir/fa/vpc/nat-gateway/`
 - شبکهٔ خصوصی قدیمی (متفاوت از VPC): `https://docs.arvancloud.ir/fa/cloud-server/network/private/`
 - فایروال ابرک: `https://docs.arvancloud.ir/fa/cloud-server/firewall/`
+
+## Browser installer helper (v1.9.0)
+
+Install `deploy/nobi-privileged-helper`, `deploy/nobi-helper-client`, and the exact-argv `deploy/nobi-helper.sudoers` as root-owned files, validate sudoers with `visudo -cf`, then run Host preflight from the owner Settings page. The web service itself must remain non-root. The helper accepts no shell text, wildcard argument, user path, package, or service name; restart/reload/rollback require explicit confirmation and never enable Live Mode.

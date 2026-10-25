@@ -2,7 +2,7 @@
 
 [فارسی](../fa/ADR-0035-ویزارد-نصب-و-مرکز-عملیات.md) · **English**
 
-**Status:** Accepted — W1 in 1.3.0 and W2 in 1.3.1 implemented; W3 pending
+**Status:** Accepted — W1 in 1.3.0 and W2 in 1.3.1 implemented; W3 complete; W3b completed in 1.9.0
 **Date:** 2026-10-25
 
 ## 2026-10-25 portability amendment

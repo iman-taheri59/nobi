@@ -2,7 +2,7 @@
 
 [فارسی](README.md) · **English**
 
-Working version: **1.8.0** · published tag: **v1.7.0**
+Working version: **1.9.0** · published tag: **v1.8.0**
 
 See [versioning and GitHub releases](docs/releases.en.md) for the rules on bumping
 the version, tagging and shipping the mobile file, and the

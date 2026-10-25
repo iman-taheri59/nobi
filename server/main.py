@@ -47,6 +47,7 @@ import gate_ledger
 import gates
 import identity
 import install_api
+import install_wizard
 import journal as signal_journal
 import live_api
 import nobitex_metadata
@@ -401,7 +402,7 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(
     title="nobiTrader",
-    version="1.8.0",
+    version="1.9.0",
     lifespan=lifespan,
 )
 
@@ -421,6 +422,7 @@ app.add_middleware(
 
 app.include_router(auth_api.router)
 app.include_router(setup_api.router)
+app.include_router(install_wizard.router)
 app.include_router(install_api.router)
 app.include_router(operations_api.router)
 app.include_router(live_api.router)

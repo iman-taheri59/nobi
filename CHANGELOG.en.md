@@ -2,6 +2,14 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 1.9.0
+
+- Added an owner-only, resumable browser server-installation state machine.
+- Added non-mutating host preflight for OS, privileges, Python, disk, paths, ports, helper, systemd, and nginx.
+- Added a protocol-versioned privileged helper with exact action/argv allowlists, fixed paths, atomic writes, backups, validation, restart/reload, and rollback.
+- Added bounded secret-redacted output, mutation locking, confirmation gates, persisted run history, bilingual UI, and security tests.
+- Live trading remains disabled/dry-run; the installer does not promote real trading.
+
 ## 1.8.0
 
 > Operational hardening for Signal Intelligence drift monitoring.
