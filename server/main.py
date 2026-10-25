@@ -2180,6 +2180,7 @@ class DriftRunBody(BaseModel):
     days: int = Field(default=30, ge=7, le=365)
     horizon: str = Field(default="H1", pattern="^H[123]$")
     config_hash: str | None = Field(default=None, max_length=128)
+    cohort_mode: str = Field(default="global", pattern=r"^(global|config|symbol|timeframe|regime|symbol\+timeframe|timeframe\+regime)$")
 
 
 class DriftScheduleBody(BaseModel):
@@ -2188,7 +2189,7 @@ class DriftScheduleBody(BaseModel):
     interval_s: int = Field(default=86400)
     window_days: int = Field(default=30, ge=7, le=365)
     horizon: str = Field(default="H1", pattern="^H[123]$")
-    cohort_mode: str = Field(default="global", pattern="^(global|config|symbol|timeframe|regime)$")
+    cohort_mode: str = Field(default="global", pattern=r"^(global|config|symbol|timeframe|regime|symbol\+timeframe|timeframe\+regime)$")
 
 
 class DriftReviewBody(BaseModel):
@@ -2229,6 +2230,17 @@ async def signal_drift_config_inventory(days: int = Query(30, ge=7, le=365)):
     return {"rows": signal_drift.config_inventory(days=days)}
 
 
+@app.get("/api/v1/signal-intelligence/drift/cohorts")
+async def signal_drift_cohorts(
+    mode: str = Query("global"), days: int = Query(30, ge=7, le=365),
+    limit: int = Query(100, ge=1, le=100),
+):
+    try:
+        return signal_drift.cohort_inventory(mode=mode, days=days, limit=limit)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
 @app.get("/api/v1/signal-intelligence/drift/runs")
 async def signal_drift_runs(limit: int = Query(50, ge=1, le=200)):
     return {"rows": signal_drift.list_runs(limit=limit)}
@@ -2248,8 +2260,8 @@ async def signal_drift_export(request: Request, run_id: int = Query(..., ge=1)):
 
 
 @app.get("/api/v1/signal-intelligence/drift/runs/{run_id}")
-async def signal_drift_detail(run_id: int):
-    result = signal_drift.detail(run_id)
+async def signal_drift_detail(run_id: int, cohort_key: str | None = Query(default=None, max_length=256)):
+    result = signal_drift.detail(run_id, cohort_key=cohort_key)
     if result is None:
         raise HTTPException(status_code=404, detail="drift run not found")
     return result
@@ -2263,6 +2275,7 @@ async def signal_drift_run(payload: DriftRunBody, request: Request):
             days=payload.days,
             horizon=payload.horizon,
             config_hash=payload.config_hash,
+            cohort_mode=payload.cohort_mode,
             actor=user.username,
         )
     except RuntimeError as exc:

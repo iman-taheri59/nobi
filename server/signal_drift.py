@@ -141,6 +141,33 @@ def psi(
     return round(score, 6), edges
 
 
+def psi_bins(baseline: list[float], current: list[float], edges: list[float]) -> list[dict[str, Any]]:
+    """Return auditable per-bin PSI contributions for charts and exports."""
+    if not baseline or not current:
+        return []
+    def counts(values: list[float]) -> list[int]:
+        result = [0] * (len(edges) + 1)
+        for value in values:
+            idx = 0
+            while idx < len(edges) and value > edges[idx]:
+                idx += 1
+            result[idx] += 1
+        return result
+    bc, cc = counts(baseline), counts(current)
+    rows: list[dict[str, Any]] = []
+    eps = 0.0001
+    for idx, (bn, cn) in enumerate(zip(bc, cc, strict=True)):
+        bp, cp = max(eps, bn / len(baseline)), max(eps, cn / len(current))
+        rows.append({
+            "index": idx, "lower": edges[idx - 1] if idx else None,
+            "upper": edges[idx] if idx < len(edges) else None,
+            "baseline_n": bn, "current_n": cn,
+            "baseline_pct": round(bp, 8), "current_pct": round(cp, 8),
+            "contribution": round((cp - bp) * math.log(cp / bp), 8),
+        })
+    return rows
+
+
 def _window_values(
     conn: sqlite3.Connection, start: int, end: int, horizon: str, config_hash: str | None
 ) -> list[float]:
@@ -194,10 +221,15 @@ def _scores(conn: sqlite3.Connection, start: int, end: int, config_hash: str | N
 
 
 def run(
-    *, days: int, horizon: str, actor: str, config_hash: str | None = None, now: int | None = None
+    *, days: int, horizon: str, actor: str, config_hash: str | None = None,
+    cohort_mode: str = "global", now: int | None = None
 ) -> dict[str, Any]:
+    if cohort_mode not in COHORT_DIMENSIONS:
+        raise ValueError("unsupported cohort mode")
     now = int(time.time()) if now is None else now
     current_start, baseline_start = now - days * 86400, now - 2 * days * 86400
+    cohort_rows = (cohort_inventory(mode=cohort_mode, days=days, now=now)["rows"]
+                   if cohort_mode != "global" else [])
     with journal.connect() as conn:
         ensure(conn)
         conn.execute(
@@ -221,7 +253,7 @@ def run(
                 baseline_start,
                 current_start,
                 horizon,
-                json.dumps({"config_hash": config_hash}),
+                json.dumps({"config_hash": config_hash, "cohort_mode": cohort_mode}),
                 ENGINE_VERSION,
                 "benjamini-hochberg",
                 json.dumps(THRESHOLDS, sort_keys=True),
@@ -277,6 +309,7 @@ def run(
                 "p": 1.0,
                 "minimum": THRESHOLDS["psi_min"],
                 "edges": edges,
+                "bins": psi_bins(bs, cs, edges),
             }
         )
         bp = _pipeline(conn, baseline_start, current_start, config_hash)
@@ -305,6 +338,50 @@ def run(
                     "minimum": THRESHOLDS["pipeline_min"],
                 }
             )
+        # Cohort statistics share one BH correction family with global findings.
+        # Pipeline findings stay global unless every candidate can be assigned to
+        # the requested dimension; this avoids silently dropping blocked rows.
+        if cohort_mode != "global":
+            for cohort in cohort_rows:
+                if cohort["status"] != "comparable":
+                    continue
+                key = str(cohort["cohort_key"])
+                dims = COHORT_DIMENSIONS[cohort_mode]
+                values = key.split("|")
+                clauses = [f"coalesce(nullif(s.{dim},''),'unknown')=?" for dim in dims]
+                where = " AND " + " AND ".join(clauses)
+                params = values
+                def outcomes(start: int, end: int, where: str = where, params: tuple[str, ...] = tuple(params)) -> list[float]:
+                    return [float(row[0]) for row in conn.execute(
+                        "SELECT o.r_multiple FROM signal_log s JOIN signal_outcomes o ON o.signal_id=s.id "
+                        "WHERE o.horizon_key=? AND s.ts>=? AND s.ts<? AND s.voided_at IS NULL "
+                        "AND o.resolved_at IS NOT NULL AND o.r_multiple IS NOT NULL" + where,
+                        [horizon, start, end, *params],
+                    )]
+                def scores(start: int, end: int, where: str = where, params: tuple[str, ...] = tuple(params)) -> list[float]:
+                    return [float(row[0]) for row in conn.execute(
+                        "SELECT s.composite FROM signal_log s WHERE s.ts>=? AND s.ts<? "
+                        "AND s.composite IS NOT NULL" + where, [start, end, *params]
+                    )]
+                cb, cc = outcomes(baseline_start, current_start), outcomes(current_start, now)
+                md, mci, mp = mean_difference(cb, cc)
+                findings.append({"cohort_key": key, "metric": "expectancy_r", "bn": len(cb),
+                    "cn": len(cc), "bv": sum(cb)/len(cb) if cb else None,
+                    "cv": sum(cc)/len(cc) if cc else None, "delta": md, "ci": mci,
+                    "p": mp, "minimum": THRESHOLDS["performance_min"]})
+                cbw, ccw = sum(x > 0 for x in cb), sum(x > 0 for x in cc)
+                pd, pp = proportion_test(cbw, len(cb), ccw, len(cc))
+                findings.append({"cohort_key": key, "metric": "win_rate", "bn": len(cb),
+                    "cn": len(cc), "bv": cbw/len(cb) if cb else None,
+                    "cv": ccw/len(cc) if cc else None, "delta": pd, "ci": None,
+                    "p": pp, "minimum": THRESHOLDS["performance_min"]})
+                sb, sc = scores(baseline_start, current_start), scores(current_start, now)
+                sp, sedges = psi(sb, sc)
+                findings.append({"cohort_key": key, "metric": "composite_psi", "bn": len(sb),
+                    "cn": len(sc), "bv": 0.0, "cv": sp, "delta": sp, "ci": None,
+                    "p": 1.0, "minimum": THRESHOLDS["psi_min"], "edges": sedges,
+                    "bins": psi_bins(sb, sc, sedges)})
+
         statistical = [i for i, f in enumerate(findings) if f["metric"] != "composite_psi"]
         adjusted = bh_adjust([findings[i]["p"] for i in statistical])
         q_by_index = dict(zip(statistical, adjusted, strict=True))
@@ -333,7 +410,7 @@ def run(
                    suppression_reason,evidence) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
                     run_id,
-                    config_hash or "all",
+                    finding.get("cohort_key", config_hash or "all"),
                     finding["metric"],
                     finding["bn"],
                     finding["cn"],
@@ -346,13 +423,13 @@ def run(
                     q,
                     severity,
                     suppression,
-                    json.dumps({"edges": finding.get("edges", [])}),
+                    json.dumps({"edges": finding.get("edges", []), "bins": finding.get("bins", [])}),
                 ),
             )
         overall = (
             "alert"
             if "alert" in severities
-            else ("watch" if "watch" in severities else "completed")
+            else ("watch" if "watch" in severities else "stable")
         )
         conn.execute(
             "UPDATE drift_runs SET status=?,completed_at=? WHERE id=?", (overall, now, run_id)
@@ -361,7 +438,7 @@ def run(
     return detail(run_id) or {}
 
 
-def detail(run_id: int) -> dict[str, Any] | None:
+def detail(run_id: int, *, cohort_key: str | None = None) -> dict[str, Any] | None:
     with journal.connect() as conn:
         ensure(conn)
         run_row = conn.execute("SELECT * FROM drift_runs WHERE id=?", (run_id,)).fetchone()
@@ -370,7 +447,10 @@ def detail(run_id: int) -> dict[str, Any] | None:
         rows = [
             dict(r)
             for r in conn.execute(
-                "SELECT * FROM drift_findings WHERE run_id=? ORDER BY id", (run_id,)
+                "SELECT * FROM drift_findings WHERE run_id=?"
+                + (" AND cohort_key=?" if cohort_key is not None else "")
+                + " ORDER BY id",
+                ((run_id, cohort_key) if cohort_key is not None else (run_id,)),
             )
         ]
     return {"run": dict(run_row), "findings": rows}
@@ -451,7 +531,7 @@ def update_schedule(
         raise ValueError("interval_s must be 21600, 43200, or 86400")
     if not 7 <= window_days <= 365 or horizon not in {"H1", "H2", "H3"}:
         raise ValueError("invalid drift schedule window or horizon")
-    if cohort_mode not in {"global", "config", "symbol", "timeframe", "regime"}:
+    if cohort_mode not in COHORT_DIMENSIONS:
         raise ValueError("unsupported cohort mode")
     now = int(time.time()) if now is None else now
     with journal.connect() as conn:
@@ -481,7 +561,8 @@ def run_due(*, now: int | None = None) -> dict[str, Any] | None:
         return None
     try:
         result = run(
-            days=int(cfg["window_days"]), horizon=str(cfg["horizon"]), actor="scheduler", now=now
+            days=int(cfg["window_days"]), horizon=str(cfg["horizon"]), actor="scheduler",
+            cohort_mode=str(cfg["cohort_mode"]), now=now
         )
         error = None
     except Exception as exc:
@@ -513,7 +594,10 @@ def config_inventory(*, days: int = 30, now: int | None = None) -> list[dict[str
     for row in rows:
         item = dict(row)
         item["status"] = (
-            "new-in-current"
+            "not-comparable"
+            if item["baseline_signals"] and item["current_signals"]
+            and min(item["baseline_signals"], item["current_signals"]) < THRESHOLDS["performance_min"]
+            else "new-in-current"
             if not item["baseline_signals"]
             else "missing-in-current"
             if not item["current_signals"]
@@ -521,6 +605,72 @@ def config_inventory(*, days: int = 30, now: int | None = None) -> list[dict[str
         )
         result.append(item)
     return result
+
+
+COHORT_DIMENSIONS: dict[str, tuple[str, ...]] = {
+    "global": (),
+    "config": ("config_hash",),
+    "symbol": ("symbol",),
+    "timeframe": ("timeframe",),
+    "regime": ("regime",),
+    "symbol+timeframe": ("symbol", "timeframe"),
+    "timeframe+regime": ("timeframe", "regime"),
+}
+MAX_COHORTS = 100
+
+
+def cohort_inventory(
+    *, mode: str, days: int = 30, now: int | None = None, limit: int = MAX_COHORTS
+) -> dict[str, Any]:
+    """Return bounded, allowlisted cohort populations for baseline/current windows.
+
+    This endpoint deliberately reports population and comparability only. Statistical
+    findings remain immutable run evidence and are never inferred from inventory rows.
+    """
+    if mode not in COHORT_DIMENSIONS:
+        raise ValueError("unsupported cohort mode")
+    if not 7 <= days <= 365:
+        raise ValueError("days must be between 7 and 365")
+    if not 1 <= limit <= MAX_COHORTS:
+        raise ValueError(f"limit must be between 1 and {MAX_COHORTS}")
+    now = int(time.time()) if now is None else now
+    current_start, baseline_start = now - days * 86400, now - 2 * days * 86400
+    dimensions = COHORT_DIMENSIONS[mode]
+    if not dimensions:
+        select, group = "'global' AS cohort_key", ""
+    else:
+        normalized = [f"coalesce(nullif({column},''),'unknown')" for column in dimensions]
+        select = " || '|' || ".join(normalized) + " AS cohort_key"
+        group = " GROUP BY " + ",".join(normalized)
+    query = (
+        f"SELECT {select},"
+        " sum(CASE WHEN ts>=? THEN 1 ELSE 0 END) current_n,"
+        " sum(CASE WHEN ts<? THEN 1 ELSE 0 END) baseline_n"
+        " FROM signal_log WHERE ts>=? AND ts<?" + group
+        + " ORDER BY (current_n+baseline_n) DESC,cohort_key LIMIT ?"
+    )
+    with journal.connect() as conn:
+        ensure(conn)
+        rows = conn.execute(query, (current_start, current_start, baseline_start, now, limit + 1)).fetchall()
+    truncated = len(rows) > limit
+    output = []
+    for row in rows[:limit]:
+        item = dict(row)
+        minimum = THRESHOLDS["performance_min"]
+        item["mode"] = mode
+        item["dimensions"] = dict(zip(dimensions, str(item["cohort_key"]).split("|"), strict=True))
+        item["status"] = (
+            "missing-in-current" if not item["current_n"]
+            else "new-in-current" if not item["baseline_n"]
+            else "comparable" if min(item["baseline_n"], item["current_n"]) >= minimum
+            else "not-comparable"
+        )
+        item["suppression_reason"] = None if item["status"] == "comparable" else "sample-low"
+        output.append(item)
+    return {
+        "mode": mode, "dimensions": list(dimensions), "rows": output,
+        "limit": limit, "truncated": truncated, "minimum": THRESHOLDS["performance_min"],
+    }
 
 
 def review(finding_id: int, *, user_id: int, username: str, tag: str, note: str) -> dict[str, Any]:

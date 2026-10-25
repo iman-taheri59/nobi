@@ -98,3 +98,24 @@ mobile artifact: rebuilt for 1.6.0
 3. run the real five-day/30-sample paper soak on an Iran-reachable host;
 4. run the limited private API contract test with an IP-limited key;
 5. complete an independent security review before real funds.
+
+## Stage 33 — Drift PSI evidence detail
+- Added persisted per-bin PSI counts, proportions, bounds, and contributions.
+- Added exact optional `cohort_key` filtering to drift run detail.
+- Config inventory now distinguishes overlapping low-sample configurations as `not-comparable`.
+- Release remains blocked until the remaining multidimensional cohort/UI scope is complete and the final gate is green.
+
+## Stage 34 — bounded cohort inventory
+- Added `/api/v1/signal-intelligence/drift/cohorts` with allowlisted single and limited combined dimensions.
+- Cardinality is capped at 100 with explicit `truncated`; low samples are `not-comparable` and suppressed.
+- Statistical cohort findings and their UI remain the next implementation stage; release is still blocked.
+
+## Stage 35 — Drift operator UI
+- Added bilingual PSI-bin chart, cohort population table, run CSV export, and scheduler controls.
+- Scheduler mutation uses the authenticated CSRF headers and remains server-enforced owner-only.
+- Standalone was regenerated; full Python and static/UI gates passed locally (`983 passed`).
+
+## Stage 36 — cohort statistical evidence
+- Drift runs accept an allowlisted cohort mode and persist expectancy, win-rate, and PSI per comparable cohort.
+- Global and cohort hypothesis tests use one BH correction family; PSI bins remain auditable.
+- Neutral successful runs now aggregate to `stable`; full local gate passed with `984 passed`.

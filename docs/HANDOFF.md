@@ -98,3 +98,24 @@ mobile artifact: rebuilt for 1.6.0
 3. soak واقعی پنج‌روزه/۳۰ نمونه‌ای Paper روی میزبان قابل‌دسترسی Nobitex اجرا شود؛
 4. contract test محدود API خصوصی با کلید IP-limited اجرا شود؛
 5. پیش از سرمایه واقعی بازبینی امنیتی مستقل تکمیل شود.
+
+## Stage 33 — Drift PSI evidence detail
+- Added persisted per-bin PSI counts, proportions, bounds, and contributions.
+- Added exact optional `cohort_key` filtering to drift run detail.
+- Config inventory now distinguishes overlapping low-sample configurations as `not-comparable`.
+- Release remains blocked until the remaining multidimensional cohort/UI scope is complete and the final gate is green.
+
+## مرحله ۳۴ — موجودی محدود cohort
+- مسیر `/api/v1/signal-intelligence/drift/cohorts` با ابعاد تکی و ترکیب‌های محدود و مجاز افزوده شد.
+- cardinality حداکثر ۱۰۰ است و `truncated` صریح دارد؛ نمونه کم `not-comparable` و سرکوب می‌شود.
+- یافته‌های آماری cohort و UI آن مرحله بعد است؛ انتشار همچنان مسدود است.
+
+## مرحله ۳۵ — رابط عملیاتی Drift
+- نمودار دوزبانه binهای PSI، جدول جمعیت cohort، خروجی CSV و کنترل‌های زمان‌بند افزوده شد.
+- mutation زمان‌بند از headerهای احراز هویت و CSRF استفاده می‌کند و در سرور فقط Owner مجاز است.
+- standalone دوباره تولید شد و gate کامل Python و UI محلی موفق بود (`983 passed`).
+
+## مرحله ۳۶ — شواهد آماری cohort
+- اجرای Drift حالت cohort مجاز می‌پذیرد و expectancy، win-rate و PSI هر cohort قابل مقایسه را ذخیره می‌کند.
+- آزمون‌های global و cohort یک خانواده اصلاح BH دارند و binهای PSI قابل ممیزی هستند.
+- اجرای موفق خنثی اکنون `stable` است؛ full gate محلی با `984 passed` موفق شد.
