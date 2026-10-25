@@ -74,3 +74,4 @@
 | 0037 | **helper محدود و بازیابی مالک** | پذیرفته — W3b در ۱٫۳٫۳ | backup/restore و systemd/nginx/restart با مرز privilege |
 | 0038 | **ثبت سفارش واقعی مالک** | پذیرفته — کد ۱٫۴٫۰؛ فعال‌سازی منتظر soak | owner+CSRF، promotion gate، preflight و idempotency |
 | 0039 | **تب مدیریت کاربران** | پذیرفته — ۱٫۴٫۱ | مدیریت حساب/نشست/دعوت و activity فقط-owner |
+| 0040 | **خطایابی سیستم فقط مالک** | پذیرفته — ۱٫۴٫۲ | error log، diagnostics و devsuite با owner+CSRF |

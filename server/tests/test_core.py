@@ -394,7 +394,7 @@ def test_mutations_are_loopback_only_without_a_token(monkeypatch):
     # only showed up as "some other test says the account is halted". Any
     # guarded mutation exercises the same guard; pick one with no residue.
     r = c.post("/api/errors/clear")
-    assert r.status_code in (200, 500)  # handler may fail on missing broker, not on auth
+    assert r.status_code == 401  # troubleshooting controls require an owner session
 
 
 def test_remote_mutation_is_rejected_without_a_token(monkeypatch):
@@ -1228,9 +1228,16 @@ def test_errorlog_captures_logging_and_survives_a_failing_store(monkeypatch):
     assert errorlog.recent(limit=5), "the in-memory ring must still answer"
 
 
-def test_errorlog_endpoints_are_wired_and_bounded():
+def test_errorlog_endpoints_are_wired_and_bounded(monkeypatch, tmp_path):
+    import auth
 
+    monkeypatch.setattr(auth, "AUTH_DB", tmp_path / "auth.db")
+    auth.reset_caches()
+    auth.create_user("error-owner", "A-strong-owner-password!", role="owner")
     client = _client()
+    login = client.post("/api/auth/login", json={
+        "username": "error-owner", "password": "A-strong-owner-password!"})
+    csrf = login.cookies.get("nbx_csrf") or client.cookies.get("nbx_csrf") or ""
     r = client.get("/api/errors?limit=5")
     assert r.status_code == 200
     body = r.json()
@@ -1240,11 +1247,12 @@ def test_errorlog_endpoints_are_wired_and_bounded():
     # a bad level is rejected rather than silently ignored
     assert client.get("/api/errors?level=nonsense").status_code == 422
 
-    st = client.post("/api/errors/selftest").json()
+    st = client.post("/api/errors/selftest", headers={"X-CSRF-Token": csrf}).json()
     assert st["readable"] is True and st["total_after"] >= st["total_before"]
 
     reported = client.post("/api/errors", json={"message": "chart threw",
-                                                "source": "js", "stack": "at x"}).json()
+                                                "source": "js", "stack": "at x"},
+                           headers={"X-CSRF-Token": csrf}).json()
     assert reported["ok"] and reported["id"]
     names = {e["source"] for e in client.get("/api/errors?limit=50").json()["errors"]}
     assert any(n.startswith("client.") for n in names)

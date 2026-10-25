@@ -2,6 +2,16 @@
 
 [English](CHANGELOG.en.md) · **فارسی**
 
+## 1.4.2
+
+> تب خطایابی سیستم و تمام داده‌ها/کنترل‌های آن فقط برای owner شد.
+
+- navigation خطایابی فقط برای session مالک نمایش داده می‌شود.
+- error log، diagnostics و devsuite در backend نیز owner-only هستند.
+- عملیات run/clear/self-test به owner+CSRF نیاز دارند.
+- viewer/operator پاسخ 403 و anonymous/bearer token پاسخ 401 می‌گیرند.
+- endpoint دریافت خودکار گزارش مرورگر حفظ شد؛ مشاهده و حذف آن فقط مالک است.
+
 ## 1.4.1
 
 > تب مستقل مدیریت کاربران و فعالیت‌ها فقط برای owner.

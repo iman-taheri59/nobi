@@ -380,7 +380,7 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(
     title="nobiTrader",
-    version="1.4.1",
+    version="1.4.2",
     lifespan=lifespan,
 )
 
@@ -1905,7 +1905,7 @@ async def _unhandled(request: Request, exc: Exception):
                                  "message": row.get("message")})
 
 
-@app.get("/api/errors")
+@app.get("/api/errors", dependencies=[Depends(install_api.require_owner)])
 async def errors_index(limit: int = Query(100, ge=1, le=500),
                        level: str | None = Query(None, pattern="^(debug|info|warning|error|critical)$"),
                        source: str | None = None,
@@ -1942,7 +1942,7 @@ async def errors_report(payload: dict, request: Request):
     return {"ok": True, "id": row["id"]}
 
 
-@app.post("/api/errors/clear", dependencies=[Depends(require_client)])
+@app.post("/api/errors/clear", dependencies=[Depends(install_api.require_owner_mutation)])
 async def errors_clear(request: Request):
     """Wipe the log. Clearing evidence is itself a control action, so it is
     audited — otherwise "there were no errors" would be unfalsifiable."""
@@ -1951,7 +1951,7 @@ async def errors_clear(request: Request):
     return {"ok": True, "removed": removed, "audit_id": audit_id}
 
 
-@app.post("/api/errors/selftest", dependencies=[Depends(require_client)])
+@app.post("/api/errors/selftest", dependencies=[Depends(install_api.require_owner_mutation)])
 async def errors_selftest():
     """Prove the log can write and read back — a log that is silently dead is
     worse than none, because its emptiness looks like health."""
@@ -1994,14 +1994,14 @@ def _diag_ctx() -> diagnostics.Ctx:
     )
 
 
-@app.get("/api/diagnostics")
+@app.get("/api/diagnostics", dependencies=[Depends(install_api.require_owner)])
 async def diagnostics_catalogue():
     """What can be checked, before anything has been checked."""
     ok, why = devsuite.available()
     return {"checks": diagnostics.catalogue(), "devsuite": {"available": ok, "reason": why}}
 
 
-@app.post("/api/diagnostics/run", dependencies=[Depends(require_client)])
+@app.post("/api/diagnostics/run", dependencies=[Depends(install_api.require_owner_mutation)])
 async def diagnostics_run(body: dict | None = None):
     """Run every check (or the named ones) and return what was observed.
 

@@ -2,6 +2,16 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 1.4.2
+
+> The System Troubleshooting tab and all its data/controls are now owner-only.
+
+- Troubleshooting navigation appears only for an owner session.
+- Error logs, diagnostics and devsuite are independently owner-only in the backend.
+- Run/clear/self-test mutations require owner+CSRF.
+- Viewer/operators receive 403 and anonymous/bearer tokens receive 401.
+- Automatic browser error ingestion remains; only owners can read or delete reports.
+
 ## 1.4.1
 
 > Dedicated owner-only user management and activity tab.

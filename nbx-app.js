@@ -1486,8 +1486,9 @@
     const who = $('setAccessWho');
     if (!box || !body) return;
     const st = await AUTH.me();
-    const usersNav = $('usersNav');
+    const usersNav = $('usersNav'), errorsNav = $('errorsNav');
     if (usersNav) usersNav.classList.toggle('hidden', !(st && st.is_owner));
+    if (errorsNav) errorsNav.classList.toggle('hidden', !(st && st.is_owner));
     if (!st || !st.user || !st.is_owner) { box.hidden = true; return; }
     box.hidden = false;
     if (who) who.textContent = st.user.username + ' · ' + roleLabel(st.user.role);
