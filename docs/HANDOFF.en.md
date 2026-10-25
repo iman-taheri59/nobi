@@ -2,8 +2,8 @@
 
 [فارسی](HANDOFF.md) · **English**
 
-**Last updated:** 2026-10-25 — stage 17 (owner-only system troubleshooting)
-**Working version:** 1.4.2
+**Last updated:** 2026-10-25 — stage 18 (troubleshooting audit and UX hardening)
+**Working version:** 1.4.3
 **Target:** ADR-0027; stable product first, then staged fail-closed live execution.
 
 ## Status
@@ -27,6 +27,7 @@
 - [ ] Run the real 5-day/30-sample soak; do not enable live mode before it passes.
 - [x] Dedicated owner-only users tab for roles/state/sessions/invites and activity.
 - [x] Owner-only troubleshooting tab, error logs, diagnostics and devsuite; mutations require CSRF.
+- [x] Secret-free summary audit for self-test, diagnostics and devsuite; explicit owner-only chip.
 - [ ] Real soak/private contract test; requires an Iran-reachable host and IP-limited READ/TRADE key.
 - [ ] Independent security review before real funds.
 
@@ -52,7 +53,7 @@
 ```text
 ruff: passed
 mypy: success, 108 source files
-pytest: 943 passed, 1 dependency deprecation warning
+pytest: 944 passed, 1 dependency deprecation warning
 ESLint/dashboard lint: passed
 broker/preflight parity: passed
 mobile artifact: rebuilt for 1.2.3

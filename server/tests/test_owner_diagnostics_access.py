@@ -12,11 +12,28 @@ import security
 
 def test_owner_can_read_errors_and_diagnostics(monkeypatch, tmp_path):
     client, csrf = _owner_client(monkeypatch, tmp_path)
+    audited = []
+
+    def audit_spy(action, **kwargs):
+        audited.append(action)
+        return 1
+
+    monkeypatch.setattr(main, "audit", audit_spy)
     with client:
         errors = client.get("/api/errors?limit=5")
         diagnostics = client.get("/api/diagnostics")
         selftest = client.post("/api/errors/selftest", headers={"X-CSRF-Token": csrf})
     assert errors.status_code == diagnostics.status_code == selftest.status_code == 200
+    assert audited == ["errors.selftest"]
+
+
+def test_owner_troubleshooting_mutations_require_csrf(monkeypatch, tmp_path):
+    client, _csrf = _owner_client(monkeypatch, tmp_path)
+    with client:
+        assert client.post("/api/errors/selftest").status_code == 403
+        assert client.post("/api/errors/clear").status_code == 403
+        assert client.post("/api/diagnostics/run", json={"only": ["storage"]}).status_code == 403
+        assert client.post("/api/devsuite/run", json={"gates": ["ruff"]}).status_code == 403
 
 
 def test_operator_cannot_open_troubleshooting_apis(monkeypatch, tmp_path):

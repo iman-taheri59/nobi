@@ -12,6 +12,7 @@
 - Running diagnostics, clearing logs, self-test and devsuite execution additionally require valid CSRF.
 - Viewer/operators receive 403; anonymous and bearer API-token requests receive 401. DOM manipulation cannot bypass backend enforcement.
 - `POST /api/errors` remains under general authenticated error-reporting controls so browsers can report failures, while reading or deleting reports is owner-only.
+- In 1.4.3, self-test, diagnostics and devsuite runs append secret-free summaries to the central audit log; the tab header also makes the owner-only boundary explicit.
 
 ## Rationale
 

@@ -2,6 +2,15 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 1.4.3
+
+> Traceability and UX hardening after making troubleshooting owner-only.
+
+- An explicit Owner-only chip was added to the tab header.
+- Error self-test, diagnostics and devsuite execution now append central audit events.
+- Audit stores only run id, gate names, check count and summary result; no output or secret.
+- Tests pin CSRF on every troubleshooting mutation and self-test audit creation.
+
 ## 1.4.2
 
 > The System Troubleshooting tab and all its data/controls are now owner-only.

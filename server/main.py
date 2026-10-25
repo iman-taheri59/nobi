@@ -380,7 +380,7 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(
     title="nobiTrader",
-    version="1.4.2",
+    version="1.4.3",
     lifespan=lifespan,
 )
 
@@ -1952,10 +1952,14 @@ async def errors_clear(request: Request):
 
 
 @app.post("/api/errors/selftest", dependencies=[Depends(install_api.require_owner_mutation)])
-async def errors_selftest():
+async def errors_selftest(request: Request):
     """Prove the log can write and read back — a log that is silently dead is
     worse than none, because its emptiness looks like health."""
-    return errorlog.self_test()
+    result = errorlog.self_test()
+    audit("errors.selftest", actor="owner", detail={
+        "readable": result.get("readable"), "writable": result.get("writable"),
+    }, request=request)
+    return result
 
 
 # ---------------- Diagnostics: "is this process healthy right now?" --------
@@ -2002,7 +2006,7 @@ async def diagnostics_catalogue():
 
 
 @app.post("/api/diagnostics/run", dependencies=[Depends(install_api.require_owner_mutation)])
-async def diagnostics_run(body: dict | None = None):
+async def diagnostics_run(request: Request, body: dict | None = None):
     """Run every check (or the named ones) and return what was observed.
 
     Synchronous on purpose: the slow checks are three HTTP calls to the
@@ -2014,7 +2018,11 @@ async def diagnostics_run(body: dict | None = None):
     if only is not None and not isinstance(only, list):
         raise HTTPException(status_code=400, detail="`only` must be a list of check ids")
     try:
-        return await diagnostics.run(_diag_ctx(), only=only, kinds=kinds)
+        result = await diagnostics.run(_diag_ctx(), only=only, kinds=kinds)
+        audit("diagnostics.run", actor="owner", detail={
+            "overall": result.get("overall"), "checks": len(result.get("results", [])),
+        }, request=request)
+        return result
     except KeyError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
 
@@ -2026,7 +2034,7 @@ async def devsuite_status():
 
 
 @app.post("/api/devsuite/run", dependencies=[Depends(install_api.require_owner_mutation)])
-async def devsuite_run(body: dict | None = None):
+async def devsuite_run(request: Request, body: dict | None = None):
     gates = (body or {}).get("gates") or None
     try:
         run = await devsuite.start(gates)
@@ -2037,6 +2045,9 @@ async def devsuite_run(body: dict | None = None):
         raise HTTPException(status_code=503, detail=str(e)) from e
     except KeyError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
+    audit("devsuite.run", actor="owner", detail={
+        "run_id": run.id, "gates": list(run.gates),
+    }, request=request)
     return {"run_id": run.id, "state": run.state}
 
 

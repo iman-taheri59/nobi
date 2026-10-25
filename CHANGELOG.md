@@ -2,6 +2,15 @@
 
 [English](CHANGELOG.en.md) · **فارسی**
 
+## 1.4.3
+
+> تکمیل امنیت و قابلیت پیگیری تب خطایابی پس از owner-only شدن.
+
+- chip «فقط مالک» در header تب اضافه شد تا مرز دسترسی در UI صریح باشد.
+- اجرای error self-test، diagnostics و devsuite اکنون در audit مرکزی ثبت می‌شود.
+- audit فقط run id، نام gateها، شمار check و نتیجه خلاصه را نگه می‌دارد؛ output و secret ثبت نمی‌شود.
+- آزمون‌ها CSRF اجباری برای همه mutationهای خطایابی و ثبت audit self-test را قفل می‌کنند.
+
 ## 1.4.2
 
 > تب خطایابی سیستم و تمام داده‌ها/کنترل‌های آن فقط برای owner شد.

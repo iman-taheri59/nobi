@@ -2,8 +2,8 @@
 
 [English](HANDOFF.en.md) · **فارسی**
 
-**آخرین به‌روزرسانی:** ۲۰۲۶-۱۰-۲۵ — مرحله ۱۶ (تب کاربران و activity فقط-owner)
-**نسخه کاری:** ۱٫۴٫۱
+**آخرین به‌روزرسانی:** ۲۰۲۶-۱۰-۲۵ — مرحله ۱۸ (audit و UX تکمیلی خطایابی)
+**نسخه کاری:** ۱٫۴٫۳
 **هدف:** ADR-0027؛ ابتدا محصول پایدار، سپس اجرای واقعی مرحله‌ای و fail-closed.
 
 ## وضعیت
@@ -27,6 +27,7 @@
 - [ ] اجرای soak واقعی ۵روزه/۳۰نمونه؛ تا آن زمان live mode فعال نشود.
 - [x] تب مستقل کاربران با مدیریت نقش/وضعیت/نشست/دعوت و activity فقط-owner.
 - [x] تب خطایابی، error log، diagnostics و devsuite فقط-owner؛ mutationها با CSRF.
+- [x] audit خلاصه و بدون secret برای self-test، diagnostics و devsuite؛ chip صریح owner-only.
 - [ ] soak واقعی و contract test خصوصی؛ نیازمند محیط ایران و کلید READ/TRADE محدود به IP.
 - [ ] بازبینی امنیتی مستقل پیش از سرمایه واقعی.
 
@@ -52,7 +53,7 @@
 ```text
 ruff: passed
 mypy: success, 108 source files
-pytest: 943 passed, 1 dependency deprecation warning
+pytest: 944 passed, 1 dependency deprecation warning
 ESLint/dashboard lint: passed
 broker/preflight parity: passed
 mobile artifact: rebuilt for 1.2.3
