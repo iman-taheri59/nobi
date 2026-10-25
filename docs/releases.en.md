@@ -2,7 +2,7 @@
 
 [فارسی](releases.md) · **English**
 
-The current version is **1.6.6**; the previously published tag is **v1.6.5**, and authenticated jsdom sessions will ship as **v1.6.6**.
+The current version is **1.6.7**; the previously published tag is **v1.6.6**, and the runtime-artifact cleanup will ship as **v1.6.7**.
 `VERSION` is the source of truth for the release number; the tag name is exactly `v`
 plus that number.
 

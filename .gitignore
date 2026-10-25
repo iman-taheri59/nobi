@@ -47,3 +47,8 @@ htmlcov/
 
 # Display-only provider metadata and downloaded logos
 server/coin_cache/
+server/live_execution.db
+server/live_execution.db-wal
+server/live_execution.db-shm
+server/setup.token
+server/operations-audit.jsonl

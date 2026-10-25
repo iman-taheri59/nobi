@@ -2,6 +2,12 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 1.6.7
+
+> Remove an accidentally staged empty runtime database from the 1.6.6 source tree.
+
+- Runtime live databases, setup tokens and operations audit files are now explicitly ignored; no credential or live order existed in the removed empty fixture.
+
 ## 1.6.6
 
 > Run both UI harnesses through the real authenticated session contract.
