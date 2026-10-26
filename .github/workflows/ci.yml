@@ -75,9 +75,11 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
+      # jsdom 30 pulls undici 8, which needs zlib.createZstdDecompress.
+      # That only exists on Node >= 22.22.2; 24 is the supported LTS.
       - uses: actions/setup-node@v7
         with:
-          node-version: "20"
+          node-version: "24"
           cache: npm
       - uses: actions/setup-python@v7
         with:
@@ -123,7 +125,7 @@ jobs:
           cache: pip
       - uses: actions/setup-node@v7
         with:
-          node-version: "20"
+          node-version: "24"
           cache: npm
       - run: pip install -r server/requirements-dev.txt
       - run: npm ci --no-fund   # jsdom, for the smoke test
