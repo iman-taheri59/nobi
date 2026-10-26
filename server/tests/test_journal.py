@@ -610,6 +610,14 @@ def test_signal_path_reports_why_it_is_empty():
     assert J.signal_path(old, [], "15m")["reason"] == "no-candles"
 
 
+def test_epoch_seconds_is_independent_of_the_pandas_datetime_unit():
+    """pandas 3 infers [us] where pandas 2 used [ns]; both must give seconds."""
+    base = np.arange(3) * 900
+    for unit, mult in (("s", 1), ("ms", 10**3), ("us", 10**6), ("ns", 10**9)):
+        series = pd.to_datetime(base * mult, unit=unit, utc=True)
+        assert J.epoch_seconds(series) == [0, 900, 1800], unit
+
+
 def test_exit_ts_is_stored_in_seconds_not_nanoseconds():
     """datetime64 -> int() silently yields nanoseconds; that is what shipped.
 
