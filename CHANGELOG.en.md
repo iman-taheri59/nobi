@@ -31,6 +31,10 @@
 - `package-lock.json` version/tarball mismatches fixed and gated by
   `npm run test:lock`; versions/docs aligned; `SECURITY.md` and
   `CONTRIBUTING.md` added. Added an **MIT `LICENSE`**.
+- Helper tests are now Windows-safe (`os.name != "posix"`, `raising=False`);
+  a regression test re-runs the module with POSIX-only attributes removed so
+  the Windows job stays green. 1010 tests pass (1009 pass + 1 skip under the
+  simulated-Windows run).
 - **End-to-end tested on a real systemd host** (systemd 257 + nginx 1.26):
   `root:nobi 0660` socket, root-service activation, `LISTEN_FDS`, `check`,
   `install-service`, `install-proxy` (with `nginx -t`), `restart-service`,

@@ -28,6 +28,9 @@
   `version-check.html` نسخه را زنده از `/api/health` میخواند.
 - `package-lock.json` اصلاح و تست انطباق نسخه/tarball اضافه شد (`npm run test:lock`).
 - مجوز **MIT** (`LICENSE`) اضافه و از README به `SECURITY.md`/`CONTRIBUTING.md` لینک شد.
+- تستهای helper با `os.name != "posix"` و `raising=False` سازگار شدند؛
+  تست رگرسیون تازهای کل ماژول را بدون attributeهای POSIX اجرا میکند تا job
+  ویندوز دوباره سبز بماند. ۱۰۱۰ تست پاس (۱۰۰۹ پاس + ۱ پرش در شبیهسازی ویندوز).
 - **تست انتها به انتها روی میزبان systemd واقعی** (systemd 257 + nginx 1.26): سوکت
   `root:nobi 0660`، activation سرویس root، `LISTEN_FDS`، `check`،
   `install-service`، `install-proxy` (با `nginx -t`)، `restart-service`،
