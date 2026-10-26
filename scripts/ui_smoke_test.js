@@ -17,7 +17,17 @@ let JSDOM, VirtualConsole, CookieJar;
 try {
   ({ JSDOM, VirtualConsole, CookieJar } = require('jsdom'));
 } catch (e) {
-  ({ JSDOM, VirtualConsole, CookieJar } = require('/tmp/node_modules/jsdom'));
+  // The /tmp fallback keeps older checkouts working, where the install lived
+  // outside the repo. jsdom >= 30 needs Node >= 22.22.2 (undici 8 calls
+  // zlib.createZstdDecompress); on older Node the real failure is inside
+  // undici, but the fallback used to hide it behind a "module not found".
+  try {
+    ({ JSDOM, VirtualConsole, CookieJar } = require('/tmp/node_modules/jsdom'));
+  } catch {
+    throw new Error(
+      `jsdom could not be loaded (${e.message}). ` +
+      `jsdom 30 requires Node >= 22.22.2; this process is ${process.version}.`);
+  }
 }
 
 // Same default as ui_smoke_prep.py, on every platform.
@@ -88,7 +98,22 @@ window.fetch = async (u, o = {}) => {
   const headers = new globalThis.Headers(o.headers || {});
   const cookie = dom.cookieJar.getCookieStringSync(url);
   if (cookie) headers.set('cookie', cookie);
-  const response = await fetch(url, { ...o, headers });
+  const init = { ...o, headers };
+  // Node >= 22's undici requires `signal` to be an instance of *its own*
+  // AbortSignal. A signal created inside the jsdom window (AbortSignal.timeout,
+  // AbortController) lives in another realm and is rejected with
+  // "RequestInit: Expected signal ... to be an instance of AbortSignal" —
+  // which silently kills every timed request and leaves the page half-rendered.
+  // Bridge the foreign signal into a Node-realm controller instead of dropping
+  // it, so the page's own timeouts still apply.
+  if (init.signal && !(init.signal instanceof globalThis.AbortSignal)) {
+    const foreign = init.signal;
+    const bridge = new globalThis.AbortController();
+    if (foreign.aborted) bridge.abort(foreign.reason);
+    else foreign.addEventListener('abort', () => bridge.abort(foreign.reason), { once: true });
+    init.signal = bridge.signal;
+  }
+  const response = await fetch(url, init);
   const setCookies = typeof response.headers.getSetCookie === 'function'
     ? response.headers.getSetCookie() : [];
   for (const value of setCookies) dom.cookieJar.setCookieSync(value, url);
