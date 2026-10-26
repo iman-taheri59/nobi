@@ -17,8 +17,9 @@
     "test:lock": "node scripts/check_lockfile.cjs"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@tailwindcss/cli": "^4.3.3",
-    "eslint": "^9.39.5",
+    "eslint": "^10.13.0",
     "jsdom": "^26.0.0",
     "tailwindcss": "^4.3.3"
   },
