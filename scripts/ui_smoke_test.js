@@ -17,7 +17,17 @@ let JSDOM, VirtualConsole, CookieJar;
 try {
   ({ JSDOM, VirtualConsole, CookieJar } = require('jsdom'));
 } catch (e) {
-  ({ JSDOM, VirtualConsole, CookieJar } = require('/tmp/node_modules/jsdom'));
+  // The /tmp fallback keeps older checkouts working, where the install lived
+  // outside the repo. jsdom >= 30 needs Node >= 22.22.2 (undici 8 calls
+  // zlib.createZstdDecompress); on older Node the real failure is inside
+  // undici, but the fallback used to hide it behind a "module not found".
+  try {
+    ({ JSDOM, VirtualConsole, CookieJar } = require('/tmp/node_modules/jsdom'));
+  } catch {
+    throw new Error(
+      `jsdom could not be loaded (${e.message}). ` +
+      `jsdom 30 requires Node >= 22.22.2; this process is ${process.version}.`);
+  }
 }
 
 // Same default as ui_smoke_prep.py, on every platform.

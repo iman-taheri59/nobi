@@ -56,3 +56,10 @@ npm run build          # nobitex-mobile.html must not change afterwards
 - اگر استقرار/امنیت را لمس کردید، `docs/adr/` را بهروز کنید و دلیلش را بنویسید.
 - CI سبز شرط لازم است، نه کافی؛ ویژگیهای مرتبط با نصبگر سرور را روی یک ماشین
   واقعی Ubuntu تست کنید.
+
+## نود
+
+از آنجا که `jsdom 30` به Node **>= 22.22.2** نیاز دارد، CI و توسعهٔ محلی
+روی **Node 24** انجام میشوند (`setup-node@v7` در `.github/workflows/`).
+با Node 20، `undici 8` هنگام اجرای تستها با خطای
+`zlib.createZstdDecompress ... .bind` شکست میخورد.
