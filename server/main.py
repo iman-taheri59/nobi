@@ -2520,7 +2520,7 @@ async def journal_backfill(request: Request,
                 continue
             df = candles_to_df(rows)
             series = ta_score_series(df)
-            stamps = (df["t"].values.astype("int64") // 10**9).tolist()
+            stamps = signal_journal.epoch_seconds(df["t"])
             batch = []
             for i, snap in enumerate(series):
                 if snap is None:

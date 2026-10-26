@@ -44,6 +44,19 @@ from typing import Any
 
 import pandas as pd
 
+
+def epoch_seconds(values: Any) -> list[int]:
+    """Epoch **seconds** for candle timestamps, whatever pandas' datetime unit is.
+
+    pandas 2 always produced ``datetime64[ns]``; pandas 3 infers ``[us]`` (or
+    ``[s]``) instead. ``.astype("int64") // 10**9`` silently assumed
+    nanoseconds, so on pandas 3 every exit timestamp collapsed towards 1970
+    and the close-time index stopped matching any journal row. Normalising the
+    unit first keeps both versions — and tz-aware series — correct.
+    """
+    idx = pd.DatetimeIndex(pd.to_datetime(values, utc=True)).as_unit("ns")
+    return [int(v) for v in idx.asi8 // 1_000_000_000]
+
 DB_PATH = Path(os.getenv("NBX_JOURNAL_DB") or Path(__file__).with_name("journal.db"))
 
 TF_SECONDS = {"15m": 900, "1h": 3600, "4h": 14_400, "D": 86_400}
@@ -410,7 +423,7 @@ def simulate_long(df: pd.DataFrame, i: int, entry: float, atr: float,
     # yields NANOSECONDS, not seconds. Every exit_ts written before this fix
     # was ~1e18 instead of ~1.7e9, which silently broke any consumer that
     # compared it to `ts` (charts, exports, retention filters).
-    times = pd.to_datetime(df["t"]).astype("int64") // 10**9
+    times = epoch_seconds(df["t"])
 
     half_done = False
     realised = 0.0
@@ -478,7 +491,7 @@ def resolve_symbol(conn: sqlite3.Connection, symbol: str, tf: str,
     step = TF_SECONDS.get(tf, 900)
     ts_index = {
         int(t) + step: i
-        for i, t in enumerate(df["t"].values.astype("int64") // 10**9)
+        for i, t in enumerate(epoch_seconds(df["t"]))
     }
     pending = conn.execute(
         # Only LONG rows have a tradeable R; EXIT/NEUTRAL are recorded for
