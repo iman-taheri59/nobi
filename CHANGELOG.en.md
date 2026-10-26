@@ -2,6 +2,33 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 1.10.1
+
+> Dependency refresh and compatibility with the current toolchain, following
+> the 1.10.0 release.
+
+- Reviewed and merged all ten Dependabot PRs: `actions/checkout`,
+  `actions/setup-python` and `actions/setup-node` to v7, `ruff 0.17.2`,
+  `uvicorn 0.54.0`, `numpy 2.5.4`, `tenacity 9.2.1`, `eslint 10.13.0`,
+  `jsdom 30.1.3` and `pandas 3.1.0`. No open PRs remain.
+- CI and Release moved from Node 20 to **Node 24**: jsdom 30 pulls undici 8,
+  which needs `zlib.createZstdDecompress` (Node >= 22.22.2). The requirement
+  is documented in `CONTRIBUTING.md`.
+- `@eslint/js` is now an explicit devDependency (ESLint 10 no longer brings
+  it in transitively), and five dead initialisers flagged by the new
+  `no-useless-assignment` rule were removed from `index.html`; the standalone
+  build was regenerated.
+- `ui_smoke_test.js` now bridges jsdom-realm `AbortSignal` objects into a
+  Node-realm `AbortController`. Node >= 22's fetch rejects foreign signals
+  with an `instanceof` check, silently breaking twenty requests and leaving
+  the dashboard half-rendered.
+- Added `journal.epoch_seconds()`. pandas 3 infers `datetime64[us]` (or `[s]`)
+  where pandas 2 always used `[ns]`, so dividing `int64` by `10**9` produced
+  1970 timestamps. It is used in `simulate_long`, `resolve_symbol` and the
+  main backfill path, with a cross-unit regression test.
+- 1011 Python tests pass on both pandas 3.1.0 and 2.2.3; ruff, mypy,
+  pip-audit, npm audit, nine JS gates and the reproducible build are green.
+
 ## 1.10.0
 
 > Deployment hardening and the gaps CI could not see.

@@ -2,7 +2,7 @@
 
 [فارسی](README.md) · **English**
 
-Working version: **1.10.0**. See [versioning and GitHub releases](releases.en.md) and the
+Working version: **1.10.1**. See [versioning and GitHub releases](releases.en.md) and the
 [changelog](../CHANGELOG.en.md).
 
 ## Documentation map

@@ -2,6 +2,31 @@
 
 [English](CHANGELOG.en.md) · **فارسی**
 
+## 1.10.1
+
+> بهروزرسانی وابستگیها و سازگاری با نسل جدید ابزارها، پس از انتشار ۱٫۱۰٫۰.
+
+- ده پیشنهاد Dependabot بررسی و ادغام شد: `actions/checkout`،
+  `actions/setup-python` و `actions/setup-node` به نسخهٔ ۷، `ruff 0.17.2`،
+  `uvicorn 0.54.0`، `numpy 2.5.4`، `tenacity 9.2.1`، `eslint 10.13.0`،
+  `jsdom 30.1.3` و `pandas 3.1.0`. اکنون هیچ PR بازی باقی نمانده است.
+- CI و Release از Node 20 به **Node 24** رفتند؛ `jsdom 30` از طریق
+  `undici 8` به `zlib.createZstdDecompress` (فقط Node ≥ 22.22.2) نیاز
+  دارد. این پیشنیاز در `CONTRIBUTING.md` مستند شد.
+- `@eslint/js` صریحاً به `devDependencies` اضافه شد، چون ESLint 10 دیگر
+  آن را بهصورت گذرا نمیآورد؛ پنج مقداردهی بلااستفاده در `index.html` که
+  قانون تازهٔ `no-useless-assignment` میگرفت حذف و فایل مستقل بازسازی شد.
+- هارنس `ui_smoke_test.js` سیگنالهای `AbortSignal` ساختهشده در realm
+  جداگانهٔ jsdom را به یک `AbortController` بومی Node پل میزند؛ `fetch` ی
+  Node ≥ 22 آن سیگنالها را با `instanceof` رد میکرد و بیست درخواست
+  بیصدا شکست میخورد و داشبورد نیمهرندر میماند.
+- `journal.epoch_seconds()` اضافه شد: pandas 3 واحد `datetime64` را `[us]`
+  یا `[s]` استنباط میکند و تقسیم ثابت بر `10**9` دیگر معتبر نیست. در
+  `simulate_long`، `resolve_symbol` و مسیر backfill در `main.py` بهکار
+  رفت؛ تست رگرسیون با ورودیهای ثانیه/میلی/میکرو/نانوثانیه اضافه شد.
+- ۱۰۱۱ تست پایتون (روی pandas 3.1.0 و 2.2.3)، ruff، mypy، pip-audit،
+  npm audit، نُه دروازهٔ JS و ساخت تکرارپذیر همگی سبزاند.
+
 ## 1.10.0
 
 > سختسازی استقرار و بستن شکافهایی که CI نمیدید.

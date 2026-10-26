@@ -2,7 +2,7 @@
 
 **فارسی** · [English](README.en.md)
 
-نسخهٔ کاری: **1.10.0** · تگ منتشرشده: **v1.9.0**
+نسخهٔ کاری: **1.10.1** · تگ منتشرشده: **v1.10.1**
 **مجوز:** MIT ([`LICENSE`](LICENSE)) · **گزارش آسیبپذیری:** [`SECURITY.md`](SECURITY.md) · **مشارکت:** [`CONTRIBUTING.md`](CONTRIBUTING.md)
 
 راهنمای [نسخه‌بندی و GitHub Release](docs/releases.md) شامل قواعد افزایش نسخه، تگ و انتشار فایل موبایل است. [تاریخچهٔ تغییرات](CHANGELOG.md) را نیز ببینید ([English](CHANGELOG.en.md)).
