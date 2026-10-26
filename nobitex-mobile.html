@@ -2850,7 +2850,7 @@ if (typeof window.LightweightCharts === 'undefined') {
                   <text x="${W - pad.r + 4}" y="${(y + 3).toFixed(1)}" fill="#71717a" font-size="9">${opts.localization && opts.localization.priceFormatter ? opts.localization.priceFormatter(val) : fmtNum(val,2)}</text>`;
         }).join('');
 
-        let bodySvg = '';
+        let bodySvg;
         if (chartType === 'area') {
           const col = seriesOpts.lineColor || '#34d399';
           const pts = slice.map((d, i) => `${xAt(i).toFixed(1)},${yAt(d.value).toFixed(1)}`).join(' ');
@@ -5756,7 +5756,7 @@ async function refreshQueue(){
     .slice(0, 5);
   const out = [];
   for (const s of picked) {
-    let plan = null;
+    let plan;
     try { plan = await api.getBackendRiskPlan(s.symbol, 'buy'); } catch (e) { plan = null; }
     // A candidate without a plan is not shown: its size, stop and tp would be
     // numbers this page made up, and the ticket would place them.
@@ -5935,7 +5935,7 @@ async function askRowWhatIf(q){
     return;
   }
   const seq = ++e.seq;
-  let r = null;
+  let r;
   try{ r = await api.postWhatIf({ symbol:q.sym, side:'buy', entry:q.entry, stop:e.stop || null,
                                   size_quote:e.sizeQ }); }catch(err){ r = null; }
   if(seq !== e.seq) return;                       // a newer keystroke already asked
@@ -5982,7 +5982,7 @@ function resolveQ(id, approve){
     return;
   }
   (async () => {
-    let r = null;
+    let r;
     try {
       // What the row shows is what gets sent: an edited size/stop/tp that the
       // preview displayed but the order ignored would make the preview a lie.
@@ -6410,7 +6410,7 @@ function submitManual(){
     return;
   }
   (async () => {
-    let r = null;
+    let r;
     try {
       r = await NBX.core.api.postPaperOrder({
         symbol: sym, side, qty: amount,
