@@ -2,7 +2,7 @@
 
 **فارسی** · [English](README.en.md)
 
-نسخهٔ کاری: **1.10.1**. راهنمای [نسخه‌بندی و انتشار GitHub](releases.md) ([English](releases.en.md)) و [تاریخچهٔ تغییرات](../CHANGELOG.md) ([English](../CHANGELOG.en.md)).
+نسخهٔ کاری: **1.10.2**. راهنمای [نسخه‌بندی و انتشار GitHub](releases.md) ([English](releases.en.md)) و [تاریخچهٔ تغییرات](../CHANGELOG.md) ([English](../CHANGELOG.en.md)).
 
 ## نقشهٔ مستندات
 
@@ -19,6 +19,7 @@
 | بدانی موتورهای تحلیل امروز چه چیزی را واقعاً محاسبه می‌کنند | [`analysis/`](analysis) — کاتالوگ + جدول «پیاده‌شده / فقط کاتالوگ» |
 | سرور ارزان برای تست انتخاب کنی | [`ops/`](ops) |
 | پروژه را روی ابر آروان (ابرک اوبونتو) نصب کنی | [`deploy-arvan.md`](deploy-arvan.md) — گام‌به‌گام + `scripts/deploy_arvan.sh` + `scripts/check_deploy.py` |
+| یک راهنمای جامع و بهروز برای استقرار آروان بخواهی | [`deploy-arvan-cloud.md`](deploy-arvan-cloud.md) — معماری، DNS/فایروال، TLS، بکاپ، عیبیابی و چکلیست |
 | تصمیم بگیری VPC لازم است یا نه | [`deploy-arvan-vpc.md`](deploy-arvan-vpc.md) — ایزوله‌سازی، هزینه، و معماری دو‌ابرکی |
 | تصمیم بگیری نردبان سود زنده چه باشد | [`rr-ladder-tuning.md`](rr-ladder-tuning.md) — روش، دروازهٔ ADR-0009 و قاعدهٔ بازگشت |
 | ببینی مسیر قابلیت‌ها کجاست | [`roadmap/fa/capability-roadmap.md`](roadmap/fa/capability-roadmap.md) |
@@ -83,6 +84,7 @@
 | ADR-0001 … ADR-0018 | [`adr/fa/`](adr/fa) | [`adr/en/`](adr/en) |
 | سرور رایگان تست | [`ops/fa/`](ops/fa) | [`ops/en/`](ops/en) |
 | استقرار آروان | [`deploy-arvan.md`](deploy-arvan.md) | **در انتظار** |
+| راهنمای جامع استقرار آروان | [`deploy-arvan-cloud.md`](deploy-arvan-cloud.md) | **در انتظار** |
 | VPC آروان | [`deploy-arvan-vpc.md`](deploy-arvan-vpc.md) | **در انتظار** |
 | اجرا روی ویندوز | [`run-windows.md`](run-windows.md) | **در انتظار** |
 | راهنمای تست | [`testing.md`](testing.md) | [`testing.en.md`](testing.en.md) |

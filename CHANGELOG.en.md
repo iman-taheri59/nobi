@@ -2,6 +2,29 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 1.10.2
+
+> Fix the ArvanCloud installer's TLS ordering and add a full deployment runbook.
+
+- `scripts/deploy_arvan.sh` no longer installs the TLS site before obtaining
+  a certificate. Up to 1.10.1, `nginx -t` failed on a fresh host with
+  `cannot load certificate ... No such file or directory`, and the
+  `certbot --nginx` call that ran *after* it was never reached — so `--tls`
+  could not work on a first install. The installer now runs
+  `certbot certonly --webroot` over a temporary port-80 ACME site first,
+  then writes the TLS site and runs `nginx -t` / `reload`.
+- An existing certificate is reused, the script stays idempotent, certbot
+  failures produce a clear DNS/CDN/firewall message without leaving a
+  half-written config, and `--tls` combined with `--no-nginx` warns instead
+  of being silently ignored.
+- Six regression tests in `server/tests/test_deploy_tls_order.py` pin the
+  order, the `certonly --webroot` choice, the port-80 fallback, and bash
+  syntax.
+- Added `docs/deploy-arvan-cloud.md`: a comprehensive ArvanCloud runbook
+  (architecture, DNS/firewall, TLS, accounts, verification, backup,
+  upgrades, troubleshooting and a checklist), linked from both docs maps
+  and from the older `docs/deploy-arvan.md`.
+
 ## 1.10.1
 
 > Dependency refresh and compatibility with the current toolchain, following

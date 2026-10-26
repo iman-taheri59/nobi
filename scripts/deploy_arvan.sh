@@ -244,27 +244,71 @@ done
 # --------------------------------------------------------------------------- #
 # 6. nginx
 # --------------------------------------------------------------------------- #
+# --tls without nginx cannot work: the certificate is obtained over port 80 of
+# this very nginx. Say so instead of silently ignoring the flag.
+if [ "$WITH_TLS" -eq 1 ] && [ "$WITH_NGINX" -eq 0 ]; then
+  warn "--tls needs nginx; ignoring it (re-run without --no-nginx for a certificate)"
+  WITH_TLS=0
+fi
+
 if [ "$WITH_NGINX" -eq 1 ]; then
+  # The certificate MUST exist before the TLS site is installed. The shipped
+  # deploy/nginx.conf points ssl_certificate at
+  # /etc/letsencrypt/live/$DOMAIN/fullchain.pem; on a fresh host that file does
+  # not exist, `nginx -t` fails with
+  #   [emerg] cannot load certificate ... No such file or directory
+  # and a `certbot --nginx` that runs *after* that test is never reached.
+  # Use ACME HTTP-01 over a plain port-80 server first, then install the TLS
+  # site. Measured on nginx 1.26: without the cert `nginx -t` exits 1, with a
+  # readable cert it exits 0. certonly --webroot never needs the TLS site.
+  if [ "$WITH_TLS" -eq 1 ]; then
+    step "obtaining a certificate for $DOMAIN (before installing the TLS site)"
+    apt-get install -y -qq certbot >/dev/null
+    mkdir -p /var/www/html
+    if [ -f "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" ]; then
+      printf '    certificate already exists — keeping it\n'
+    else
+      # HTTP-01 needs some port-80 server serving the webroot. The packaged
+      # default site normally does; if this host has none, add a temporary one
+      # and remove it as soon as the certificate exists.
+      if ! grep -RqsE 'listen[[:space:]]+80([[:space:]]|;)' /etc/nginx/sites-enabled/; then
+        cat > /etc/nginx/sites-available/nobi-acme <<EOF
+server {
+    listen 80;
+    server_name $DOMAIN;
+    root /var/www/html;
+    location /.well-known/acme-challenge/ { root /var/www/html; }
+}
+EOF
+        ln -sf /etc/nginx/sites-available/nobi-acme /etc/nginx/sites-enabled/nobi-acme
+      fi
+      systemctl enable --now nginx >/dev/null 2>&1 || true
+      if ! nginx -t >/dev/null 2>&1; then
+        die "the temporary port-80 site is invalid; fix /etc/nginx before continuing"
+      fi
+      systemctl reload nginx 2>/dev/null || systemctl restart nginx
+      if ! certbot certonly --webroot -w /var/www/html -d "$DOMAIN" \
+          --non-interactive --agree-tos --email "${EMAIL:-admin@$DOMAIN}"; then
+        die "certbot could not obtain a certificate for $DOMAIN. Check that DNS points at this server, that the ArvanCloud CDN/proxy is OFF for this record, and that port 80 is open in the firewall. Nothing else was changed; re-run this script once fixed."
+      fi
+      rm -f /etc/nginx/sites-enabled/nobi-acme /etc/nginx/sites-available/nobi-acme
+      printf '    certificate ready\n'
+    fi
+  fi
+
   step "configuring nginx for $DOMAIN"
   sed "s/nobi\.example\.ir/$DOMAIN/g" "$APP_DIR/deploy/nginx.conf" > "/etc/nginx/sites-available/nobi"
   ln -sf /etc/nginx/sites-available/nobi /etc/nginx/sites-enabled/nobi
   rm -f /etc/nginx/sites-enabled/default
   if ! nginx -t 2>/tmp/nginx-test.err; then
     cat /tmp/nginx-test.err >&2
-    die "nginx rejected the config — most often the certificate paths (that is expected before --tls)"
+    die "nginx rejected the config — check the certificate paths and the domain name"
   fi
   systemctl reload nginx
   printf '    nginx reloaded\n'
 
-  if [ "$WITH_TLS" -eq 1 ]; then
-    step "obtaining a certificate for $DOMAIN"
-    apt-get install -y -qq certbot python3-certbot-nginx >/dev/null
-    certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos \
-      --email "${EMAIL:-admin@$DOMAIN}" --redirect || \
-      warn "certbot failed — the site still answers on :80. Check that $DOMAIN resolves to this server and that port 80 is open in the ArvanCloud firewall"
-    systemctl reload nginx
-  else
-    warn "no TLS yet: run 'sudo certbot --nginx -d $DOMAIN' before you log in — the token is a bearer credential"
+  if [ "$WITH_TLS" -eq 0 ]; then
+    warn "no TLS yet: re-run with --tls (or run 'sudo certbot certonly --webroot -w /var/www/html -d $DOMAIN' and re-run) before you log in — the token is a bearer credential"
   fi
 fi
 

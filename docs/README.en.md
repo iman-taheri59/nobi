@@ -2,7 +2,7 @@
 
 [فارسی](README.md) · **English**
 
-Working version: **1.10.1**. See [versioning and GitHub releases](releases.en.md) and the
+Working version: **1.10.2**. See [versioning and GitHub releases](releases.en.md) and the
 [changelog](../CHANGELOG.en.md).
 
 ## Documentation map
@@ -21,6 +21,7 @@ This file is only a way to find things; the content lives in the folders beside 
 | Run the tests against a live exchange | [`testing.en.md`](testing.en.md) |
 | Pick a cheap server for testing | [`ops/`](ops) — [English](ops/en/free-server-options-for-testing-and-development.md) · [Persian](ops/fa/free-server-options-for-testing-and-development.md) |
 | Install the project on ArvanCloud (Ubuntu cloud server) | [`deploy-arvan.md`](deploy-arvan.md) — step by step + `scripts/deploy_arvan.sh` + `scripts/check_deploy.py` (Persian) |
+| Want one comprehensive, up-to-date ArvanCloud runbook | [`deploy-arvan-cloud.md`](deploy-arvan-cloud.md) — architecture, DNS/firewall, TLS, backup, troubleshooting, checklist (Persian) |
 | Decide whether a VPC is needed | [`deploy-arvan-vpc.md`](deploy-arvan-vpc.md) — isolation, cost, two-server topology (Persian) |
 | Decide the live take-profit ladder | [`rr-ladder-tuning.en.md`](rr-ladder-tuning.en.md) |
 | Understand coin metadata and logos | [`coin-metadata.en.md`](coin-metadata.en.md) |
@@ -89,6 +90,7 @@ What is written twice, what is written once, and what is pending. The gate in
 | ADR-0001 … ADR-0027 | [`adr/fa/`](adr/fa) | [`adr/en/`](adr/en) |
 | Free testing servers | [`ops/fa/`](ops/fa) | [`ops/en/`](ops/en) |
 | ArvanCloud deployment | [`deploy-arvan.md`](deploy-arvan.md) | **pending** |
+| ArvanCloud full runbook | [`deploy-arvan-cloud.md`](deploy-arvan-cloud.md) | **pending** |
 | ArvanCloud VPC | [`deploy-arvan-vpc.md`](deploy-arvan-vpc.md) | **pending** |
 | Running on Windows | [`run-windows.md`](run-windows.md) | **pending** |
 | Testing guide | [`testing.md`](testing.md) | [`testing.en.md`](testing.en.md) |

@@ -2,7 +2,7 @@
 
 [فارسی](releases.md) · **English**
 
-The working version is **1.10.1**; the currently published tag is **v1.10.1**. The complete browser installer ships only after branch CI is green.
+The working version is **1.10.2**; the currently published tag is **v1.10.1**. The complete browser installer ships only after branch CI is green.
 `VERSION` is the source of truth for the release number; the tag name is exactly `v`
 plus that number.
 
