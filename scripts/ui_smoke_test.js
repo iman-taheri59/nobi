@@ -98,7 +98,22 @@ window.fetch = async (u, o = {}) => {
   const headers = new globalThis.Headers(o.headers || {});
   const cookie = dom.cookieJar.getCookieStringSync(url);
   if (cookie) headers.set('cookie', cookie);
-  const response = await fetch(url, { ...o, headers });
+  const init = { ...o, headers };
+  // Node >= 22's undici requires `signal` to be an instance of *its own*
+  // AbortSignal. A signal created inside the jsdom window (AbortSignal.timeout,
+  // AbortController) lives in another realm and is rejected with
+  // "RequestInit: Expected signal ... to be an instance of AbortSignal" —
+  // which silently kills every timed request and leaves the page half-rendered.
+  // Bridge the foreign signal into a Node-realm controller instead of dropping
+  // it, so the page's own timeouts still apply.
+  if (init.signal && !(init.signal instanceof globalThis.AbortSignal)) {
+    const foreign = init.signal;
+    const bridge = new globalThis.AbortController();
+    if (foreign.aborted) bridge.abort(foreign.reason);
+    else foreign.addEventListener('abort', () => bridge.abort(foreign.reason), { once: true });
+    init.signal = bridge.signal;
+  }
+  const response = await fetch(url, init);
   const setCookies = typeof response.headers.getSetCookie === 'function'
     ? response.headers.getSetCookie() : [];
   for (const value of setCookies) dom.cookieJar.setCookieSync(value, url);
