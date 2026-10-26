@@ -1,6 +1,7 @@
 """The installer's privileged boundary: one protocol, no shell, no sudo."""
 from __future__ import annotations
 
+import importlib.machinery
 import importlib.util
 import json
 import os
@@ -26,7 +27,7 @@ def _load_daemon():
 
 def test_handle_rejects_anything_outside_the_allowlist(monkeypatch) -> None:
     daemon = _load_daemon()
-    monkeypatch.setattr(os, "geteuid", lambda: 0)
+    monkeypatch.setattr(os, "geteuid", lambda: 0, raising=False)
     calls: list[list[str]] = []
     monkeypatch.setattr(daemon.subprocess, "run", lambda argv, **kw: calls.append(argv))
 
@@ -39,7 +40,7 @@ def test_handle_rejects_anything_outside_the_allowlist(monkeypatch) -> None:
 
 def test_handle_forwards_only_fixed_argv(monkeypatch) -> None:
     daemon = _load_daemon()
-    monkeypatch.setattr(os, "geteuid", lambda: 0)
+    monkeypatch.setattr(os, "geteuid", lambda: 0, raising=False)
     seen: list[list[str]] = []
 
     def fake_run(argv, **kwargs):
@@ -49,11 +50,14 @@ def test_handle_forwards_only_fixed_argv(monkeypatch) -> None:
     monkeypatch.setattr(daemon.subprocess, "run", fake_run)
     reply = daemon.handle(json.dumps({"protocol": 1, "action": "restart-service"}).encode())
     assert reply["ok"] is True
+    # A Path() here would render as "\usr\..." on Windows and change argv.
+    assert isinstance(daemon.CLI, str), "CLI must be a plain string, not a Path"
     assert seen == [[sys.executable, "/usr/local/libexec/nobi-privileged-helper",
                      "--protocol", "1", "restart-service"]]
 
 
-@pytest.mark.skipif(not hasattr(socket, "AF_UNIX"), reason="Unix sockets only")
+@pytest.mark.skipif(os.name != "posix" or not hasattr(socket, "AF_UNIX"),
+                    reason="Unix domain sockets are POSIX-only")
 def test_client_and_daemon_round_trip_over_a_socket(tmp_path: Path) -> None:
     path = tmp_path / "helper.sock"
     daemon = subprocess.Popen(
@@ -133,7 +137,7 @@ def _lab(monkeypatch, tmp_path: Path):
         "install-proxy": (src / "nobi.conf", targets["nobi.conf"]),
     })
     monkeypatch.setattr(cli.subprocess, "run", lambda *a, **k: subprocess.CompletedProcess(a, 0, "", ""))
-    monkeypatch.setattr(cli.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(cli.os, "geteuid", lambda: 0, raising=False)
     return cli, src, targets
 
 
@@ -174,7 +178,7 @@ def test_rollback_refuses_when_nothing_was_installed(monkeypatch, tmp_path: Path
 
 def test_daemon_does_not_label_success_stderr_as_error(monkeypatch) -> None:
     daemon = _load_daemon()
-    monkeypatch.setattr(os, "geteuid", lambda: 0)
+    monkeypatch.setattr(os, "geteuid", lambda: 0, raising=False)
     monkeypatch.setattr(daemon.subprocess, "run", lambda argv, **kw: subprocess.CompletedProcess(
         argv, 0, stdout='{"ok":true}', stderr="Created symlink ... -> ..."))
     reply = daemon.handle(json.dumps({"protocol": 1, "action": "install-service"}).encode())
@@ -184,7 +188,7 @@ def test_daemon_does_not_label_success_stderr_as_error(monkeypatch) -> None:
 
 def test_daemon_surfaces_check_failures(monkeypatch) -> None:
     daemon = _load_daemon()
-    monkeypatch.setattr(os, "geteuid", lambda: 0)
+    monkeypatch.setattr(os, "geteuid", lambda: 0, raising=False)
     check_reply = json.dumps({
         "ok": False, "protocol": 1, "actions": ["check"],
         "install-service": "ready",

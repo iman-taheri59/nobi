@@ -100,3 +100,27 @@ def test_no_file_is_read_or_written_with_the_locale_codec():
                 offenders.append(f"{path.relative_to(ROOT)}:{node.lineno}: "
                                  f"subprocess(text=True) without encoding=")
     assert not offenders, "decoded with the locale codec (cp1252 on Windows):\n" + "\n".join(offenders)
+
+
+def test_helper_transport_suite_runs_without_posix_only_calls():
+    """The installer-helper tests must execute, not just collect, on Windows.
+
+    ``test_the_suite_collects_without_posix_only_calls`` only checks
+    *collection*. The helper tests used ``monkeypatch.setattr(os, "geteuid")``
+    at runtime, which passed on Linux and failed all seven of them on the
+    Windows runner. Re-run that module with the POSIX-only attributes deleted.
+    """
+    code = (
+        "import os, sys, pytest\n"
+        f"for attr in {POSIX_ONLY!r}:\n"
+        "    if hasattr(os, attr):\n"
+        "        delattr(os, attr)\n"
+        "sys.exit(pytest.main(['-q', '-p', 'no:cacheprovider', "
+        f"{str(TESTS / 'test_helper_transport.py')!r}]))\n"
+    )
+    out = subprocess.run([sys.executable, "-c", code], cwd=str(ROOT),
+                         capture_output=True, text=True, encoding="utf-8", timeout=240)
+    assert out.returncode == 0, (
+        "helper tests need a POSIX-only os attribute at runtime:\n"
+        + out.stdout[-3000:] + out.stderr[-3000:]
+    )

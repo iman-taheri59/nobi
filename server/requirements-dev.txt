@@ -3,7 +3,7 @@
 -r requirements.txt
 
 pytest==9.0.3
-ruff==0.17.1
+ruff==0.17.2
 mypy==2.4.0
 # CI runs `pip-audit -r server/requirements.txt`; pin it like the other gates.
 pip-audit==2.10.1
