@@ -31,6 +31,8 @@
 - تستهای helper با `os.name != "posix"` و `raising=False` سازگار شدند؛
   تست رگرسیون تازهای کل ماژول را بدون attributeهای POSIX اجرا میکند تا job
   ویندوز دوباره سبز بماند. ۱۰۱۰ تست پاس (۱۰۰۹ پاس + ۱ پرش در شبیهسازی ویندوز).
+- `CLI` در daemon helper از `Path` به رشتهٔ ساده تبدیل شد؛ `Path("/usr/...")`
+  روی ویندوز به `\usr\...` تبدیل میشد و argv ثابت helper را عوض میکرد.
 - **تست انتها به انتها روی میزبان systemd واقعی** (systemd 257 + nginx 1.26): سوکت
   `root:nobi 0660`، activation سرویس root، `LISTEN_FDS`، `check`،
   `install-service`، `install-proxy` (با `nginx -t`)، `restart-service`،

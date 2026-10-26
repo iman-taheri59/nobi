@@ -50,6 +50,8 @@ def test_handle_forwards_only_fixed_argv(monkeypatch) -> None:
     monkeypatch.setattr(daemon.subprocess, "run", fake_run)
     reply = daemon.handle(json.dumps({"protocol": 1, "action": "restart-service"}).encode())
     assert reply["ok"] is True
+    # A Path() here would render as "\usr\..." on Windows and change argv.
+    assert isinstance(daemon.CLI, str), "CLI must be a plain string, not a Path"
     assert seen == [[sys.executable, "/usr/local/libexec/nobi-privileged-helper",
                      "--protocol", "1", "restart-service"]]
 

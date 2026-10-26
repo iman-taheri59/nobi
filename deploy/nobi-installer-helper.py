@@ -23,11 +23,13 @@ import os
 import socket
 import subprocess
 import sys
-from pathlib import Path
 
 PROTOCOL = 1
-CLI = Path("/usr/local/libexec/nobi-privileged-helper")
-DEFAULT_SOCKET = Path("/run/nobi-installer.sock")
+# Plain strings on purpose. `Path("/usr/...")` becomes "\usr\..." on Windows,
+# which changed the argv the daemon forwards and broke the fixed-argv test on
+# the Windows runner. These paths only ever exist on the Linux/systemd host.
+CLI = "/usr/local/libexec/nobi-privileged-helper"
+DEFAULT_SOCKET = "/run/nobi-installer.sock"
 ACTIONS = frozenset({
     "install-service", "install-proxy", "restart-service", "reload-proxy",
     "rollback", "check",
@@ -52,7 +54,7 @@ def handle(raw: bytes) -> dict:
         return {"ok": False, "error": "helper service must run as root"}
     try:
         proc = subprocess.run(
-            [sys.executable, str(CLI), "--protocol", str(PROTOCOL), action],
+            [sys.executable, CLI, "--protocol", str(PROTOCOL), action],
             capture_output=True, text=True, encoding="utf-8",
             timeout=TIMEOUT_S, check=False,
             env={"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LANG": "C.UTF-8"},
@@ -114,17 +116,17 @@ def systemd_socket() -> socket.socket | None:
 def main() -> int:
     arg_socket = None
     if len(sys.argv) == 3 and sys.argv[1] == "--socket":
-        arg_socket = Path(sys.argv[2])
+        arg_socket = sys.argv[2]
     elif len(sys.argv) != 1:
         print("usage: nobi-installer-helper.py [--socket PATH]", file=sys.stderr)
         return 2
     listener = systemd_socket()
     if listener is None:
         path = arg_socket or DEFAULT_SOCKET
-        if path.exists():
-            path.unlink()
+        if os.path.exists(path):
+            os.unlink(path)
         listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        listener.bind(str(path))
+        listener.bind(path)
         os.chmod(path, 0o660)
     listener.listen(8)
     try:

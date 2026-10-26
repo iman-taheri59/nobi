@@ -35,6 +35,8 @@
   a regression test re-runs the module with POSIX-only attributes removed so
   the Windows job stays green. 1010 tests pass (1009 pass + 1 skip under the
   simulated-Windows run).
+- The daemon's `CLI` is now a plain string: `Path("/usr/...")` renders as
+  `\usr\...` on Windows and silently changed the helper's fixed argv.
 - **End-to-end tested on a real systemd host** (systemd 257 + nginx 1.26):
   `root:nobi 0660` socket, root-service activation, `LISTEN_FDS`, `check`,
   `install-service`, `install-proxy` (with `nginx -t`), `restart-service`,
