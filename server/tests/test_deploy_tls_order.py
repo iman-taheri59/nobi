@@ -11,8 +11,12 @@ without needing nginx, certbot or root on the test machine.
 
 from __future__ import annotations
 
+import os
+import shutil
 import subprocess
 from pathlib import Path
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts" / "deploy_arvan.sh"
@@ -75,6 +79,10 @@ def test_a_port80_fallback_exists_for_hosts_without_a_default_site():
         < text.find("certbot certonly --webroot")
 
 
+@pytest.mark.skipif(
+    os.name != "posix" or shutil.which("bash") is None,
+    reason="`bash -n` needs a POSIX shell; the five text checks above run everywhere",
+)
 def test_the_script_is_valid_bash():
     out = subprocess.run(["bash", "-n", str(SCRIPT)], capture_output=True,
                          text=True, encoding="utf-8", timeout=30)

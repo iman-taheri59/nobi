@@ -19,7 +19,8 @@
   of being silently ignored.
 - Six regression tests in `server/tests/test_deploy_tls_order.py` pin the
   order, the `certonly --webroot` choice, the port-80 fallback, and bash
-  syntax.
+  syntax. The `bash -n` check skips on Windows (no POSIX shell);
+  the five text-based checks run on every platform.
 - Added `docs/deploy-arvan-cloud.md`: a comprehensive ArvanCloud runbook
   (architecture, DNS/firewall, TLS, accounts, verification, backup,
   upgrades, troubleshooting and a checklist), linked from both docs maps
