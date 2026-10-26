@@ -2,6 +2,46 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 1.10.0
+
+> Deployment hardening and the gaps CI could not see.
+
+- The installer's privileged helper moved from `sudo` to a **socket-activated
+  root service**; `NoNewPrivileges=yes` and `ProtectSystem=strict` on the web
+  unit no longer conflict with the browser installer.
+- systemd/nginx templates are now `root:root 0444` outside the checkout and the
+  helper validates their owner, mode and content. The domain comes from
+  root-owned `/etc/nobi/domain`, not from a request body.
+- The two incompatible helper protocols were unified: `/api/operations/*` uses
+  the wizard's protocol 1, `apply-config` is retired (410) and `restart` maps to
+  `restart-service`.
+- Dependencies upgraded (FastAPI 0.162.0, Starlette 1.10.0, Pydantic 2.14.1,
+  cryptography 50.0.2, python-dotenv 1.2.4, pyarrow 23.0.1); `pip-audit` is clean.
+- `pip-audit`, `npm audit` and Dependabot are CI gates; the Windows job is
+  genuinely advisory and workflow permissions are least-privilege.
+- The stale committed ZIP was removed; the download route now builds a fresh
+  archive from the running checkout (no `.env`, databases or caches).
+- Central DOM escaping for server/exchange strings, fixed the IIFE-scoped
+  `onclick="scanNow(true)"` retry button, and added `npm run test:escaping`.
+- A read budget for expensive endpoints, bounded rate-limit counters, and no
+  `Secure`-cookie downgrade via an untrusted `X-Forwarded-Proto` header.
+- 500 responses no longer echo exception text; only a `log_id` is returned.
+- Dockerfile sets its data paths via `ENV`, compose binds loopback only, the
+  manifest has an icon, and `version-check.html` reads the live version.
+- `package-lock.json` version/tarball mismatches fixed and gated by
+  `npm run test:lock`; versions/docs aligned; `SECURITY.md` and
+  `CONTRIBUTING.md` added. Added an **MIT `LICENSE`**.
+- **End-to-end tested on a real systemd host** (systemd 257 + nginx 1.26):
+  `root:nobi 0660` socket, root-service activation, `LISTEN_FDS`, `check`,
+  `install-service`, `install-proxy` (with `nginx -t`), `restart-service`,
+  `reload-proxy` and `rollback`, all invoked as an unprivileged user.
+- Two bugs found by that test were fixed: `rollback` used to fail after a
+  **first-ever** install (no backup existed) and silently restored only one of
+  the two managed files. It now records `.absent` markers, removes a dangling
+  nginx symlink and surfaces the real failure reason. World-writable,
+  non-root-owned and symlinked templates, plus a hostile domain file, are all
+  rejected.
+
 ## 1.9.0
 
 - Added an owner-only, resumable browser server-installation state machine.

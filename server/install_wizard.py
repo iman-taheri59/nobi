@@ -104,8 +104,42 @@ def _port_available(port: int) -> bool:
         sock.close()
 
 
+def _helper_check() -> tuple[bool, str]:
+    """Ask the helper itself, not just the filesystem, whether it can answer.
+
+    A file that exists and is executable proves nothing: the old deployment
+    had two incompatible protocols and a sudo path blocked by
+    NoNewPrivileges.``check`` is read-only and answers over the same socket
+    the real actions use, so a failure here is a failure of the real path.
+    """
+    if not HELPER.is_file() or not os.access(HELPER, os.X_OK):
+        return False, f"helper client missing: {HELPER}"
+    try:
+        proc = subprocess.run(
+            [str(HELPER), "--protocol", str(PROTOCOL), "check"],
+            capture_output=True, text=True, encoding="utf-8", timeout=20, check=False,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        return False, f"{type(exc).__name__}: {exc}"
+    if proc.returncode != 0:
+        return False, _redact((proc.stdout or "") + (proc.stderr or ""))[-300:]
+    return True, "protocol 1 ok"
+
+
+def _no_new_privs() -> bool:
+    """Informational: the socket transport works with NoNewPrivileges=yes."""
+    try:
+        for line in Path("/proc/self/status").read_text(encoding="utf-8").splitlines():
+            if line.startswith("NoNewPrivs:"):
+                return line.split(":", 1)[1].strip() == "1"
+    except OSError:
+        return False
+    return False
+
+
 def preflight() -> dict[str, Any]:
     root = Path(__file__).resolve().parents[1]
+    helper_ok, helper_why = _helper_check()
     checks = [
         {"id": "os", "ok": os.name == "posix", "value": platform.platform()},
         {"id": "not-root", "ok": not hasattr(os, "geteuid") or os.geteuid() != 0,
@@ -119,8 +153,13 @@ def preflight() -> dict[str, Any]:
          "value": str(HELPER)},
         {"id": "systemd", "ok": shutil.which("systemctl") is not None, "value": "systemctl"},
         {"id": "nginx", "ok": shutil.which("nginx") is not None, "value": "nginx"},
+        {"id": "helper-protocol", "ok": helper_ok, "value": helper_why},
+        {"id": "no-new-privs", "ok": True,
+         "value": "socket transport; NoNewPrivileges is compatible" if _no_new_privs()
+                  else "not set (local/dev)"},
     ]
-    required = {"os", "not-root", "python", "disk", "data-writable", "helper", "systemd", "nginx"}
+    required = {"os", "not-root", "python", "disk", "data-writable", "helper",
+                "helper-protocol", "systemd", "nginx"}
     ok = all(row["ok"] for row in checks if row["id"] in required)
     return {"ok": ok, "checks": checks, "protocol": PROTOCOL}
 

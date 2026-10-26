@@ -1,0 +1,38 @@
+# /etc/systemd/system/nobi-installer.service
+#
+# Root-owned peer of nobi-helper-client. Started on demand by
+# nobi-installer.socket; it has its own mount namespace, so ProtectSystem on
+# the *web* service cannot block the /etc writes it must perform.
+[Unit]
+Description=nobiTrader privileged installer helper (socket-activated)
+Requires=nobi-installer.socket
+After=nobi-installer.socket
+
+[Service]
+Type=simple
+User=root
+Group=root
+ExecStart=/usr/bin/python3 /usr/local/libexec/nobi-installer-helper.py
+StandardOutput=journal
+StandardError=journal
+Restart=on-failure
+RestartSec=2s
+
+# Still constrained: the daemon may only write the two managed files and its
+# backup directory. It never reads a path from the client.
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+# "full" keeps /run and /var writable (systemctl daemon-reload and nginx -t
+# need them) while making /etc read-only except for the two managed paths.
+ProtectSystem=full
+ReadWritePaths=/etc/systemd/system /etc/nginx/sites-available /etc/nginx/sites-enabled
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+MemoryMax=256M
+TasksMax=32
+
+[Install]
+WantedBy=multi-user.target

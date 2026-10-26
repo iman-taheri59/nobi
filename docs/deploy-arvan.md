@@ -632,13 +632,36 @@ sudo journalctl -u nobi -f
 
 ## نصب helper محدود ویزارد مرورگری (v1.9.0)
 
-فرایند وب را هرگز با root اجرا نکنید. فایل‌های helper باید توسط root و خارج از کنترل کاربر سرویس نصب شوند:
+فرایند وب هرگز root نیست. عملیات privileged از طریق **یک سوکت یونیکس**
+(`nobi-installer.socket`) به سرویس root جداگانهای (`nobi-installer.service`)
+میرسد — نه `sudo`. دلیل: یونیت وب `NoNewPrivileges=yes` دارد (بیت setuid روی
+`sudo` بیکار میشود) و `ProtectSystem=strict` دارد (`/etc` را فقطخواندنی میکند).
+هیچ قانون `sudoers`ای نصب نمیشود؛ اگر از نسخهٔ قبل باقی مانده است:
+`sudo rm -f /etc/sudoers.d/nobi-helper`.
+
+`scripts/deploy_arvan.sh` همهٔ اینها را انجام میدهد. بهصورت دستی:
 
 ```bash
+sudo install -d -o root -g root -m 0755 /usr/local/share/nobi-installer
+sudo install -o root -g root -m 0444 deploy/nobi.service /usr/local/share/nobi-installer/nobi.service
+sudo install -o root -g root -m 0444 deploy/nginx.conf  /usr/local/share/nobi-installer/nginx.conf
 sudo install -o root -g root -m 0755 deploy/nobi-privileged-helper /usr/local/libexec/nobi-privileged-helper
+sudo install -o root -g root -m 0755 deploy/nobi-installer-helper.py /usr/local/libexec/nobi-installer-helper.py
 sudo install -o root -g root -m 0755 deploy/nobi-helper-client /usr/local/bin/nobi-helper-client
-sudo install -o root -g root -m 0440 deploy/nobi-helper.sudoers /etc/sudoers.d/nobi-helper
-sudo visudo -cf /etc/sudoers.d/nobi-helper
+sudo install -o root -g root -m 0644 deploy/nobi-installer.socket /etc/systemd/system/
+sudo install -o root -g root -m 0644 deploy/nobi-installer.service /etc/systemd/system/
+echo 'nobitrader.example.ir' | sudo tee /etc/nobi/domain >/dev/null
+sudo chown root:root /etc/nobi/domain && sudo chmod 0444 /etc/nobi/domain
+sudo systemctl daemon-reload && sudo systemctl enable --now nobi-installer.socket
+sudo python3 /usr/local/libexec/nobi-privileged-helper --protocol 1 check
 ```
 
-ویزارد فقط actionهای دقیق تعریف‌شده در sudoers را اجرا می‌کند. wildcard، فرمان shell، path، package یا service دلخواه پذیرفته نمی‌شود. templateها از `/opt/nobi/deploy` و targetهای systemd/nginx ثابت‌اند. قبل از Apply، Host preflight را در Settings اجرا کنید. restart/reload/rollback تأیید جدا می‌خواهند و Live Mode را فعال نمی‌کنند.
+قالبها **عمداً بیرون از checkout** و `root:root 0444` هستند: `deploy_arvan.sh`
+مالکیت `/opt/nobi` را به کاربر سرویس میدهد، و کپی کردن یک یونیت systemd
+قابلنوشتنتوسطسرویس به `/etc` بهعنوان root، یک ارتقای امتیاز بود. helper علاوه بر
+مسیر، مالک و mode فایل منبع را هم بررسی میکند. دامنه از فایل root-owned
+`/etc/nobi/domain` خوانده میشود، نه از body درخواست مرورگر.
+
+قبل از Apply، Host preflight را در Settings اجرا کنید؛ این بار علاوه بر وجود فایل،
+خودِ پروتکل helper را هم (`check`) امتحان میکند. restart/reload/rollback تأیید جدا
+میخواهند و Live Mode را فعال نمیکنند.

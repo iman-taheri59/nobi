@@ -16,6 +16,7 @@ jobs:
   validate:
     name: Validate release
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -25,7 +26,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: npm ci --no-audit --no-fund
+      - run: npm ci --no-fund
+      - name: npm advisories
+        run: npm audit --audit-level=high
       - run: python -m pip install -r server/requirements-dev.txt
       - run: npm run build
       - name: Require a current generated dashboard
@@ -36,17 +39,22 @@ jobs:
         run: python scripts/release_notes.py --tag "$RELEASE_TAG"
       - run: ruff check server scripts
       - run: mypy
+      - run: pip-audit -r server/requirements.txt --progress-spinner off
       - run: python -m pytest -q server/tests
       - run: npm run lint
       - run: npm run lint:dashboard
       - run: npm run test:js
       - run: npm run test:icons
+      - run: npm run test:escaping
+      - run: npm run test:lock
       - run: python scripts/check_preflight_parity.py
       - run: npm run test:display
+      - run: npm run test:adaptive-card
 
   publish:
     name: Publish GitHub Release
     needs: validate
+    timeout-minutes: 20
     runs-on: ubuntu-latest
     permissions:
       contents: write

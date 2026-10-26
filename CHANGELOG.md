@@ -2,6 +2,43 @@
 
 [English](CHANGELOG.en.md) · **فارسی**
 
+## 1.10.0
+
+> سختسازی استقرار و بستن شکافهایی که CI نمیدید.
+
+- helper ممتاز نصبگر از `sudo` به **سرویس root socket-activated** منتقل شد؛ دیگر
+  `NoNewPrivileges=yes` و `ProtectSystem=strict` یونیت وب با نصبگر تناقض ندارند.
+- قالبهای systemd/nginx اکنون `root:root 0444` و بیرون از checkout هستند و helper
+  مالک، mode و محتوایشان را بررسی میکند؛ دامنه از `/etc/nobi/domain` خوانده میشود.
+- دو پروتکل ناسازگار helper حذف و `/api/operations/*` با همان پروتکل ۱ ویزارد
+  هماهنگ شد؛ `apply-config` بازنشسته شد (۴۱۰) و `restart` به `restart-service` نگاشت شد.
+- وابستگیها ارتقا یافتند: FastAPI 0.162.0 / Starlette 1.10.0 / Pydantic 2.14.1 /
+  cryptography 50.0.2 / python-dotenv 1.2.4 / pyarrow 23.0.1؛ `pip-audit` اکنون ۰ مورد گزارش میکند.
+- `pip-audit`، `npm audit` و Dependabot به CI اضافه شدند؛ job ویندوز واقعاً
+  advisory شد (`continue-on-error`) و مجوزهای workflow محدود شد.
+- فایل ZIP قدیمی حذف و مسیر دانلود اکنون بستهای تازه از همان checkout میسازد
+  (بدون `.env`، دیتابیس یا کش)؛ README داخل بسته دیگر ادعای «۱۰۰٪ آفلاین» نمیکند.
+- escape مرکزی برای رشتههای سرور/صرافی در `innerHTML`؛ رفع `onclick="scanNow(true)"`
+  و افزودن تست XSS مرورگری (`npm run test:escaping`).
+- محدودیت نرخ خواندن برای روتهای محاسباتی، کران حافظهٔ شمارندهها، و جلوگیری از
+  downgrade کوکی `Secure` توسط هدر `X-Forwarded-Proto` نامعتبر.
+- پاسخ ۵۰۰ دیگر متن exception را به کلاینت نمیدهد؛ فقط `log_id` برمیگردد.
+- Dockerfile مسیرهای داده را با `ENV` مشخص میکند (اجرای `docker run` تنها هم بالا
+  میآید)؛ compose فقط روی loopback گوش میدهد؛ PWA آیکون گرفت؛
+  `version-check.html` نسخه را زنده از `/api/health` میخواند.
+- `package-lock.json` اصلاح و تست انطباق نسخه/tarball اضافه شد (`npm run test:lock`).
+- مجوز **MIT** (`LICENSE`) اضافه و از README به `SECURITY.md`/`CONTRIBUTING.md` لینک شد.
+- **تست انتها به انتها روی میزبان systemd واقعی** (systemd 257 + nginx 1.26): سوکت
+  `root:nobi 0660`، activation سرویس root، `LISTEN_FDS`، `check`،
+  `install-service`، `install-proxy` (با `nginx -t`)، `restart-service`،
+  `reload-proxy` و `rollback` بهعنوان کاربر غیرریشه تأیید شدند.
+- دو باگ کشفشده در همان تست رفع شد: `rollback` بعد از **اولین** نصب شکست میخورد
+  (بکآپی وجود نداشت) و فقط یکی از دو فایل را برمیگرداند؛ اکنون marker `.absent`
+  میسازد، symlink سرگردان nginx را پاک میکند و علت شکست را مستقیم نشان میدهد.
+  قالب group-writable، غیر root-owned، symlink و دامنهٔ مخرب همگی رد شدند.
+- نسخهها و مستندات هماهنگ شدند؛ `SECURITY.md`, `CONTRIBUTING.md` و
+  `docs/SECURITY-NOTES.md` افزوده شدند.
+
 ## 1.9.0
 
 - state machine فقط-Owner و قابل ادامه برای نصب کامل سرور از مرورگر افزوده شد.

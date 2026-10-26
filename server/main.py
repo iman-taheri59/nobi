@@ -53,6 +53,7 @@ import live_api
 import nobitex_metadata
 import notify
 import operations_api
+import package_bundle
 import paper_trading
 import reference_feed
 import setup_api
@@ -85,8 +86,11 @@ from risk_engine import (
 )
 from security import (
     API_TOKEN,
+    READ_RATE_LIMIT,
     auth_mode,
+    client_host,
     cors_origins,
+    read_rate_ok,
     require_client,
     startup_problem,
     trusted_proxies,
@@ -402,7 +406,7 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(
     title="nobiTrader",
-    version="1.9.0",
+    version="1.10.0",
     lifespan=lifespan,
 )
 
@@ -474,6 +478,28 @@ def security_token_ok(request: Request) -> bool:
     """Read the shared secret lazily so tests can set it after import."""
     from security import token_valid
     return token_valid(request)
+
+
+@app.middleware("http")
+async def budget_api_reads(request: Request, call_next):
+    """Give the expensive read-only routes a budget too.
+
+    ``require_client`` only counts mutations. ``/api/signals``,
+    ``/api/risk/whatif``, ``/api/portfolio/allocate``, ``/api/benchmark/relative``
+    and ``/api/backtest/quick`` do real work (and sometimes upstream calls)
+    while changing no state, so they were free to hammer. Loopback is exempt —
+    a laptop and ``TestClient`` must not throttle themselves — and
+    ``/api/health`` stays free for uptime monitors.
+    """
+    path = request.url.path
+    if not path.startswith("/api/") or path == "/api/health":
+        return await call_next(request)
+    if not read_rate_ok(client_host(request)):
+        return JSONResponse(
+            {"detail": f"read rate limit: {READ_RATE_LIMIT} requests/minute"},
+            status_code=429, headers={"Retry-After": "60"},
+        )
+    return await call_next(request)
 
 
 TIMEFRAMES = ["15m", "1h", "4h", "D"]
@@ -1939,10 +1965,12 @@ async def _unhandled(request: Request, exc: Exception):
                  "query": str(request.url.query)[:300]},
         client=(request.client.host if request.client else None),
     )
+    # The message is stored (scrubbed) for the owner in /api/errors. Returning
+    # it here leaked internal paths, SQL and exception text to every caller.
+    # The log_id is enough to find the row without describing the internals.
     return JSONResponse(status_code=500,
                         content={"ok": False, "error": "internal",
-                                 "log_id": row.get("id"),
-                                 "message": row.get("message")})
+                                 "log_id": row.get("id")})
 
 
 @app.get("/api/errors", dependencies=[Depends(install_api.require_owner)])
@@ -4482,10 +4510,20 @@ async def download_mobile_html():
 
 @app.get("/download/nobitex-trader-robat.zip", include_in_schema=False)
 async def download_package_zip():
-    return FileResponse(
-        REPO_ROOT / "nobitex-trader-robat.zip",
-        media_type="application/zip",
-        filename="nobitex-trader-robat.zip",
+    """A snapshot of the running checkout, never a stale committed binary.
+
+    The old ``nobitex-trader-robat.zip`` in the repository was dated
+    2026-10-19 and still claimed "100% offline"; users downloaded code that
+    predated weeks of security fixes. Building it here keeps the download
+    honest. ``package_bundle`` refuses .env files, databases and caches.
+    """
+    data = await asyncio.to_thread(package_bundle.build_archive)
+    return Response(
+        content=data, media_type="application/zip",
+        headers={
+            "Content-Disposition": 'attachment; filename="nobitex-trader-robat.zip"',
+            "Cache-Control": "no-store",
+        },
     )
 
 

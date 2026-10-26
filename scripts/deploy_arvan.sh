@@ -44,6 +44,10 @@ done
 
 [ "$(id -u)" -eq 0 ] || die "run me with sudo: sudo bash $0 --domain YOUR.DOMAIN"
 [ -n "$DOMAIN" ] || die "pass --domain YOUR.DOMAIN (it must already point at this server's IP)"
+# Used in sed and written to a root-owned file; reject anything that is not a
+# plain DNS name before it reaches either.
+[[ "$DOMAIN" =~ ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$ ]] \
+  || die "--domain must be a lowercase DNS name (letters, digits, dots, hyphens)"
 
 # --------------------------------------------------------------------------- #
 # 0. Preconditions
@@ -151,6 +155,11 @@ NBX_COIN_CACHE=$DATA_DIR/coin-cache
 NBX_CANDLE_CACHE=$DATA_DIR/candle-cache
 NBX_BT_DIR=$DATA_DIR/backtest-reports
 NBX_EXPORT_DIR=$DATA_DIR/exports
+NBX_LIVE_DB=$DATA_DIR/live_execution.db
+NBX_MANAGED_ENV=$DATA_DIR/managed.env
+NBX_OPERATIONS_AUDIT=$DATA_DIR/operations-audit.jsonl
+NBX_SETUP_TOKEN_FILE=$DATA_DIR/setup.token
+NBX_INSTALL_HELPER=/usr/local/bin/nobi-helper-client
 NBX_BASE_URL=https://apiv2.nobitex.ir
 NBX_EQUITY_USD=100000
 NBX_RATE_LIMIT=60
@@ -172,10 +181,47 @@ fi
 if ! grep -q '^NBX_BT_DIR=' "$ENV_FILE"; then
   printf 'NBX_BT_DIR=%s/backtest-reports\n' "$DATA_DIR" >> "$ENV_FILE"
 fi
+# Wizard-managed settings, the operations audit and the one-time setup token
+# default to server/ in code, which ProtectSystem=strict makes read-only.
+# Point them at the data volume for older installs too.
+for pair in \
+  "NBX_LIVE_DB=$DATA_DIR/live_execution.db" \
+  "NBX_MANAGED_ENV=$DATA_DIR/managed.env" \
+  "NBX_OPERATIONS_AUDIT=$DATA_DIR/operations-audit.jsonl" \
+  "NBX_SETUP_TOKEN_FILE=$DATA_DIR/setup.token" \
+  "NBX_INSTALL_HELPER=/usr/local/bin/nobi-helper-client"; do
+  key="${pair%%=*}"
+  grep -q "^${key}=" "$ENV_FILE" || printf '%s\n' "$pair" >> "$ENV_FILE"
+done
 chown root:"$SERVICE_USER" "$ENV_FILE"
 chmod 640 "$ENV_FILE"
 # 640 root:nobi — the service reads it, nobody else can.
 printf '    mode %s owner %s\n' "$(stat -c %a "$ENV_FILE")" "$(stat -c %U:%G "$ENV_FILE")"
+
+# --------------------------------------------------------------------------- #
+# 4b. Privileged installer helper (socket-activated, no sudo)
+# --------------------------------------------------------------------------- #
+step "installing the root-owned installer helper"
+# Templates MUST NOT be read from the checkout: it is chowned to the service
+# user below. A service-writable systemd unit copied to /etc as root is a root
+# escalation, so install them root:root 0444 outside the app tree.
+install -d -o root -g root -m 0755 /usr/local/share/nobi-installer
+install -o root -g root -m 0444 "$APP_DIR/deploy/nobi.service" /usr/local/share/nobi-installer/nobi.service
+install -o root -g root -m 0444 "$APP_DIR/deploy/nginx.conf" /usr/local/share/nobi-installer/nginx.conf
+install -d -o root -g root -m 0755 /usr/local/libexec
+install -o root -g root -m 0755 "$APP_DIR/deploy/nobi-privileged-helper" /usr/local/libexec/nobi-privileged-helper
+install -o root -g root -m 0755 "$APP_DIR/deploy/nobi-installer-helper.py" /usr/local/libexec/nobi-installer-helper.py
+install -o root -g root -m 0755 "$APP_DIR/deploy/nobi-helper-client" /usr/local/bin/nobi-helper-client
+install -o root -g root -m 0644 "$APP_DIR/deploy/nobi-installer.socket" /etc/systemd/system/nobi-installer.socket
+install -o root -g root -m 0644 "$APP_DIR/deploy/nobi-installer.service" /etc/systemd/system/nobi-installer.service
+printf '%s\n' "$DOMAIN" > /etc/nobi/domain
+chown root:root /etc/nobi/domain
+chmod 0444 /etc/nobi/domain
+rm -f /etc/sudoers.d/nobi-helper   # legacy sudo path, no longer used
+systemctl daemon-reload
+systemctl enable --now nobi-installer.socket >/dev/null
+"$PYTHON_BIN" /usr/local/libexec/nobi-privileged-helper --protocol 1 check || \
+  warn "installer helper check failed — fix the templates/domain file before using the browser installer"
 
 # --------------------------------------------------------------------------- #
 # 5. systemd

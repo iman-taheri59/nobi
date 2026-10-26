@@ -12,12 +12,13 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request
 
 import install_api
+import install_wizard
 
 ROOT = Path(__file__).resolve().parents[1]
 AUDIT = Path(os.getenv("NBX_OPERATIONS_AUDIT") or Path(__file__).with_name("operations-audit.jsonl"))
-HELPER = os.getenv("NBX_INSTALL_HELPER", "")
+# One transport for both the wizard and the operations card.
+HELPER = os.getenv("NBX_INSTALL_HELPER") or str(install_wizard.HELPER)
 _ARCHIVE = re.compile(r"nobitrader-state-[0-9]{8}T[0-9]{6}Z\.zip\Z")
-_DOMAIN = re.compile(r"(?=.{1,253}\Z)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}\Z")
 router = APIRouter(prefix="/api/operations", tags=["owner operations"])
 
 
@@ -56,15 +57,24 @@ def _state_backup():
     return state_backup
 
 
-def _helper(action: str, payload: dict[str, str]) -> dict[str, Any]:
+def _helper(action: str) -> dict[str, Any]:
+    """Call the same protocol-1 client the browser installer uses.
+
+    The old code passed ``[action, JSON]`` to a second, incompatible helper
+    (``scripts/nobi_privileged_helper.py``). That helper is gone: on a 1.9.0
+    host the call either hit the exact-argv sudoers rule (denied) or the new
+    argparse CLI (rejected). Both routes are now one allowlist.
+    """
+    if action not in install_wizard.ACTIONS:
+        raise HTTPException(status_code=422, detail="unsupported helper action")
     helper = Path(HELPER)
     if not HELPER or not helper.is_absolute() or not helper.is_file():
         raise HTTPException(status_code=503, detail="privileged helper is not configured")
     try:
         proc = subprocess.run(
-            [str(helper), action, json.dumps(payload, separators=(",", ":"))],
+            [str(helper), "--protocol", str(install_wizard.PROTOCOL), action],
             cwd=ROOT, env={"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LANG": "C.UTF-8"},
-            text=True, encoding="utf-8", capture_output=True, timeout=30, check=False,
+            text=True, encoding="utf-8", capture_output=True, timeout=100, check=False,
         )
     except subprocess.TimeoutExpired as exc:
         raise HTTPException(status_code=504, detail="helper timeout") from exc
@@ -77,8 +87,10 @@ def _helper(action: str, payload: dict[str, str]) -> dict[str, Any]:
 @router.get("")
 def status(request: Request):
     install_api.require_owner(request)
-    return {"ok": True, "archives": _archives(), "helper_available": bool(HELPER),
-            "actions": ["backup", "restore", "apply-config", "restart"]}
+    helper_ready = bool(HELPER) and Path(HELPER).is_file()
+    return {"ok": True, "archives": _archives(), "helper_available": helper_ready,
+            "actions": ["backup", "restore", "restart"],
+            "helper_protocol": install_wizard.PROTOCOL}
 
 
 @router.post("/backup")
@@ -117,17 +129,22 @@ def restore(payload: dict, request: Request):
 
 @router.post("/apply-config")
 def apply_config(payload: dict, request: Request):
+    """Retired: the domain is now a root-owned file, never a request argument.
+
+    ``NBX_INSTALL_HELPER`` used to call ``apply-config <JSON>`` on a second
+    helper that accepted a domain from the browser. The protocol-1 helper
+    deliberately does not: it reads /etc/nobi/domain (root:root 0444) and
+    replaces a placeholder in a root-owned nginx template. Use the Settings
+    -> Install wizard ``install-proxy`` action instead.
+    """
     user = install_api.require_owner(request, csrf=True)
-    if set(payload) != {"domain"} or not _DOMAIN.fullmatch(str(payload["domain"]).lower()):
-        raise HTTPException(status_code=422, detail="valid DNS domain required")
-    domain = str(payload["domain"]).lower()
-    try:
-        result = _helper("apply-config", {"domain": domain})
-    except HTTPException:
-        _audit(user.username, "apply-config", False, domain)
-        raise
-    _audit(user.username, "apply-config", True, domain)
-    return result
+    _audit(user.username, "apply-config", False, "retired endpoint")
+    raise HTTPException(status_code=410, detail={
+        "error": "moved",
+        "where": "/api/install/wizard/action",
+        "action": "install-proxy",
+        "note": "set /etc/nobi/domain as root, then run install-proxy",
+    })
 
 
 @router.post("/restart")
@@ -136,7 +153,7 @@ def restart(payload: dict, request: Request):
     if payload != {"confirmation": "RESTART"}:
         raise HTTPException(status_code=422, detail="confirmation must be RESTART")
     try:
-        result = _helper("restart", {})
+        result = _helper("restart-service")
     except HTTPException:
         _audit(user.username, "restart", False)
         raise

@@ -38,11 +38,22 @@ def session_of(request) -> auth.Session | None:
 
 
 def is_secure(request) -> bool:
-    """HTTPS as the *client* experienced it, which is what the browser checks."""
+    """HTTPS as the *client* experienced it, which is what the browser checks.
+
+    ``X-Forwarded-Proto`` is only believable from a peer named in
+    ``NBX_TRUSTED_PROXIES`` — the same rule ``security.client_host`` applies to
+    ``X-Forwarded-For``. Previously any client could send
+    ``X-Forwarded-Proto: http`` on an HTTPS login and receive a session cookie
+    without the ``Secure`` flag. A forged ``https`` from an untrusted peer can
+    only make the cookie stricter, never weaker.
+    """
     forwarded = request.headers.get("x-forwarded-proto", "").split(",")[0].strip().lower()
     if forwarded in ("http", "https"):
-        return forwarded == "https"
-    return request.url.scheme == "https"
+        from security import trusted_peer  # lazy: security imports this module
+
+        if trusted_peer(request):
+            return forwarded == "https"
+    return request.url.scheme == "https" or forwarded == "https"
 
 
 def csrf_ok(request, session: auth.Session) -> bool:

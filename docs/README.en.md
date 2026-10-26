@@ -2,7 +2,7 @@
 
 [فارسی](README.md) · **English**
 
-Working version: **1.9.0**. See [versioning and GitHub releases](releases.en.md) and the
+Working version: **1.10.0**. See [versioning and GitHub releases](releases.en.md) and the
 [changelog](../CHANGELOG.en.md).
 
 ## Documentation map
@@ -98,6 +98,7 @@ What is written twice, what is written once, and what is pending. The gate in
 | Tuning the take-profit ladder (`NBX_RR_LEVELS`) | [`rr-ladder-tuning.md`](rr-ladder-tuning.md) | [`rr-ladder-tuning.en.md`](rr-ladder-tuning.en.md) |
 | Roadmap | [`roadmap/fa/`](roadmap/fa) | **pending** |
 | Analysis catalogues | [`analysis/`](analysis) | **pending** |
+| Dependency security notes | [`SECURITY-NOTES.md`](SECURITY-NOTES.md) | **pending** |
 | Reviews (date-stamped) | [`reviews/`](reviews) | snapshot only — not translated by design |
 
 "Pending" is an honest state, not a promise: those documents are Persian-only today,

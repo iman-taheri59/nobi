@@ -5,6 +5,8 @@
 pytest==9.0.3
 ruff==0.17.1
 mypy==2.4.0
+# CI runs `pip-audit -r server/requirements.txt`; pin it like the other gates.
+pip-audit==2.10.1
 
 # Only the `ui` CI job needs a browser; it installs this and then runs
 # `playwright install --with-deps chromium`.

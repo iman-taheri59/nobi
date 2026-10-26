@@ -197,22 +197,64 @@ _RATE_LIMIT = max(1, int(os.getenv("NBX_RATE_LIMIT", "60")))
 LOGIN_RATE_LIMIT = max(1, int(os.getenv("NBX_LOGIN_RATE_LIMIT", "20")))
 
 _hits: dict[str, deque[float]] = {}
+_MAX_KEYS = 4096
+_last_sweep = 0.0
+
+
+def _sweep(now: float, *, force: bool = False) -> None:
+    """Bound the counter map.
+
+    Every distinct ``client:path`` used to create a deque that was never
+    removed, so a long-lived process behind a proxy accumulated one entry per
+    visitor forever. Clean expired windows every 30 s and, if the map is still
+    above the cap, evict the oldest keys (a rate-limit counter is a cache, not
+    a ledger — dropping one only makes the next request slightly freer).
+    """
+    global _last_sweep
+    if not force and now - _last_sweep < 30:
+        return
+    _last_sweep = now
+    for key, window in list(_hits.items()):
+        while window and now - window[0] > 60:
+            window.popleft()
+        if not window:
+            del _hits[key]
+    if len(_hits) > _MAX_KEYS:
+        for key in list(_hits)[: len(_hits) - _MAX_KEYS]:
+            del _hits[key]
 
 
 def _within(key: str, limit: int) -> bool:
     """Sliding one-minute window. One counter per key, in this process."""
     now = time.monotonic()
+    _sweep(now)
     window = _hits.setdefault(key, deque())
     while window and now - window[0] > 60:
         window.popleft()
     if len(window) >= limit:
         return False
     window.append(now)
+    if len(_hits) > _MAX_KEYS:
+        _sweep(now, force=True)   # includes the key we just added
     return True
 
 
 def _rate_ok(key: str) -> bool:
     return _within(key, _RATE_LIMIT)
+
+
+#: Read-only endpoints used to have no budget at all. An authenticated viewer
+#: (or an anonymous caller before the first owner exists) could hammer the
+#: expensive projections/backtests and the upstream they call. Loopback stays
+#: unlimited: a local dashboard and the test client must not throttle
+#: themselves. Set ``NBX_READ_RATE_LIMIT=0`` to disable the check entirely.
+READ_RATE_LIMIT = max(0, int(os.getenv("NBX_READ_RATE_LIMIT", "240")))
+
+
+def read_rate_ok(host: str) -> bool:
+    if READ_RATE_LIMIT == 0 or host in LOOPBACK_HOSTS:
+        return True
+    return _within(f"read:{host}", READ_RATE_LIMIT)
 
 
 def login_rate_ok(host: str) -> bool:
@@ -226,6 +268,8 @@ def login_rate_ok(host: str) -> bool:
 
 def reset_rate_limits() -> None:
     _hits.clear()
+    global _last_sweep
+    _last_sweep = 0.0
 
 
 async def require_client(request: Request) -> None:
@@ -281,6 +325,19 @@ async def require_client(request: Request) -> None:
         )
 
 
+def trusted_peer(request: Request) -> bool:
+    """Is the TCP peer a proxy whose forwarding headers we believe?
+
+    ``client_host`` already uses this rule for ``X-Forwarded-For``. The same
+    rule has to govern ``X-Forwarded-Proto``: a browser can set that header on
+    its own request, and believing it unconditionally lets a client strip the
+    ``Secure`` flag from its own session cookie on an HTTPS deployment.
+    """
+    peer = (request.client.host if request.client else "") or ""
+    nets = trusted_proxies()
+    return bool(nets) and _in_any(peer, nets)
+
+
 def token_valid(request: Request) -> bool:
     """Is this request carrying the shared secret? Used by `/api/auth/me`."""
     if not API_TOKEN:
@@ -288,6 +345,7 @@ def token_valid(request: Request) -> bool:
     return secrets.compare_digest(presented_token(request), API_TOKEN)
 
 
-__all__ = ["API_TOKEN", "LOGIN_RATE_LIMIT", "auth_mode", "client_host", "cors_origins",
-           "login_rate_ok", "presented_token", "require_client", "reset_rate_limits",
-           "startup_problem", "token_valid", "trusted_proxies"]
+__all__ = ["API_TOKEN", "LOGIN_RATE_LIMIT", "READ_RATE_LIMIT", "auth_mode", "client_host",
+           "cors_origins", "login_rate_ok", "presented_token", "read_rate_ok",
+           "require_client", "reset_rate_limits", "startup_problem", "token_valid",
+           "trusted_peer", "trusted_proxies"]

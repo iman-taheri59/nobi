@@ -2,7 +2,8 @@
 
 **فارسی** · [English](README.en.md)
 
-نسخهٔ کاری: **1.9.0** · تگ منتشرشده: **v1.8.0**
+نسخهٔ کاری: **1.10.0** · تگ منتشرشده: **v1.9.0**
+**مجوز:** MIT ([`LICENSE`](LICENSE)) · **گزارش آسیبپذیری:** [`SECURITY.md`](SECURITY.md) · **مشارکت:** [`CONTRIBUTING.md`](CONTRIBUTING.md)
 
 راهنمای [نسخه‌بندی و GitHub Release](docs/releases.md) شامل قواعد افزایش نسخه، تگ و انتشار فایل موبایل است. [تاریخچهٔ تغییرات](CHANGELOG.md) را نیز ببینید ([English](CHANGELOG.en.md)).
 
@@ -93,6 +94,8 @@ css` را نزنی، `build_standalone.py` هشدار می‌دهد که CSS ا�
 | `python scripts/ui_smoke_prep.py && node scripts/ui_smoke_test.js` | DOM و MSI بدون خطای JS |
 | `python scripts/check_preflight_parity.py` | ده دروازهٔ ریسک در Python و JS یکی باشند |
 | `node scripts/js_broker_test.js` | بروکر مرورگر: نرخ ارز، حداقل صرافی، بازار بسته، دقت |
+| `npm run test:escaping` | escape شدن رشتههای سرور/صرافی و اتصال دکمهٔ «تلاش دوباره» |
+| `pip-audit -r server/requirements.txt` | نبود آسیبپذیری شناختهشده در وابستگیها |
 
 ### دروازه‌های ایستا (ADR-0016)
 
@@ -179,7 +182,7 @@ docs/                   ADR، تحلیل، ops، بازبینی‌ها
 نتیجه: عدد داشبورد = عدد صرافی، و سفارشی که زیر حداقل صرافی است در پیش‌نمایش هم
 رد می‌شود. جزئیات: [`docs/reviews/2026-10-20-nobitex-api-conformance-fa.md`](docs/reviews/2026-10-20-nobitex-api-conformance-fa.md).
 
-## دو روت «قبل از معامله»
+## چهار روت «قبل از معامله»
 
 | روت | چه می‌گوید | تغییر state |
 |---|---|---|

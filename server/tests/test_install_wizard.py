@@ -73,8 +73,24 @@ def test_helper_argv_is_fixed_output_redacted_and_state_persists(monkeypatch, tm
     assert step["state"] == "passed"
 
 
-def test_sudo_policy_has_no_wildcards_or_shell():
-    policy = (install_wizard.Path(__file__).resolve().parents[2] / "deploy" / "nobi-helper.sudoers").read_text(encoding="utf-8")
-    assert "*" not in policy and "/bin/sh" not in policy
+def test_helper_transport_needs_no_sudo_and_has_no_shell():
+    """The runtime path is a Unix socket, not a setuid sudo invocation.
+
+    ``NoNewPrivileges=yes`` on the web unit makes sudo inert and
+    ``ProtectSystem=strict`` makes /etc read-only in its mount namespace. A
+    root daemon started by a socket unit avoids both problems.
+    """
+    deploy = install_wizard.Path(__file__).resolve().parents[2] / "deploy"
+    daemon = (deploy / "nobi-installer-helper.py").read_text(encoding="utf-8")
+    client = (deploy / "nobi-helper-client").read_text(encoding="utf-8")
+    socket_unit = (deploy / "nobi-installer.socket").read_text(encoding="utf-8")
+    service_unit = (deploy / "nobi.service").read_text(encoding="utf-8")
+    for text in (daemon, client):
+        assert "shell=True" not in text
+        assert "/usr/bin/sudo" not in text
+    assert "AF_UNIX" in daemon
+    assert "SocketGroup=nobi" in socket_unit and "SocketMode=0660" in socket_unit
+    assert "NoNewPrivileges=yes" in service_unit
+    assert "NOPASSWD" not in (deploy / "nobi-helper.sudoers").read_text(encoding="utf-8")
     for action in install_wizard.ACTIONS:
-        assert action in policy
+        assert action in daemon

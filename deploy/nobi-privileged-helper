@@ -1,59 +1,187 @@
 #!/usr/bin/env python3
-"""Root policy helper for Nobi W3b. No user paths, argv, or shell text."""
+"""Root-owned privileged helper for the nobiTrader installer.
+
+This is the *only* process that writes /etc/systemd/system and
+/etc/nginx/sites-available. It never accepts a path, a domain, a command, a
+package name or shell text from the caller: every action is an id in an
+allowlist and every source/target path is fixed here.
+
+Templates live in ``/usr/local/share/nobi-installer`` (root:root, 0444), NOT in
+the application checkout. ``scripts/deploy_arvan.sh`` chowns the checkout to the
+service user; copying a systemd unit out of a service-writable directory into
+/etc as root was a root escalation: a compromised web process could rewrite
+``deploy/nobi.service`` and then call the *allowed* ``install-service`` action.
+``_validate_source`` now refuses any template that is not root-owned and
+group/world-writable-free.
+
+The domain is not an argv either. ``install-proxy`` reads the root-owned
+``/etc/nobi/domain`` and substitutes the placeholder in the nginx template.
+That keeps the sudo/socket allowlist exact while still letting an operator set
+a hostname (as root) before pressing Apply.
+"""
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import time
 from pathlib import Path
 
 PROTOCOL = 1
-SOURCE = Path("/opt/nobi/deploy")
+SOURCE = Path("/usr/local/share/nobi-installer")
+DOMAIN_FILE = Path("/etc/nobi/domain")
+PLACEHOLDER = "nobi.example.ir"
+DOMAIN = re.compile(
+    r"(?=.{1,253}\Z)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}\Z"
+)
 BACKUPS = Path("/var/lib/nobi/install-backups")
 TARGETS = {
     "install-service": (SOURCE / "nobi.service", Path("/etc/systemd/system/nobi.service")),
-    "install-proxy": (SOURCE / "nginx.conf", Path("/etc/nginx/sites-available/nobi.conf")),
+    "install-proxy": (SOURCE / "nginx.conf", Path("/etc/nginx/sites-available/nobi")),
 }
 COMMANDS = {
     "restart-service": ["/usr/bin/systemctl", "restart", "nobi.service"],
     "reload-proxy": ["/usr/sbin/nginx", "-s", "reload"],
 }
+ACTIONS = frozenset([*TARGETS, *COMMANDS, "rollback", "check"])
+
+# Cheap content sanity checks: a truncated or replaced template must not be
+# installed just because its mode bits happen to look right.
+_EXPECT = {"install-service": b"[Unit]", "install-proxy": b"server {"}
 
 
-def atomic_install(source: Path, target: Path) -> None:
-    if not source.is_file() or source.is_symlink():
-        raise RuntimeError("managed source is missing or unsafe")
+def _validate_source(source: Path, action: str) -> None:
+    if source.is_symlink() or not source.is_file():
+        raise RuntimeError("managed source is missing or is a symlink")
+    st = source.stat()
+    if st.st_uid != 0:
+        raise RuntimeError("managed source is not root-owned")
+    if st.st_mode & 0o022:
+        raise RuntimeError("managed source is group/world writable")
+    data = source.read_bytes()
+    if _EXPECT[action] not in data:
+        raise RuntimeError("managed source does not look like the expected template")
+
+
+def _domain() -> str:
+    if not DOMAIN_FILE.is_file():
+        raise RuntimeError(f"missing root-owned {DOMAIN_FILE}")
+    st = DOMAIN_FILE.stat()
+    if st.st_uid != 0 or st.st_mode & 0o022:
+        raise RuntimeError("domain file must be root-owned and not writable by others")
+    value = DOMAIN_FILE.read_text(encoding="utf-8").strip().lower()
+    if not DOMAIN.fullmatch(value):
+        raise RuntimeError("domain file does not contain a valid DNS name")
+    return value
+
+
+def _backup_paths(target: Path) -> tuple[Path, Path]:
+    return (BACKUPS / (target.name + ".previous"),
+            BACKUPS / (target.name + ".absent"))
+
+
+def atomic_install(source: Path, target: Path, *, content: bytes | None = None) -> None:
+    """Replace a managed file, recording what was there *before*.
+
+    A first-ever install has no previous file to copy. It used to record
+    nothing, which made rollback impossible (and left a half-rolled-back
+    pair of systemd/nginx files). We now leave an `.absent` marker so
+    rollback can undo an installation that created the target.
+    """
     target.parent.mkdir(parents=True, exist_ok=True)
     BACKUPS.mkdir(parents=True, exist_ok=True)
+    previous, absent = _backup_paths(target)
     if target.exists():
-        shutil.copy2(target, BACKUPS / (target.name + ".previous"))
+        shutil.copy2(target, previous)
+        with contextlib.suppress(FileNotFoundError):
+            absent.unlink()
+    else:
+        absent.write_text("target did not exist before this install\n", encoding="utf-8")
+        os.chmod(absent, 0o600)
+        with contextlib.suppress(FileNotFoundError):
+            previous.unlink()
     partial = target.with_name(target.name + ".partial")
-    shutil.copyfile(source, partial)
+    if content is None:
+        content = source.read_bytes()
+    partial.write_bytes(content)
     os.chmod(partial, 0o644)
     os.replace(partial, target)
 
 
 def rollback() -> None:
-    restored = 0
+    """Undo the most recent install of *both* managed files, or none.
+
+    Returns an error instead of silently restoring only one target: a wizard
+    that says "rolled back" must not leave a live nginx site pointing at a
+    service unit that no longer exists.
+    """
+    handled = 0
+    known = 0
     for _action, (_source, target) in TARGETS.items():
-        backup = BACKUPS / (target.name + ".previous")
-        if backup.is_file() and not backup.is_symlink():
-            partial = target.with_name(target.name + ".rollback")
-            shutil.copyfile(backup, partial)
+        previous, absent = _backup_paths(target)
+        has_previous = previous.is_file() and not previous.is_symlink()
+        has_absent = absent.is_file()
+        if not has_previous and not has_absent:
+            continue          # never installed by us — leave the host alone
+        known += 1
+        partial = target.with_name(target.name + ".rollback")
+        if has_previous:
+            shutil.copyfile(previous, partial)
             os.replace(partial, target)
-            restored += 1
-    if not restored:
-        raise RuntimeError("no rollback backup exists")
+        else:
+            with contextlib.suppress(FileNotFoundError):
+                target.unlink()
+            # A dangling sites-enabled link would make `nginx -t` fail.
+            enabled = Path("/etc/nginx/sites-enabled") / target.name
+            if enabled.is_symlink() and enabled.resolve() == target:
+                enabled.unlink()
+        # Separate calls: a shared `suppress` block would skip the second
+        # unlink when the first raised FileNotFoundError (first-install case).
+        previous.unlink(missing_ok=True)
+        absent.unlink(missing_ok=True)
+        handled += 1
+    if not known:
+        raise RuntimeError("no rollback state exists")
+    if handled != known:
+        raise RuntimeError("incomplete rollback")
+
+
+def check() -> dict:
+    """Read-only protocol probe. No root required, no host change."""
+    result: dict = {"ok": True, "protocol": PROTOCOL, "actions": sorted(ACTIONS)}
+    for action, (source, _target) in TARGETS.items():
+        try:
+            _validate_source(source, action)
+            result[action] = "ready"
+        except (OSError, RuntimeError) as exc:
+            result[action] = str(exc)
+            result["ok"] = False
+    try:
+        result["domain"] = _domain()
+    except (OSError, RuntimeError) as exc:
+        result["domain"] = str(exc)
+        # The wizard installs both the unit and the proxy: a bad domain file
+        # makes one of its required actions impossible, so preflight must say
+        # so instead of reporting a green helper.
+        result["install-proxy"] = f"blocked: {exc}"
+        result["ok"] = False
+    return result
 
 
 def execute(action: str) -> None:
     if os.geteuid() != 0:
-        raise RuntimeError("helper must run as root through the constrained sudo policy")
+        raise RuntimeError("helper must run as root (via the socket-activated service)")
     if action in TARGETS:
-        atomic_install(*TARGETS[action])
+        source, target = TARGETS[action]
+        _validate_source(source, action)
+        content = None
+        if action == "install-proxy":
+            content = source.read_bytes().replace(PLACEHOLDER.encode(), _domain().encode())
+        atomic_install(source, target, content=content)
         if action == "install-service":
             subprocess.run(["/usr/bin/systemctl", "daemon-reload"], check=True, timeout=30)
             subprocess.run(
@@ -61,12 +189,12 @@ def execute(action: str) -> None:
                 check=True, timeout=60,
             )
         else:
-            enabled = Path("/etc/nginx/sites-enabled/nobi.conf")
+            enabled = Path("/etc/nginx/sites-enabled/nobi")
             enabled.parent.mkdir(parents=True, exist_ok=True)
-            if enabled.is_symlink() and enabled.resolve() != TARGETS[action][1]:
+            if enabled.is_symlink() and enabled.resolve() != target:
                 raise RuntimeError("nginx enabled link points to an unmanaged target")
             if not enabled.exists():
-                enabled.symlink_to(TARGETS[action][1])
+                enabled.symlink_to(target)
             subprocess.run(["/usr/sbin/nginx", "-t"], check=True, timeout=30)
     elif action == "rollback":
         rollback()
@@ -83,11 +211,15 @@ def execute(action: str) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--protocol", type=int, required=True)
-    parser.add_argument("action", choices=sorted([*TARGETS, *COMMANDS, "rollback"]))
+    parser.add_argument("action", choices=sorted(ACTIONS))
     args = parser.parse_args()
     if args.protocol != PROTOCOL:
         print(json.dumps({"ok": False, "error": "protocol mismatch"}))
         return 2
+    if args.action == "check":
+        result = check()
+        print(json.dumps(result))
+        return 0 if result["ok"] else 1
     try:
         execute(args.action)
     except Exception as exc:

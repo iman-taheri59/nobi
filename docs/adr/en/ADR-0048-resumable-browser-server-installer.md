@@ -14,7 +14,7 @@ Owner bootstrap, non-secret runtime settings, and source-tree gates already work
 
 The owner-only wizard persists eight resumable steps in SQLite: bootstrap-owner, host-preflight, storage, runtime, reverse-proxy, service-install, validation, and complete. Mutations require session CSRF and use a process-wide lock. Host preflight reports OS, non-root execution, Python, disk, writable data, ports, helper, systemd, and nginx without changing the host.
 
-Privileged operations cross one protocol-versioned boundary. The web process passes only one allowlisted action id to `nobi-helper-client`; the root-owned helper accepts exact argv for install-service, install-proxy, restart-service, reload-proxy, or rollback. It accepts no command text, package, service name, or path. Sudoers contains exact commands and no wildcard. Managed files use fixed source/target paths, backups, atomic replacement, nginx validation, and bounded subprocess timeouts.
+Privileged operations cross one protocol-versioned boundary over a Unix socket. The web process passes only one allowlisted action id to `nobi-helper-client`, which connects to `/run/nobi-installer.sock` (group `nobi`, mode 0660). A root-owned, socket-activated helper service validates the action and invokes the root CLI helper. No sudo, no setuid binary and no sudoers rule is involved: `NoNewPrivileges=yes` and `ProtectSystem=strict` on the web unit make sudo unusable, and the helper service has its own mount namespace. Managed templates live root-owned in `/usr/local/share/nobi-installer` (never in the service-writable checkout) and are validated for owner, mode and content before installation. The domain comes from root-owned `/etc/nobi/domain`, not from the request. Files use fixed targets, backups, atomic replacement, nginx validation and bounded timeouts.
 
 Output is bounded and secret-pattern redacted. Restart, reload, and rollback require explicit confirmation. Live mode remains disabled/dry-run and cannot be promoted by this wizard.
 
@@ -27,7 +27,7 @@ Every action creates an immutable run row and updates its step to running, passe
 - web process is never root;
 - owner session and CSRF are mandatory;
 - helper actions and argv are closed allowlists;
-- no shell invocation, wildcard sudo rule, user path, or package name;
+- no shell invocation, sudoers rule, user path, writable template, or package name;
 - no secrets in managed settings, state, logs, API output, or audit detail;
 - concurrent mutations fail closed;
 - Paper Trading remains the deployment default.

@@ -1,0 +1,18 @@
+# /etc/systemd/system/nobi-installer.socket
+#
+# The only door between the hardened web process and the root installer helper.
+# SocketGroup=nobi + mode 0660 mean only the service user can connect; there is
+# no sudoers rule and no setuid binary in this path.
+[Unit]
+Description=nobiTrader installer helper socket
+PartOf=nobi-installer.service
+
+[Socket]
+ListenStream=/run/nobi-installer.sock
+SocketUser=root
+SocketGroup=nobi
+SocketMode=0660
+Accept=no
+
+[Install]
+WantedBy=sockets.target

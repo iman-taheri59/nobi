@@ -41,10 +41,11 @@
 - [ ] اجرای soak واقعی پنج‌روزه در محیط متصل به نوبیتکس.
 - [x] W1: ویزارد اولین نصب و ساخت owner با توکن یک‌بارمصرف کنسول.
 - [x] W2: مسیرهای داده، scan/TTL و disabled/dry-run از UI owner؛ managed.env بدون secret.
-- [ ] W2b: بررسی و تولید پیکربندی reverse proxy/systemd با helper غیر-root.
+- [x] W2b: پیکربندی reverse proxy/systemd با helper root جداگانه (سوکت یونیکس، بدون sudo).
 - [x] W3: ۱۳ gate تست/lint/parity/build/deploy-check از allowlist فقط-owner.
 - [x] W3b: backup/restore/restart و systemd/nginx با helper محدود سیستم‌عامل.
-- [ ] روی سرور واقعی: helper و sudoers باید root-owned نصب و `NBX_INSTALL_HELPER` تنظیم شود.
+- [ ] روی سرور واقعی: یونیتهای `nobi-installer.socket/.service` و قالبهای root-owned
+  نصب و `NBX_INSTALL_HELPER` تنظیم شوند (اسکریپت `deploy_arvan.sh` این کار را میکند).
 - [x] endpoint واقعی `/api/live/place` فقط-owner با CSRF، تأیید صریح، preflight و promotion gate.
 - [ ] اجرای soak واقعی ۵روزه/۳۰نمونه؛ تا آن زمان live mode فعال نشود.
 - [x] تب مستقل کاربران با مدیریت نقش/وضعیت/نشست/دعوت و activity فقط-owner.

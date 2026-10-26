@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="nobiTrader">
+  <rect width="512" height="512" rx="112" fill="#09090b"/>
+  <rect x="28" y="28" width="456" height="456" rx="88" fill="none" stroke="#34d399" stroke-width="12"/>
+  <path d="M150 366V146h44l124 142V146h44v220h-44L194 224v142z" fill="#34d399"/>
+</svg>

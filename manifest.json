@@ -7,5 +7,15 @@
   "background_color": "#09090b",
   "theme_color": "#09090b",
   "dir": "rtl",
-  "lang": "fa-IR"
+  "lang": "fa-IR",
+  "id": "./",
+  "scope": "./",
+  "icons": [
+    {
+      "src": "assets/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
 }

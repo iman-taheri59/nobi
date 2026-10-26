@@ -1,5 +1,7 @@
 # بازبینی انطباق با API نوبیتکس — ۱۴۰۵/۰۷/۲۸ (2026-10-20)
 
+> **بایگانی — وضعیت در تاریخ ۱۴۰۵/۰۷/۲۸ (2026-10-20).** این سند گزارش همان روز است و برخی گزارهها (مثلاً نبود `/api/orderbook` یا `/api/paper/orders`) اکنون نادرستاند. برای وضعیت جاری به `README.md`، `docs/HANDOFF.md` و کد `server/main.py` مراجعه کنید.
+
 **دامنه:** همهٔ مستندات رسمی (`github.com/nobitex/docs-api`) در برابر هر جایی از این
 مخزن که با صرافی حرف می‌زند: `server/nobitex_client.py`، `server/main.py`،
 `server/paper_trading.py`، `server/ws_execution.py`، `scripts/run_with_mock_exchange.py`،

@@ -3,27 +3,56 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>nobiTrader — تشخیص فایل برنامه</title>
-<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css">
+<title>nobiTrader — تشخیص فایل سرو‌شده</title>
 <link rel="stylesheet" href="assets/css/base.css">
+<style>
+  body{font-family:Tahoma,system-ui,sans-serif;background:#09090b;color:#e4e4e7;margin:0;
+       min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
+  .card{max-width:44rem;width:100%;background:rgba(255,255,255,.04);
+        border:1px solid rgba(255,255,255,.1);border-radius:18px;padding:24px}
+  h1{color:#6ee7b7;font-size:1.15rem;margin:0 0 6px}
+  p{color:#a1a1aa;font-size:.8rem;line-height:1.9}
+  .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:16px 0}
+  .box{background:rgba(255,255,255,.04);border-radius:10px;padding:10px;font-size:.72rem}
+  .box b{display:block;font-size:1rem;color:#6ee7b7;margin-top:4px;direction:ltr;text-align:right}
+  code{color:#c4b5fd;direction:ltr;unicode-bidi:isolate}
+  .warn{background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.25);
+        border-radius:10px;padding:10px;font-size:.75rem;line-height:1.9;color:#fcd34d}
+</style>
 </head>
-<body class="min-h-screen flex items-center justify-center p-6">
-  <div class="max-w-2xl w-full bg-white/5 border border-white/10 rounded-2xl p-6 space-y-4">
-    <h1 class="font-extrabold text-xl text-emerald-300">تشخیص نسخه‌ی سرو‌شده</h1>
-    <p class="text-sm text-zinc-400 leading-7">این صفحه فقط برای تأیید این است که میزبان/مرورگر شما واقعاً کدام فایل را سرو می‌کند.</p>
-    <div class="grid grid-cols-2 gap-3 text-xs">
-      <div class="rounded-lg bg-white/5 p-3"><span class="text-zinc-500">فایل کنونی:</span><div class="num font-extrabold text-emerald-300 text-lg">version-check.html</div></div>
-      <div class="rounded-lg bg-white/5 p-3"><span class="text-zinc-500">زمان ساخت:</span><div class="num font-extrabold text-emerald-300 text-lg">14 Feb 2026 · v1.7</div></div>
+<body>
+  <div class="card">
+    <h1>nobiTrader — تشخیص نسخهٔ سرو‌شده</h1>
+    <p>این صفحه فقط نشان میدهد مرورگر واقعاً از کدام بکاند فایل دریافت کرده است.
+       مقادیر زیر ساختگی یا hard-code نشدهاند و مستقیماً از <code>/api/health</code> خوانده میشوند.</p>
+    <div class="grid">
+      <div class="box">فایل کنونی<b>version-check.html</b></div>
+      <div class="box">نسخهٔ بکاند<b id="ver">در حال دریافت…</b></div>
+      <div class="box">وضعیت بکاند<b id="ok">—</b></div>
+      <div class="box">زمان سرور<b id="ts">—</b></div>
     </div>
-    <div class="rounded-lg bg-amber-400/10 border border-amber-300/30 p-3 text-[12px] leading-6">
-      <b class="text-amber-300">اگر این صفحه را می‌بینید:</b> میزبان شما فایل‌های درست را سرو می‌کند. حالا <span class="num">index.html</span> را باز کنید؛ باید نشان <b>v1.7 · b2026</b> بنفش را بالای هدر (کنار لوگو) ببینید و در منوی کناری ۷ آیتم با آخرین دو آیتم «گزارش عملکرد» و «میز معاملات دستی» حس شود.
-    </div>
-    <div class="rounded-lg bg-red-400/10 border border-red-300/30 p-3 text-[12px] leading-6">
-      <b class="text-red-300">اگر این صفحه را هم نمی‌بینید:</b> میزبان شما به پوشه دیگری اشاره می‌کند یا فایل قدیمی از مسیر متفاوتی سرو می‌شود. آدرس پیش‌نمایش را دقیق بفرستید تا مسیر را اصلاح کنم.
-    </div>
-    <div class="pt-2 text-[11px] text-zinc-500 num" id="urlz"></div>
+    <div id="msg" class="warn">اگر نسخهٔ بکاند با نسخهٔ نوشتهشده در <code>VERSION</code> مخزن یکی نیست،
+      میزبان شما پوشهٔ قدیمی دیگری را سرو میکند. آدرس را بررسی کنید و سرویس را ریاستارت کنید.</div>
+    <p style="margin-top:14px"><a href="./" style="color:#6ee7b7">← بازگشت به داشبورد</a> ·
+       <span id="url"></span></p>
   </div>
-  <script>document.getElementById('urlz').textContent = 'URL: ' + location.href;</script>
+  <script>
+    document.getElementById('url').textContent = 'URL: ' + location.href;
+    fetch('/api/health', { credentials: 'same-origin' })
+      .then((r) => r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)))
+      .then((d) => {
+        document.getElementById('ver').textContent = d.version || '—';
+        document.getElementById('ok').textContent = d.ok ? 'ok' : 'degraded';
+        document.getElementById('ts').textContent = d.ts || '—';
+        document.getElementById('msg').textContent =
+          'نسخهٔ در حال سرو: ' + (d.version || 'نامشخص') +
+          '. نشان بنفش داخل داشبورد باید همین عدد را نشان دهد.';
+      })
+      .catch((e) => {
+        document.getElementById('ver').textContent = 'در دسترس نیست';
+        document.getElementById('msg').textContent =
+          'پاسخ /api/health دریافت نشد (' + e.message + '). بکاند بالا نیست یا این فایل روی file:// باز شده است.';
+      });
+  </script>
 </body>
 </html>

@@ -43,6 +43,11 @@ EnvironmentFile=/etc/nobi/nobi.env
 Environment=PYTHONUNBUFFERED=1
 Environment=PYTHONDONTWRITEBYTECODE=1
 
+# Privileged installer actions do NOT run from this process. It connects to
+# /run/nobi-installer.sock (group nobi); nobi-installer.socket starts a
+# root-owned helper in its own mount namespace. This unit can therefore keep
+# NoNewPrivileges=yes and ProtectSystem=strict.
+#
 # --workers 1 is deliberate: the paper broker keeps positions, the rate limiter
 # keeps counters, and the journal cache keeps state in this process. More
 # workers would mean several independent copies of trading state. Scale with

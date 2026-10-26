@@ -11,6 +11,11 @@
   window.__NBX_APP_LOADED = true;
 
   const $ = (id) => document.getElementById(id);
+  /* Server- and exchange-provided strings reach innerHTML and HTML
+   * attributes below. Escape once, here, instead of trusting each
+   * call site to remember. */
+  const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (ch) =>
+    ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[ch]));
   const faNum = (n, d = 0) => window.NBXDisplay.number(n, d);
   const clamp = (v, a, b) => Math.min(Math.max(v, a), b);
   const inFa = (k) => window.NBXDisplay.text((T[LANG] && T[LANG][k]) || T.fa[k] || k);
@@ -814,10 +819,13 @@
             LANG === 'fa'
               ? 'دسترسی به سرور نوبیتکس امکان‌پذیر نیست؛ دادهٔ زنده دریافت نشد. اتصال شبکه یا فیلتر را بررسی کن و دوباره تلاش کن.'
               : 'The Nobitex server is unreachable; no live data was received. Check the network or filtering and try again.'}</div>
-          ${live.unavailableDetail ? `<div class="text-[9px] text-red-200/60 mt-1.5 num" dir="ltr">${String(live.unavailableDetail).slice(0,120)}</div>` : ''}
-          <button type="button" onclick="scanNow(true)" class="mt-3 text-[10px] font-bold px-2.5 py-1.5 rounded-lg bg-red-400/15 text-red-200 border border-red-300/40">${
+          ${live.unavailableDetail ? `<div class="text-[9px] text-red-200/60 mt-1.5 num" dir="ltr">${esc(String(live.unavailableDetail).slice(0,120))}</div>` : ''}
+          <button type="button" data-retry-scan="1" class="mt-3 text-[10px] font-bold px-2.5 py-1.5 rounded-lg bg-red-400/15 text-red-200 border border-red-300/40">${
             LANG === 'fa' ? 'تلاش دوباره' : 'Retry'}</button>
         </div>`;
+        list.querySelectorAll('[data-retry-scan]').forEach((btn) => {
+          btn.onclick = () => scanNow(true);
+        });
         syncSignalsHeader();
         if (typeof refreshIcons === 'function') refreshIcons();
       } else if (!list.children.length) {
@@ -870,28 +878,28 @@
         const sparkU = s.composite >= 50;
         const symLabel = LANG === 'fa' ? s.symbol.replace('IRT', '/تومان') : s.symbol;
         return `
-      <div data-sig-sym="${s.symbol}" data-sig-idx="${i}" tabindex="0" role="button"
+      <div data-sig-sym="${esc(s.symbol)}" data-sig-idx="${i}" tabindex="0" role="button"
            class="sig-row glass p-3.5 sm:p-4 flex flex-col md:flex-row md:items-center gap-3 sm:gap-4 cursor-pointer">
         <div class="flex items-center gap-3 md:w-44 shrink-0">
           <div class="w-8 h-8 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center font-extrabold text-sm num ${
             i < 3 ? 'text-emerald-300' : 'text-zinc-500'
           }">${faNum(i + 1)}</div>
-          <div class="min-w-0"><div class="font-bold text-[13px] sm:text-sm">${window.coinIcon(s.symbol)}${symLabel}</div>
+          <div class="min-w-0"><div class="font-bold text-[13px] sm:text-sm">${window.coinIcon(s.symbol)}${esc(symLabel)}</div>
             <span class="chip ${dir}"${
           s.direction_raw && s.direction_raw !== s.direction
-            ? ` title="${LANG === 'fa'
+            ? ` title="${esc(LANG === 'fa'
                 ? `${s.direction_raw} بود؛ وتوی فاندامنتال (${(s.fa && s.fa.vetoes || []).join('، ')}) سقف ${faNum(+s.veto_cap)} گذاشت`
-                : `was ${s.direction_raw}; a fundamental veto (${(s.fa && s.fa.vetoes || []).join(', ')}) capped it at ${+s.veto_cap}`}"`
+                : `was ${s.direction_raw}; a fundamental veto (${(s.fa && s.fa.vetoes || []).join(', ')}) capped it at ${+s.veto_cap}`)}"`
             : ''
         }><span class="dot ${
           s.direction === 'LONG' ? 'bg-emerald-400' : s.direction === 'EXIT' ? 'bg-red-400' : 'bg-zinc-400'
-        }"></span> ${window.NBXDisplay.label(s.direction)}</span>${
+        }"></span> ${esc(window.NBXDisplay.label(s.direction))}</span>${
           s.direction_raw && s.direction_raw !== s.direction
             ? `<span class="chip text-[9px] text-amber-300 border-amber-300/30 ms-1">${LANG === 'fa' ? 'وتو' : 'veto'}</span>`
             : ''
         }
           </div>
-          <span class="text-[10px] text-zinc-500 ms-auto md:hidden">${window.NBXDisplay.label(s.regime || '')}</span>
+          <span class="text-[10px] text-zinc-500 ms-auto md:hidden">${esc(window.NBXDisplay.label(s.regime || ''))}</span>
         </div>
         <div class="flex-1 min-w-0">
           <div class="flex items-center gap-2 sm:gap-3 mb-1.5">
@@ -899,16 +907,16 @@
             <div class="nbx-mini-hbar flex-1"><i style="width:${clamp(s.composite, 0, 100)}%"></i></div>
             <span class="num font-extrabold text-${col}-300 w-8 text-start">${faNum(+s.composite.toFixed(0))}</span>
             ${s.composite_basis && s.composite_basis !== 'ta+fa+liq'
-              ? `<span class="chip text-[9px] text-amber-300 border-amber-300/30" title="${inFa('sg.basisTitle')}">${inFa('sg.basisNoFa')}</span>`
+              ? `<span class="chip text-[9px] text-amber-300 border-amber-300/30" title="${esc(inFa('sg.basisTitle'))}">${inFa('sg.basisNoFa')}</span>`
               : ''}
           </div>
           <div class="flex flex-wrap items-center gap-1.5 text-[10px]">
             <span class="chip">${LANG==='fa'?'تکنیکال':'TA'} <b class="num">${faNum(+(s.score || 0).toFixed(0))}</b></span>
-            <span class="chip${s.fa_score == null ? ' text-zinc-500' : ''}" title="${s.composite_basis || ''}">${inFa('sg.faN')} <b class="num">${s.fa_score == null ? '—' : faNum(Math.round(s.fa_score))}</b></span>
+            <span class="chip${s.fa_score == null ? ' text-zinc-500' : ''}" title="${esc(s.composite_basis || '')}">${inFa('sg.faN')} <b class="num">${s.fa_score == null ? '—' : faNum(Math.round(s.fa_score))}</b></span>
             <span class="chip">${inFa('sg.liq')} <b class="num">${faNum(s.liquidity_score)}</b></span>
             <span class="chip">${window.NBXDisplay.label('trend')} <b class="num">${faNum(+(comp.trend || 0))}</b></span>
             <span class="chip">${window.NBXDisplay.label('momentum')} <b class="num">${faNum(+(comp.momentum || 0))}</b></span>
-            <span class="chip ${s.regime === 'TREND' ? 'text-emerald-300' : 'text-zinc-500'}">${window.NBXDisplay.label(s.regime || '')}</span>
+            <span class="chip ${s.regime === 'TREND' ? 'text-emerald-300' : 'text-zinc-500'}">${esc(window.NBXDisplay.label(s.regime || ''))}</span>
             ${s.risk && s.risk.stopPct ? `<span class="chip">${window.NBXDisplay.label('stop')} <b class="num">${window.NBXDisplay.percent(s.risk.stopPct, 2, false)}</b></span>` : ''}
           </div>
         </div>
@@ -1510,7 +1518,7 @@
     const body = $('accountActivity'); if (!body) return;
     const res = await AUTH.call('/auth/me/activity?limit=100', null, 'GET');
     const rows = (res.ok && res.data.events) || [];
-    body.innerHTML = rows.map((e) => `<div class="grid grid-cols-[1fr_auto] gap-2 rounded-lg bg-white/[.03] px-3 py-2 text-[10px]"><span><b>${String(e.action || '').replaceAll('<','&lt;')}</b>${e.detail ? ' · ' + String(e.detail).replaceAll('<','&lt;') : ''}</span><span class="num text-zinc-500">${new Date(e.created_at*1000).toLocaleString()}</span></div>`).join('');
+    body.innerHTML = rows.map((e) => `<div class="grid grid-cols-[1fr_auto] gap-2 rounded-lg bg-white/[.03] px-3 py-2 text-[10px]"><span><b>${esc(e.action || '')}</b>${e.detail ? ' · ' + esc(e.detail) : ''}</span><span class="num text-zinc-500">${new Date(e.created_at*1000).toLocaleString()}</span></div>`).join('');
   }
 
   async function renderAccess() {
@@ -1775,8 +1783,10 @@
       <input id="opsConfirm" class="auth-input !w-auto" placeholder="RESTORE filename.zip">
       <button id="opsRestore" class="auth-btn !flex-none" type="button">${inFa('ops.restore')}</button>
     </div><div class="flex flex-wrap gap-2 pt-2 border-t border-white/5">
-      <input id="opsDomain" class="auth-input !w-auto" placeholder="${inFa('ops.domain')}">
-      <button id="opsApply" class="auth-btn !flex-none" type="button" ${res.data.helper_available ? '' : 'disabled'}>${inFa('ops.apply')}</button>
+      <span class="text-[10px] text-zinc-500 self-center">${
+        LANG === 'fa'
+          ? 'پیکربندی پروکسی از تب «نصب سرور» انجام می‌شود؛ دامنه در فایل root-owned تنظیم می‌شود.'
+          : 'Proxy configuration lives in the Server Install tab; the domain is set in a root-owned file.'}</span>
       <input id="opsRestartConfirm" class="auth-input !w-auto" placeholder="RESTART">
       <button id="opsRestart" class="auth-btn !flex-none" type="button" ${res.data.helper_available ? '' : 'disabled'}>${inFa('ops.restart')}</button>
       <span id="opsMsg" class="text-[10px] text-zinc-400"></span></div>
@@ -1798,7 +1808,6 @@
     };
     $('opsBackup').onclick = () => run('backup', {});
     $('opsRestore').onclick = () => run('restore', { archive: $('opsArchive').value, confirmation: $('opsConfirm').value });
-    $('opsApply').onclick = () => run('apply-config', { domain: $('opsDomain').value.trim() });
     $('opsRestart').onclick = () => run('restart', { confirmation: $('opsRestartConfirm').value });
     $('livePlace').onclick = async () => {
       const key = `owner-${Date.now()}-${crypto.getRandomValues(new Uint32Array(1))[0].toString(16)}`;

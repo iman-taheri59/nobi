@@ -1,8 +1,12 @@
-# Install as /etc/sudoers.d/nobi-helper, root:root 0440; validate with visudo -cf.
-# Exact argv only: no wildcard, shell, arbitrary package, service, or path.
-Cmnd_Alias NOBI_HELPER = /usr/local/libexec/nobi-privileged-helper --protocol 1 install-service, \
- /usr/local/libexec/nobi-privileged-helper --protocol 1 install-proxy, \
- /usr/local/libexec/nobi-privileged-helper --protocol 1 restart-service, \
- /usr/local/libexec/nobi-privileged-helper --protocol 1 reload-proxy, \
- /usr/local/libexec/nobi-privileged-helper --protocol 1 rollback
-nobi ALL=(root) NOPASSWD: NOBI_HELPER
+# No sudoers rule is installed for nobiTrader.
+#
+# The browser installer reaches the root helper through the socket-activated
+# nobi-installer.socket / nobi-installer.service units, not through sudo. The
+# web unit keeps NoNewPrivileges=yes and ProtectSystem=strict; a setuid sudo
+# cannot elevate under the first and cannot write /etc under the second.
+#
+# If this file was installed on an older deployment, remove it:
+#   sudo rm -f /etc/sudoers.d/nobi-helper && sudo visudo -cf /etc/sudoers
+#
+# Allowed action ids (exact argv, protocol 1): install-service, install-proxy,
+# restart-service, reload-proxy, rollback, check.

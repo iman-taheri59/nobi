@@ -24,10 +24,16 @@ services:
       NBX_CANDLE_CACHE: /var/lib/nobi/candles
       NBX_BT_DIR: /var/lib/nobi/backtests
       NBX_EXPORT_DIR: /var/lib/nobi/exports
+      NBX_MANAGED_ENV: /var/lib/nobi/managed.env
+      NBX_OPERATIONS_AUDIT: /var/lib/nobi/operations-audit.jsonl
+      NBX_SETUP_TOKEN_FILE: /var/lib/nobi/setup.token
+      NBX_TRUSTED_PROXIES: ${NBX_TRUSTED_PROXIES:-}
     volumes:
       - nobi-data:/var/lib/nobi
+    # Loopback only: put nginx/Caddy in front and terminate TLS there. Binding
+    # 0.0.0.0 with an empty NBX_API_TOKEN exposes the whole read API.
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     restart: unless-stopped
     healthcheck:
       test:
