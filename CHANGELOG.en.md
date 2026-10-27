@@ -2,6 +2,24 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 1.10.3
+
+> Fix mobile horizontal overflow and the partially visible closed sidebar after sign-in.
+
+- Allow authenticated header controls (account name, role and logout) to wrap
+  on mobile without hiding or removing controls. Previously the single-row
+  header exceeded the viewport; mobile RTL document scrolling exposed part of
+  the closed drawer, and clicking close did not repair that document offset.
+  The preview fix was confirmed on the reporting user's phone.
+- Add `scripts/mobile_header_test.py` to the UI CI job: 80 offline browser cases
+  cover source and standalone, ten widths from 320 to 1440, RTL/LTR, and short/long
+  account labels. Check document/header overflow, horizontal offset, and drawer
+  close via its button and overlay. Account controls are DOM fixtures, not
+  authentication/API tests. The test reproduces the failure on the previous code.
+- Correct the Arvancloud guide's preflight command to run as root: the `nobi`
+  user cannot traverse the parent `/etc/nobi` directory.
+- No trading logic, order requests or live-mode defaults changed.
+
 ## 1.10.2
 
 > Fix the ArvanCloud installer's TLS ordering and add a full deployment runbook.

@@ -111,3 +111,27 @@ html[dir="ltr"] .live-badge { right: auto; left: 14px; }
 .ob-ask { background: rgba(248, 113, 113, 0.06); border-right: 2px solid rgba(248, 113, 113, 0.4); }
 .ob-bid { background: rgba(52, 211, 153, 0.06); border-right: 2px solid rgba(52, 211, 153, 0.4); }
 }
+
+/* Authenticated mobile headers contain more controls than the anonymous UI.
+ * Keep every control reachable by wrapping, instead of letting shrink-0 items
+ * widen the RTL document and expose the translated (closed) sidebar.
+ * Deliberately unlayered: these responsive layout constraints must override
+ * Tailwind's h-14/sm:h-16 and shrink-0 utilities. Desktop is unchanged.
+ */
+@media (max-width: 1023px) {
+  body > header > div:first-child {
+    flex-wrap: wrap;
+    height: auto;
+    min-height: 3.5rem;
+    padding-block: .5rem;
+    row-gap: .5rem;
+  }
+  body > header > div:first-child > div:last-child {
+    flex-wrap: wrap;
+    max-width: 100%;
+    min-width: 0;
+    flex-shrink: 1;
+  }
+  #userChip { max-width: 100%; }
+  #userName { min-width: 0; }
+}

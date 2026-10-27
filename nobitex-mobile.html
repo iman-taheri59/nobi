@@ -604,6 +604,30 @@ html[dir="ltr"] .live-badge { right: auto; left: 14px; }
 .ob-bid { background: rgba(52, 211, 153, 0.06); border-right: 2px solid rgba(52, 211, 153, 0.4); }
 }
 
+/* Authenticated mobile headers contain more controls than the anonymous UI.
+ * Keep every control reachable by wrapping, instead of letting shrink-0 items
+ * widen the RTL document and expose the translated (closed) sidebar.
+ * Deliberately unlayered: these responsive layout constraints must override
+ * Tailwind's h-14/sm:h-16 and shrink-0 utilities. Desktop is unchanged.
+ */
+@media (max-width: 1023px) {
+  body > header > div:first-child {
+    flex-wrap: wrap;
+    height: auto;
+    min-height: 3.5rem;
+    padding-block: .5rem;
+    row-gap: .5rem;
+  }
+  body > header > div:first-child > div:last-child {
+    flex-wrap: wrap;
+    max-width: 100%;
+    min-width: 0;
+    flex-shrink: 1;
+  }
+  #userChip { max-width: 100%; }
+  #userName { min-width: 0; }
+}
+
 </style>
 </head>
 <body class="min-h-screen">
@@ -698,7 +722,7 @@ html[dir="ltr"] .live-badge { right: auto; left: 14px; }
       </button>
     </div>
     <span class="hidden 2xl:inline-flex chip shrink-0"><span class="dot bg-emerald-400"></span> <span data-i18n="hdr.kill"></span></span>
-    <span id="buildChip" class="hidden lg:inline-flex chip num text-violet-300 border-violet-400/30 shrink-0" title="نسخه واقعی از /api/health">v1.10.2 · core</span>
+    <span id="buildChip" class="hidden lg:inline-flex chip num text-violet-300 border-violet-400/30 shrink-0" title="نسخه واقعی از /api/health">v1.10.3 · core</span>
     <div class="ms-auto flex items-center gap-1.5 shrink-0">
       <span class="hidden xl:inline-flex chip num" id="clock">--:--:--</span>
       <span id="apiChip" class="hidden 2xl:inline-flex chip num text-zinc-400 border-white/10" title=""><i data-lucide="wifi-off" class="w-3.5 h-3.5"></i> <span>API: —</span></span>

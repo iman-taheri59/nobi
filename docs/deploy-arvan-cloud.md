@@ -506,18 +506,15 @@ sudo -u nobi /opt/nobi/.venv/bin/python \
 sudo -u nobi sh -c 'printf "NBX_TRUSTED_PROXIES=127.0.0.1\n" > /opt/nobi/server/.env'
 sudo chmod 600 /opt/nobi/server/.env
 
-sudo -u nobi bash -c '
-  set -a
-  . /etc/nobi/nobi.env
-  set +a
-  exec /opt/nobi/.venv/bin/python /opt/nobi/scripts/check_deploy.py \
-       --public https://nobi.example.ir
-'
+( set -a; . /etc/nobi/nobi.env; set +a; exec /opt/nobi/.venv/bin/python /opt/nobi/scripts/check_deploy.py --public https://nobi.example.ir )
 ```
 
-> `sudo -u nobi` میتواند `/etc/nobi/nobi.env` را بخواند چون `0640 root:nobi`
-> است. فایل `server/.env` بالا هیچ رازی ندارد و `EnvironmentFile` systemd بر
-> آن ارجحیت دارد. اگر نخواستید فایل بسازید، همان یک سطر `config: fail` را
+> **چرا بدون `sudo -u nobi`؟** خود فایل `0640 root:nobi` است، ولی پوشهٔ
+> والد `/etc/nobi` با `0750 root:root` ساخته میشود؛ پس کاربر `nobi` به پوشه
+> دسترسی عبور ندارد و `. /etc/nobi/nobi.env` با `Permission denied` شکست میخورد.
+> چون `root` هستید، همان دستور را مستقیم (در یک subshell) اجرا کنید تا محیط
+> systemd وارد شود و در شل اصلیتان باقی نماند. فایل `server/.env` بالا هیچ رازی
+> ندارد و `EnvironmentFile` systemd بر آن ارجحیت دارد. اگر نخواستید فایل بسازید، همان یک سطر `config: fail` را
 > بهعنوان محدودیت شناختهشدهٔ ابزار بپذیرید و روی بقیهٔ سنجهها تمرکز کنید.
 
 خروجی مطلوب (اعداد روی سرور **شما** تولید میشوند):

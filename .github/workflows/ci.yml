@@ -130,6 +130,8 @@ jobs:
       - run: pip install -r server/requirements-dev.txt
       - run: npm ci --no-fund   # jsdom, for the smoke test
       - run: python -m playwright install --with-deps chromium
+      - name: authenticated mobile header layout regression
+        run: python scripts/mobile_header_test.py
       # The sandbox has no reachable exchange, so the panels are exercised
       # against the contract-shaped fixture — the same two-script setup the
       # README documents. A panel that cannot explain itself still fails.
