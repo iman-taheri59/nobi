@@ -34,6 +34,12 @@ TESTS = Path(__file__).resolve().parent
 #: remove are listed: anything pytest itself might need would be a false alarm.
 POSIX_ONLY = ("geteuid", "getegid", "fork", "forkpty", "killpg", "setsid")
 
+# platformdirs now ships an auto-loaded pytest plugin. On this simulated OS,
+# sys.platform is still Linux, so importing that unrelated plugin tries to import
+# the deliberately removed geteuid. Real Windows selects its Windows backend.
+# Block only that plugin in the two child harnesses; all project modules and
+# helper assertions still collect/run with POSIX attributes absent.
+
 
 def test_the_suite_collects_without_posix_only_calls():
     code = (
@@ -41,7 +47,7 @@ def test_the_suite_collects_without_posix_only_calls():
         f"for attr in {POSIX_ONLY!r}:\n"
         "    if hasattr(os, attr):\n"
         "        delattr(os, attr)\n"
-        "sys.exit(pytest.main(['-q', '--collect-only', '-p', 'no:cacheprovider',"
+        "sys.exit(pytest.main(['-q', '--collect-only', '-p', 'no:cacheprovider', '-p', 'no:platformdirs',"
         f" {str(TESTS)!r}]))\n"
     )
     out = subprocess.run([sys.executable, "-c", code], cwd=str(ROOT),
@@ -115,7 +121,7 @@ def test_helper_transport_suite_runs_without_posix_only_calls():
         f"for attr in {POSIX_ONLY!r}:\n"
         "    if hasattr(os, attr):\n"
         "        delattr(os, attr)\n"
-        "sys.exit(pytest.main(['-q', '-p', 'no:cacheprovider', "
+        "sys.exit(pytest.main(['-q', '-p', 'no:cacheprovider', '-p', 'no:platformdirs', "
         f"{str(TESTS / 'test_helper_transport.py')!r}]))\n"
     )
     out = subprocess.run([sys.executable, "-c", code], cwd=str(ROOT),

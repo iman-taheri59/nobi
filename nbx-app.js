@@ -66,19 +66,8 @@
     const st = document.createElement('style');
     st.id = 'nbx-live-styles';
     st.textContent = `
-      .live-badge{position:fixed;bottom:14px;right:14px;z-index:80;display:flex;gap:8px;align-items:center;
-        padding:8px 12px;border-radius:14px;border:1px solid rgba(255,255,255,.12);
-        background:rgba(9,9,11,.88);backdrop-filter:blur(12px);font-size:11px;box-shadow:0 6px 24px rgba(0,0,0,.45);}
-      .live-badge .dot{width:.5rem;height:.5rem;border-radius:9999px;display:inline-block}
-      html[dir="ltr"] .live-badge{right:auto;left:14px}
-      @media (max-width:1023px){
-        .live-badge{bottom:70px;right:10px;padding:6px 10px;font-size:10px;}
-        html[dir="ltr"] .live-badge{right:auto;left:10px;}
-        body{padding-bottom:68px !important;}
-      }
       .nbx-mini-hbar{height:6px;border-radius:999px;background:rgba(255,255,255,.07);overflow:hidden}
       .nbx-mini-hbar > i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,#34d399,#38bdf8)}
-      #apiStatusPop{min-width:240px}
       #candleChips{scrollbar-width:none}
       #candleChips::-webkit-scrollbar{display:none}
       .meta-row{display:flex;justify-content:space-between;font-size:11px;color:#a1a1aa;padding:5px 0;border-bottom:1px dashed rgba(255,255,255,.05)}
@@ -107,7 +96,31 @@
       el = document.createElement('div');
       el.id = 'liveBadge';
       el.className = 'live-badge';
-      document.body.appendChild(el);
+      // Reserve real space above the page, including the expanded details.
+      // Keep this out of the sticky sidebar and the mobile navigation layer.
+      const main = document.querySelector('main');
+      const banner = $('upBanner');
+      if (main && banner && banner.parentElement === main) banner.after(el);
+      else (main || document.body).prepend(el);
+      el.innerHTML = `
+        <button id="liveBadgeBtn" type="button" aria-expanded="false" aria-controls="apiStatusPop"></button>
+        <div id="apiStatusPop" hidden></div>
+      `;
+      const btn = $('liveBadgeBtn');
+      const pop = $('apiStatusPop');
+      btn.onclick = () => {
+        pop.hidden = !pop.hidden;
+        btn.setAttribute('aria-expanded', String(!pop.hidden));
+      };
+      el.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && !pop.hidden) {
+          pop.hidden = true;
+          btn.setAttribute('aria-expanded', 'false');
+          btn.focus();
+          event.preventDefault();
+          event.stopPropagation();
+        }
+      });
     }
     const m = live.mode;
     const map = {
@@ -117,43 +130,28 @@
       OFFLINE: ['#f87171', LANG === 'fa' ? 'آفلاین — بدون داده' : 'Offline — no data'],
     };
     const [color, text] = map[m] || map.MOBILE;
-    // `st.books` is filled by REST polling too, so counting books and calling
-    // it "WS" claimed a socket that was not there. The chip now reads the
-    // transport field the server actually reports.
+    const latency = live.latency !== null && live.latency !== undefined ? Math.round(live.latency) + 'ms' : '—';
     const onWs = live.wsTransport === 'ws';
     const wsCh = Array.isArray(live.wsChannels) ? live.wsChannels.length : 0;
-    el.innerHTML = `
-      <span class="dot" style="background:${color};box-shadow:0 0 0 4px ${color}22"></span>
-      <button id="liveBadgeBtn" style="font-family:inherit;color:inherit;background:none;border:none;cursor:pointer;display:flex;align-items:center;gap:8px">
-        <span class="num">${text}</span>
-        <span style="color:#a1a1aa">·</span>
-        <span class="num">${live.latency !== null && live.latency !== undefined ? Math.round(live.latency) + 'ms' : '—'}</span>
-        ${onWs && wsCh ? `<span style="color:#a1a1aa">·</span><span class="num" style="color:#818cf8">WS x${faNum(wsCh)}</span>` : ''}
-      </button>
-      <div id="apiStatusPop" class="hidden absolute bottom-full mb-2 right-0 glass p-3 text-xs space-y-1.5"></div>
+    // Keep the button node and its focus, plus disclosure state, across polls.
+    $('liveBadgeBtn').innerHTML = `
+      <span class="dot" aria-hidden="true" style="background:${color};box-shadow:0 0 0 4px ${color}22"></span>
+      <span class="live-badge-label">${esc(text)}</span>
+      <span class="live-badge-latency num">${esc(latency)}</span>
+      ${onWs && wsCh ? `<span class="live-badge-ws num" style="color:#818cf8">WS x${esc(faNum(wsCh))}</span>` : ''}
+      <svg class="live-badge-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
     `;
-    const btn = $('liveBadgeBtn');
-    const pop = $('apiStatusPop');
-    btn.onclick = () => {
-      pop.classList.toggle('hidden');
-      if (!pop.classList.contains('hidden')) {
-        pop.innerHTML = [
-          [LANG === 'fa' ? 'حالت اجرا' : 'Mode', `${m} · ${live.latency !== null && live.latency !== undefined ? Math.round(live.latency) + 'ms' : '—'}`],
-          [LANG === 'fa' ? 'نمادهای فعال' : 'Active Symbols', live.ranked.length ? faNum(live.ranked.length) : '—'],
-          [LANG === 'fa' ? 'تایم‌فریم' : 'Timeframe', live.timeframe],
-          [LANG === 'fa' ? 'آخرین اسکن' : 'Last Scan', live.lastScanAt ? faNum(Math.round((Date.now() - live.lastScanAt) / 1000)) + (LANG === 'fa' ? ' ثانیه پیش' : 's ago') : '—'],
-          // Where the prices actually come from: a push channel or a poll.
-          [LANG === 'fa' ? 'مسیر قیمت' : 'Price path',
-            onWs ? (LANG === 'fa' ? 'وب‌سوکت' : 'WebSocket')
-                 : (LANG === 'fa' ? 'REST — دوره‌ای' : 'REST — polled')],
-          [LANG === 'fa' ? 'کانال‌های وب‌سوکت' : 'WS channels', onWs ? faNum(wsCh) : '—'],
-          [LANG === 'fa' ? 'پیام آمار بازار' : 'Market-stat frames', onWs ? faNum(live.wsStats || 0) : '—'],
-          [LANG === 'fa' ? 'کندل وب‌سوکت' : 'WS candles', onWs ? faNum(live.wsCandle || 0) : '—'],
-        ]
-          .map(([k, v]) => `<div style="display:flex;justify-content:space-between;gap:12px"><span style="color:#a1a1aa">${k}:</span><span class="num">${v}</span></div>`)
-          .join('');
-      }
-    };
+    $('apiStatusPop').innerHTML = [
+      [LANG === 'fa' ? 'حالت اتصال' : 'Connection', `${m} · ${latency}`],
+      [LANG === 'fa' ? 'نمادهای فعال' : 'Active Symbols', live.ranked.length ? faNum(live.ranked.length) : '—'],
+      [LANG === 'fa' ? 'تایم‌فریم' : 'Timeframe', live.timeframe],
+      [LANG === 'fa' ? 'آخرین دریافت صفحه' : 'Last page update', live.lastScanAt ? faNum(Math.round((Date.now() - live.lastScanAt) / 1000)) + (LANG === 'fa' ? ' ثانیه پیش' : 's ago') : '—'],
+      [LANG === 'fa' ? 'مسیر قیمت' : 'Price path', onWs ? (LANG === 'fa' ? 'وب‌سوکت' : 'WebSocket') : (LANG === 'fa' ? 'REST — دوره‌ای' : 'REST — polled')],
+      [LANG === 'fa' ? 'کانال‌های وب‌سوکت' : 'WS channels', onWs ? faNum(wsCh) : '—'],
+      [LANG === 'fa' ? 'پیام آمار بازار' : 'Market-stat frames', onWs ? faNum(live.wsStats || 0) : '—'],
+      [LANG === 'fa' ? 'کندل وب‌سوکت' : 'WS candles', onWs ? faNum(live.wsCandle || 0) : '—'],
+    ].map(([k, v]) => `<dl class="live-status-row"><dt>${esc(k)}</dt><dd class="num">${esc(v)}</dd></dl>`).join('') +
+      `<div class="live-status-note">${LANG === 'fa' ? 'زمان دریافت صفحه، گزارش چرخهٔ اسکن مستقلِ سرور نیست.' : 'The page update time is not the background server scan status.'}</div>`;
   }
 
   /* ---------- Mobile Bottom Navigation Bar & Header Download Modal ---------- */

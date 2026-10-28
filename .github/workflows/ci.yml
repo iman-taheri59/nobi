@@ -138,6 +138,8 @@ jobs:
       - run: python -m playwright install --with-deps chromium
       - name: authenticated mobile header layout regression
         run: python scripts/mobile_header_test.py
+      - name: connection details do not cover navigation
+        run: python scripts/live_status_layout_test.py
       # The sandbox has no reachable exchange, so the panels are exercised
       # against the contract-shaped fixture — the same two-script setup the
       # README documents. A panel that cannot explain itself still fails.

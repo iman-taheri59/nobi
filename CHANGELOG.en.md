@@ -2,6 +2,13 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 2.0.2
+
+- Moved the connection badge and its details from a floating bottom-corner overlay into an in-flow disclosure above the main content. Expanded details reserve their own space instead of covering sidebar links or page content; the panel has an opaque background and supports RTL/LTR and mobile layouts.
+- Preserved disclosure state and button focus across connection refreshes; added keyboard/Escape and `aria-expanded` support. Explicitly distinguished the last page update from the independent background server scan.
+- Added offline browser regression coverage for source and standalone builds, widths 320–1920, short viewports, both directions, sidebar overlap, keyboard access, and long/untrusted strings. Trading behavior, scanning, APIs, caps, Live/Auto and account data are unchanged.
+- Isolated the POSIX-absence simulation from the unrelated, newly auto-loaded `platformdirs` pytest plugin. Its Linux backend selection in a simulated environment must not masquerade as a Windows failure; all project modules still collect and helper assertions still run with those POSIX calls removed.
+
 ## 2.0.1
 
 - Separate REST UDF Toman prices from raw Rial book/stats; add explicit UDF override and a versioned cache namespace without deleting/rescaling legacy data.

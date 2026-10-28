@@ -2,11 +2,11 @@
 
 [فارسی](releases.md) · **English**
 
-The current version is **2.0.1**. Publish it only after CI for that exact commit is green; check Releases for actual publication status.
+The current version is **2.0.2**; check Releases for actual publication status. Publish it only after CI for that exact commit is green; check Releases for actual publication status.
 `VERSION` is the source of truth for the release number; the tag name is exactly `v`
 plus that number.
 
-For this patch, review the [code-and-state upgrade plan](upgrade-2.0.1.en.md) before producing an installer; changing only the old 2.0.0 installer tag is not sufficient.
+For the previous 2.0.0-to-2.0.1 upgrade path, review the [code-and-state upgrade plan](upgrade-2.0.1.en.md) before producing an installer; changing only the old 2.0.0 installer tag is not sufficient.
 
 ## Rules from here on
 
@@ -64,7 +64,7 @@ From the project root:
 ```sh
 npm ci --no-audit --no-fund
 npm run build
-python scripts/release_notes.py --tag v2.0.1
+python scripts/release_notes.py --tag v2.0.2
 python -m pytest -q server/tests
 npm run test:display
 npm run lint
@@ -78,20 +78,22 @@ specific to this release; on the next release change them to match `VERSION`.
 
 ## Commit, tag and push
 
-For 2.0.1 the user explicitly approved a two-stage publication, an exception to the ordinary atomic branch/tag push. After review, local tests, commit and push authorization:
+These are examples, not permission to execute. After review and tests, obtain
+**explicit user approval to push/publish this version**. The normal rule sends
+the branch and annotated tag for the same commit together:
 
 ```sh
-git push origin main
+git tag -a v2.0.2 -m "nobitrader 2.0.2"
+git push origin main v2.0.2
 ```
 
-Wait for successful CI and verify its exact commit SHA. Do not tag/publish if a required gate fails/is cancelled or the commit changes. Only then, for that same verified commit:
+If a tag already exists, never recreate or move it. Inspect it with
+`git show v2.0.2 --no-patch`. Tag validation must succeed too; branch CI does not
+replace release validation. Publication does not authorize server installation.
 
-```sh
-git tag -a v2.0.1 -m "nobitrader 2.0.1"
-git push origin v2.0.1
-```
-
-If the tag exists, do not recreate or move it; inspect it with `git show v2.0.1 --no-patch`. Tag-workflow validation must also pass; green branch CI does not replace it. This permission does not authorize server installation.
+The explicitly approved two-stage exception for 2.0.1 (main, green CI, then
+annotated tag/Release) is historical and applies only to that release. It does
+not authorize 2.0.2 or future publication. The published 2.0.1 tag is unchanged.
 
 ## GitHub Release
 
