@@ -4,7 +4,7 @@
 
 ## 2.0.0
 
-> Unreleased: bounded closed-bar approvals and browser-independent validation setup.
+> Bounded closed-bar approvals and browser-independent validation setup.
 
 - **QUEUE contract change:** plans explicitly request server approval context;
   QUEUE submissions require its timeframe and signal key. Old tabs must reload.

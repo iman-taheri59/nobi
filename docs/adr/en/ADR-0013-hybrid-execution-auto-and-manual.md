@@ -125,14 +125,14 @@ Now:
   `executor: "paper"` and that nothing is sent to Nobitex — the repository has no
   `POST /market/orders` path.
 
-## Pending amendment — bounded closed-bar approvals (2026-10-28)
+## Amendment — bounded closed-bar approvals in 2.0.0 (2026-10-28)
 
 Production v1.10.4 used the chart's `t + tf - browserNow`. The user's five
 07:15 source candles all had a 07:30 expiry, already past at both the reported
 server (07:31) and browser (07:39) times. A millisecond/second mistake in the
 old integration-test fixture had hidden this case.
 
-The local replacement (not yet deployed) uses the exact backend scan's symbol,
+The 2.0.0 replacement uses the exact backend scan's symbol,
 timeframe and source-bar clock, not chart-cache timestamps or the last-scanned
 other timeframe. A finished source bar can be approved from `open + tf` until
 strictly before `open + 2*tf`: at most one execution candle after source close.

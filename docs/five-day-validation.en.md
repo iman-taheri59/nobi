@@ -13,8 +13,9 @@ not daily availability or profitability. NTP reports synchronized. The earlier
 to client clock skew versus a cached public response.
 
 Five proposals sourced from 07:15 candles expired at 07:30. Their zero-TTL
-creation was reproduced with both reported clocks. A local backend/frontend fix
-and tests exist; no new release has been published or installed yet.
+creation was reproduced with both reported clocks. The backend/frontend fix
+and tests are provided in 2.0.0; installation on the user's server remains a
+separate, verified operation.
 
 ## 1. Opt into scans independent of a browser
 
@@ -59,7 +60,7 @@ The newest single journal row does not prove freshness for every market.
 ## 2. Upgrade queue code only after release
 
 Do not install the queue fix by replacing HTML alone: frontend and backend must
-upgrade together. Nothing has been published yet. Old QUEUE submissions without
+upgrade together using the verified 2.0.0 release. Old QUEUE submissions without
 server approval metadata deliberately fail closed; reload old tabs after the
 upgrade. Ordinary manual-ticket and preview contracts retain their behavior.
 
