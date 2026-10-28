@@ -722,7 +722,7 @@ html[dir="ltr"] .live-badge { right: auto; left: 14px; }
       </button>
     </div>
     <span class="hidden 2xl:inline-flex chip shrink-0"><span class="dot bg-emerald-400"></span> <span data-i18n="hdr.kill"></span></span>
-    <span id="buildChip" class="hidden lg:inline-flex chip num text-violet-300 border-violet-400/30 shrink-0" title="نسخه واقعی از /api/health">v1.10.3 · core</span>
+    <span id="buildChip" class="hidden lg:inline-flex chip num text-violet-300 border-violet-400/30 shrink-0" title="نسخه واقعی از /api/health">v1.10.4 · core</span>
     <div class="ms-auto flex items-center gap-1.5 shrink-0">
       <span class="hidden xl:inline-flex chip num" id="clock">--:--:--</span>
       <span id="apiChip" class="hidden 2xl:inline-flex chip num text-zinc-400 border-white/10" title=""><i data-lucide="wifi-off" class="w-3.5 h-3.5"></i> <span>API: —</span></span>
@@ -1228,6 +1228,8 @@ html[dir="ltr"] .live-badge { right: auto; left: 14px; }
             <div class="font-bold text-[13px] sm:text-sm flex items-center gap-2"><i data-lucide="inbox" class="w-4 h-4 text-amber-300"></i> <span data-i18n="dk.queue"></span> <span class="chip num" id="qCount">0</span></div>
             <span class="text-[10px] sm:text-[11px] text-zinc-500" data-i18n="dk.queueSub"></span>
           </div>
+          <div id="queueTimeframe" class="text-[11px] text-zinc-400 mb-2"></div>
+          <div id="queueDiagnostics" class="text-[11px] leading-5 text-zinc-500 mb-3" style="overflow-wrap:anywhere" aria-live="polite"></div>
           <div id="queueList" class="space-y-3"></div>
         </div>
 
@@ -2768,7 +2770,7 @@ document.querySelectorAll('.navbtn').forEach(btn=>{
     if(btn.dataset.tab==='backtest' && !inited.bt){ inited.bt=true; requestAnimationFrame(()=>setTimeout(drawBt,30)); }
     if(btn.dataset.tab==='performance' && !inited.perf){ inited.perf=true; requestAnimationFrame(()=>setTimeout(async()=>{ await loadPerf(); drawCal(); loadBenchmark(); },30)); }
     if(btn.dataset.tab==='performance' && inited.perf){ requestAnimationFrame(()=>setTimeout(()=>{ if(!bmState) loadBenchmark(); },30)); }
-    if(btn.dataset.tab==='desk'){ requestAnimationFrame(()=>setTimeout(()=>{ runBookAlloc(false); loadExecMode(); refreshQueue(); },60)); }
+    if(btn.dataset.tab==='desk'){ requestAnimationFrame(()=>setTimeout(()=>{ runBookAlloc(false); loadExecMode(true).then(()=>refreshQueue()); },60)); }
     if(btn.dataset.tab==='overview'){ requestAnimationFrame(()=>setTimeout(()=>{ loadMarketOverview(); },60)); }
     if(btn.dataset.tab==='intelligence'){ requestAnimationFrame(()=>setTimeout(loadSignalIntelligence,30)); }
     // The order log is read when the page is shown: a stale table is better
@@ -4650,7 +4652,8 @@ function detailHtml(d){
 
 async function toggleSignalRow(tr){
   const id = tr.getAttribute('data-sig');
-  const already = tr.nextElementSibling && tr.nextElementSibling.classList.contains('sig-detail');
+  const sibling = tr.nextElementSibling;
+  const already = sibling && sibling.classList.contains('sig-detail') ? sibling : null;
   if (already) { already.remove(); tr.classList.remove('bg-white/[.04]'); return; }
   document.querySelectorAll('.sig-detail').forEach(e=>e.remove());
   document.querySelectorAll('#perfBody tr').forEach(e=>e.classList.remove('bg-white/[.04]'));
@@ -5656,7 +5659,8 @@ function modeOf(sym){ return symMode[sym] || execMode; }
  * `queueState.asked` separates "not fetched yet" from "fetched, none" and
  * "the backend did not answer" — three different sentences (ADR-0014). */
 let queue = [];
-let queueState = { asked: false, error: null, skipped: 0 };
+let queueState = { asked: false, error: null, skipped: 0, tf: '15m', reasons: [] };
+let queueRefreshSeq = 0;
 const queueDismissed = new Set();
 let audit = [
 ];
@@ -5720,7 +5724,7 @@ async function loadExecMode(silent){
   if(execModeState.error && execModeTries++ < 5){ setTimeout(loadExecMode, 2000); }
   else if(!execModeState.error){ execModeTries = 0; }
   renderExecSeg();
-  if(!silent) renderQueue();
+  if(!silent) { renderQueue(); scheduleQueueRefresh(); }
 }
 // The executor's counters move on their own; refreshing them does not need a
 // queue rebuild (which would re-ask /api/risk/plan for five symbols).
@@ -5755,36 +5759,49 @@ async function setSymbolMode(sym, m){
 function tfSec(tf){ return ({'15m':900,'1h':3600,'4h':14400,'D':86400})[tf] || 900; }
 
 /* Build the queue from what the engine actually produced. A candidate is a
- * LONG signal on a symbol whose mode needs a human (semi/auto); manual symbols
- * stay in the ticket, and a symbol already dismissed this session stays out. */
+ * LONG signal on a symbol whose mode needs a human (semi). Manual symbols
+ * stay in the ticket, auto symbols run server-side, and dismissed symbols stay out. */
 async function refreshQueue(){
+  const seq = ++queueRefreshSeq;
   const api = window.NBX && NBX.core && NBX.core.api;
   const tf = (window.live && live.timeframe) || '15m';
   const rows = (window.live && live.ranked) || [];
-  queueState = { asked: true, error: null, skipped: 0 };
+  const state = { asked: true, error: null, skipped: 0, tf, reasons: [], longs: 0, eligible: 0, checked: 0 };
+  const commit = () => { if(seq !== queueRefreshSeq) return; queueState = state; queue = out; renderQueue(); };
+  const out = [];
   if (!api || !api.getBackendRiskPlan) {
-    queueState.error = 'no-backend';
-    queue = []; renderQueue(); return;
+    state.error = 'no-backend'; commit(); return;
   }
   if (!rows.length) {
-    queueState.error = 'no-signals';
-    queue = []; renderQueue(); return;
+    state.error = 'no-signals'; commit(); return;
   }
   const eng = (window.NBX && NBX.core && NBX.core.engine) || {};
-  const picked = rows
+  state.longs = rows.filter(s => s && s.direction === 'LONG').length;
+  const eligible = rows
     .filter(s => s && s.direction === 'LONG' && !queueDismissed.has(s.symbol))
     // Only `semi` waits for a human. `auto` symbols are executed by the server
     // (that is what the mode means), and `manual` symbols belong in the ticket;
     // listing them here would offer an approval button that changes nothing.
-    .filter(s => modeOf(s.symbol) === 'semi')
-    .slice(0, 5);
-  const out = [];
+    .filter(s => modeOf(s.symbol) === 'semi');
+  state.eligible = eligible.length;
+  const picked = eligible.slice(0, 5); // Keep the existing request budget.
+  if(!state.longs) state.reasons.push('no-LONG');
+  else if(!eligible.length) state.reasons.push('no-undismissed-semi-candidate');
   for (const s of picked) {
     let plan;
-    try { plan = await api.getBackendRiskPlan(s.symbol, 'buy'); } catch (e) { plan = null; }
+    state.checked++;
+    try { plan = await api.getBackendRiskPlan(s.symbol, 'buy', tf); }
+    catch (e) { plan = { ok: false, error: 'plan-request-failed' }; }
+    if(seq !== queueRefreshSeq) return;
     // A candidate without a plan is not shown: its size, stop and tp would be
     // numbers this page made up, and the ticket would place them.
-    if (!plan || plan.blocked || !plan.size_quote || !plan.entry) { queueState.skipped += 1; continue; }
+    if (!plan || plan.ok === false || plan.blocked || !(Number(plan.size_quote) > 0) || !(Number(plan.entry) > 0)) {
+      state.skipped++;
+      const codes = plan && Array.isArray(plan.warnings) ? plan.warnings : [];
+      const reason = [plan && plan.error, ...codes].filter(x => typeof x === 'string' && /^[a-zA-Z0-9_.:-]{1,64}$/.test(x)).slice(0, 4).join(', ') || 'plan-unavailable';
+      state.reasons.push(s.symbol + ': ' + reason);
+      continue;
+    }
     const candles = eng.candles ? (eng.candles[s.symbol + ':' + tf] || eng.candles[s.symbol]) : null;
     const lastT = candles && candles.length ? +candles[candles.length - 1].t : 0;
     // TTL is the time left in the candle the signal was computed on — a real
@@ -5792,6 +5809,7 @@ async function refreshQueue(){
     const ttl = lastT ? Math.max(0, Math.round(lastT + tfSec(tf) - Date.now() / 1000)) : null;
     out.push({
       id: s.symbol + ':' + (lastT || 0),
+      tf,
       sym: s.symbol, dir: 'long',
       score: +(s.composite ?? s.score ?? 0),
       rank: rows.indexOf(s) + 1,
@@ -5809,12 +5827,20 @@ async function refreshQueue(){
       state: 'pending',
     });
   }
-  queue = out;
-  renderQueue();
+  commit();
 }
 
 function renderQueue(){
+  const tfEl = byId('queueTimeframe'), diagEl = byId('queueDiagnostics');
+  if(tfEl) tfEl.textContent = (LANG==='fa'?'تایم‌فریم صف (از صفحهٔ سیگنال‌ها): ':'Queue timeframe (from Signals): ') + (queueState.tf || '15m');
+  if(diagEl) diagEl.textContent = queueState.asked && !queueState.error
+    ? (LANG==='fa' ? `خرید: ${queueState.longs || 0}؛ کاندیدای نیمه‌خودکار (semi): ${queueState.eligible || 0}؛ پلن بررسی‌شده: ${queueState.checked || 0}. `
+                  : `LONG: ${queueState.longs || 0}; semi candidates: ${queueState.eligible || 0}; plans checked: ${queueState.checked || 0}. `)
+      + (queueState.reasons || []).join('؛ ')
+    : '';
   const pend = queue.filter(q=>q.state!=='expired');
+  const expiredCount = queue.length - pend.length;
+  if(diagEl && expiredCount) diagEl.textContent += (LANG==='fa'?'؛ پیشنهاد منقضی‌شده (TTL): ':'; expired proposals (TTL): ') + expiredCount;
   byId('qCount').textContent = fmtNum(pend.length);
   const badge = byId('deskBadge');
   badge.textContent = fmtNum(pend.length);
@@ -5960,7 +5986,7 @@ async function askRowWhatIf(q){
   }
   const seq = ++e.seq;
   let r;
-  try{ r = await api.postWhatIf({ symbol:q.sym, side:'buy', entry:q.entry, stop:e.stop || null,
+  try{ r = await api.postWhatIf({ symbol:q.sym, side:'buy', tf:q.tf || '15m', entry:q.entry, stop:e.stop || null,
                                   size_quote:e.sizeQ }); }catch(err){ r = null; }
   if(seq !== e.seq) return;                       // a newer keystroke already asked
   if(!r || r.ok === false){
@@ -7228,15 +7254,15 @@ function confirmPanic(){
  * rebuild spends one /api/risk/plan call per candidate, so this is not
  * something to run in the background. Debounced: scans can arrive in bursts. */
 let queueRefreshTimer = null;
-if (window.NBX && NBX.core && NBX.core.engine && typeof NBX.core.engine.subscribe === 'function') {
-  NBX.core.engine.subscribe((type) => {
-    if (type !== 'signals') return;
-    const pg = byId('page-desk');
-    if (!pg || pg.classList.contains('hidden')) return;
-    clearTimeout(queueRefreshTimer);
-    queueRefreshTimer = setTimeout(() => { refreshQueue(); }, 1500);
-  });
+function scheduleQueueRefresh(){
+  ++queueRefreshSeq; // Invalidate a plan response from the previous scan/mode.
+  clearTimeout(queueRefreshTimer);
+  const visible = () => { const pg = byId('page-desk'); return pg && !pg.classList.contains('hidden'); };
+  if(!visible()) return;
+  queueRefreshTimer = setTimeout(() => { if(visible()) refreshQueue(); }, 1500);
 }
+// Registered before the async core boot: backend scans publish this DOM event.
+window.addEventListener('nbx:scan', scheduleQueueRefresh);
 
 /* ============ TTL countdown ============ */
 setInterval(()=>{
@@ -8716,16 +8742,20 @@ window.addEventListener('resize', resizeCharts);
       return r;
     }
 
-    async getBackendRiskPlan(symbol, side) {
+    async getBackendRiskPlan(symbol, side, tf = '15m') {
       if (!this.standaloneMobile) {
         try {
-          const r = await this.get(cfg.pythonApi + '/risk/plan?symbol=' + encodeURIComponent(symbol) + '&side=' + encodeURIComponent(side || 'buy'), 1);
-          if (r && r.action) return r;
-        } catch (e) {}
+          const r = await this.get(cfg.pythonApi + '/risk/plan?symbol=' + encodeURIComponent(symbol) + '&side=' + encodeURIComponent(side || 'buy') + '&tf=' + encodeURIComponent(tf), 1);
+          if (r && (r.action || r.error || r.ok === false)) return r;
+        } catch (e) {
+          const status = e && e.meta && e.meta.status;
+          return { ok: false, blocked: true, unavailable: true,
+                   error: status === 401 || status === 403 ? 'auth-required' : 'plan-request-failed' };
+        }
       }
       const sym = normSymbol(symbol);
       const engine = NBX.core && NBX.core.engine;
-      const rows = engine && (engine.candles[sym + ':' + '15m'] || engine.candles[sym]);
+      const rows = engine && (engine.candles[sym + ':' + tf] || engine.candles[sym]);
       const entry = rows && rows.length ? +rows[rows.length - 1].c : 0;
       if (!entry) {
         return { ok: false, unavailable: true, symbol: sym, side: side || 'buy',

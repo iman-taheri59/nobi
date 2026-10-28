@@ -1432,16 +1432,20 @@
       return r;
     }
 
-    async getBackendRiskPlan(symbol, side) {
+    async getBackendRiskPlan(symbol, side, tf = '15m') {
       if (!this.standaloneMobile) {
         try {
-          const r = await this.get(cfg.pythonApi + '/risk/plan?symbol=' + encodeURIComponent(symbol) + '&side=' + encodeURIComponent(side || 'buy'), 1);
-          if (r && r.action) return r;
-        } catch (e) {}
+          const r = await this.get(cfg.pythonApi + '/risk/plan?symbol=' + encodeURIComponent(symbol) + '&side=' + encodeURIComponent(side || 'buy') + '&tf=' + encodeURIComponent(tf), 1);
+          if (r && (r.action || r.error || r.ok === false)) return r;
+        } catch (e) {
+          const status = e && e.meta && e.meta.status;
+          return { ok: false, blocked: true, unavailable: true,
+                   error: status === 401 || status === 403 ? 'auth-required' : 'plan-request-failed' };
+        }
       }
       const sym = normSymbol(symbol);
       const engine = NBX.core && NBX.core.engine;
-      const rows = engine && (engine.candles[sym + ':' + '15m'] || engine.candles[sym]);
+      const rows = engine && (engine.candles[sym + ':' + tf] || engine.candles[sym]);
       const entry = rows && rows.length ? +rows[rows.length - 1].c : 0;
       if (!entry) {
         return { ok: false, unavailable: true, symbol: sym, side: side || 'buy',

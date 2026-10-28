@@ -104,6 +104,10 @@ jobs:
         run: npm run test:icons
       - name: DOM escaping and retry binding
         run: npm run test:escaping
+      - name: signal detail expand and collapse
+        run: npm run test:signal-detail
+      - name: approval queue updates and rejection reasons
+        run: npm run test:queue
       - name: lockfile tarballs match their versions
         run: npm run test:lock
       - name: preflight parity — 28 cases × 10 gates

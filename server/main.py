@@ -97,6 +97,7 @@ from security import (
 )
 from ta_engine import RISK_K, candles_to_df, ta_score, ta_score_series
 from units import apply_options, market_symbol, min_notional_usd
+from upstream_logging import CANDLE_WARNINGS
 from ws_execution import STREAM_EXECUTOR, streams_start
 
 logging.basicConfig(level=logging.INFO)
@@ -406,7 +407,7 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(
     title="nobiTrader",
-    version="1.10.3",
+    version="1.10.4",
     lifespan=lifespan,
 )
 
@@ -1106,6 +1107,7 @@ async def rescan(tf: str = "15m", top: int = 40):
         try:
             async with sem:
                 rows, src = await client.get_candles_ex(u["symbol"], tf, 260)
+            CANDLE_WARNINGS.recovered("scan", u["symbol"], tf)
             # Unusable stamps are not a failed symbol: the block below answers
             # `no-candles` for it, which is a result the card can print.
             with suppress(KeyError, TypeError, ValueError):
@@ -1128,9 +1130,9 @@ async def rescan(tf: str = "15m", top: int = 40):
             }
         except UpstreamUnavailable as e:
             skipped.append(u["symbol"])
-            log.warning("scan %s: %s", u["symbol"], e)
+            CANDLE_WARNINGS.warning(log, "scan", u["symbol"], tf, e)
         except ClientError as e:
-            log.warning("scan %s: %s", u["symbol"], e)
+            CANDLE_WARNINGS.warning(log, "scan", u["symbol"], tf, e)
 
     try:
         await asyncio.gather(*(one(u) for u in _cached["universe"][:top]))
@@ -1790,8 +1792,12 @@ async def journal_msi_baseline(request: Request,
     for u in universe[:symbols]:
         try:
             rows, src = await client.get_candles_ex(u["symbol"], tf, bars)
+            CANDLE_WARNINGS.recovered("baseline", u["symbol"], tf)
         except Exception as e:  # one symbol must not kill the baseline
-            log.warning("baseline: %s unavailable: %s", u["symbol"], e)
+            if isinstance(e, ClientError):
+                CANDLE_WARNINGS.warning(log, "baseline", u["symbol"], tf, e)
+            else:
+                log.warning("baseline: %s unavailable: %s", u["symbol"], e)
             continue
         if not rows:
             continue

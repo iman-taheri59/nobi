@@ -2,6 +2,27 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 1.10.4
+
+> Fix approval-queue updates and diagnostics, and the reported error-log issues.
+
+- Refresh Desk approval proposals on the backend's actual `nbx:scan` event;
+  load execution mode before picking candidates and ignore stale async replies.
+  Pass the active timeframe to plan/edit previews; show queue timeframe and
+  rejection reasons. Keep the five-plan budget, LONG/semi filtering, dismissal,
+  expiry and order-submission rules. Add offline queue tests to CI and Release.
+
+- Fix `already.remove is not a function` when closing journal signal details;
+  add DOM tests for open/close/reopen, switching, caching and delegated clicks.
+- Bound repeated known history-refusal warnings in scan/baseline by operation,
+  symbol and timeframe: retain the first warning and a 15-minute repeat count.
+  Successful retrieval resets the episode; outages and other errors remain visible.
+- Add allowlisted public endpoint/symbol/resolution and HTTP status to client
+  diagnostics, without adding full URLs, headers or response bodies to its log.
+  A 403 remains an error; these fields do not establish its ultimate cause.
+- Test bounded logging, diagnostic privacy and unchanged scan results. Existing
+  error-log history is retained; no trading logic or Live-mode changes.
+
 ## 1.10.3
 
 > Fix mobile horizontal overflow and the partially visible closed sidebar after sign-in.

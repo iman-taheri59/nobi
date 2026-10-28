@@ -48,6 +48,8 @@ jobs:
       - run: npm run test:js
       - run: npm run test:icons
       - run: npm run test:escaping
+      - run: npm run test:signal-detail
+      - run: npm run test:queue
       - run: npm run test:lock
       - run: python scripts/check_preflight_parity.py
       - run: npm run test:display

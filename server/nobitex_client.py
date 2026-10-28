@@ -16,11 +16,12 @@ import asyncio
 import logging
 import os
 import random
+import re
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
-from urllib.parse import urlencode
+from urllib.parse import parse_qs, urlencode, urlsplit
 
 import httpx
 
@@ -53,6 +54,35 @@ def resolve_ua(raw: str | None = None) -> str:
         log.warning("NBX_UA=%r is not a usable header value; using %s", raw, DEFAULT_UA)
         return DEFAULT_UA
     return ua
+
+
+def safe_request_context(path: str) -> str:
+    """Only known public route names and bounded market fields may reach logs.
+
+    Never echo hosts/userinfo, arbitrary path segments, query parameters,
+    response bodies, headers or credentials, including on malformed URLs.
+    """
+    try:
+        url = urlsplit(path)
+        query = parse_qs(url.query, max_num_fields=100)
+    except ValueError:
+        return "[unrecognized endpoint]"
+    if url.path in ("/market/stats", "/market/udf/history"):
+        endpoint = url.path
+    elif re.fullmatch(r"/v3/orderbook/(?:[A-Z0-9]{1,24}|all)", url.path):
+        symbol = url.path.rsplit("/", 1)[-1]
+        return f"/v3/orderbook/{{symbol}} symbol={symbol}"
+    else:
+        return "[unrecognized endpoint]"
+    fields = [endpoint]
+    if endpoint == "/market/udf/history":
+        for key, pattern in (("symbol", r"[A-Z0-9]{1,24}"),
+                             ("resolution", r"(?:[0-9]{1,5}|D|W|M)")):
+            values = query.get(key, [])
+            if values:
+                value = values[0] if len(values) == 1 and re.fullmatch(pattern, values[0]) else "[invalid]"
+                fields.append(f"{key}={value}")
+    return " ".join(fields)
 
 
 class ClientError(Exception):
@@ -236,7 +266,11 @@ class NobitexClient:
             latency = (time.perf_counter() - t0) * 1000
             self._emit_stats(resp.is_success, latency)
             if resp.status_code in (401, 403):
-                raise ClientError("AUTH", f"Nobitex rejected request with {resp.status_code} — check endpoint visibility (public vs private)", {"status": resp.status_code})
+                raise ClientError(
+                    "AUTH", f"Nobitex rejected request with {resp.status_code} — "
+                    f"{safe_request_context(path)} (cause not determined)",
+                    {"status": resp.status_code},
+                )
             if resp.status_code == 429:
                 # The docs ship `backOff` (seconds) and `limit` with the error;
                 # sleeping a fixed amount can be shorter than asked for, and
@@ -300,7 +334,13 @@ class NobitexClient:
                     await asyncio.sleep(min(60.0, wait))
             except ClientError as e:
                 if e.code not in ("NETWORK", "TIMEOUT", "HTTP", "RATE"):
-                    log.error("client error: %s", e)
+                    # Error text can contain upstream response bodies. Log only
+                    # the allowlisted request context and bounded diagnostic fields.
+                    code = e.code if re.fullmatch(r"[A-Z0-9_]{1,32}", e.code) else "[invalid]"
+                    status = e.meta.get("status")
+                    status = status if type(status) is int and 100 <= status <= 599 else "unknown"
+                    log.error("client error: code=%s status=%s GET %s",
+                              code, status, safe_request_context(url))
                     raise
                 last_err = e
                 if attempt < attempts:
