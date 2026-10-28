@@ -103,3 +103,14 @@ def test_journal_observation_is_read_only_and_aggregated(tmp_path):
     assert data["completed_cycles"] == 1 and data["live_signal_rows"] == 1
     assert path.read_bytes() == before
     assert "symbol" not in json.dumps(data)
+
+
+def test_non_linux_invocation_refuses_before_posix_calls(monkeypatch, capsys):
+    with monkeypatch.context() as patch:
+        patch.setattr(tool.sys, "platform", "win32")
+        patch.setattr(tool.sys, "argv", ["background_scan.py", "--check"])
+        patch.delattr(tool.os, "geteuid", raising=False)
+        with pytest.raises(SystemExit) as caught:
+            tool.main()
+    assert caught.value.code == 2
+    assert "Linux/systemd" in capsys.readouterr().err

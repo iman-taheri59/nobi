@@ -16,6 +16,7 @@ import os
 import re
 import sqlite3
 import subprocess
+import sys
 import tempfile
 import time
 import urllib.request
@@ -152,6 +153,8 @@ def snapshot(config: dict) -> dict:
 
 
 def atomic_write(path: Path, content: bytes, stat) -> None:
+    if sys.platform != "linux":
+        raise RuntimeError("this operation requires Linux/systemd")
     fd, name = tempfile.mkstemp(prefix=path.name + ".", dir=path.parent)
     try:
         os.fchmod(fd, stat.st_mode & 0o777)
@@ -260,6 +263,8 @@ def main() -> int:
     parser.add_argument("--check", action="store_true")
     parser.add_argument("--confirm", default="")
     args = parser.parse_args()
+    if sys.platform != "linux":
+        parser.error("this tool requires Linux/systemd")
     if os.geteuid() != 0:
         parser.error("run as root on the server")
     if args.apply and args.check:
