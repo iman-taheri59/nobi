@@ -531,6 +531,8 @@ def test_digest_reports_only_its_window(conn):
                                   source, origin, config_hash)
            VALUES (?,?,?,?,?,?,?,?)""",
         (now - 10 * 86400, "BTCIRT", "15m", "LONG", 61.0, "synthetic", "live", "abc"))
+    # Explicitly current-contract fixture, not a migrated legacy row.
+    conn.execute("UPDATE signal_log SET price_contract=?", (J.IRT_PRICE_CONTRACT,))
     conn.commit()
     d = J.digest(conn, days=1)
     assert d["issued"] == 1
@@ -562,6 +564,8 @@ def test_summary_view_leads_with_resolved_even_at_limit_1(conn):
                                   source, origin, config_hash)
            VALUES (?,?,?,?,?,?,?,?)""",
         (now - 60, "ETHIRT", "15m", "LONG", 58.0, "synthetic", "live", "abc"))
+    # Explicitly current-contract fixture, not a migrated legacy row.
+    conn.execute("UPDATE signal_log SET price_contract=?", (J.IRT_PRICE_CONTRACT,))
     conn.commit()
 
     out = J.summary(conn, limit=1)

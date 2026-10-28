@@ -177,7 +177,7 @@ def _window_values(
     return [
         float(r[0])
         for r in conn.execute(
-            """SELECT o.r_multiple FROM signal_log s JOIN signal_outcomes o ON o.signal_id=s.id
+            """SELECT o.r_multiple FROM signal_evidence s JOIN signal_outcomes o ON o.signal_id=s.id
            WHERE o.horizon_key=? AND s.ts>=? AND s.ts<? AND s.voided_at IS NULL
            AND o.resolved_at IS NOT NULL AND o.r_multiple IS NOT NULL"""
             + extra,
@@ -213,7 +213,7 @@ def _scores(conn: sqlite3.Connection, start: int, end: int, config_hash: str | N
     return [
         float(r[0])
         for r in conn.execute(
-            "SELECT composite FROM signal_log WHERE ts>=? AND ts<? AND composite IS NOT NULL"
+            "SELECT composite FROM signal_evidence WHERE ts>=? AND ts<? AND composite IS NOT NULL"
             + extra,
             args,
         )
@@ -353,14 +353,14 @@ def run(
                 params = values
                 def outcomes(start: int, end: int, where: str = where, params: tuple[str, ...] = tuple(params)) -> list[float]:
                     return [float(row[0]) for row in conn.execute(
-                        "SELECT o.r_multiple FROM signal_log s JOIN signal_outcomes o ON o.signal_id=s.id "
+                        "SELECT o.r_multiple FROM signal_evidence s JOIN signal_outcomes o ON o.signal_id=s.id "
                         "WHERE o.horizon_key=? AND s.ts>=? AND s.ts<? AND s.voided_at IS NULL "
                         "AND o.resolved_at IS NOT NULL AND o.r_multiple IS NOT NULL" + where,
                         [horizon, start, end, *params],
                     )]
                 def scores(start: int, end: int, where: str = where, params: tuple[str, ...] = tuple(params)) -> list[float]:
                     return [float(row[0]) for row in conn.execute(
-                        "SELECT s.composite FROM signal_log s WHERE s.ts>=? AND s.ts<? "
+                        "SELECT s.composite FROM signal_evidence s WHERE s.ts>=? AND s.ts<? "
                         "AND s.composite IS NOT NULL" + where, [start, end, *params]
                     )]
                 cb, cc = outcomes(baseline_start, current_start), outcomes(current_start, now)
@@ -586,7 +586,7 @@ def config_inventory(*, days: int = 30, now: int | None = None) -> list[dict[str
             """SELECT coalesce(config_hash,'unknown') config_hash,
                sum(CASE WHEN ts>=? THEN 1 ELSE 0 END) current_signals,
                sum(CASE WHEN ts<? THEN 1 ELSE 0 END) baseline_signals,
-               min(ts) first_seen,max(ts) last_seen FROM signal_log
+               min(ts) first_seen,max(ts) last_seen FROM signal_evidence
                WHERE ts>=? AND ts<? GROUP BY config_hash ORDER BY current_signals DESC,config_hash""",
             (current, current, baseline, now),
         ).fetchall()
@@ -646,7 +646,7 @@ def cohort_inventory(
         f"SELECT {select},"
         " sum(CASE WHEN ts>=? THEN 1 ELSE 0 END) current_n,"
         " sum(CASE WHEN ts<? THEN 1 ELSE 0 END) baseline_n"
-        " FROM signal_log WHERE ts>=? AND ts<?" + group
+        " FROM signal_evidence WHERE ts>=? AND ts<?" + group
         + " ORDER BY (current_n+baseline_n) DESC,cohort_key LIMIT ?"
     )
     with journal.connect() as conn:

@@ -477,8 +477,24 @@
     TRXIRT: 1, TRXUSDT: 1,
     USDTIRT: 0.1,
   };
-  const PRICE_STEP = { rls: 10, usdt: 0.01 };
+  // Normalized Toman/USDT ticks, not raw Rial ticks.
+  const PRICE_STEP = { rls: 1, usdt: 0.01 };
   const MIN_NOTIONAL_QUOTE = { rls: 3000000, usdt: 11 };
+
+  // Decimal-string arithmetic avoids binary ties such as 1.005 / 0.01.
+  // No source-unit inference: px and step must already share a quote unit.
+  function roundDecimalStep(px, step) {
+    const parts = (value) => {
+      const [mantissa, exponent = '0'] = String(Math.abs(value)).toLowerCase().split('e');
+      const [whole, fraction = ''] = mantissa.split('.');
+      return { n: BigInt(whole + fraction), e: Number(exponent) - fraction.length };
+    };
+    const p = parts(px), s = parts(step), e = Math.min(p.e, s.e);
+    const numerator = p.n * (10n ** BigInt(p.e - e));
+    const denominator = s.n * (10n ** BigInt(s.e - e));
+    const count = (2n * numerator + denominator) / (2n * denominator);
+    return Number(String(count * denominator) + 'e' + e) * (px < 0 ? -1 : 1);
+  }
 
   const Units = {
     RIAL_PER_TOMAN,
@@ -505,8 +521,8 @@
     },
     roundPrice(px, sym) {
       const step = Units.priceStep(sym);
-      if (!(step > 0) || !isFinite(px)) return 0;
-      return Math.floor(px / step + 0.5) * step;
+      if (!(step > 0) || !Number.isFinite(step) || !Number.isFinite(px)) return 0;
+      return roundDecimalStep(px, step);
     },
     // Quoted in the market's own quote currency (Rial for IRT pairs).
     minNotionalQuote: (sym) => MIN_NOTIONAL_QUOTE[Units.quoteOf(sym)],
@@ -517,6 +533,20 @@
       if (q === 'usdt') return MIN_NOTIONAL_QUOTE.usdt;
       if (!(usdtIrtToman > 0)) return 0;
       return MIN_NOTIONAL_QUOTE.rls / RIAL_PER_TOMAN / usdtIrtToman;
+    },
+    applyPriceOptions(payload) {
+      const nb = (payload && payload.nobitex) || {};
+      let changed = 0;
+      for (const [key, raw] of Object.entries(nb.pricePrecisions || {})) {
+        const symbol = Units.marketSymbol(key), value = Number(raw);
+        if (!symbol || !(value > 0) || !Number.isFinite(value)) continue;
+        const [mantissa, exponent = '0'] = String(value).toLowerCase().split('e');
+        const step = Units.isRial(symbol) ? Number(mantissa + 'e' + (Number(exponent) - 1)) : value;
+        if (!(step > 0)) continue;
+        PRICE_STEP[symbol] = step;
+        changed += 1;
+      }
+      return changed;
     },
     _tables() { return { AMOUNT_STEP, PRICE_STEP, MIN_NOTIONAL_QUOTE }; },
   };

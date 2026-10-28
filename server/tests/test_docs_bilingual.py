@@ -25,6 +25,7 @@ PAIRS = (
     ("README.md", "README.en.md"),
     ("docs/README.md", "docs/README.en.md"),
     ("docs/releases.md", "docs/releases.en.md"),
+    ("docs/upgrade-2.0.1.md", "docs/upgrade-2.0.1.en.md"),
     ("CHANGELOG.md", "CHANGELOG.en.md"),
     ("docs/testing.md", "docs/testing.en.md"),
     ("docs/coin-metadata.md", "docs/coin-metadata.en.md"),

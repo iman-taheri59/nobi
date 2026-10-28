@@ -1,0 +1,3 @@
+# Preserve the public evidence capture verbatim, including on Windows checkouts.
+# Its SHA256 is provenance, not a hash of a newline-normalized approximation.
+server/tests/fixtures/nobitex-unit-evidence-20261028.json -text

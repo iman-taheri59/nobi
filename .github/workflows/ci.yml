@@ -94,6 +94,8 @@ jobs:
         run: npm run lint:dashboard
       - name: broker parity — python vs javascript
         run: node scripts/js_broker_test.js
+      - name: price ticks and decimal rounding — Python / JavaScript
+        run: node scripts/test_tick_parity.js
       - name: intrabar exit rule — one candle, both engines
         run: node scripts/js_engine_parity.js
       - name: financial display and localization (offline jsdom)

@@ -2,7 +2,7 @@
 
 **فارسی** · [English](README.en.md)
 
-نسخهٔ کاری: **2.0.0**. راهنمای [نسخه‌بندی و انتشار GitHub](releases.md) ([English](releases.en.md)) و [تاریخچهٔ تغییرات](../CHANGELOG.md) ([English](../CHANGELOG.en.md)).
+نسخهٔ کاری: **2.0.1**. راهنمای [نسخه‌بندی و انتشار GitHub](releases.md) ([English](releases.en.md)) و [تاریخچهٔ تغییرات](../CHANGELOG.md) ([English](../CHANGELOG.en.md)).
 
 ## نقشهٔ مستندات
 
@@ -106,3 +106,7 @@
 ## آماده‌سازی ارزیابی پنج‌روزه
 
 [راهنمای فعال‌سازی اسکن مستقل و تعیین شروع رسمی ارزیابی](five-day-validation.md)
+
+## ارتقای اصلاحیهٔ ۲٫۰٫۱
+
+[طرح سازگار کد و داده](upgrade-2.0.1.md) · [English](upgrade-2.0.1.en.md). این راهنما پیش‌نویس پیش از انتشار است؛ مجوز نصب یا تأیید اجرای واقعی systemd نیست.

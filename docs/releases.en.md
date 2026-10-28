@@ -2,9 +2,11 @@
 
 [فارسی](releases.md) · **English**
 
-The working version is **2.0.0**; the currently published tag is **v2.0.0**. The complete browser installer ships only after branch CI is green.
+The current version is **2.0.1**. Publish it only after CI for that exact commit is green; check Releases for actual publication status.
 `VERSION` is the source of truth for the release number; the tag name is exactly `v`
 plus that number.
+
+For this patch, review the [code-and-state upgrade plan](upgrade-2.0.1.en.md) before producing an installer; changing only the old 2.0.0 installer tag is not sufficient.
 
 ## Rules from here on
 
@@ -62,7 +64,7 @@ From the project root:
 ```sh
 npm ci --no-audit --no-fund
 npm run build
-python scripts/release_notes.py --tag v1.0.13
+python scripts/release_notes.py --tag v2.0.1
 python -m pytest -q server/tests
 npm run test:display
 npm run lint
@@ -76,21 +78,20 @@ specific to this release; on the next release change them to match `VERSION`.
 
 ## Commit, tag and push
 
-After review and green tests, commit the related changes and then:
+For 2.0.1 the user explicitly approved a two-stage publication, an exception to the ordinary atomic branch/tag push. After review, local tests, commit and push authorization:
 
 ```sh
-git tag -a v1.0.13 -m "nobitrader 1.0.13"
+git push origin main
 ```
 
-Only after push is approved:
+Wait for successful CI and verify its exact commit SHA. Do not tag/publish if a required gate fails/is cancelled or the commit changes. Only then, for that same verified commit:
 
 ```sh
-git push --atomic origin main v1.0.13
+git tag -a v2.0.1 -m "nobitrader 2.0.1"
+git push origin v2.0.1
 ```
 
-If the tag already exists, do not run `git tag` again. Before pushing, check where the
-tag points with `git show v1.0.13 --no-patch`. `--atomic` prevents a half-published
-branch/tag if one of them is rejected.
+If the tag exists, do not recreate or move it; inspect it with `git show v2.0.1 --no-patch`. Tag-workflow validation must also pass; green branch CI does not replace it. This permission does not authorize server installation.
 
 ## GitHub Release
 

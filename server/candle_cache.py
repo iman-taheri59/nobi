@@ -13,6 +13,7 @@ from pathlib import Path
 import pandas as pd
 
 from storage import writable_dir
+from units import is_rial_market, udf_price_unit
 
 log = logging.getLogger("candle-cache")
 
@@ -24,7 +25,12 @@ CACHE_ROOT = writable_dir("NBX_CANDLE_CACHE", Path(__file__).parent / "candle_ca
 
 
 def _key(symbol: str, resolution: str, from_ts: int, to_ts: int) -> Path:
-    raw = f"{symbol}-{resolution}-{from_ts}-{to_ts}"
+    # Pre-contract caches may contain IRT candles divided by ten twice. Never
+    # migrate them by guessing a scale: leave them untouched and fetch again.
+    # Include the source-unit override so a configuration change cannot replay
+    # values normalized under a different contract, even within the TTL.
+    unit = udf_price_unit() if is_rial_market(symbol) else "usdt"
+    raw = f"udf-toman-v2-{unit}-{symbol}-{resolution}-{from_ts}-{to_ts}"
     h = hashlib.md5(raw.encode()).hexdigest()[:16]
     return CACHE_ROOT / f"{symbol}-{resolution}-{h}.parquet"
 

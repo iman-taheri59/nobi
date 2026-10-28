@@ -57,7 +57,7 @@ def test_stats_symbol_keys_become_the_symbols_the_other_endpoints_take():
     assert units.market_symbol("global") is None
 
 
-def test_orderbook_and_candles_of_a_rial_market_are_converted_too():
+def test_orderbook_and_udf_use_their_own_source_units():
     ob = units.scale_orderbook({"bids": [["4900000000", "0.1"]],
                                 "asks": [["4901000000", "0.2"]],
                                 "lastTradePrice": "4900500000"}, "BTCIRT")
@@ -66,8 +66,9 @@ def test_orderbook_and_candles_of_a_rial_market_are_converted_too():
     assert ob["lastTradePrice"] == pytest.approx(490_050_000)
     assert ob["asks"][0][1] == pytest.approx(0.2)              # amount is in coin
 
-    udf = units.scale_udf({"s": "ok", "o": ["4900000000"], "h": ["4910000000"],
-                           "l": ["4890000000"], "c": ["4905000000"], "v": ["12"]}, "BTCIRT")
+    # REST UDF already quotes Toman, unlike the raw Rial orderbook above.
+    udf = units.scale_udf({"s": "ok", "o": ["490000000"], "h": ["491000000"],
+                           "l": ["489000000"], "c": ["490500000"], "v": ["12"]}, "BTCIRT")
     assert udf["c"] == [pytest.approx(490_500_000)]
     assert udf["v"] == ["12"]                                  # volume stays in BTC
 
@@ -88,7 +89,7 @@ def test_switch_to_a_toman_denominated_source_would_only_change_the_scale(monkey
 def test_amounts_truncate_and_prices_round_to_the_market_tick():
     assert units.truncate_amount(0.0000019999, "BTCIRT") == pytest.approx(0.000001)
     assert units.truncate_amount(12.987, "XRPIRT") == pytest.approx(12.0)   # whole coins
-    assert units.round_price(4_900_004_999.0, "BTCIRT") == pytest.approx(4_900_005_000)
+    assert units.round_price(4_900_004_999.0, "BTCIRT") == 4_900_004_999
     assert units.round_price(73_000.004, "BTCUSDT") == pytest.approx(73_000.0)
 
 
@@ -105,7 +106,7 @@ def test_options_endpoint_can_override_precision():
                                          "pricePrecisions": {"BTCIRT": "100"}}})
     assert n == 2
     assert units.truncate_amount(0.0000199, "BTCIRT") == pytest.approx(0.00001)
-    assert units.round_price(4_900_049.0, "BTCIRT") == pytest.approx(4_900_000)
+    assert units.round_price(4_900_049.0, "BTCIRT") == 4_900_050
     # restore for the rest of the suite
     units.apply_options({"nobitex": {"amountPrecisions": {"BTCIRT": "0.000001"},
                                      "pricePrecisions": {"BTCIRT": "10"}}})
@@ -607,8 +608,9 @@ def test_ws_market_stats_channel_is_scaled_like_the_rest_route():
     assert s.stats_frames == 1 and s.ws_messages == 1
 
 
-def test_ws_candle_replaces_the_last_row_of_a_rest_series():
-    """The candle channel is Rial-quoted; `/api/candles` already returns Toman."""
+def test_ws_candle_replaces_the_last_row_of_a_rest_series(monkeypatch):
+    """Explicit alternate Rial source; standard live Toman capture tested separately."""
+    monkeypatch.setenv("NBX_WS_CANDLE_PRICE_UNIT", "rial")
     s, _ = _stream()
     frame = {"push": {"channel": "public:candle-BTCIRT-15",
                       "pub": {"data": json.dumps({"t": 1792488600, "o": 89_700_000_000,
@@ -622,8 +624,8 @@ def test_ws_candle_replaces_the_last_row_of_a_rest_series():
     assert merged[-1]["c"] == pytest.approx(8.972e9, rel=1e-6)
     # A newer candle appends.
     nxt = {"push": {"channel": "public:candle-BTCIRT-15",
-                    "pub": {"data": json.dumps({"t": 1792489500, "o": 1, "h": 1, "l": 1,
-                                                "c": 9_000_000_000, "v": 1})}}}
+                    "pub": {"data": json.dumps({"t": 1792489500, "o": 89_720_000_000, "h": 90_100_000_000, "l": 89_600_000_000,
+                                                "c": 90_000_000_000, "v": 1})}}}
     s._on_ws_message(json.dumps(nxt))
     assert len(s.merge_last_candle("BTCIRT", "15m", merged)) == 3
     # An older frame never rewrites history.

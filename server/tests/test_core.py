@@ -39,8 +39,8 @@ def test_single_asset_cap_resizes_instead_of_warning():
 
 def test_heat_cap_shrinks_the_order():
     eng = RiskEngine(RiskConfig(equity=100_000, max_heat_pct=1.0))
-    first = eng.evaluate("AUSDT", "buy", 100.0, 1.0)     # 0.75 % heat
-    second = eng.evaluate("BUSDT", "buy", 100.0, 1.0)    # only 0.25 % left
+    first = eng.evaluate("AUSDT", "buy", 100.0, 3.0)     # 0.75 % heat
+    second = eng.evaluate("BUSDT", "buy", 100.0, 3.0)    # only 0.25 % left
     assert first.blocked is False and second.blocked is False
     assert second.risk_pct == pytest.approx(0.25, abs=0.01)
     assert second.size_quote < first.size_quote
@@ -743,7 +743,10 @@ def test_max_risk_pct_caps_a_misconfigured_sizing():
 
     r = RiskEngine(RiskConfig(equity=100_000.0, risk_pct=5.0, max_risk_pct=2.0))
     plan = r.evaluate("BTCUSDT", "buy", 73_040.0, 500.0, "15m", preview=True)
-    assert plan.risk_pct == pytest.approx(2.0)
+    assert plan.risk_budget_pct == pytest.approx(2.0)
+    actual = abs(plan.entry - plan.stop) * plan.size_quote / plan.entry / 100000 * 100
+    assert plan.risk_pct == pytest.approx(actual, abs=1e-6)
+    assert plan.risk_pct <= plan.risk_budget_pct
     assert "risk-pct-clamped" in plan.warnings
 
 

@@ -175,6 +175,8 @@ def test_cohort_inventory_is_bounded_allowlisted_and_suppressed(monkeypatch, tmp
             "VALUES(?,?,?,?,?,?)",
             (now - 86400, "ETHIRT", "1h", "SELL", "RANGE", "cfg-b"),
         )
+        # Explicitly current-contract fixture; legacy rows are tested separately.
+        conn.execute("UPDATE signal_log SET price_contract=?", (journal.IRT_PRICE_CONTRACT,))
         conn.commit()
     result = signal_drift.cohort_inventory(
         mode="symbol+timeframe", days=30, now=now, limit=10
@@ -204,6 +206,8 @@ def test_run_persists_cohort_statistics_in_one_correction_family(monkeypatch, tm
                     "INSERT INTO signal_outcomes(signal_id,horizon_key,resolved_at,r_multiple) VALUES(?,?,?,?)",
                     (cur.lastrowid, "H1", ts + 3600, 1.0 if current_window else -1.0),
                 )
+        # Explicitly current-contract fixture; legacy rows are tested separately.
+        conn.execute("UPDATE signal_log SET price_contract=?", (journal.IRT_PRICE_CONTRACT,))
         conn.commit()
     result = signal_drift.run(
         days=30, horizon="H1", actor="owner", cohort_mode="symbol", now=now

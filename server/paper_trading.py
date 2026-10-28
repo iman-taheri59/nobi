@@ -14,6 +14,7 @@ from __future__ import annotations
 import contextlib
 import json
 import logging
+import math
 import os
 import time
 import uuid
@@ -142,6 +143,33 @@ class PaperBroker:
         self.state_recovery: dict | None = None
         self.load()
 
+    def _sync_open_heat(self) -> float:
+        """Reserved entry risk of remaining open legs, in entry-equity percent.
+
+        Keep historical Position.risk_* intact for R-multiples. After partial
+        exits only the remaining fraction is reserved; a trailed stop does not
+        release additional budget. This conservative definition is identical
+        before/after restart and does not need a network/FX read.
+        """
+        total = 0.0
+        for pos in self.positions.values():
+            if pos.state == "CLOSED" or pos.filled_qty <= 0:
+                continue
+            pct = float(pos.risk_pct or 0.0)
+            if pct <= 0:
+                # Older state may not contain risk_pct. Use stored entry risk
+                # first; missing IRT FX must never silently make risk zero.
+                amount = float(pos.risk_usd or 0.0)
+                if amount <= 0:
+                    amount = abs(pos.entry_price - pos.stop) * pos.qty / self._pos_rate(pos)
+                pct = amount / max(float(self.equity), 1e-9) * 100
+            fraction = min(1.0, pos.filled_qty / pos.qty) if pos.qty > 0 else 1.0
+            if not math.isfinite(pct) or not math.isfinite(fraction):
+                raise ValueError("non-finite open position risk")
+            total += max(0.0, pct) * fraction
+        self.risk.open_heat = round(total, 6)
+        return self.risk.open_heat
+
     # --------- persistence ----------
     def _apply_state(self, raw: dict) -> None:
         """Copy a decoded state document into this broker."""
@@ -151,6 +179,7 @@ class PaperBroker:
         self.equity_curve = [tuple(x) for x in raw.get("equity_curve", [])]
         self.positions = {k: Position(**v) for k, v in raw.get("positions", {}).items()}
         self.orders = [OrderEvent(**e) for e in raw.get("orders", [])]
+        self._sync_open_heat()
 
     def load(self):
         """Read the persisted account, and never lose it quietly.
@@ -458,7 +487,12 @@ class PaperBroker:
         if block is not None:
             self.last_error = f"{block.id}: {block.detail}"
             self.orders.append(OrderEvent(time.time(), "reject", symbol, side, qty, fill_price,
-                                          {"reason": block.id}))
+                                          {"reason": block.id, "detail": block.detail,
+                                           "gate_value": block.value, "gate_limit": block.limit,
+                                           "stop": stop_px, "risk_pct": risk_pct,
+                                           "equity_usd": self.equity, "quote_rate": rate,
+                                           "execution": execution, "source": source}))
+            self.save()
             return None
 
         # Last synchronous boundary after all book/FX awaits. A click before
@@ -552,6 +586,7 @@ class PaperBroker:
     async def evaluate_positions(self):
         """Called on every scan tick: triggers TP1/SL/trailing based on fresh prices."""
         to_close = []
+        changed = False
         for pid, pos in self.positions.items():
             if pos.state == "CLOSED":
                 continue
@@ -572,6 +607,7 @@ class PaperBroker:
             hit_sl = (pos.side == "buy" and mid <= pos.stop) or (pos.side == "sell" and mid >= pos.stop)
             if hit_tp1 and not pos.tp1_filled:
                 pos.tp1_filled = True
+                changed = True
                 exit_qty = pos.filled_qty * 0.5
                 notional_tp1 = exit_qty * mid
                 rate = self._pos_rate(pos)
@@ -590,10 +626,12 @@ class PaperBroker:
                                                "clientOrderId": pos.client_order_id}))
             # trailing stop post-tp1
             if pos.tp1_filled:
+                old_stop = pos.stop
                 if pos.side == "buy":
                     pos.stop = max(pos.stop, pos.entry_price * 1.002)
                 else:
                     pos.stop = min(pos.stop, pos.entry_price * 0.998)
+                changed = changed or pos.stop != old_stop
             if hit_sl or (pos.tp1_filled and pos.filled_qty > 0 and ((pos.side == "buy" and mid <= pos.stop) or (pos.side == "sell" and mid >= pos.stop))):
                 to_close.append((pid, "sl-hit" if not pos.tp1_filled else "trail"))
             # time stop flag (reasonable default: 48h with < 1% move)
@@ -602,6 +640,8 @@ class PaperBroker:
         for pid, reason in to_close:
             await self._close(pid, reason)
         self._mark_equity_minute()
+        if changed:
+            self.save()
 
     def _mark_equity_minute(self):
         # Mark open legs to the last observed price (not to their entry cost).
@@ -613,6 +653,7 @@ class PaperBroker:
         )
         current_eq = self.cash + open_val
         self.equity = current_eq
+        self._sync_open_heat()
         self.equity_curve.append((time.time(), current_eq))
 
     # --------- metrics ----------

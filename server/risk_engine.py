@@ -24,6 +24,7 @@ class RiskPlan:
     risk_pct: float
     warnings: list[str] = field(default_factory=list)
     blocked: bool = False
+    risk_budget_pct: float = 0.0
 
 
 #: Reward-to-risk below this is flagged on the plan. It is a policy line, not
@@ -292,14 +293,16 @@ class RiskEngine:
             warnings.append("daily-loss-halt")
         if self.open_heat + rp > self.cfg.max_heat_pct:
             warnings.append("heat-cap-exceeded")
+            previous_rp = rp
             rp = max(0, self.cfg.max_heat_pct - self.open_heat)
             # Shrink the order to whatever heat budget is left (was: only a
             # warning, which let the cap be exceeded silently).
             if risk_amt > 0:
-                size_quote *= (rp / self.cfg.risk_pct) if self.cfg.risk_pct else 0
+                size_quote *= (rp / previous_rp) if previous_rp else 0
 
         # Enforce (not merely warn about) the per-asset exposure cap: shrink the
         # order to the cap instead of letting an outlier ATR produce a giant size.
+        nominal_pct = size_quote / max(equity, 1e-9) * 100
         if nominal_pct > self.cfg.max_single_asset_pct:
             scale = self.cfg.max_single_asset_pct / nominal_pct
             size_quote = float(f"{size_quote * scale:.2f}")
@@ -318,18 +321,25 @@ class RiskEngine:
             # this branch is dead, which is why it never fired.
             warnings.append("low-rr")
 
+        # Report/reserve risk of the FINAL capped notional, not the original
+        # budget. Preserve enough precision for low-priced USDT pairs too.
+        entry_out, stop_out = round(entry, 8), round(stop, 8)
+        actual_risk = (abs(entry_out - stop_out) * (size_quote / entry_out)
+                       / equity * 100) if entry_out > 0 else 0.0
+        reported_risk = round(actual_risk, 6)
         if not preview:
-            self.open_heat += rp
+            self.open_heat += reported_risk
         return RiskPlan(
             symbol=symbol,
             action="open",
-            entry=round(entry, 2),
-            stop=round(stop, 2),
-            tp1=round(tp1, 2),
-            tp2=round(tp2, 2),
+            entry=entry_out,
+            stop=stop_out,
+            tp1=round(tp1, 8),
+            tp2=round(tp2, 8),
             rr_ratio=round(rr, 2),
             size_quote=size_quote,
-            risk_pct=round(rp, 2),
+            risk_pct=reported_risk,
+            risk_budget_pct=round(rp, 6),
             warnings=warnings,
             blocked=False,
         )

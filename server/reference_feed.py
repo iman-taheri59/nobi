@@ -50,8 +50,6 @@ from typing import Any
 
 import httpx
 
-from units import RIAL_PER_TOMAN
-
 log = logging.getLogger("nbx-reference")
 
 #: Nobitex timeframe string → KuCoin candle type.
@@ -200,9 +198,8 @@ async def fetch_candles(
         raise ReferenceError("bad-timeframe", f"unsupported timeframe {tf!r}",
                              {"timeframes": sorted(TF_MAP)})
     pair, derived = provider_pair(symbol)
-    # The repo quotes rial markets in **rial** (`units.DEFAULT_UNIT`), so a
-    # toman-per-USDT rate becomes a rial multiplier here. Getting this wrong is
-    # a silent factor of ten — the exact trap ADR-0015 exists for.
+    # All normalized IRT candles are Toman, including derived reference rows.
+    # Reference provenance stays separate; units do not justify mixing venues.
     rate = 1.0
     toman = None
     if derived:
@@ -214,7 +211,7 @@ async def fetch_candles(
                 "(pass toman_per_usdt or set NBX_TOMAN_PER_USDT)",
                 {"symbol": symbol},
             )
-        rate = toman * RIAL_PER_TOMAN
+        rate = toman
 
     wanted = max(1, int(limit))
     step = TF_SECONDS[tf] * PAGE_BARS
@@ -264,7 +261,7 @@ async def fetch_candles(
         "pair": pair,
         "tf": tf,
         "derived": derived,
-        "quote_unit": "rial" if derived else "usdt",
+        "quote_unit": "toman" if derived else "usdt",
         "toman_per_usdt": toman,
         "rows": len(rows),
         "first": rows[0]["t"],
@@ -290,7 +287,7 @@ async def fetch_price(symbol: str, fx: float | None = None) -> tuple[float, dict
         if toman is None:
             raise ReferenceError("no-fx", "a toman rate is needed to derive an IRT price",
                                  {"symbol": symbol})
-        rate = toman * RIAL_PER_TOMAN
+        rate = toman
     url = f"{provider.base}/api/v1/market/orderbook/level1?symbol={pair}"
     async with _client(provider) as client:
         payload = await _get_json(client, url)
@@ -301,7 +298,7 @@ async def fetch_price(symbol: str, fx: float | None = None) -> tuple[float, dict
         raise ReferenceError("provider-error", f"no price in the {provider.name} payload") from e
     provider.prices[symbol.upper()] = (price, time.time())
     return price, {"provider": provider.name, "pair": pair, "derived": derived,
-                   "quote_unit": "rial" if derived else "usdt",
+                   "quote_unit": "toman" if derived else "usdt",
                    "as_of": int(time.time())}
 
 

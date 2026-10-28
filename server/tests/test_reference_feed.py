@@ -10,7 +10,7 @@ These tests pin the fences rather than the network:
 1. symbol/timeframe mapping, including the row shape KuCoin sends (open, **close**,
    high, low — the classic way to swap high and low without noticing);
 2. IRT markets are refused without a toman rate, and the derived series is
-   scaled to **rial** (a factor-of-ten bug would look plausible on screen);
+   scaled to **toman** (a factor-of-ten bug would look plausible on screen);
 3. the promotion gate stamps a reference run `REFERENCE_DATA` and never `PASS`;
 4. the routes expose the feed without ever substituting it silently.
 
@@ -140,17 +140,15 @@ def test_an_irt_series_needs_a_toman_rate(monkeypatch):
     assert e.value.code == "no-fx"
 
 
-def test_a_derived_irt_series_is_scaled_to_rial(monkeypatch):
-    from units import RIAL_PER_TOMAN
-
+def test_a_derived_irt_series_is_scaled_to_toman(monkeypatch):
     _install(monkeypatch, lambda r: httpx.Response(200, json=CANDLES))
     rows, meta = _run(rf.fetch_candles("BTCIRT", "4h", limit=10, fx=100_000.0))
 
     assert meta["derived"] is True
-    assert meta["quote_unit"] == "rial"
+    assert meta["quote_unit"] == "toman"
     assert meta["toman_per_usdt"] == pytest.approx(100_000.0)
-    # 82 244.7 USD × 100 000 toman × 10 rial per toman
-    assert rows[0]["c"] == pytest.approx(82244.7 * 100_000 * RIAL_PER_TOMAN)
+    # 82 244.7 USD × 100 000 toman per USD
+    assert rows[0]["c"] == pytest.approx(82244.7 * 100_000)
     # and the unit is declared, not implied
     assert rf.provider_pair("BTCIRT") == ("BTC-USDT", True)
 
@@ -319,3 +317,18 @@ def test_paging_stops_at_the_hard_page_limit(monkeypatch):
     assert meta["pages"] == rf.MAX_PAGES
     assert calls["n"] == rf.MAX_PAGES
     assert len(rows) <= rf.PAGE_BARS * rf.MAX_PAGES
+
+
+def test_reference_price_and_candle_contract_both_use_toman(monkeypatch):
+    def handler(request: httpx.Request) -> httpx.Response:
+        if '/orderbook/level1' in str(request.url):
+            return httpx.Response(200, json={"code": "200000", "data": {"price": "0.08"}})
+        return httpx.Response(200, json={"code": "200000", "data": [
+            ["1793185200", "0.08", "0.08", "0.08", "0.08", "10", "1"]]})
+
+    _install(monkeypatch, handler)
+    price, price_meta = _run(rf.fetch_price('DOGEIRT', fx=270700))
+    rows, candle_meta = _run(rf.fetch_candles('DOGEIRT', '15m', limit=1, fx=270700))
+    assert price == pytest.approx(21656)
+    assert rows[0]['c'] == pytest.approx(price)
+    assert price_meta['quote_unit'] == candle_meta['quote_unit'] == 'toman'

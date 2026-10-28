@@ -46,13 +46,13 @@ def summary(
             avg(CASE WHEN s.voided_at IS NULL AND o.resolved_at IS NOT NULL THEN o.mfe_pct END) avg_mfe_pct,
             avg(CASE WHEN s.voided_at IS NULL AND o.resolved_at IS NOT NULL THEN o.mae_pct END) avg_mae_pct,
             avg(CASE WHEN s.voided_at IS NULL AND o.resolved_at IS NOT NULL THEN CASE WHEN o.r_multiple>0 THEN 1.0 ELSE 0.0 END END) win_rate
-            FROM signal_log s LEFT JOIN signal_outcomes o
+            FROM signal_evidence s LEFT JOIN signal_outcomes o
               ON o.signal_id=s.id AND o.horizon_key=? WHERE {where}""",
             [horizon, *params],
         ).fetchone()
         assert row is not None
         reviews = conn.execute(
-            f"SELECT count(*) FROM signal_reviews r JOIN signal_log s ON s.id=r.signal_id WHERE {where}",
+            f"SELECT count(*) FROM signal_reviews r JOIN signal_evidence s ON s.id=r.signal_id WHERE {where}",
             params,
         ).fetchone()[0]
 
@@ -103,12 +103,12 @@ def funnel(*, days: int = 30) -> dict[str, Any]:
             passed = reasons.get("ok", 0)
             ready = judged - reasons.get("no-data", 0) - reasons.get("no-book", 0)
         generated = int(
-            conn.execute("SELECT count(*) FROM signal_log WHERE ts>=?", (since,)).fetchone()[0]
+            conn.execute("SELECT count(*) FROM signal_evidence WHERE ts>=?", (since,)).fetchone()[0]
         )
         resolved = int(
             conn.execute(
                 """SELECT count(DISTINCT o.signal_id) FROM signal_outcomes o
-            JOIN signal_log s ON s.id=o.signal_id WHERE s.ts>=? AND o.resolved_at IS NOT NULL""",
+            JOIN signal_evidence s ON s.id=o.signal_id WHERE s.ts>=? AND o.resolved_at IS NOT NULL""",
                 (since,),
             ).fetchone()[0]
         )
@@ -134,7 +134,7 @@ def cohorts(*, days: int = 30, horizon: str = "H1", limit: int = 50) -> list[dic
             count(CASE WHEN s.voided_at IS NULL THEN o.resolved_at END) resolved,
             avg(CASE WHEN s.voided_at IS NULL THEN o.r_multiple END) avg_r,
             avg(CASE WHEN s.voided_at IS NULL AND o.resolved_at IS NOT NULL THEN CASE WHEN o.r_multiple>0 THEN 1.0 ELSE 0.0 END END) win_rate
-            FROM signal_log s LEFT JOIN signal_outcomes o ON o.signal_id=s.id AND o.horizon_key=?
+            FROM signal_evidence s LEFT JOIN signal_outcomes o ON o.signal_id=s.id AND o.horizon_key=?
             WHERE s.ts>=? GROUP BY s.symbol,s.timeframe,s.regime,s.config_hash
             ORDER BY resolved DESC,signals DESC LIMIT ?""",
             (horizon, since, limit),
@@ -171,7 +171,7 @@ def signals(
         rows = conn.execute(
             f"""SELECT s.*,o.resolved_at,o.return_pct,o.r_multiple,o.mfe_pct,o.mae_pct,
             o.hit_tp1,o.hit_sl,(SELECT count(*) FROM signal_reviews r WHERE r.signal_id=s.id) review_count
-            FROM signal_log s LEFT JOIN signal_outcomes o ON o.signal_id=s.id AND o.horizon_key=?
+            FROM signal_evidence s LEFT JOIN signal_outcomes o ON o.signal_id=s.id AND o.horizon_key=?
             WHERE {where} ORDER BY s.ts DESC LIMIT ?""",
             [horizon, *params, limit],
         ).fetchall()
@@ -278,22 +278,24 @@ def review(signal_id: int, *, user_id: int, username: str, tag: str, note: str) 
 
 def linked_summary(*, days: int = 30, horizon: str = "H1") -> dict[str, Any]:
     base = summary(days=days, horizon=horizon)
+    with journal.connect() as status_conn:
+        base["price_contracts"] = journal.price_contract_status(status_conn)
     since = int(time.time()) - days * 86400
     with journal.connect() as conn:
         signal_cycles.ensure(conn)
         linked = int(
             conn.execute(
-                "SELECT count(*) FROM signal_log WHERE ts>=? AND linkage_status='linked'", (since,)
+                "SELECT count(*) FROM signal_evidence WHERE ts>=? AND linkage_status='linked'", (since,)
             ).fetchone()[0]
         )
         legacy = int(
             conn.execute(
-                "SELECT count(*) FROM signal_log WHERE ts>=? AND linkage_status!='linked'", (since,)
+                "SELECT count(*) FROM signal_evidence WHERE ts>=? AND linkage_status!='linked'", (since,)
             ).fetchone()[0]
         )
         overdue = int(
             conn.execute(
-                """SELECT count(*) FROM signal_log s LEFT JOIN signal_outcomes o
+                """SELECT count(*) FROM signal_evidence s LEFT JOIN signal_outcomes o
           ON o.signal_id=s.id AND o.horizon_key=? WHERE s.ts>=? AND s.voided_at IS NULL
           AND o.resolved_at IS NULL AND s.ts + ? < ?""",
                 (horizon, since, journal.HORIZONS[horizon], int(time.time())),
@@ -302,7 +304,7 @@ def linked_summary(*, days: int = 30, horizon: str = "H1") -> dict[str, Any]:
         values = [
             float(r[0])
             for r in conn.execute(
-                """SELECT o.r_multiple FROM signal_outcomes o JOIN signal_log s ON s.id=o.signal_id
+                """SELECT o.r_multiple FROM signal_outcomes o JOIN signal_evidence s ON s.id=o.signal_id
           WHERE s.ts>=? AND s.voided_at IS NULL AND o.horizon_key=? AND o.resolved_at IS NOT NULL AND o.r_multiple IS NOT NULL""",
                 (since, horizon),
             )
@@ -421,7 +423,7 @@ def paged_signals(*, days: int = 30, limit: int = 100, cursor: str | None = None
         signal_cycles.ensure(conn)
         rows = conn.execute(
             f"""SELECT s.id,s.ts,s.symbol,s.timeframe,s.direction,s.composite,s.regime,
-          s.config_hash,s.linkage_status,s.scan_cycle_id FROM signal_log s WHERE s.ts>=? {extra}
+          s.config_hash,s.linkage_status,s.scan_cycle_id FROM signal_evidence s WHERE s.ts>=? {extra}
           ORDER BY s.ts DESC,s.id DESC LIMIT ?""",
             [*args, limit + 1],
         ).fetchall()

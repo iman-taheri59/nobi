@@ -44,6 +44,8 @@ from typing import Any
 
 import pandas as pd
 
+from units import IRT_PRICE_CONTRACT, price_contract
+
 
 def epoch_seconds(values: Any) -> list[int]:
     """Epoch **seconds** for candle timestamps, whatever pandas' datetime unit is.
@@ -81,6 +83,15 @@ LONG_MIN = 68.0
 CONFIG_HASH = hashlib.sha1(
     f"risk_k={RISK_K}|tp1={TP1_R}|tp2={TP2_R}|trail={TRAIL_R}|long_min={LONG_MIN}".encode()
 ).hexdigest()[:10]
+
+
+def price_contract_status(conn: sqlite3.Connection) -> dict[str, Any]:
+    excluded = conn.execute(
+        "SELECT COUNT(*) FROM signal_log WHERE symbol LIKE '%IRT' "
+        "AND (price_contract IS NULL OR price_contract!=?)", (IRT_PRICE_CONTRACT,),
+    ).fetchone()[0]
+    return {"current_irt": IRT_PRICE_CONTRACT, "excluded_legacy_irt": int(excluded),
+            "legacy_preserved": True}
 
 
 def bars_for(tf: str, seconds: int) -> int:
@@ -181,6 +192,7 @@ MIGRATIONS = {
     "signal_log": [
         ("voided_at", "INTEGER"),
         ("void_reason", "TEXT"),
+        ("price_contract", "TEXT"),
     ],
 }
 
@@ -191,6 +203,11 @@ def _migrate(conn: sqlite3.Connection) -> None:
         for name, decl in columns:
             if name not in have:
                 conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {decl}")
+    # Preserve legacy records verbatim. Consumers of evidence use this view;
+    # unknown IRT scale is not inferred from numeric magnitude or config hash.
+    conn.execute(f"""CREATE VIEW IF NOT EXISTS signal_evidence AS
+        SELECT * FROM signal_log
+        WHERE symbol NOT LIKE '%IRT' OR price_contract='{IRT_PRICE_CONTRACT}'""")
     _repair_nanosecond_exit_ts(conn)
     conn.commit()
 
@@ -259,6 +276,7 @@ class JournalRow:
     source: str = "unknown"
     origin: str = "live"
     config_hash: str | None = None
+    price_contract: str | None = None
 
     def targets(self) -> tuple[float, float, float]:
         dist = RISK_K * self.atr
@@ -323,13 +341,13 @@ def insert_rows(conn: sqlite3.Connection, rows: Iterable[JournalRow | None], *,
             """INSERT OR IGNORE INTO signal_log
                (ts, symbol, timeframe, direction, ta_score, fa_score, liquidity_score,
                 composite, rank_in_cycle, regime, entry, stop, tp1, tp2, atr,
-                features, source, origin, config_hash, created_at)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                features, source, origin, config_hash, created_at, price_contract)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (r.ts, r.symbol, r.timeframe, r.direction, r.ta_score, r.fa_score,
              r.liquidity_score, r.composite, r.rank_in_cycle, r.regime,
              r.entry, stop, tp1, tp2, r.atr,
              json.dumps(r.features or {}, ensure_ascii=False), r.source, r.origin,
-             r.config_hash, now),
+             r.config_hash, now, r.price_contract or price_contract(r.symbol)),
         )
         if cur.rowcount and scan_cycle_id is not None:
             conn.execute(
@@ -496,7 +514,7 @@ def resolve_symbol(conn: sqlite3.Connection, symbol: str, tf: str,
     pending = conn.execute(
         # Only LONG rows have a tradeable R; EXIT/NEUTRAL are recorded for
         # research but never scored as trades.
-        """SELECT id, ts, entry, atr, direction FROM signal_log
+        """SELECT id, ts, entry, atr, direction FROM signal_evidence
            WHERE symbol=? AND timeframe=? AND direction='LONG'
              AND voided_at IS NULL
              AND id NOT IN (SELECT signal_id FROM signal_outcomes
@@ -647,7 +665,7 @@ def ic_for_window(conn: sqlite3.Connection, start: int, end: int) -> tuple[float
     """Realized IC of the score for rows resolved inside a window."""
     rows = conn.execute(
         """SELECT s.symbol, s.composite, o.return_pct
-           FROM signal_log s JOIN signal_outcomes o ON o.signal_id = s.id
+           FROM signal_evidence s JOIN signal_outcomes o ON o.signal_id = s.id
            WHERE o.horizon_key='H2' AND s.direction='LONG' AND s.voided_at IS NULL
              AND s.ts >= ? AND s.ts < ?""",
         (int(start), int(end)),
@@ -970,6 +988,7 @@ def summary(conn: sqlite3.Connection, *, tf: str | None = None,
     silently under-report as soon as the journal grew.
     """
     where, params = _filters(tf, origin, source, since)
+    where += " AND s.id IN (SELECT id FROM signal_evidence)"
 
     counts = conn.execute(
         f"""SELECT COUNT(*) AS issued,
@@ -983,7 +1002,7 @@ def summary(conn: sqlite3.Connection, *, tf: str | None = None,
     resolved = conn.execute(
         f"""SELECT s.id, s.symbol, s.composite, s.features, s.source, s.ts,
                    o.r_multiple, o.return_pct
-            FROM signal_log s JOIN signal_outcomes o ON o.signal_id = s.id
+            FROM signal_evidence s JOIN signal_outcomes o ON o.signal_id = s.id
             WHERE o.horizon_key='H2' AND s.direction='LONG' AND s.voided_at IS NULL
               AND {where}
             ORDER BY s.ts DESC""", params).fetchall()
@@ -1117,6 +1136,7 @@ def summary(conn: sqlite3.Connection, *, tf: str | None = None,
         "msi": msi(conn),
         "signals": view,
         "filters": {"tf": tf, "since": since, "source": source, "origin": origin},
+        "price_contracts": price_contract_status(conn),
     }
 
 
@@ -1178,6 +1198,7 @@ EXPORT_COLUMNS = [
     "h1_resolved_at", "h1_return_pct", "h1_r_multiple", "h1_hit_tp1", "h1_hit_sl",
     "h2_resolved_at", "h2_return_pct", "h2_r_multiple", "h2_hit_tp1", "h2_hit_sl",
     "h3_resolved_at", "h3_return_pct", "h3_r_multiple", "h3_hit_tp1", "h3_hit_sl",
+    "price_contract", "evidence_eligible",
 ]
 
 
@@ -1218,6 +1239,9 @@ def export_rows(conn: sqlite3.Connection, *, tf: str | None = None,
             "tp1": r["tp1"], "tp2": r["tp2"], "atr": r["atr"],
             "source": r["source"], "origin": r["origin"], "config_hash": r["config_hash"],
             "voided_at": r["voided_at"], "void_reason": r["void_reason"],
+            "price_contract": r["price_contract"],
+            "evidence_eligible": (not r["symbol"].upper().endswith("IRT")
+                                  or r["price_contract"] == IRT_PRICE_CONTRACT),
         }
         for hk in ("H1", "H2", "H3"):
             o = outcomes.get(r["id"], {}).get(hk)

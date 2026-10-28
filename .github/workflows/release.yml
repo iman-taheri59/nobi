@@ -46,6 +46,8 @@ jobs:
       - run: npm run lint
       - run: npm run lint:dashboard
       - run: npm run test:js
+      - name: price ticks and decimal rounding — Python / JavaScript
+        run: node scripts/test_tick_parity.js
       - run: npm run test:icons
       - run: npm run test:escaping
       - run: npm run test:signal-detail

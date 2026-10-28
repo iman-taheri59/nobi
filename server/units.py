@@ -8,10 +8,11 @@ speak the same dialect:
   ``/v3/orderbook`` and ``/market/udf/history`` take ``BTCIRT`` / ``BTCUSDT``.
   Passing the stats key straight through to the order book asks for a market
   that does not exist.
-* Rial markets are quoted **in Rial, not Toman** ("واحد قیمت در بازارهای ریالی
-  به ریال (و نه تومان) می‌باشد", docs §market/orders/add). The UI labels its
-  numbers in Toman, so one conversion has to happen somewhere; it happens here,
-  once, at the API boundary.
+* Stats, orderbook and order-entry prices for Rial markets are in Rial.
+  REST UDF history for IRT symbols is already in Toman (verified against the
+  DOGEIRT source candle on 2026-10-28). These are separate source contracts;
+  applying the orderbook scale to UDF makes plans ten times too low.
+  All normalized prices inside the app are in Toman.
 * The exchange rejects orders below a documented minimum (3,000,000 Rial or
   11 USDT) and rounds amounts/prices to per-market precision. A preview that
   ignores those rules promises a fill the exchange will refuse.
@@ -22,6 +23,7 @@ from __future__ import annotations
 import contextlib
 import math
 import os
+from decimal import ROUND_HALF_UP, Decimal, localcontext
 
 #: One Toman is ten Rial. Not a market quantity — a unit definition.
 RIAL_PER_TOMAN = 10.0
@@ -62,6 +64,14 @@ def is_rial_market(symbol: str) -> bool:
 def quote_currency(symbol: str) -> str:
     """``rls`` for a rial market, ``usdt`` for a dollar market (API spelling)."""
     return "rls" if is_rial_market(symbol) else "usdt"
+
+
+# Normalized data contract, NOT the raw exchange source unit.
+IRT_PRICE_CONTRACT = "irt-toman-v2"
+
+
+def price_contract(symbol: str) -> str:
+    return IRT_PRICE_CONTRACT if is_rial_market(symbol) else "usdt-v1"
 
 
 # --------------------------------------------------------------------------- #
@@ -160,11 +170,23 @@ def scale_orderbook(body: dict, symbol: str, unit: str | None = None) -> dict:
     return out
 
 
+def udf_price_unit(unit: str | None = None) -> str:
+    """REST UDF's source unit, independent of stats/book/order-entry units.
+
+    UDF IRT candles are already Toman. A proxy serving Rial candles may opt in
+    explicitly; changing NBX_PRICE_UNIT must never change this contract.
+    """
+    value = (unit or os.getenv("NBX_UDF_PRICE_UNIT") or "toman").strip().lower()
+    if value not in ("rial", "toman"):
+        raise ValueError("NBX_UDF_PRICE_UNIT must be rial or toman")
+    return value
+
+
 def scale_udf(body: dict, symbol: str, unit: str | None = None) -> dict:
-    """Convert OHLC of a rial market to Toman. Volume stays in the coin."""
+    """Normalize REST UDF OHLC to Toman; volume stays in the coin."""
     if not is_rial_market(symbol):
         return dict(body or {})
-    k = price_scale(unit)
+    k = price_scale(udf_price_unit(unit))
     out = dict(body or {})
     for f in ("o", "h", "l", "c"):
         seq = out.get(f)
@@ -197,7 +219,8 @@ _AMOUNT_STEP = {
     "USDTIRT": 0.1,
 }
 
-_PRICE_STEP = {"rls": 10.0, "usdt": 0.01}
+# Internal price ticks are normalized Toman / USDT, not raw Rial.
+_PRICE_STEP = {"rls": 1.0, "usdt": 0.01}
 
 #: Frozen copy of what this file ships, so an override can be undone. `apply_options`
 #: writes to the tables above, which are process globals: a dashboard that read the
@@ -249,7 +272,17 @@ def apply_options(payload: dict) -> int:
             continue
     for sym, step in (nb.get("pricePrecisions") or {}).items():
         try:
-            _PRICE_STEP[market_symbol(sym) or str(sym)] = float(step)
+            value = float(step)
+            symbol = market_symbol(sym)
+            if symbol is None or not math.isfinite(value) or value <= 0:
+                continue
+            # /v2/options pricePrecisions is in destination currency (Rial
+            # for IRT). This contract is independent of the book override.
+            normalized = (float(Decimal(str(value)) / Decimal(str(RIAL_PER_TOMAN)))
+                          if is_rial_market(symbol) else value)
+            if normalized <= 0:
+                continue
+            _PRICE_STEP[symbol] = normalized
             n += 1
         except (TypeError, ValueError):
             continue
@@ -276,9 +309,15 @@ def round_price(price: float, symbol: str) -> float:
     """Prices are rounded half-up to the market's tick (banker's rounding is
     *not* what the exchange documents)."""
     step = price_step(symbol)
-    if step <= 0 or not math.isfinite(price):
+    if step <= 0 or not math.isfinite(step) or not math.isfinite(price):
         return 0.0
-    return math.floor(price / step + 0.5) * step
+    value, quantum = Decimal(str(price)), Decimal(str(step))
+    with localcontext() as ctx:
+        # Enough digits for all finite float inputs, including tiny ticks.
+        ctx.prec = 2 * max(28, len(str(value)) + len(str(quantum))
+                           + abs(value.adjusted()) + abs(quantum.adjusted()))
+        multiples = (value / quantum).to_integral_value(rounding=ROUND_HALF_UP)
+        return float(multiples * quantum)
 
 
 def min_notional_quote(symbol: str) -> float:

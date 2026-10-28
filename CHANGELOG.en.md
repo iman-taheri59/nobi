@@ -2,6 +2,19 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 2.0.1
+
+- Separate REST UDF Toman prices from raw Rial book/stats; add explicit UDF override and a versioned cache namespace without deleting/rescaling legacy data.
+- Rebuild portfolio heat from restored open legs; reserve remaining entry risk proportionally after partial exits without releasing extra budget on stop moves. Historical entry risk remains intact for R-multiples.
+- Report final capped risk separately from its allocation budget; avoid applying notional/heat reductions twice and preserve sub-cent USDT price precision.
+- Normalize derived IRT reference candles to Toman while preserving reference-only promotion fences.
+- Add a journal price contract and qualified-evidence view: preserve/export legacy IRT records, but do not resolve or score them against the new contract. Quality, MSI and drift consumers exclude unknown-scale IRT history; unchanged legacy USDT remains eligible.
+- Persist numeric Paper rejection diagnostics for new events; never fabricate missing historical inputs.
+- Risk caps, concurrency, Live/Auto, manual defaults and queue deadlines remain unchanged. No formal five-day start or Live authorization.
+- Normalize raw IRT options price ticks from Rial to internal Toman exactly once, independently of the book override; preserve raw metadata, reject invalid ticks and use decimal half-up rounding consistently in Python and JavaScript (including `1.005 → 1.01`).
+- Correct the WS candle default to Toman using the user’s 2026-10-28 public same-bar capture: DOGEIRT WS/REST OHLCV matches exactly without another division by ten; BTCUSDT stays unchanged. Preserve the raw fixture with a SHA256 regression test. Evidence covers those two 15m markets, not every channel or live execution. Keep an independent alternate-source `NBX_WS_CANDLE_PRICE_UNIT` override and observable invalid/mismatched-candle guards that preserve REST without guessing a scale.
+- Document a code-and-state compatible upgrade/rollback plan and add two offline rehearsals for schema and Paper/.bak restoration while preserving post-upgrade snapshots. These are not systemd deployment tests. Run tick/rounding parity in Release validation as well as CI.
+
 ## 2.0.0
 
 > Bounded closed-bar approvals and browser-independent validation setup.

@@ -24,6 +24,7 @@ import asyncio
 import contextlib
 import json
 import logging
+import math
 import os
 import time
 from collections.abc import Callable
@@ -130,6 +131,8 @@ class StreamExecutor:
         #: end where the market is, instead of where the last poll left it.
         self.candles: dict[tuple[str, str], dict] = {}
         self.candle_frames = 0
+        self.candle_price_rejections = 0
+        self.last_candle_rejection: dict[str, Any] | None = None
         #: Subscribe to the market-wide channels even with no position open.
         self.want_stats = False
         self.pongs = 0
@@ -177,6 +180,9 @@ class StreamExecutor:
             "last_stats_at": self.last_stats_at,
             "markets": len(self.markets),
             "candle_frames": self.candle_frames,
+            "candle_price_rejections": self.candle_price_rejections,
+            "last_candle_rejection": self.last_candle_rejection,
+            "candle_source_unit": os.getenv("NBX_WS_CANDLE_PRICE_UNIT", "toman"),
             "candles": len(self.candles),
             "pongs": self.pongs,
             "pong_echoes": self.pong_echoes,
@@ -490,18 +496,36 @@ class StreamExecutor:
         try:
             row = {"t": int(data["t"]), "o": float(data["o"]), "h": float(data["h"]),
                    "l": float(data["l"]), "c": float(data["c"]), "v": float(data.get("v") or 0)}
-        except (KeyError, TypeError, ValueError):
+        except (KeyError, TypeError, ValueError, OverflowError):
             return
-        # A Rial market's candle is quoted in Rial (docs example: BTCIRT opens at
-        # 6,240,000,001), while `/api/candles` already returns Toman. Without
-        # this the socket's candle is ten times the series it lands on.
-        k = price_scale() if sym.upper().endswith("IRT") else 1.0
+        # Public same-bar capture on 2026-10-28 shows DOGEIRT WS OHLCV
+        # exactly matches Toman REST UDF; BTCUSDT stays USDT. Do not apply
+        # the Rial orderbook scale to candles. Keep an explicit alternate-source
+        # override, never infer/rescale from magnitude; merge guards REST.
+        unit = os.getenv("NBX_WS_CANDLE_PRICE_UNIT", "toman").strip().lower()
+        if unit not in ("rial", "toman"):
+            self._reject_candle(sym, tf, "invalid-source-unit")
+            return
+        k = price_scale(unit) if sym.upper().endswith("IRT") else 1.0
         row.update({f: row[f] * k for f in ("o", "h", "l", "c")})
-        if row["t"] <= 0 or row["c"] <= 0:
+        if (row["t"] <= 0 or any(not math.isfinite(row[f]) or row[f] <= 0
+                                 for f in ("o", "h", "l", "c"))
+                or not math.isfinite(row["v"]) or row["v"] < 0
+                or row["l"] > min(row["o"], row["c"])
+                or row["h"] < max(row["o"], row["c"])):
+            self._reject_candle(sym, tf, "invalid-ohlcv")
             return
         self.candles[(sym.upper(), tf)] = {**row, "_at": time.time()}
         self.candle_frames += 1
         self.ws_messages += 1
+
+    def _reject_candle(self, symbol: str, tf: str, reason: str,
+                       ratio: float | None = None) -> None:
+        self.candle_price_rejections += 1
+        self.last_candle_rejection = {"symbol": symbol.upper(), "tf": tf,
+                                      "reason": reason,
+                                      "ratio": ratio if ratio is not None and math.isfinite(ratio) else None,
+                                      "at": time.time()}
 
     def merge_last_candle(self, symbol: str, tf: str, rows: list[dict]) -> list[dict]:
         """Let a series end on the candle the socket just published.
@@ -520,6 +544,19 @@ class StreamExecutor:
         row = {k: c[k] for k in ("t", "o", "h", "l", "c", "v")}
         last_t = int(rows[-1].get("t") or 0)
         if row["t"] < last_t:
+            return rows
+        try:
+            reference = float(rows[-1].get("c") or 0)
+        except (TypeError, ValueError, OverflowError):
+            reference = 0.0
+        ratio = row["c"] / reference if math.isfinite(reference) and reference > 0 else None
+        consistent = (ratio is not None and all(0.2 < row[field] / reference < 5.0
+                                               for field in ("o", "h", "l", "c")))
+        # A gross jump is not a unit inference. Keep the REST series unchanged,
+        # make the rejection visible and require investigation instead of guessing
+        # a factor of ten. This is deliberately not a per-trade risk tolerance.
+        if not consistent:
+            self._reject_candle(symbol, tf, "rest-ws-price-mismatch", ratio)
             return rows
         if row["t"] == last_t:
             return [*rows[:-1], {**rows[-1], **{k: row[k] for k in ("o", "h", "l", "c", "v")}}]

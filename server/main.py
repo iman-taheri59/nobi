@@ -400,7 +400,7 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(
     title="nobiTrader",
-    version="2.0.0",
+    version="2.0.1",
     lifespan=lifespan,
 )
 
@@ -3125,6 +3125,7 @@ async def risk_state():
         "equity_irt": round(usd(eq).to_irt(rate).amount, 2) if rate else None,
         "fx": rate.to_dict() if rate else None,
         "openHeat": risk.open_heat,
+        "heat_basis": "reserved-entry-risk-of-remaining-legs",
         "dailyPnl": risk.daily_pnl,
         "halted": risk.halted,
         "caps": {
@@ -3320,6 +3321,9 @@ def _order_rows(broker, limit: int = 100) -> list[dict]:
         elif ev.kind == "reject":
             row["state"] = "REJECTED"
             row["reason"] = ev.extra.get("reason")
+            row["rejection"] = {k: ev.extra.get(k) for k in (
+                "detail", "gate_value", "gate_limit", "stop", "risk_pct",
+                "equity_usd", "quote_rate")}
 
     # The position is the authority on what is still open: an event stream that
     # says FILLED after the position was closed by a stop would be wrong.

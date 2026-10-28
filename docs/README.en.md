@@ -2,7 +2,7 @@
 
 [فارسی](README.md) · **English**
 
-Working version: **2.0.0**. See [versioning and GitHub releases](releases.en.md) and the
+Working version: **2.0.1**. See [versioning and GitHub releases](releases.en.md) and the
 [changelog](../CHANGELOG.en.md).
 
 ## Documentation map
@@ -85,6 +85,7 @@ What is written twice, what is written once, and what is pending. The gate in
 | Root README | [`README.md`](../README.md) | [`README.en.md`](../README.en.md) |
 | Documentation map | [`README.md`](README.md) | [`README.en.md`](README.en.md) |
 | Versioning and releases | [`releases.md`](releases.md) | [`releases.en.md`](releases.en.md) |
+| 2.0.1 code/state upgrade plan | [`upgrade-2.0.1.md`](upgrade-2.0.1.md) | [`upgrade-2.0.1.en.md`](upgrade-2.0.1.en.md) |
 | Changelog | [`CHANGELOG.md`](../CHANGELOG.md) | [`CHANGELOG.en.md`](../CHANGELOG.en.md) |
 | Live handoff | [`HANDOFF.md`](HANDOFF.md) | [`HANDOFF.en.md`](HANDOFF.en.md) |
 | ADR-0001 … ADR-0027 | [`adr/fa/`](adr/fa) | [`adr/en/`](adr/en) |
