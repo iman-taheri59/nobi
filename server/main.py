@@ -55,6 +55,7 @@ import notify
 import operations_api
 import package_bundle
 import paper_trading
+import queue_policy
 import reference_feed
 import setup_api
 import signal_cycles
@@ -129,19 +130,6 @@ async def tick_once(broker=None) -> list:
     return closed
 
 
-async def _last_bar_ts(symbol: str, tf: str) -> int | None:
-    """Close time (epoch seconds) of the most recent *finished* bar."""
-    try:
-        rows, _src = await client.get_candles_ex(symbol, tf, 3)
-    except UpstreamUnavailable:
-        return None
-    if not rows:
-        return None
-    last = rows[-1]
-    step = signal_journal.TF_SECONDS.get(tf, 900)
-    return int(last["t"]) + step
-
-
 async def journal_scan(tf: str = "15m", *, scan_cycle_id: str | None = None) -> int:
     """Record one journalled row per symbol for the last closed bar.
 
@@ -156,8 +144,13 @@ async def journal_scan(tf: str = "15m", *, scan_cycle_id: str | None = None) -> 
     for rank, snap in enumerate(ranked, start=1):
         if snap.get("direction") not in ("LONG", "EXIT", "NEUTRAL"):
             continue
-        ts = await _last_bar_ts(snap["symbol"], tf)
-        if ts is None:
+        # Persist the close of the SAME bar that was scored. Fetching another
+        # series here could attach an older score to a newer/forming candle.
+        bar = (_cached.get("signals_bars", {}).get(tf) or {}).get(snap["symbol"])
+        if bar is None:
+            continue
+        ts = int(bar) + signal_journal.TF_SECONDS[tf]
+        if ts > time.time():
             continue
         enriched = {**snap, "tf": tf, "config_hash": signal_journal.CONFIG_HASH}
         row = signal_journal.make_row(enriched, ts, rank=rank,
@@ -407,7 +400,7 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(
     title="nobiTrader",
-    version="1.10.4",
+    version="2.0.0",
     lifespan=lifespan,
 )
 
@@ -501,6 +494,14 @@ async def budget_api_reads(request: Request, call_next):
             status_code=429, headers={"Retry-After": "60"},
         )
     return await call_next(request)
+
+
+@app.middleware("http")
+async def no_cache_queue_clocks(request: Request, call_next):
+    response = await call_next(request)
+    if request.url.path in {"/api/health", "/api/risk/plan"}:
+        response.headers["Cache-Control"] = "private, no-store, max-age=0"
+    return response
 
 
 TIMEFRAMES = ["15m", "1h", "4h", "D"]
@@ -1107,6 +1108,12 @@ async def rescan(tf: str = "15m", top: int = 40):
         try:
             async with sem:
                 rows, src = await client.get_candles_ex(u["symbol"], tf, 260)
+            try:
+                rows = queue_policy.closed_rows(rows, tf)
+            except (KeyError, TypeError, ValueError, OverflowError) as exc:
+                raise UpstreamUnavailable("scan candle timestamps are unusable") from exc
+            if not rows:
+                raise UpstreamUnavailable("no finished candles for this scan")
             CANDLE_WARNINGS.recovered("scan", u["symbol"], tf)
             # Unusable stamps are not a failed symbol: the block below answers
             # `no-candles` for it, which is a result the card can print.
@@ -1205,8 +1212,7 @@ async def rescan(tf: str = "15m", top: int = 40):
     _cached["signals_by_tf"][tf] = out
     _cached["scan_skipped"] = skipped
     _cached["signals_ts"][tf] = time.time()
-    if bars_seen:
-        _cached["signals_bars"][tf] = dict(bars_seen)
+    _cached["signals_bars"][tf] = dict(bars_seen)
     _cached["last_scan"] = datetime.now(UTC).isoformat()
     log.info("rescan %s: %d symbols, FA %d/%d", tf, len(out), len(scored), len(out))
     if os.getenv("NBX_JOURNAL", "1") != "0":
@@ -1492,7 +1498,11 @@ async def _scan_loop_tick(tf: str) -> bool:
     prev = _cached.get("scan_loop") or {}
     _cached["scan_loop"] = {**prev, "last_at": started, "last_ok": ok,
                             "last_duration_s": round(time.time() - started, 1),
-                            "runs": int(prev.get("runs") or 0) + 1}
+                            "runs": int(prev.get("runs") or 0) + 1,
+                            "tf": tf, "last_completed_at": time.time(),
+                            "last_scored": len(_cached.get("signals_by_tf", {}).get(tf) or {}),
+                            "last_freshness": scan_freshness_block(
+                                _cached.get("signals_bars", {}).get(tf) or {}, tf)}
     return ok
 
 
@@ -2587,12 +2597,44 @@ async def fa(symbol: str):
     }
 
 
+def _queue_context(symbol: str, tf: str, side: str = "buy") -> dict:
+    """Strict TF and scan provenance, never the chart cache or last-scanned TF."""
+    if side != "buy" or EXEC_MODE.mode_for(symbol) != "semi":
+        return {"ok": False, "blocked": True, "error": "queue-mode-or-side-changed"}
+    snap = (_cached.get("signals_by_tf", {}).get(tf) or {}).get(symbol)
+    bar = (_cached.get("signals_bars", {}).get(tf) or {}).get(symbol)
+    return queue_policy.describe(symbol, tf, snap, bar)
+
+
+def _queue_order_context(body: dict) -> dict:
+    proposal = body.get("approval")
+    if not isinstance(proposal, dict):
+        return {"ok": False, "error": "queue-metadata-required"}
+    sym = str(body.get("symbol") or "").upper()
+    tf = proposal.get("tf")
+    if not isinstance(tf, str):
+        return {"ok": False, "error": "queue-timeframe-required"}
+    current = _queue_context(sym, tf, str(body.get("side") or "buy").lower())
+    if not current.get("ok"):
+        return current
+    if proposal.get("signal_key") != current["signal_key"]:
+        return {"ok": False, "error": "queue-signal-changed"}
+    # An explicit limit price could turn an old preview into a fabricated fill.
+    if body.get("price") is not None or body.get("qty"):
+        return {"ok": False, "error": "queue-quote-sizing-required"}
+    return current
+
+
 @app.get("/api/risk/plan")
-async def risk_plan(symbol: str, side: str = "buy", tf: str = Query("15m", pattern="^(15m|1h|4h|D)$")):
-    s = _signal_lookup(symbol, tf)
+async def risk_plan(symbol: str, side: str = "buy", tf: str = Query("15m", pattern="^(15m|1h|4h|D)$"),
+                    approval: bool = False):
+    symbol = symbol.upper()
+    s = ((_cached.get("signals_by_tf", {}).get(tf) or {}).get(symbol)
+         if approval else _signal_lookup(symbol, tf))
     if not s:
         await rescan(tf, top=60)
-        s = _signal_lookup(symbol, tf)
+        s = ((_cached.get("signals_by_tf", {}).get(tf) or {}).get(symbol)
+             if approval else _signal_lookup(symbol, tf))
     if not s:
         return {"error": "symbol not loaded"}
     rate = await _fx(symbol)
@@ -2606,6 +2648,14 @@ async def risk_plan(symbol: str, side: str = "buy", tf: str = Query("15m", patte
                 "error": "no-fx-rate",
                 "message": ("a Toman order cannot be sized against a dollar balance "
                             "without the USDT/IRT rate")}
+    context = None
+    if approval:
+        context = _queue_context(symbol, tf, side)
+        if not context.get("ok"):
+            return context
+        # _fx awaited: read the exact signal again before sizing, not a stale
+        # local reference from a scan that another request has since replaced.
+        s = _cached["signals_by_tf"][tf][symbol]
     eq, _start = _live_equity()
     equity_quote = usd(eq).to_irt(rate).amount
     # Preview: report the plan without reserving heat (a concurrent order must
@@ -2621,6 +2671,7 @@ async def risk_plan(symbol: str, side: str = "buy", tf: str = Query("15m", patte
         "fx": rate.to_dict(),
         "equity_quote": round(equity_quote, 2),
         "healthHeat": risk.open_heat,
+        **({"approval": context} if approval else {}),
         **provenance(),
     }
 
@@ -3098,6 +3149,11 @@ async def risk_state():
 @app.post("/api/paper/order", dependencies=[Depends(require_client)])
 async def paper_order(payload: dict):
     body = payload or {}
+    queue_context = None
+    if str(body.get("source") or "").upper() == "QUEUE":
+        queue_context = _queue_order_context(body)
+        if not queue_context.get("ok"):
+            return queue_context
     side = (body.get("side") or "buy").lower()
     symbol = (body.get("symbol") or "").upper()
     qty = float(body.get("qty") or 0)
@@ -3109,7 +3165,8 @@ async def paper_order(payload: dict):
         # sending only `size_quote` got an error about `qty`.
         px = (body.get("price") and float(body["price"])) or None
         if px is None:
-            cached = _cached["signals"].get(symbol)
+            cached = ((_cached["signals_by_tf"].get(queue_context["tf"]) or {}).get(symbol)
+                      if queue_context else _cached["signals"].get(symbol))
             px = cached["lastClose"] if cached else None
         if not px or px <= 0:
             return {"error": "price required to convert size_quote into qty"}
@@ -3123,7 +3180,14 @@ async def paper_order(payload: dict):
             log.debug("risk_plan supplied: %s", plan)
         src = (body.get("source") or "SEMI").upper()
         price = (body.get("price") and float(body["price"])) or None
-        pos = await broker.place_limit(symbol, side, qty, price, body.get("stop") and float(body["stop"]), body.get("tp1") and float(body["tp1"]), body.get("tp2") and float(body["tp2"]), src)
+        queue_options: dict[str, Any] = {}
+        if queue_context:
+            def guard() -> str | None:
+                latest = _queue_order_context(body)
+                return None if latest.get("ok") else latest["error"]
+            queue_options = {"approval_guard": guard,
+                             "client_order_id": queue_policy.order_id(queue_context)}
+        pos = await broker.place_limit(symbol, side, qty, price, body.get("stop") and float(body["stop"]), body.get("tp1") and float(body["tp1"]), body.get("tp2") and float(body["tp2"]), src, **queue_options)
         return {
             "ok": bool(pos),
             "position": pos.__dict__ if pos else None,

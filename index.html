@@ -295,7 +295,7 @@
       </button>
     </div>
     <span class="hidden 2xl:inline-flex chip shrink-0"><span class="dot bg-emerald-400"></span> <span data-i18n="hdr.kill"></span></span>
-    <span id="buildChip" class="hidden lg:inline-flex chip num text-violet-300 border-violet-400/30 shrink-0" title="نسخه واقعی از /api/health">v1.10.4 · core</span>
+    <span id="buildChip" class="hidden lg:inline-flex chip num text-violet-300 border-violet-400/30 shrink-0" title="نسخه واقعی از /api/health">v2.0.0 · core</span>
     <div class="ms-auto flex items-center gap-1.5 shrink-0">
       <span class="hidden xl:inline-flex chip num" id="clock">--:--:--</span>
       <span id="apiChip" class="hidden 2xl:inline-flex chip num text-zinc-400 border-white/10" title=""><i data-lucide="wifi-off" class="w-3.5 h-3.5"></i> <span>API: —</span></span>
@@ -5330,6 +5330,15 @@ async function setSymbolMode(sym, m){
   renderExecSeg(); renderAudit(); refreshQueue();
 }
 function tfSec(tf){ return ({'15m':900,'1h':3600,'4h':14400,'D':86400})[tf] || 900; }
+// Absolute backend deadline, advanced by elapsed time rather than a one-second
+// decrement. A fast/slow browser clock cancels out; sleeping tabs catch up.
+function queueRemaining(q){
+  if(!q.approval) return 0;
+  const elapsed = Math.max(0, (performance.now()-q.clockPerf)/1000,
+                            (Date.now()-q.clockWall)/1000);
+  return Math.max(0, Math.ceil(q.approval.expires_at-q.approval.server_now-elapsed));
+}
+
 
 /* Build the queue from what the engine actually produced. A candidate is a
  * LONG signal on a symbol whose mode needs a human (semi). Manual symbols
@@ -5348,7 +5357,6 @@ async function refreshQueue(){
   if (!rows.length) {
     state.error = 'no-signals'; commit(); return;
   }
-  const eng = (window.NBX && NBX.core && NBX.core.engine) || {};
   state.longs = rows.filter(s => s && s.direction === 'LONG').length;
   const eligible = rows
     .filter(s => s && s.direction === 'LONG' && !queueDismissed.has(s.symbol))
@@ -5363,7 +5371,8 @@ async function refreshQueue(){
   for (const s of picked) {
     let plan;
     state.checked++;
-    try { plan = await api.getBackendRiskPlan(s.symbol, 'buy', tf); }
+    const clockPerf = performance.now(), clockWall = Date.now();
+    try { plan = await api.getBackendRiskPlan(s.symbol, 'buy', tf, true); }
     catch (e) { plan = { ok: false, error: 'plan-request-failed' }; }
     if(seq !== queueRefreshSeq) return;
     // A candidate without a plan is not shown: its size, stop and tp would be
@@ -5375,16 +5384,24 @@ async function refreshQueue(){
       state.reasons.push(s.symbol + ': ' + reason);
       continue;
     }
-    const candles = eng.candles ? (eng.candles[s.symbol + ':' + tf] || eng.candles[s.symbol]) : null;
-    const lastT = candles && candles.length ? +candles[candles.length - 1].t : 0;
-    // TTL is the time left in the candle the signal was computed on — a real
-    // clock, not a random countdown.
-    const ttl = lastT ? Math.max(0, Math.round(lastT + tfSec(tf) - Date.now() / 1000)) : null;
+    const approval = plan.approval;
+    const lastT = approval && approval.bar_open;
+    const step = tfSec(tf);
+    if(!approval || approval.ok !== true || approval.symbol !== s.symbol || approval.tf !== tf
+       || !Number.isFinite(approval.score)
+       || !Number.isFinite(lastT) || !Number.isFinite(approval.server_now)
+       || !Number.isFinite(approval.expires_at) || approval.expires_at !== lastT+2*step
+       || approval.server_now < lastT+step || !/^[a-f0-9]{64}$/.test(approval.signal_key || '')){
+      state.skipped++; state.reasons.push(s.symbol + ': queue-clock-unavailable'); continue;
+    }
+    const timing = {approval, clockPerf, clockWall};
+    const ttl = queueRemaining(timing);
     out.push({
-      id: s.symbol + ':' + (lastT || 0),
+      id: s.symbol + ':' + lastT,
+      ...timing,
       tf,
       sym: s.symbol, dir: 'long',
-      score: +(s.composite ?? s.score ?? 0),
+      score: approval.score,
       rank: rows.indexOf(s) + 1,
       ts: lastT ? new Date(lastT * 1000).toLocaleTimeString(dateLocale(),
             { hour: '2-digit', minute: '2-digit' }) : '—',
@@ -5393,11 +5410,8 @@ async function refreshQueue(){
       // the pair; converting it here keeps the % comparable with the 0.75 cap.
       risk: +(plan.risk_pct ?? 0),
       sizeQ: +plan.size_quote,
-      // null = the series carries no usable close time: the cell prints an
-      // em-dash. A zero here would be a countdown this page invented, and the
-      // one-second timer would then expire a proposal it never timed.
-      ttl: ttl === null ? null : ttl,
-      state: 'pending',
+      ttl,
+      state: ttl > 0 ? 'pending' : 'expired',
     });
   }
   commit();
@@ -5598,12 +5612,18 @@ function resolveQ(id, approve){
     toast(t('dk.tRejected'), t('dk.tRejectedM'), 'warn');
     return;
   }
+  if(q.approving) return;
+  if(q.state === 'expired' || queueRemaining(q) <= 0){
+    q.state = 'expired'; q.ttl = 0; renderQueue();
+    toast(t('dk.tExpired'), t('dk.tExpiredM'), 'warn'); return;
+  }
   const api = window.NBX && NBX.core && NBX.core.api;
   if (!api || !api.postPaperOrder) {
     toast(LANG==='fa'?'سرور در دسترس نیست':'Server unreachable',
           LANG==='fa'?'سفارش ثبت نشد؛ چیزی جای‌گزین نمی‌شود.':'The order was not placed; nothing is substituted.', 'err');
     return;
   }
+  q.approving = true;
   (async () => {
     let r;
     try {
@@ -5613,9 +5633,10 @@ function resolveQ(id, approve){
       r = await api.postPaperOrder({
         symbol: q.sym, side: 'buy', size_quote: e ? e.sizeQ : q.sizeQ,
         stop: e ? e.stop : q.stop, tp1: e ? e.tp1 : q.tp1, tp2: e ? e.tp2 : q.tp2,
-        source: 'QUEUE',
+        source: 'QUEUE', approval: {tf:q.tf, signal_key:q.approval.signal_key},
       });
     } catch (e) { r = null; }
+    finally { q.approving = false; }
     if (!r || !r.ok) {
       // The server names the gate — print that, not a generic failure.
       toast(LANG==='fa'?'سفارش ثبت نشد':'Order not placed',
@@ -6840,7 +6861,7 @@ window.addEventListener('nbx:scan', scheduleQueueRefresh);
 /* ============ TTL countdown ============ */
 setInterval(()=>{
   let expired=false;
-  queue.forEach(q=>{ if(q.state!=='expired' && q.ttl!=null){ q.ttl--; if(q.ttl<=0){ q.state='expired'; expired=true; } } });
+  queue.forEach(q=>{ if(q.state!=='expired'){ q.ttl=queueRemaining(q); if(q.ttl<=0){ q.state='expired'; expired=true; } } });
   if(expired){ audit.unshift({t:new Date().toLocaleTimeString(dateLocale()), a:'sys', act:{fa:'انقضای پیشنهاد',en:'Proposal expired'}, sym:'—', d:{fa:'TTL تمام شد؛ از صف حذف شد',en:'TTL elapsed; removed from queue'}});
     renderAudit(); toast(t('dk.tExpired'), t('dk.tExpiredM'), 'warn'); }
   const pend=queue.filter(q=>q.state!=='expired');

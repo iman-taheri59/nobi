@@ -361,7 +361,9 @@ class PaperBroker:
     # --------- order lifecycle ----------
     async def place_limit(self, symbol: str, side: str, qty: float, price: float | None = None,
                           stop: float | None = None, tp1: float | None = None,
-                          tp2: float | None = None, source="SEMI") -> Position | None:
+                          tp2: float | None = None, source="SEMI", *,
+                          approval_guard: Callable[[], str | None] | None = None,
+                          client_order_id: str | None = None) -> Position | None:
         self.last_error = None
         if self.halted or getattr(self.risk, "halted", False):
             self.last_error = "halted: kill switch is armed"
@@ -459,6 +461,17 @@ class PaperBroker:
                                           {"reason": block.id}))
             return None
 
+        # Last synchronous boundary after all book/FX awaits. A click before
+        # expiry must not commit after expiry, nor can two tabs replay a bar.
+        reason = approval_guard() if approval_guard is not None else None
+        if client_order_id and any(p.client_order_id == client_order_id for p in self.positions.values()):
+            reason = "queue-proposal-already-used"
+        if reason:
+            self.last_error = reason
+            self.orders.append(OrderEvent(time.time(), "reject", symbol, side, qty, fill_price,
+                                          {"reason": reason}))
+            return None
+
         # take position
         # The id needs a unique tail: two orders on one symbol inside the same
         # millisecond used to produce the same `pp-…` key, and the second
@@ -468,7 +481,7 @@ class PaperBroker:
         pid = f"pp-{int(time.time() * 1000)}-{symbol}-{tail}"
         # 27 characters: "nobi-" + epoch millis + 8 hex. The exchange documents a
         # 32-character limit and deduplicates on it.
-        coid = f"nobi-{int(time.time() * 1000)}-{tail}"[:32]
+        coid = client_order_id or f"nobi-{int(time.time() * 1000)}-{tail}"[:32]
         pos = Position(
             id=pid, symbol=symbol, side=side, entry_price=fill_price,
             qty=filled_qty, size_quote=notional,

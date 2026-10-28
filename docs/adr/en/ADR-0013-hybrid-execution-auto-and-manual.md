@@ -124,3 +124,31 @@ Now:
 - **`auto` does not claim live trading:** the API answer and the page both say
   `executor: "paper"` and that nothing is sent to Nobitex — the repository has no
   `POST /market/orders` path.
+
+## Pending amendment — bounded closed-bar approvals (2026-10-28)
+
+Production v1.10.4 used the chart's `t + tf - browserNow`. The user's five
+07:15 source candles all had a 07:30 expiry, already past at both the reported
+server (07:31) and browser (07:39) times. A millisecond/second mistake in the
+old integration-test fixture had hidden this case.
+
+The local replacement (not yet deployed) uses the exact backend scan's symbol,
+timeframe and source-bar clock, not chart-cache timestamps or the last-scanned
+other timeframe. A finished source bar can be approved from `open + tf` until
+strictly before `open + 2*tf`: at most one execution candle after source close.
+Open, missing, future, stale and non-LONG sources fail closed. Refresh cannot
+move this deadline. The server rechecks the signal fingerprint, mode and deadline
+at submission AND after orderbook/FX awaits, just before any broker mutation.
+Client countdowns use server time plus elapsed time, not the browser UTC clock.
+
+QUEUE orders require the new approval metadata; old clients must reload after
+upgrade. Preview/manual-ticket calls without `approval=true` retain their prior
+behavior. Queue orders still go through the existing Paper broker and risk gates;
+there is no change to Live configuration, execution modes or risk caps. The
+persisted clientOrderId is stable per symbol/timeframe/source bar, so concurrent
+or restarted clients cannot approve the same source bar twice. Paper state schema
+is unchanged. Expiry does not promise that the price remains attractive.
+
+Scans now exclude unfinished candles BEFORE scoring, so a partial candle is not
+relabelled as a completed-candle signal merely because time passed. Score formulae
+are unchanged, but rankings may differ when the prior input included a forming bar.

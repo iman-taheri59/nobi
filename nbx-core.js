@@ -1432,10 +1432,10 @@
       return r;
     }
 
-    async getBackendRiskPlan(symbol, side, tf = '15m') {
+    async getBackendRiskPlan(symbol, side, tf = '15m', approval = false) {
       if (!this.standaloneMobile) {
         try {
-          const r = await this.get(cfg.pythonApi + '/risk/plan?symbol=' + encodeURIComponent(symbol) + '&side=' + encodeURIComponent(side || 'buy') + '&tf=' + encodeURIComponent(tf), 1);
+          const r = await this.get(cfg.pythonApi + '/risk/plan?symbol=' + encodeURIComponent(symbol) + '&side=' + encodeURIComponent(side || 'buy') + '&tf=' + encodeURIComponent(tf) + (approval ? '&approval=true' : ''), 1);
           if (r && (r.action || r.error || r.ok === false)) return r;
         } catch (e) {
           const status = e && e.meta && e.meta.status;

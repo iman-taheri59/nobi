@@ -27,11 +27,20 @@ async function run(file) {
     assert.ok(core, `${file}: core fixture initialized`);
     const calls = [];
     const plan = { action: 'buy', entry: 100, stop: 95, tp1: 106, tp2: 110,
-      size_quote: 1000, risk_pct: 0.5, blocked: false };
+      size_quote: 1000, risk_pct: 0.5, blocked: false,
+      get approval() {
+        const tf = (w.live && w.live.timeframe) || '15m';
+        const step = ({'15m':900, '1h':3600, '4h':14400, D:86400})[tf];
+        const now = Date.now()/1000, bar = Math.floor(now/step)*step-step;
+        return {ok:true, score:80, symbol:'BTCIRT', tf, bar_open:bar, expires_at:bar+2*step,
+                server_now:now, signal_key:'a'.repeat(64)};
+      } };
     core.api.getBackendRiskPlan = async (...args) => { calls.push(args); return { ...plan }; };
     core.api.postPaperOrder = () => { throw Error('test must not place orders'); };
     core.api.postExecMode = () => { throw Error('test must not change execution mode'); };
-    const barStart = Math.floor(Date.now() / 900) * 900;
+    // Candle timestamps are epoch SECONDS, not browser milliseconds.
+    const barStart = Math.floor(Date.now() / 900000) * 900;
+    assert.ok(barStart < 1e11, 'fixture candle timestamp must use epoch seconds');
     core.engine.candles = { 'BTCIRT:15m': [{ t: barStart, c: 100 }] };
     w.live = { timeframe: '15m', ranked: [], unavailable: false };
     w.eval("execMode = 'semi'; symMode = {}; queueDismissed.clear();");
@@ -44,7 +53,7 @@ async function run(file) {
     w.dispatchEvent(new w.CustomEvent('nbx:scan'));
     await new Promise(resolve => setTimeout(resolve, 1650));
     assert.equal(w.eval('queue.length'), 1, `${file}: new scan must fill a previously empty queue`);
-    assert.deepEqual(calls.at(-1), ['BTCIRT', 'buy', '15m']);
+    assert.deepEqual(calls.at(-1), ['BTCIRT', 'buy', '15m', true]);
     assert.equal(w.document.querySelectorAll('#queueList .qRow').length, 1);
     const count = calls.length;
     desk.classList.add('hidden');
@@ -56,7 +65,7 @@ async function run(file) {
     w.live.timeframe = '1h';
     core.engine.candles['BTCIRT:1h'] = [{ t: Math.floor(Date.now() / 3600000) * 3600, c: 100 }];
     await w.refreshQueue();
-    assert.deepEqual(calls.at(-1), ['BTCIRT', 'buy', '1h']);
+    assert.deepEqual(calls.at(-1), ['BTCIRT', 'buy', '1h', true]);
     assert.ok(w.document.getElementById('queueTimeframe').textContent.includes('1h'));
     core.api.getBackendRiskPlan = async () => ({ ...plan, blocked: true, warnings: ['bad-atr'] });
     await w.refreshQueue();
@@ -97,10 +106,12 @@ async function run(file) {
     realApi.standaloneMobile = false;
     let requested;
     realApi.get = async url => { requested = new URL(url, w.location.origin); return { ...plan }; };
-    await realApi.getBackendRiskPlan('BTCIRT', 'buy', '1h');
+    await realApi.getBackendRiskPlan('BTCIRT', 'buy', '1h', true);
+    assert.equal(requested.searchParams.get('approval'), 'true');
     assert.equal(requested.searchParams.get('tf'), '1h');
     await realApi.getBackendRiskPlan('BTCIRT', 'buy');
     assert.equal(requested.searchParams.get('tf'), '15m');
+    assert.equal(requested.searchParams.get('approval'), null, 'non-queue previews keep existing behavior');
     realApi.get = async () => ({ ok: false, error: 'no-fx-rate' });
     assert.equal((await realApi.getBackendRiskPlan('BTCIRT', 'buy')).error, 'no-fx-rate');
     realApi.get = async () => { throw new w.NBX.errors.NBXError('HTTP', 'private text', { status: 403 }); };

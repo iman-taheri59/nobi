@@ -2,6 +2,34 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 2.0.0
+
+> Unreleased: bounded closed-bar approvals and browser-independent validation setup.
+
+- **QUEUE contract change:** plans explicitly request server approval context;
+  QUEUE submissions require its timeframe and signal key. Old tabs must reload.
+  Regular previews/manual tickets keep their existing request contract. Major
+  version follows the incompatible approval contract and the documented MINOR
+  ceiling (1.10.x); this is not a Live-trading enablement.
+- Use the exact scan's closed source candle, not chart-cache time: validity ends
+  at `source_open + 2*timeframe`, one execution candle after close. Refresh cannot
+  renew it. Missing, unfinished, invalid, stale or changed sources fail closed.
+- Recheck mode, signal and deadline server-side before broker work AND after
+  book/FX awaits, immediately before account mutation. Stable persisted
+  clientOrderId prevents repeat/concurrent approvals of a source bar, including
+  after reload. Existing risk caps, Live settings and state schema are unchanged.
+- Exclude unfinished candles before scanning; formulas are unchanged but rankings
+  may differ when the prior input included a forming bar. Journal timestamps now
+  use the same scored bar instead of another candle fetch.
+- Display backend score/time and a server-relative elapsed-time countdown that
+  catches up after suspended tabs. Health/plan responses are not cacheable.
+- Add scheduled-scan count/freshness telemetry and a separately opted-in,
+  backup/rollback-tested systemd helper for 300-second scans on 15m. The default
+  remains off; the helper does not change modes or begin the formal five-day test.
+- Correct the old integration fixture's milliseconds/seconds mistake and test
+  closed/open bars, stale clocks, browser skew, expiry races, duplicate approvals,
+  strict timeframe provenance and read-only evidence checks.
+
 ## 1.10.4
 
 > Fix approval-queue updates and diagnostics, and the reported error-log issues.

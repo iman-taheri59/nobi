@@ -2,7 +2,7 @@
 
 **فارسی** · [English](README.en.md)
 
-نسخهٔ کاری: **1.10.4**. راهنمای [نسخه‌بندی و انتشار GitHub](releases.md) ([English](releases.en.md)) و [تاریخچهٔ تغییرات](../CHANGELOG.md) ([English](../CHANGELOG.en.md)).
+نسخهٔ کاری: **2.0.0**. راهنمای [نسخه‌بندی و انتشار GitHub](releases.md) ([English](releases.en.md)) و [تاریخچهٔ تغییرات](../CHANGELOG.md) ([English](../CHANGELOG.en.md)).
 
 ## نقشهٔ مستندات
 
@@ -102,3 +102,7 @@
 ## مشخصات و لوگوی نمادها
 
 [`coin-metadata.md`](coin-metadata.md) — اولویت مشخصات نوبیتکس، لوگو و نام جایگزین CoinGecko، کش پایدار و نگاشت صریح هویت ارزها، تنظیم کلید Demo و مسیر داده، وضعیت پوشش و جایگزین آفلاین.
+
+## آماده‌سازی ارزیابی پنج‌روزه
+
+[راهنمای فعال‌سازی اسکن مستقل و تعیین شروع رسمی ارزیابی](five-day-validation.md)

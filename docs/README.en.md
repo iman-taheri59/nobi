@@ -2,7 +2,7 @@
 
 [فارسی](README.md) · **English**
 
-Working version: **1.10.4**. See [versioning and GitHub releases](releases.en.md) and the
+Working version: **2.0.0**. See [versioning and GitHub releases](releases.en.md) and the
 [changelog](../CHANGELOG.en.md).
 
 ## Documentation map
@@ -93,6 +93,7 @@ What is written twice, what is written once, and what is pending. The gate in
 | ArvanCloud full runbook | [`deploy-arvan-cloud.md`](deploy-arvan-cloud.md) | **pending** |
 | ArvanCloud VPC | [`deploy-arvan-vpc.md`](deploy-arvan-vpc.md) | **pending** |
 | Running on Windows | [`run-windows.md`](run-windows.md) | **pending** |
+| Five-day validation setup | [`five-day-validation.md`](five-day-validation.md) | [`five-day-validation.en.md`](five-day-validation.en.md) |
 | Testing guide | [`testing.md`](testing.md) | [`testing.en.md`](testing.en.md) |
 | Coin metadata and logos | [`coin-metadata.md`](coin-metadata.md) | [`coin-metadata.en.md`](coin-metadata.en.md) |
 | Financial display | [`financial-display.md`](financial-display.md) | [`financial-display.en.md`](financial-display.en.md) |

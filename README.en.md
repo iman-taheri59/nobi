@@ -2,7 +2,7 @@
 
 [فارسی](README.md) · **English**
 
-Working version: **1.10.4** · published tag: **v1.10.4**
+Working version: **2.0.0** · published tag: **v1.10.4**
 **License:** MIT ([`LICENSE`](LICENSE)) · **Security reports:** [`SECURITY.md`](SECURITY.md) · **Contributing:** [`CONTRIBUTING.md`](CONTRIBUTING.md)
 
 See [versioning and GitHub releases](docs/releases.en.md) for the rules on bumping
