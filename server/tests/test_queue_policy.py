@@ -248,3 +248,63 @@ def test_journal_uses_scored_bar_not_a_second_candle_fetch(wired, monkeypatch):
     monkeypatch.setattr(main.client, "get_candles_ex", forbidden)
     assert asyncio.run(main.journal_scan("15m")) == 0
     assert seen == [int(BAR + 900)]
+
+
+@pytest.mark.parametrize("book_price,error", [
+    (106.0, "execution-plan-invalid:"),  # TP1 crossed only at execution
+    (102.0, "execution-rr-too-low:"),  # TP1 still above entry; TP2 R:R too low
+])
+def test_queue_market_fill_revalidates_unchanged_targets(wired, monkeypatch, book_price, error):
+    _now, _feed, broker = wired
+    body = payload()
+    before = (broker.cash, broker.equity, broker.risk.open_heat)
+
+    async def execution(*args):
+        return book_price, 10
+
+    monkeypatch.setattr(broker, "_execution_price", execution)
+    result = TestClient(main.app).post("/api/paper/order", json=body).json()
+    assert result["ok"] is False and result["position"] is None
+    assert result["error"].startswith(error)
+    assert (broker.cash, broker.equity, broker.risk.open_heat) == before
+    assert not broker.positions
+    assert [e.kind for e in broker.orders] == ["reject"]
+    assert broker.orders[-1].extra["tp1"] == body["tp1"]
+    assert broker.orders[-1].extra["tp2"] == body["tp2"]
+    # Rejection is durable, and the Orders API carries the named gate.
+    broker.load()
+    row = TestClient(main.app).get("/api/paper/orders").json()["rows"][0]
+    assert row["state"] == "REJECTED" and row["reason"] == error.rstrip(":")
+
+
+@pytest.mark.parametrize("field", ["stop", "tp1", "tp2"])
+def test_queue_explicit_zero_is_not_replaced_with_a_default(wired, field):
+    _, _, broker = wired
+    body = payload()
+    body[field] = 0
+    result = TestClient(main.app).post("/api/paper/order", json=body).json()
+    assert not result["ok"]
+    assert result["error"].startswith("execution-plan-invalid:")
+    assert not broker.positions and broker.cash == 100000
+
+
+def test_valid_queue_approval_preserves_the_displayed_plan(wired):
+    body = payload()
+    result = TestClient(main.app).post("/api/paper/order", json=body).json()
+    assert result["ok"], result
+    pos = result["position"]
+    assert (pos["stop"], pos["tp1"], pos["tp2"]) == (body["stop"], body["tp1"], body["tp2"])
+
+
+@pytest.mark.parametrize("field", ["stop", "tp1", "tp2"])
+@pytest.mark.parametrize("missing", [True, False])
+def test_queue_cannot_fall_back_to_unapproved_default_targets(wired, field, missing):
+    _, _, broker = wired
+    body = payload()
+    if missing:
+        body.pop(field)
+    else:
+        body[field] = None
+    result = TestClient(main.app).post("/api/paper/order", json=body).json()
+    assert not result["ok"] and result["error"] == "queue-plan-levels-required"
+    assert not broker.positions and not broker.orders and broker.cash == 100000

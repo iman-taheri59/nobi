@@ -149,7 +149,7 @@ def test_a_dollar_figure_and_its_quote_figure_agree():
     mp.setattr(paper_trading, "market_closed_hook", None)
     mp.setattr(paper_trading, "hot_mid_hook", None)
     b = PaperBroker(100_000, Feed(), RiskEngine(RiskConfig(equity=100_000)))
-    pos = asyncio.run(b.place_limit("BTCIRT", "buy", 2.0, price=1_000_000.0, stop=950_000.0))
+    pos = asyncio.run(b.place_limit("BTCIRT", "buy", 2.0, price=1_000_000.0, stop=950_000.0, tp2=1_100_000.0))
     assert pos is not None, b.last_error
     mp.setattr(main, "get_broker", lambda *a, **k: b)
     mp.setattr(main, "_cached", {**main._cached, "signals": {}})
@@ -265,8 +265,8 @@ def test_two_orders_in_the_same_millisecond_get_different_ids():
             return getattr(paper_trading.time, k)
 
     mp.setattr(paper_trading, "time", Frozen())
-    a = asyncio.run(b.place_limit("BTCUSDT", "buy", 10, price=100.0, stop=90.0))
-    bb = asyncio.run(b.place_limit("BTCUSDT", "buy", 10, price=100.0, stop=90.0))
+    a = asyncio.run(b.place_limit("BTCUSDT", "buy", 10, price=100.0, stop=90.0, tp2=120.0))
+    bb = asyncio.run(b.place_limit("BTCUSDT", "buy", 10, price=100.0, stop=90.0, tp2=120.0))
     mp.undo()
 
     assert a is not None and bb is not None, b.last_error

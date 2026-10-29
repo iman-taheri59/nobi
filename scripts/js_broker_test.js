@@ -76,7 +76,7 @@ check('IRT notional is converted to USD before it touches cash', () => {
 /* 3. The documented exchange minimum, in the market's own quote currency. */
 check('order below the exchange minimum is refused (11 USDT)', () => {
   const P = reset();
-  const r = P.placeOrder({ symbol: 'BTCUSDT', side: 'buy', qty: 0.0001, price: 73_040, stop: 70_000 });
+  const r = P.placeOrder({ symbol: 'BTCUSDT', side: 'buy', qty: 0.0001, price: 73_040, stop: 70_000, tp2: 80_000 });
   assert(r.ok === false, 'accepted an order under the minimum');
   assert(r.blocked_by === 'min-notional', `blocked_by ${r.blocked_by}`);
   return r.error;
@@ -107,7 +107,7 @@ check('closed market is refused', () => {
 check('amount truncates and price rounds before the fill', () => {
   const P = reset();
   const r = P.placeOrder({ symbol: 'BTCUSDT', side: 'buy', qty: 0.00023456789,
-                           price: 73_040.004, stop: 70_000 });
+                           price: 73_040.004, stop: 70_000, tp2: 80_000 });
   assert(r.ok === true, `refused: ${r.error}`);
   assert(near(r.position.filled_qty, 0.000234, 1e-12), `qty ${r.position.filled_qty}`);
   assert(near(r.position.entry_price, 73_040, 1e-9), `price ${r.position.entry_price}`);
@@ -262,6 +262,35 @@ check('the walk-forward exposes the share and gates on it', () => {
   const chk = rep.gate.checks.ambiguous_share_le_10;
   assert(chk && chk.pass === (chk.value <= 10), 'gate check missing or inconsistent');
   return `share ${a.ambiguous_share}% over ${a.trades} trades`;
+});
+
+/* Execution geometry must use signed distances and preserve rejected accounts. */
+check('execution-plan guard rejects wrong-side targets, low TP2 RR and explicit zero', () => {
+  const cases = [
+    ['buy', 95, 99, 110, 'execution-plan-invalid'],
+    ['sell', 105, 101, 90, 'execution-plan-invalid'],
+    ['buy', 95, 106, 107, 'execution-rr-too-low'],
+    ['sell', 105, 94, 93, 'execution-rr-too-low'],
+    ['buy', 0, 106, 110, 'execution-plan-invalid'],
+    ['buy', 95, 0, 110, 'execution-plan-invalid'],
+    ['buy', 95, 106, 0, 'execution-plan-invalid'],
+    ['buy', 95, NaN, 110, 'execution-plan-invalid'],
+  ];
+  for (const [side, stop, tp1, tp2, reason] of cases) {
+    const P = reset();
+    const before = JSON.stringify([P.cash, P.equity, P.openHeat, P.positions]);
+    const r = P.placeOrder({symbol: 'TESTUSDT', side, qty: 1, price: 100, stop, tp1, tp2});
+    assert(!r.ok && r.blocked_by === reason, `${side}: ${r.error}, expected ${reason}`);
+    assert(JSON.stringify([P.cash, P.equity, P.openHeat, P.positions]) === before, 'account changed');
+  }
+  return `${cases.length} invalid plans rejected without mutation`;
+});
+check('execution-plan accepts TP1 R1.2 and preserves submitted targets', () => {
+  const P = reset();
+  const r = P.placeOrder({symbol: 'TESTUSDT', side: 'buy', qty: 1, price: 100,
+    stop: 95, tp1: 106, tp2: 110});
+  assert(r.ok, r.error);
+  assert(r.position.tp1 === 106 && r.position.tp2 === 110 && r.position.stop === 95, 'targets moved');
 });
 
 console.log(failures ? `\n${failures} failure(s)` : '\nPASS — standalone broker behaves like the server');

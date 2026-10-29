@@ -400,7 +400,7 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(
     title="nobiTrader",
-    version="2.0.2",
+    version="2.0.3",
     lifespan=lifespan,
 )
 
@@ -2622,6 +2622,8 @@ def _queue_order_context(body: dict) -> dict:
     # An explicit limit price could turn an old preview into a fabricated fill.
     if body.get("price") is not None or body.get("qty"):
         return {"ok": False, "error": "queue-quote-sizing-required"}
+    if any(body.get(field) is None for field in ("stop", "tp1", "tp2")):
+        return {"ok": False, "error": "queue-plan-levels-required"}
     return current
 
 
@@ -3188,7 +3190,10 @@ async def paper_order(payload: dict):
                 return None if latest.get("ok") else latest["error"]
             queue_options = {"approval_guard": guard,
                              "client_order_id": queue_policy.order_id(queue_context)}
-        pos = await broker.place_limit(symbol, side, qty, price, body.get("stop") and float(body["stop"]), body.get("tp1") and float(body["tp1"]), body.get("tp2") and float(body["tp2"]), src, **queue_options)
+        levels = {key: float(body[key]) if body.get(key) is not None else None
+                  for key in ("stop", "tp1", "tp2")}
+        pos = await broker.place_limit(symbol, side, qty, price, levels["stop"],
+                                       levels["tp1"], levels["tp2"], src, **queue_options)
         return {
             "ok": bool(pos),
             "position": pos.__dict__ if pos else None,

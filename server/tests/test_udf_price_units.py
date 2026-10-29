@@ -89,7 +89,7 @@ def test_cache_namespace_tracks_udf_override_not_orderbook_unit(monkeypatch):
     assert candle_cache._key("DOGEIRT", "15", 0, 10) != normal
 
 
-def test_captured_book_reproduces_old_reject_and_consistent_units_pass(tmp_path, monkeypatch):
+def test_captured_book_rejects_wrong_units_and_rechecks_correct_unit_rr(tmp_path, monkeypatch):
     """Offline broker replay, NOT a production order or historical reconstruction.
 
     Book fetched at lastUpdate1793187248465, later than the user's plan.
@@ -130,14 +130,18 @@ def test_captured_book_reproduces_old_reject_and_consistent_units_pass(tmp_path,
         pos = asyncio.run(broker.place_limit("DOGEIRT", "buy", plan.size_quote / entry,
                                             stop=plan.stop, tp1=plan.tp1, tp2=plan.tp2,
                                             source="QUEUE"))
-        assert broker.last_preflight is not None
+        # Correct units alone do not make this captured market fill safe:
+        # walking the thin book reduces the original TP2 R:R below policy.
+        # Keep the captured book and original targets unchanged, and reject.
+        assert pos is None
+        assert not broker.positions
+        assert broker.cash == 100000
+        event = broker.orders[-1]
+        assert event.price == 21798
         if old_scale:
-            assert pos is None
-            assert broker.last_error.startswith("risk-cap:")
-            assert not broker.positions
-            assert broker.cash == 100000
+            assert broker.last_error.startswith("execution-plan-invalid:")
+            assert plan.tp1 < event.price
         else:
-            assert pos is not None
-            assert pos.risk_pct <= engine.cfg.risk_pct * 1.05
-            assert pos.requested_qty > pos.filled_qty  # captured limited depth
-            assert broker.last_error is None
+            assert broker.last_error.startswith("execution-rr-too-low:")
+            assert plan.tp1 > event.price
+            assert event.extra["rr"] < 1.5

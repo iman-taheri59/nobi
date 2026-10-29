@@ -124,7 +124,7 @@ def test_paper_irt_order_consumes_usd_not_toman(tmp_path, monkeypatch):
 
 def test_paper_rejects_oversized_single_asset(tmp_path, monkeypatch):
     broker, _ = make_broker(tmp_path, monkeypatch)
-    pos = run(broker.place_limit("BTCUSDT", "buy", 1.0, price=73_040, stop=70_000))
+    pos = run(broker.place_limit("BTCUSDT", "buy", 1.0, price=73_040, stop=70_000, tp2=80_000))
     assert pos is None
     assert broker.last_error and broker.last_error.startswith("single-asset-cap")
 
@@ -132,7 +132,7 @@ def test_paper_rejects_oversized_single_asset(tmp_path, monkeypatch):
 def test_paper_rejects_excess_risk(tmp_path, monkeypatch):
     broker, _ = make_broker(tmp_path, monkeypatch)
     # 0.2 BTC (~14.6k USD) with a 10 % stop risks ~1.46 % of equity.
-    pos = run(broker.place_limit("BTCUSDT", "buy", 0.2, price=73_040, stop=65_736))
+    pos = run(broker.place_limit("BTCUSDT", "buy", 0.2, price=73_040, stop=65_736, tp2=88_000))
     assert pos is None
     assert broker.last_error and broker.last_error.startswith("risk-cap")
 
@@ -140,7 +140,7 @@ def test_paper_rejects_excess_risk(tmp_path, monkeypatch):
 def test_paper_rejects_when_cash_floor_breached(tmp_path, monkeypatch):
     broker, _ = make_broker(tmp_path, monkeypatch)
     broker.cash = 11_000  # above the 10 % floor only until fees
-    pos = run(broker.place_limit("BTCUSDT", "buy", 0.03, price=73_040, stop=68_000))
+    pos = run(broker.place_limit("BTCUSDT", "buy", 0.03, price=73_040, stop=68_000, tp2=84_000))
     assert pos is None
     assert broker.last_error is not None
     assert broker.last_error.split(":")[0] in {"min-cash", "risk-cap", "insufficient-funds"}
@@ -148,7 +148,7 @@ def test_paper_rejects_when_cash_floor_breached(tmp_path, monkeypatch):
 
 def test_equity_marks_open_position_to_market(tmp_path, monkeypatch):
     broker, client = make_broker(tmp_path, monkeypatch)
-    pos = run(broker.place_limit("BTCUSDT", "buy", 0.1, price=73_040, stop=69_000))
+    pos = run(broker.place_limit("BTCUSDT", "buy", 0.1, price=73_040, stop=69_000, tp2=82_000))
     assert pos is not None
     before = broker.equity
     client.price = 73_040 * 1.01
@@ -639,7 +639,7 @@ def test_tick_loop_action_closes_a_breached_position(tmp_path, monkeypatch):
     import main
 
     broker, client = make_broker(tmp_path, monkeypatch, price=73_040.0)
-    pos = run(broker.place_limit("BTCUSDT", "buy", 0.1, price=73_040, stop=70_000))
+    pos = run(broker.place_limit("BTCUSDT", "buy", 0.1, price=73_040, stop=70_000, tp2=80_000))
     assert pos is not None
     assert pos.state != "CLOSED"
 
@@ -727,7 +727,7 @@ def test_paper_order_accepts_size_quote_alone(monkeypatch, tmp_path):
 
     c = _client()
     r = c.post("/api/paper/order", json={"symbol": "BTCUSDT", "side": "buy", "size_quote": 500.0,
-                                         "stop": 70_000})
+                                         "stop": 70_000, "tp2": 80_000})
     body = r.json()
     assert r.status_code == 200, body
     assert body.get("ok") is True, body

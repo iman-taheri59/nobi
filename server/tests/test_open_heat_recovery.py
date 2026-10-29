@@ -69,7 +69,7 @@ def test_recovered_heat_still_blocks_excess_portfolio_risk(fixture):
     risk = RiskEngine(RiskConfig(equity=100000, max_heat_pct=1.0))
     restored = PaperBroker(100000, feed, risk)
     refused = asyncio.run(restored.place_limit("OTHERUSDT", "buy", 100,
-                                               price=100, stop=94))
+                                               price=100, stop=94, tp2=112))
     assert refused is None
     assert restored.last_error.startswith("heat-cap:")
     assert len(restored.positions) == 1

@@ -113,7 +113,7 @@ def test_a_refused_order_comes_back_as_the_gate_that_refused_it(client, broker):
     """Below the exchange minimum the route must answer `ok: false` and name
     the gate. A position here would be a fill the exchange never prints."""
     r = client.post("/api/paper/order", json={
-        "symbol": "BTCUSDT", "qty": 0.0001, "price": 73_040.0, "stop": 70_000.0,
+        "symbol": "BTCUSDT", "qty": 0.0001, "price": 73_040.0, "stop": 70_000.0, "tp2": 80_000.0,
     }).json()
 
     assert r["ok"] is False
@@ -215,7 +215,7 @@ def test_a_risk_plan_from_the_queue_does_not_change_what_the_broker_decides(clie
     """The queue sends the plan it previewed. The broker still runs its own
     gates — the hand-off is a hint, never an authorisation."""
     r = client.post("/api/paper/order", json={
-        "symbol": "BTCUSDT", "qty": 0.0001, "price": 73_040.0, "stop": 70_000.0,
+        "symbol": "BTCUSDT", "qty": 0.0001, "price": 73_040.0, "stop": 70_000.0, "tp2": 80_000.0,
         "risk_plan": {"size_quote": 730.0, "approved": True},
     }).json()
 

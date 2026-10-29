@@ -645,7 +645,23 @@
       gates,
     };
   }
-  NBX.Risk = { preflight, DEFAULTS: RISK_DEFAULTS };
+  const MIN_RR = 1.5; // parity-tested against risk_engine.MIN_RR
+  function executionPlanError(side, entry, stop, tp1, tp2) {
+    if (!['buy', 'sell'].includes(side) ||
+        [entry, stop, tp1, tp2].some(v => !Number.isFinite(v) || v <= 0)) {
+      return { error: 'execution-plan-invalid', rr: null };
+    }
+    const direction = side === 'buy' ? 1 : -1;
+    const distance = direction * (entry - stop);
+    const reward1 = direction * (tp1 - entry), reward2 = direction * (tp2 - entry);
+    if (distance <= 0 || reward1 <= 0 || reward2 < reward1) {
+      return { error: 'execution-plan-invalid', rr: null };
+    }
+    const rr = reward2 / distance;
+    const close = Math.abs(rr - MIN_RR) <= Math.max(1e-12 * Math.max(Math.abs(rr), MIN_RR), 1e-12);
+    return { error: rr < MIN_RR && !close ? 'execution-rr-too-low' : null, rr };
+  }
+  NBX.Risk = { preflight, DEFAULTS: RISK_DEFAULTS, MIN_RR, executionPlanError };
   NBX.preflight = preflight;
 
   /* ----------------------------------------------------------
@@ -772,6 +788,13 @@
         gates: [], blocked: true, blocked_by: null,
       };
       if (!(px > 0) || !(qty > 0)) return Object.assign({}, empty, { error: 'precision' });
+      const exits = fallbackExits(px, side);
+      const stop = +(payload.stop ?? exits.stop);
+      const tp1 = +(payload.tp1 ?? exits.tp1), tp2 = +(payload.tp2 ?? exits.tp2);
+      const plan = executionPlanError(side, px, stop, tp1, tp2);
+      if (plan.error) {
+        return Object.assign({}, empty, { error: plan.error, blocked_by: plan.error });
+      }
       if (!(rate > 0)) {
         return Object.assign({}, empty, {
           error: 'no-fx-rate',
@@ -781,7 +804,6 @@
       const notionalQuote = px * qty;
       const notionalUsd = notionalQuote / rate;
       const feeUsd = notionalQuote * PAPER_FEE_PCT / rate;
-      const stop = +(payload.stop || fallbackExits(px, side).stop);
       const riskUsd = Math.abs(px - stop) * qty / rate;
       const pf = preflight({
         equity: this.equity, cash: this.cash,
@@ -812,7 +834,7 @@
 
       const pf = this.preflightOrder(payload);
       if (pf.error) {
-        return { ok: false, error: pf.error, message: pf.message, projection: null };
+        return { ok: false, error: pf.error, blocked_by: pf.blocked_by, message: pf.message, projection: null };
       }
       if (pf.projected.blocked) {
         // The id and the sentence, exactly as the backend refuses: the two
@@ -830,9 +852,9 @@
       const qty = pf.qty;
       const notional = pf.notional_quote;
       const exits = fallbackExits(px, side);
-      const stop = +(payload.stop || exits.stop);
-      const tp1 = +(payload.tp1 || exits.tp1);
-      const tp2 = +(payload.tp2 || exits.tp2);
+      const stop = +(payload.stop ?? exits.stop);
+      const tp1 = +(payload.tp1 ?? exits.tp1);
+      const tp2 = +(payload.tp2 ?? exits.tp2);
       const pos = {
         id: 'pp-' + Date.now() + '-' + sym,
         symbol: sym,

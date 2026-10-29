@@ -292,14 +292,14 @@ def _broker(tmp_path, monkeypatch, equity=100_000, price=73_040.0):
 def test_broker_refuses_an_order_below_the_exchange_minimum(tmp_path, monkeypatch):
     b = _broker(tmp_path, monkeypatch)
     # 0.0001 BTC ≈ $7.3 — above 11 USDT? No: 7.3 < 11, so the exchange refuses it.
-    pos = run(b.place_limit("BTCUSDT", "buy", 0.0001, price=73_040, stop=70_000))
+    pos = run(b.place_limit("BTCUSDT", "buy", 0.0001, price=73_040, stop=70_000, tp2=80_000))
     assert pos is None
     assert b.last_error and b.last_error.startswith("min-notional")
 
 
 def test_broker_accepts_an_order_just_above_the_minimum(tmp_path, monkeypatch):
     b = _broker(tmp_path, monkeypatch)
-    pos = run(b.place_limit("BTCUSDT", "buy", 0.0002, price=73_040, stop=70_000))
+    pos = run(b.place_limit("BTCUSDT", "buy", 0.0002, price=73_040, stop=70_000, tp2=80_000))
     assert pos is not None, b.last_error
 
 
@@ -315,7 +315,7 @@ def test_broker_refuses_a_closed_market(tmp_path, monkeypatch):
 
 def test_broker_truncates_the_fill_to_the_market_precision(tmp_path, monkeypatch):
     b = _broker(tmp_path, monkeypatch)
-    pos = run(b.place_limit("BTCUSDT", "buy", 0.00023456789, price=73_040, stop=70_000))
+    pos = run(b.place_limit("BTCUSDT", "buy", 0.00023456789, price=73_040, stop=70_000, tp2=80_000))
     assert pos is not None, b.last_error
     assert pos.filled_qty == pytest.approx(0.000234, abs=1e-12)
     assert pos.entry_price == pytest.approx(73_040.0)
@@ -429,7 +429,7 @@ def test_every_paper_order_carries_a_documented_client_order_id(tmp_path, monkey
     """The ticket says orders receive a `clientOrderId`; the docs cap it at 32
     characters and use it to deduplicate. So one is produced, and it fits."""
     b = _broker(tmp_path, monkeypatch)
-    pos = run(b.place_limit("BTCUSDT", "buy", 0.001, price=73_040, stop=70_000))
+    pos = run(b.place_limit("BTCUSDT", "buy", 0.001, price=73_040, stop=70_000, tp2=80_000))
     assert pos is not None, b.last_error
     assert pos.client_order_id and len(pos.client_order_id) <= 32
     submit = [e for e in b.orders if e.kind == "submit"][-1]
@@ -456,9 +456,9 @@ def test_orders_route_reports_a_real_order_with_its_id(tmp_path, monkeypatch):
     monkeypatch.setattr(main, "client", b.client)
     # A limit order names its price, so there is no mid to measure against:
     # the column must stay null rather than print a zero nobody observed.
-    pos = run(b.place_limit("BTCUSDT", "buy", 0.001, price=73_040, stop=70_000))
+    pos = run(b.place_limit("BTCUSDT", "buy", 0.001, price=73_040, stop=70_000, tp2=80_000))
     assert pos is not None, b.last_error
-    pos_mkt = run(b.place_limit("BTCUSDT", "buy", 0.001, price=None, stop=70_000))
+    pos_mkt = run(b.place_limit("BTCUSDT", "buy", 0.001, price=None, stop=70_000, tp2=80_000))
     assert pos_mkt is not None, b.last_error
 
     r = _client().get("/api/paper/orders")
@@ -484,7 +484,7 @@ def test_orders_route_keeps_a_rejected_order_as_a_row(tmp_path, monkeypatch):
 
     b = _broker(tmp_path, monkeypatch)
     monkeypatch.setattr(main, "get_broker", lambda *a, **k: b)
-    pos = run(b.place_limit("BTCUSDT", "buy", 0.0001, price=73_040, stop=70_000))
+    pos = run(b.place_limit("BTCUSDT", "buy", 0.0001, price=73_040, stop=70_000, tp2=80_000))
     assert pos is None
     d = _client().get("/api/paper/orders").json()
     assert d["counts"]["rejected"] == 1
@@ -525,8 +525,8 @@ def test_two_orders_on_one_market_in_the_same_millisecond_both_exist(tmp_path, m
     approved queue item and a manual ticket, say — produced the same key, so the
     second position overwrote the first: both priced into cash, one recorded."""
     b = _broker(tmp_path, monkeypatch)
-    a = run(b.place_limit("BTCUSDT", "buy", 0.001, price=73_040, stop=70_000))
-    c = run(b.place_limit("BTCUSDT", "buy", 0.001, price=73_040, stop=70_000))
+    a = run(b.place_limit("BTCUSDT", "buy", 0.001, price=73_040, stop=70_000, tp2=80_000))
+    c = run(b.place_limit("BTCUSDT", "buy", 0.001, price=73_040, stop=70_000, tp2=80_000))
     assert a is not None and c is not None
     assert a.id != c.id
     assert len([p for p in b.positions.values() if p.state != "CLOSED"]) == 2
@@ -695,7 +695,7 @@ def test_risk_state_reports_the_account_the_gates_use(tmp_path, monkeypatch):
     import main
 
     b = _broker(tmp_path, monkeypatch)
-    run(b.place_limit("BTCUSDT", "buy", 0.001, price=73_040, stop=70_000))
+    run(b.place_limit("BTCUSDT", "buy", 0.001, price=73_040, stop=70_000, tp2=80_000))
     monkeypatch.setattr(main, "get_broker", lambda *a, **k: b)
     d = _client().get("/api/risk/state").json()
     assert d["equity"] == pytest.approx(b.equity)

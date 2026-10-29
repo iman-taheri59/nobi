@@ -26,7 +26,7 @@ from pathlib import Path
 from fees import FEE_PCT  # re-exported: callers import it from here
 from money import NoRate, Rate
 from nobitex_client import NobitexClient
-from risk_engine import Preflight, RiskEngine, preflight
+from risk_engine import MIN_RR, Preflight, RiskEngine, preflight
 from units import min_notional_usd, round_price, truncate_amount
 
 log = logging.getLogger("paper-trading")
@@ -50,6 +50,31 @@ def _backup_path(state_file: Path) -> Path:
 RATE_TTL_S = max(5.0, float(os.getenv("NBX_RATE_TTL_S", "300")))
 # Conservative fill model: marketable limit → fill at next level + half spread
 SLIP_BPS = 6
+
+def _execution_plan_error(side: str, entry: float, stop: float, tp1: float,
+                          tp2: float) -> tuple[str | None, float | None]:
+    """Validate the unchanged plan against the rounded, executable fill.
+
+    A fresh signal/approval clock cannot guarantee executable target geometry.
+    In particular, abs(reward) would turn a target behind entry into a profit.
+    The shared policy uses TP2, not TP1; fees are modelled separately.
+    """
+    if side not in ("buy", "sell") or any(
+        not math.isfinite(v) or v <= 0 for v in (entry, stop, tp1, tp2)
+    ):
+        return "execution-plan-invalid", None
+    direction = 1 if side == "buy" else -1
+    distance = direction * (entry - stop)
+    reward1 = direction * (tp1 - entry)
+    reward2 = direction * (tp2 - entry)
+    if distance <= 0 or reward1 <= 0 or reward2 < reward1:
+        return "execution-plan-invalid", None
+    rr = reward2 / distance
+    # Decimal prices at exactly MIN_RR can lose a few ulps on subtraction.
+    if rr < MIN_RR and not math.isclose(rr, MIN_RR, rel_tol=1e-12, abs_tol=1e-12):
+        return "execution-rr-too-low", rr
+    return None, rr
+
 
 @dataclass
 class Position:
@@ -434,6 +459,25 @@ class PaperBroker:
             self.orders.append(OrderEvent(time.time(), "reject", symbol, side, qty, fill_price,
                                           {"reason": "precision"}))
             return None
+        # Resolve only omitted levels. Explicit zero/NaN must not silently
+        # become a default. Never move submitted targets to make a fill pass.
+        stop_px = stop if stop is not None else fill_price * (0.96 if side == "buy" else 1.04)
+        tp1_px = tp1 if tp1 is not None else fill_price * (1.04 if side == "buy" else 0.96)
+        tp2_px = tp2 if tp2 is not None else fill_price * (1.06 if side == "buy" else 0.94)
+        reason, execution_rr = _execution_plan_error(side, fill_price, stop_px, tp1_px, tp2_px)
+        if reason:
+            detail = (f"{reason}: {side} entry={fill_price}, stop={stop_px}, "
+                      f"tp1={tp1_px}, tp2={tp2_px}; TP2 R:R must be >= {MIN_RR}")
+            self.last_error = detail
+            # Keep rejection records JSON-safe, including malformed NaN/Inf.
+            levels = {k: v if math.isfinite(v) else str(v)
+                      for k, v in {"stop": stop_px, "tp1": tp1_px, "tp2": tp2_px}.items()}
+            self.orders.append(OrderEvent(time.time(), "reject", symbol, side, qty, fill_price,
+                                          {"reason": reason, "detail": detail, **levels,
+                                           "rr": execution_rr, "min_rr": MIN_RR,
+                                           "execution": execution, "source": source}))
+            self.save()
+            return None
         notional = fill_price * filled_qty
         fee = notional * FEE_PCT
 
@@ -462,7 +506,6 @@ class PaperBroker:
         # Evaluated by the shared `preflight`, which /api/risk/whatif also calls:
         # a preview that used its own copy of these rules would eventually
         # promise trades this function rejects.
-        stop_px = stop or fill_price * (0.96 if side == "buy" else 1.04)
         risk_amount = abs(fill_price - stop_px) * filled_qty
         risk_usd = risk_amount / rate
         risk_pct = risk_usd / max(self.equity, 1e-9) * 100
@@ -520,8 +563,8 @@ class PaperBroker:
             id=pid, symbol=symbol, side=side, entry_price=fill_price,
             qty=filled_qty, size_quote=notional,
             stop=stop_px,
-            tp1=tp1 or fill_price * (1.04 if side == "buy" else 0.96),
-            tp2=tp2 or fill_price * (1.06 if side == "buy" else 0.94),
+            tp1=tp1_px,
+            tp2=tp2_px,
             stop_pct=abs(fill_price - stop_px) / fill_price * 100,
             opened_at=time.time(), state="OPEN",
             filled_qty=filled_qty,

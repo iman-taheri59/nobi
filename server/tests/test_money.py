@@ -214,7 +214,7 @@ def test_a_moving_toman_does_not_invent_profit_in_the_usd_account(tmp_path, monk
     feed = Book()
     b = PaperBroker(100_000, feed, RiskEngine(RiskConfig(equity=100_000)))
     pos = run_rate(b.place_limit("BTCIRT", "buy", 2.0, price=1_000_000.0,
-                                 stop=950_000.0))
+                                 stop=950_000.0, tp2=1_100_000.0))
     assert pos is not None, b.last_error
     entry_equity = b.equity
     assert entry_equity == pytest.approx(100_000 - pos.size_usd * paper_trading.FEE_PCT, abs=1)

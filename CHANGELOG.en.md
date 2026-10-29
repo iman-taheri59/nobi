@@ -2,6 +2,15 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 2.0.3
+
+- Fix Paper plan acceptance after execution-price drift. Validate finite, positive, ordered stops/targets against the precision-rounded fill using signed distances: `stop < entry < tp1 <= tp2` for buys, reversed for sells. A target behind entry must not become a reward through an absolute value.
+- Recheck the existing `MIN_RR=1.5` policy using TP2 and the final execution price, not the queue card's TP1. Tolerance only covers floating-point boundary noise. This PATCH corrects faulty behavior without introducing a strategy or threshold change; fees remain modelled separately.
+- Persist `execution-plan-invalid` / `execution-rr-too-low` rejections with submitted levels and ratio diagnostics before mutating positions, cash or reserved risk. Never re-anchor targets to make an order pass. QUEUE requires all three explicit levels; missing/null levels cannot silently become defaults, and zero/NaN/Inf are invalid.
+- Apply the same signed-geometry and RR guard to the browser broker, with deterministic Python/JavaScript parity coverage. Preserve each broker's existing omitted-level defaults for non-QUEUE orders; an invalid combination with a custom stop is rejected.
+- Cover slippage crossing TP1, degraded TP2 RR, boundaries, valid TP1 at 1.2R, durable rejection, unchanged existing positions and a synthetic offline exit lifecycle. Independent gate-test fixtures now supply valid explicit TP2 levels. Preserve the original captured book unchanged: consistent units alone do not guarantee execution-price plan validity.
+- Do not rewrite, delete or automatically close existing positions/history on load. Risk caps, scans, semi/Auto, Live and exit rules are unchanged. No formal five-day start or Live authorization; publication and installation are separate steps.
+
 ## 2.0.2
 
 - Moved the connection badge and its details from a floating bottom-corner overlay into an in-flow disclosure above the main content. Expanded details reserve their own space instead of covering sidebar links or page content; the panel has an opaque background and supports RTL/LTR and mobile layouts.
