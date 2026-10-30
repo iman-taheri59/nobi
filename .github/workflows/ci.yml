@@ -112,6 +112,32 @@ jobs:
         run: npm run test:queue
       - name: lockfile tarballs match their versions
         run: npm run test:lock
+      - name: Reviewed-page regression tests
+        run: npm run test:review-phase1
+      - name: Paper provenance and Signal Intelligence offline regressions
+        run: npm run test:review-phase2
+      - name: Retained orders and manual ticket offline regressions
+        run: npm run test:review-phase3
+      - name: Approval draft lifetime and candle-scoped decisions offline regressions
+        run: npm run test:review-phase4
+      - name: Risk plan and halt outcome offline regressions
+        run: npm run test:review-phase5
+      - name: Fundamentals coverage and snapshot provenance offline regressions
+        run: npm run test:review-phase6
+      - name: Backtest Lab reviewed-page regressions
+        run: npm run test:review-phase7
+      - name: Signals Explorer provenance regressions
+        run: npm run test:review-phase8
+      - name: Performance Report read-only regressions
+        run: npm run test:review-phase9
+      - name: Error Log storage and scoped UI regressions
+        run: npm run test:review-phase10
+      - name: Signal Intelligence filtered evidence regression
+        run: npm run test:review-phase11
+      - name: Overview market state and allocation regression
+        run: npm run test:review-phase12
+      - name: Risk audit page and scope regression
+        run: npm run test:review-phase13
       - name: preflight parity — 28 cases × 10 gates
         run: python3 scripts/check_preflight_parity.py
       - name: generated mobile file is current

@@ -16,7 +16,20 @@
     "test:escaping": "node scripts/test_ui_escaping.cjs",
     "test:signal-detail": "node scripts/test_signal_detail.cjs",
     "test:queue": "node scripts/test_approval_queue.cjs && node scripts/test_queue_deadline.cjs",
-    "test:lock": "node scripts/check_lockfile.cjs"
+    "test:review-phase1": "node scripts/test_review_phase1.cjs",
+    "test:review-phase2": "node scripts/test_review_phase2.cjs",
+    "test:review-phase3": "node scripts/test_review_phase3.cjs",
+    "test:review-phase4": "node scripts/test_review_phase4.cjs",
+    "test:review-phase5": "node scripts/test_review_phase5.cjs",
+    "test:review-phase6": "node scripts/test_review_phase6.cjs",
+    "test:lock": "node scripts/check_lockfile.cjs",
+    "test:review-phase7": "node scripts/test_review_phase7.cjs",
+    "test:review-phase8": "node scripts/test_review_phase8.cjs",
+    "test:review-phase9": "node scripts/test_review_phase9.cjs",
+    "test:review-phase10": "node scripts/test_review_phase10.cjs",
+    "test:review-phase11": "node scripts/test_review_phase11.cjs",
+    "test:review-phase12": "node scripts/test_review_phase12.cjs",
+    "test:review-phase13": "node scripts/test_review_phase13.cjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
