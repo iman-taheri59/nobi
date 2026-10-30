@@ -2,7 +2,7 @@
 # does not install a linter; CI installs both.
 -r requirements.txt
 
-pytest==9.0.3
+pytest==9.1.1
 ruff==0.17.2
 mypy==2.4.0
 # CI runs `pip-audit -r server/requirements.txt`; pin it like the other gates.
