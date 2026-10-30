@@ -138,7 +138,7 @@ def flags() -> list[dict[str, Any]]:
          "meaning": "how often open positions are re-evaluated"},
         {"name": "NBX_STREAM_POLL_S", "value": STREAM_POLL_S, "unit": "s",
          "meaning": "order-book polling cadence of the paper broker"},
-        {"name": "NBX_WS_URL", "value": (WS_URL or None),
+        {"name": "NBX_WS_URL", "value": ("configured (URL hidden)" if WS_URL else None),
          "meaning": "empty -> REST polling; set -> attempt a real stream"},
         {"name": "stream.transport", "value": stream.get("transport"),
          "meaning": "what the executor is actually doing right now"},

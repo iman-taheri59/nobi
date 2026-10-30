@@ -46,7 +46,7 @@ def test_backup_round_trip_is_complete_and_excludes_environment(tmp_path):
     journal.unlink()
     auth.unlink()
     live.unlink()
-    sb.restore_backup(archive, journal, auth, live, force=True)
+    sb.restore_backup(archive, journal, auth, live, force=True, offline=True)
     assert _value(journal) == "journal-before"
     assert _value(auth) == "auth-before"
     assert _value(live) == "live-before"
@@ -84,7 +84,7 @@ def test_tampered_database_is_refused_before_destination_changes(tmp_path):
             destination.writestr(name, b"tampered" if name == "journal.db" else payload)
 
     try:
-        sb.restore_backup(broken, journal, auth, live, force=True)
+        sb.restore_backup(broken, journal, auth, live, force=True, offline=True)
     except ValueError as exc:
         assert "checksum mismatch" in str(exc)
     else:
@@ -113,6 +113,6 @@ def test_legacy_format_one_leaves_live_database_untouched(tmp_path):
     with contextlib.closing(sqlite3.connect(journal)) as conn:
         conn.execute("UPDATE sample SET value='changed-j'")
         conn.commit()
-    sb.restore_backup(legacy, journal, auth, live, force=True)
+    sb.restore_backup(legacy, journal, auth, live, force=True, offline=True)
     assert _value(journal) == "old-j"
     assert _value(live) == "keep-live"

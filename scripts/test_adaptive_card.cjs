@@ -277,9 +277,10 @@ function stub(result) {
   // Current candles put the chip away again — no permanent warning that means nothing.
   window.btRender({ report: { aggregate: {} }, freshness: { stale: false, reason: 'current', age_bars: 0.2 } });
   assert.equal(chip.classList.contains('hidden'), true, 'the chip stayed visible on current data');
-  // A response without the block (older backend) must not invent staleness.
+  // Missing metadata is neither stale nor verified current: name the unknown.
   window.btRender({ report: { aggregate: {} } });
-  assert.equal(chip.classList.contains('hidden'), true, 'a missing block was read as stale');
+  assert.equal(chip.classList.contains('hidden'), false, 'unknown data age was silently hidden');
+  assert.match(chip.textContent, /freshness unknown|تازگی داده نامشخص/, chip.textContent);
 
   // ---- 8. the market-scan card names how old the candles it scanned are (1.0.21) ----
   const sgChip = doc.getElementById('sgFreshChip');

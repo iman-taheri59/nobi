@@ -715,13 +715,16 @@ sudo -u nobi /opt/nobi/.venv/bin/python /opt/nobi/scripts/state_backup.py \
   --live   /srv/nobi-data/live_execution.db
 ```
 
-و بازیابی (حتماً قبلش سرویس را متوقف کنید):
+و بازیابی (حتماً قبلش سرویس و همهٔ نویسنده‌های DB را متوقف کنید؛ [پیش‌شرط‌های بازیابی آفلاین](operations-recovery.md)، از جمله checkpoint امن WAL، الزامی‌اند):
 
 ```bash
 sudo systemctl stop nobi
 sudo -u nobi /opt/nobi/.venv/bin/python /opt/nobi/scripts/state_backup.py \
-  restore /srv/nobi-data/backup/<archive> --force
-sudo systemctl start nobi
+  restore /srv/nobi-data/backup/<archive> --force --offline \
+  --journal /srv/nobi-data/journal.db \
+  --auth /srv/nobi-data/auth.db \
+  --live /srv/nobi-data/live_execution.db
+# پس از موفقیت و بررسی سازگاری، بازگرداندن سرویس مرحلهٔ جداگانه است.
 ```
 
 ### ب) SQLite سازگار (کپی خام از DB در حال نوشتن ممکن است خراب باشد)

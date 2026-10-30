@@ -12,8 +12,9 @@ Design constraints, in order
 1. **Never throw.** A logger that can take the app down is worse than no
    logger, so every write is wrapped and the in-memory ring buffer is the
    fallback when SQLite is unavailable.
-2. **Never store a secret.** Telegram/API tokens live in URLs, headers and
-   exception strings, so every field is scrubbed before it is stored or served.
+2. **Redact known secret shapes and sensitive structured keys.** All text
+   fields are scrubbed on capture and read. This is best effort, not a proof
+   that an arbitrary unlabeled secret can never appear in free text.
 3. **Bounded.** 500 rows in memory, 2000 in SQLite; a crash loop cannot fill
    the disk.
 4. **Cheap to read.** `GET /api/errors` returns newest first with a level and
@@ -21,6 +22,8 @@ Design constraints, in order
 """
 from __future__ import annotations
 
+import ast
+import json
 import logging
 import os
 import re
@@ -29,7 +32,9 @@ import threading
 import time
 import traceback
 from collections import deque
+from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 import journal
 
@@ -39,6 +44,7 @@ MAX_DB = 2000
 
 _memory: deque[dict[str, Any]] = deque(maxlen=MAX_MEMORY)
 _lock = threading.Lock()
+_io_lock = threading.RLock()  # serialize this process's reads/writes, not other workers
 _seq = 0
 
 # --------------------------------------------------------------------------- #
@@ -64,18 +70,77 @@ _RULES = (
     # KEY=value for anything that names a token/key
     (re.compile(r"(?i)\b(nbx_[a-z_]*token|nobitex_api_(?:key|secret)|api[_-]?key)\b\s*[:=]\s*\S+"),
      r"\1" + _REDACTED),
+    (re.compile(r"(?i)\b(password|passwd|api[_-]?secret|[a-z_]*token|cookie|session(?:_id)?)\b\s*[:=]\s*[^\s,;}]+"), r"\1=" + _REDACTED),
+    (re.compile(r"(https?://)[^/\s:@]+:[^/@\s]+@"), r"\1" + _REDACTED + "@"),
     # long hex blobs (hashes, keys) — nothing legitimate that long is worth keeping
     (re.compile(r"\b[A-Fa-f0-9]{32,}\b"), _REDACTED),
 )
 
 
-def scrub(text: Any) -> str:
-    if text is None:
-        return ""
-    s = str(text)
+_SECRET_KEY = re.compile(r"(?i)(token|secret|password|passwd|authorization|cookie|session|privatekey|apikey)")
+_QUOTED_SECRET = re.compile(
+    r"(?i)([\"']?(?:[a-z_]*token|[a-z_]*secret|password|passwd|authorization|cookie|api[_-]?key)[\"']?\s*[:=]\s*)([\"'])([^\r\n]*)")
+
+
+def _text(value: Any) -> str:
+    try:
+        s = str(value)
+    except Exception:
+        return "[unprintable]"
+    s = s[:16384]
+    s = _QUOTED_SECRET.sub(lambda m: m[1] + m[2] + _REDACTED + m[2], s)
     for pattern, repl in _RULES:
         s = pattern.sub(repl, s)
     return s[:4000]
+
+
+def scrub(value: Any) -> str:
+    """Bounded, key-aware structured redaction plus legacy free-text rules.
+
+    Legacy disk bytes are not rewritten; serving them passes through this too.
+    Unknown/unlabeled secrets in arbitrary prose remain an explicit limitation.
+    """
+    if value is None:
+        return ""
+    if isinstance(value, str) and len(value)<=32768 and value.lstrip().startswith(("{", "[", "(")):
+        try:
+            try:
+                decoded = json.loads(value)
+            except ValueError:
+                decoded = ast.literal_eval(value)  # bounded legacy repr, never eval()
+            if isinstance(decoded, (dict, list, tuple)):
+                value = decoded
+        except (ValueError, TypeError, SyntaxError, RecursionError, MemoryError):
+            pass
+    budget = [128]
+    def clean(v: Any, depth: int = 0) -> Any:
+        budget[0] -= 1
+        if budget[0] < 0 or depth > 6:
+            return "[truncated]"
+        if isinstance(v, dict):
+            out: dict[str, Any] = {}
+            for i, (k, x) in enumerate(v.items()):
+                if i >= 64 or budget[0] <= 0:
+                    out["[truncated]"] = True
+                    break
+                key = _text(k)
+                normalized = re.sub(r"[^a-z0-9]", "", key.lower())
+                out[key] = _REDACTED if _SECRET_KEY.search(normalized) else clean(x, depth+1)
+            return out
+        if isinstance(v, (list, tuple)):
+            out_list = []
+            for i, x in enumerate(v):
+                if i >= 64 or budget[0] <= 0:
+                    out_list.append("[truncated]")
+                    break
+                out_list.append(clean(x, depth+1))
+            return out_list
+        if v is None or isinstance(v, (bool, int, float)):
+            return v
+        return _text(v)
+    if isinstance(value, (dict, list, tuple)):
+        return json.dumps(clean(value), ensure_ascii=False, default=str)[:4000]
+    return _text(value)
 
 
 # --------------------------------------------------------------------------- #
@@ -106,10 +171,14 @@ def _prune(conn: sqlite3.Connection) -> None:
     )
 
 
+def _store_key() -> str:
+    return str(Path(journal.DB_PATH).resolve())
+
+
 def capture(level: str = "error", source: str = "app", message: str = "",
-            detail: str | None = None, context: dict | str | None = None,
+            detail: str | None = None, context: Any = None,
             client: str | None = None, exc: BaseException | None = None) -> dict:
-    """Record one failure. Returns the stored row; never raises."""
+    """Record an event; failed SQLite writes remain visible as memory-only."""
     global _seq
     lvl = (level or "error").lower()
     if lvl not in LEVELS:
@@ -117,119 +186,131 @@ def capture(level: str = "error", source: str = "app", message: str = "",
     if exc is not None:
         message = message or f"{type(exc).__name__}: {exc}"
         detail = detail or "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
-    row = {
-        "ts": int(time.time()),
-        "level": lvl,
-        "source": (source or "app")[:64],
-        "message": scrub(message)[:1000],
-        "detail": scrub(detail)[:4000] if detail else None,
-        "context": scrub(context)[:1000] if context else None,
-        "client": (client or "")[:64] or None,
-    }
-    with _lock:
-        _seq += 1
-        row["id"] = _seq
-        _memory.append(row)
-
-    try:
-        conn = journal.connect()
+    row = {"ts": int(time.time()), "level": lvl, "source": scrub(source or "app")[:64],
+           "message": scrub(message)[:1000], "detail": scrub(detail) or None,
+           "context": scrub(context)[:1000] or None, "client": scrub(client)[:64] or None,
+           "persisted": False}
+    with _io_lock:
+        row["_store"] = _store_key()
+        with _lock:
+            _seq += 1
+            row["id"] = -_seq  # process-local memory IDs never alias SQLite IDs
+            _memory.append(row)
         try:
-            _init(conn)
-            cur = conn.execute(
-                "INSERT INTO error_log (ts, level, source, message, detail, context, client) "
-                "VALUES (?,?,?,?,?,?,?)",
-                (row["ts"], row["level"], row["source"], row["message"],
-                 row["detail"], row["context"], row["client"]),
-            )
-            row["id"] = int(cur.lastrowid or 0)
-            _prune(conn)
-            conn.commit()
+            conn = journal.connect()
+            try:
+                _init(conn)
+                cur = conn.execute(
+                    "INSERT INTO error_log (ts,level,source,message,detail,context,client) VALUES(?,?,?,?,?,?,?)",
+                    tuple(row[k] for k in ("ts","level","source","message","detail","context","client")))
+                db_id = int(cur.lastrowid or 0)
+                _prune(conn)
+                conn.commit()
+                with _lock:
+                    row["id"] = db_id
+                    row["persisted"] = True
+            finally:
+                conn.close()
+        except Exception:  # diagnostic failures must not cascade into the caller
+            pass
+    return {k: v for k, v in row.items() if not k.startswith("_")}
+
+
+def _served(row: dict) -> dict:
+    out = {k: v for k, v in row.items() if not k.startswith("_")}
+    for key in ("source", "message", "detail", "context", "client"):
+        out[key] = scrub(out.get(key)) or ("" if key in ("source", "message") else None)
+    return out
+
+
+def _counts(rows: list[dict], now: int) -> dict[str, Any]:
+    out: dict[str, Any] = dict.fromkeys(LEVELS, 0)
+    out.update(total=len(rows), last_24h=0, last_ts=None, sources={})
+    cutoff = now - 86400
+    for r in rows:
+        out[r["level"]] = out.get(r["level"], 0) + 1
+        out["last_24h"] += int(r["ts"] >= cutoff)
+        out["last_ts"] = max(out["last_ts"] or 0, r["ts"])
+        src = r["source"]
+        out["sources"][src] = out["sources"].get(src, 0) + 1
+    return out
+
+
+def snapshot(limit: int = 100, level: str | None = None, source: str | None = None,
+             since: int | None = None, q: str | None = None) -> dict[str, Any]:
+    """One observed row-set for table, counts and scope, not two racing reads.
+
+    SQL retains priority. Merge only this process's unpersisted ring events;
+    do not resurrect pruned/cleared DB rows from the ring. On read failure the
+    whole ring is explicitly partial. No initialization or migration on read.
+    Counts are for this observed retained snapshot, never lifetime incidents.
+    """
+    limit = max(1, min(int(limit), 500))
+    db_ok = False
+    read_truncated = False
+    with _io_lock:
+        with _lock:
+            mem = [dict(r) for r in _memory if r.get("_store") == _store_key()]
+        db_rows = []
+        conn = None
+        try:
+            conn = journal.connect_readonly()
+            conn.execute("BEGIN")
+            raw = conn.execute("SELECT * FROM error_log ORDER BY ts DESC,id DESC LIMIT ?", (MAX_DB+1,)).fetchall()
+            read_truncated = len(raw) > MAX_DB
+            db_rows = [dict(r, persisted=True) for r in raw[:MAX_DB]]
+            db_ok = True
+        except Exception:
+            pass
         finally:
-            conn.close()
-    except Exception:            # storage problems must not cascade
-        pass
-    return row
+            if conn is not None:
+                conn.close()
+        pending = [r for r in mem if r.get("persisted") is False]
+        observed = db_rows + pending if db_ok else mem
+    rows = [_served(r) for r in observed]
+    rows.sort(key=lambda r: (r["ts"], r["id"] if r["id"] > 0 else -r["id"]), reverse=True)
+    now = int(time.time())
+    counts_all = _counts(rows, now)
+    selected = rows
+    if level:
+        selected = [r for r in selected if r["level"] == level]
+    if source:
+        selected = [r for r in selected if r["source"] == source]
+    if since is not None:
+        selected = [r for r in selected if r["ts"] >= since]
+    if q:
+        needle = q.casefold()
+        selected = [r for r in selected if needle in (r["message"] or "").casefold()
+                    or needle in (r["detail"] or "").casefold()]
+    loaded = selected[:limit]
+    return {"errors": loaded, "n": len(loaded), "counts": counts_all,
+            "filtered_count": len(selected), "filtered_counts": _counts(selected, now),
+            "truncated": len(selected) > len(loaded), "generated_at": now,
+            "storage": {"backend": "sqlite+pending-memory" if db_ok and pending else "sqlite" if db_ok else "memory",
+                        "sqlite_readable": db_ok, "pending_memory": len(pending),
+                        "degraded": not db_ok or bool(pending) or read_truncated,
+                        "db_read_truncated": read_truncated, "max_db": MAX_DB, "max_memory": MAX_MEMORY,
+                        "scope": "observed-retained-snapshot", "durability_verified": False},
+            "filters": {"level": level, "source": source, "since": since, "q": q, "limit": limit}}
 
 
 def recent(limit: int = 100, level: str | None = None, source: str | None = None,
            since: int | None = None, q: str | None = None) -> list[dict]:
-    where: list[str] = ["1=1"]
-    params: list[Any] = []
-    if level and level in LEVELS:
-        where.append("level=?")
-        params.append(level)
-    if source:
-        where.append("source=?")
-        params.append(source)
-    if since:
-        where.append("ts>=?")
-        params.append(int(since))
-    if q:
-        where.append("(message LIKE ? OR detail LIKE ?)")
-        params += [f"%{q}%", f"%{q}%"]
-    sql = ("SELECT id, ts, level, source, message, detail, context, client "
-           "FROM error_log WHERE " + " AND ".join(where) + " ORDER BY ts DESC, id DESC LIMIT ?")
-    params.append(max(1, min(int(limit), 500)))
-    try:
-        conn = journal.connect()
-        try:
-            _init(conn)
-            rows = [dict(r) for r in conn.execute(sql, params)]
-        finally:
-            conn.close()
-        if rows or not since:
-            return rows
-    except Exception:
-        pass
-    # fallback: the in-memory ring (newest first)
-    rows = [dict(r) for r in reversed(_memory)]
-    if level:
-        rows = [r for r in rows if r["level"] == level]
-    if source:
-        rows = [r for r in rows if r["source"] == source]
-    if q:
-        needle = q.lower()
-        rows = [r for r in rows if needle in (r["message"] or "").lower()
-                or needle in (r["detail"] or "").lower()]
-    return rows[: max(1, min(int(limit), MAX_MEMORY))]
+    return snapshot(limit, level, source, since, q)["errors"]
 
 
 def counts() -> dict[str, Any]:
-    # `sources` is a nested dict and `last_ts` is None until the first row, so
-    # the values are not all ints — annotate instead of letting mypy guess.
-    out: dict[str, Any] = {"error": 0, "critical": 0, "warning": 0, "total": 0, "last_24h": 0,
-           "last_ts": None, "sources": {}}
-    day_ago = int(time.time()) - 86400
-    try:
-        conn = journal.connect()
-        try:
-            _init(conn)
-            for row in conn.execute("SELECT level, COUNT(*) n FROM error_log GROUP BY level"):
-                out[row["level"]] = row["n"]
-                out["total"] += row["n"]
-            out["last_24h"] = conn.execute(
-                "SELECT COUNT(*) FROM error_log WHERE ts>=?", (day_ago,)).fetchone()[0]
-            out["last_ts"] = conn.execute("SELECT MAX(ts) FROM error_log").fetchone()[0]
-            for row in conn.execute(
-                    "SELECT source, COUNT(*) n FROM error_log GROUP BY source ORDER BY n DESC LIMIT 12"):
-                out["sources"][row["source"]] = row["n"]
-        finally:
-            conn.close()
-        return out
-    except Exception:
-        mem = list(_memory)
-        out["total"] = len(mem)
-        out["last_24h"] = sum(1 for r in mem if r["ts"] >= day_ago)
-        out["last_ts"] = mem[-1]["ts"] if mem else None
-        for r in mem:
-            out[r["level"]] = out.get(r["level"], 0) + 1
-        return out
+    return snapshot()["counts"]
 
 
 def clear() -> int:
-    """Delete everything. Used by the dashboard's 'clear' button (guarded)."""
-    removed = 0
-    try:
+    """Explicit owner action. Preserve memory and propagate failure to route.
+
+    Not cross-process/crash atomic with the separately written audit record.
+    """
+    with _io_lock:
+        with _lock:
+            pending_removed = sum(1 for r in _memory if r.get("_store") == _store_key() and r.get("persisted") is False)
         conn = journal.connect()
         try:
             _init(conn)
@@ -238,11 +319,11 @@ def clear() -> int:
             conn.commit()
         finally:
             conn.close()
-    except Exception:
-        pass
-    with _lock:
-        _memory.clear()
-    return int(removed)
+        with _lock:
+            keep = [r for r in _memory if r.get("_store") != _store_key()]
+            _memory.clear()
+            _memory.extend(keep)
+        return int(removed) + pending_removed
 
 
 # --------------------------------------------------------------------------- #
@@ -302,11 +383,28 @@ def install(level: int = logging.WARNING) -> Handler:
 # Periodic self-check (proves the log is not silently dead)
 # --------------------------------------------------------------------------- #
 def self_test() -> dict:
-    """Write and read back one marker row. Used by /api/errors/selftest."""
+    """Explicit marker write/read from SQLite, not ID equality in fallback.
+
+    A verified round trip is not an fsync, crash-survival or replication test.
+    """
     before = counts()["total"]
-    row = capture(level="info", source="errorlog.selftest",
-                  message="self-test marker", context={"pid": os.getpid()})
-    after = counts()["total"]
-    found = any(r["id"] == row["id"] for r in recent(limit=20))
-    return {"wrote": row["id"], "total_before": before, "total_after": after,
-            "readable": found, "storage": "sqlite+memory"}
+    marker = "self-test marker " + str(uuid4())
+    row = capture(level="info", source="errorlog.selftest", message=marker,
+                  context={"pid": os.getpid()})
+    verified = False
+    conn = None
+    try:
+        if row["persisted"]:
+            conn = journal.connect_readonly()
+            found = conn.execute("SELECT * FROM error_log WHERE id=?", (row["id"],)).fetchone()
+            verified = found is not None and all(found[k] == row[k] for k in
+                ("ts", "level", "source", "message", "detail", "context", "client"))
+    except Exception:
+        pass
+    finally:
+        if conn is not None:
+            conn.close()
+    return {"ok": verified, "wrote": row["id"], "writable": row["persisted"],
+            "readable": verified, "sqlite_verified": verified, "durability_verified": False,
+            "total_before": before, "total_after": counts()["total"],
+            "storage": "sqlite" if verified else "sqlite-unverified" if row["persisted"] else "memory"}

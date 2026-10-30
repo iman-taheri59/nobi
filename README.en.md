@@ -202,11 +202,16 @@ runs — so a preview cannot promise something the broker would reject. Details
 
 ## Operations and recovery
 
-Create a consistent backup of live databases (excluding `.env` and API keys):
+Back up each database consistently (not one cross-database transaction; excludes `.env`/API keys but contains sensitive account data). Use your actual runtime paths. Web restore is disabled. See [offline recovery](docs/operations-recovery.en.md).
 
 ```bash
-python scripts/state_backup.py backup --output backups/
-python scripts/state_backup.py restore backups/nobitrader-state-....zip --force
+python scripts/state_backup.py backup --output backups/ \
+  --journal /srv/nobi-data/journal.db --auth /srv/nobi-data/auth.db \
+  --live /srv/nobi-data/live_execution.db
+# OFFLINE ONLY: stop the service and ALL SQLite writers first
+python scripts/state_backup.py restore backups/nobitrader-state-....zip --force --offline \
+  --journal /srv/nobi-data/journal.db --auth /srv/nobi-data/auth.db \
+  --live /srv/nobi-data/live_execution.db
 
 # daily soak snapshot; NBX_API_TOKEN is read from the environment only
 python scripts/live_evidence_snapshot.py --csv data/live-evidence.csv

@@ -71,5 +71,5 @@ for (const file of ['index.html', 'nobitex-mobile.html']) {
 }
 const app = fs.readFileSync('nbx-app.js', 'utf8');
 assert.match(app, /window\.coinIcon\(s\.symbol\)/);
-assert.match(app, /window\.coinIcon\(x\.symbol, 20\)/);
+assert.match(app, /window\.coinIcon\(\w+\.symbol,\s*20\)/);
 console.log('Signal and fundamentals rendering: PASS');

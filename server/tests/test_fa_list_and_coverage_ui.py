@@ -24,23 +24,36 @@ def app() -> str:
 
 
 def test_the_fa_list_shares_the_named_limit(app):
-    assert "live.ranked.slice(0, live.showAll ? live.ranked.length : SIG_ROW_LIMIT)" in app
-    assert not re.search(r"\$\(\s*'faList'\s*\)\.innerHTML = live\.ranked\s*\n\s*\.slice\(0, \d+\)", app), \
-        "the fundamentals list still slices on a magic number"
+    assert "rows.slice(0,faView.showAll?rows.length:SIG_ROW_LIMIT)" in app
+    assert "const FA_REQUEST_BUDGET=6;" in app
+    assert "missing.slice(0,FA_REQUEST_BUDGET)" in app
 
 
 def test_the_fa_list_says_how_many_rows_are_hidden(app):
-    assert "const faHidden = Math.max(0, live.ranked.length - SIG_ROW_LIMIT);" in app
-    body = app[app.index("const faHidden"):]
-    body = body[:body.index("if ($('faPrem'))") if "if ($('faPrem'))" in body else 4000]
-    assert "faHidden" in body
+    assert "if(rows.length>SIG_ROW_LIMIT)" in app
+    assert "inFa('sg.showAll').replace('{n}',faNum(rows.length))" in app
+    assert "faView.showAll=!faView.showAll;renderFaPreview();" in app
 
 
 def test_no_provider_is_a_different_fact_from_no_answer(app):
-    assert "noProvider" in app
-    assert "'no-provider'" in app or '"no-provider"' in app
-    assert "منبع بنیادی برای این نماد نگاشت نشده" in app
-    assert "no fundamental provider is mapped" in app
+    assert "f.source==='no-provider' || profile==='none' ? 'unmapped'" in app
+    assert "'not-requested'" in app and "'failed'" in app
+    assert "unmapped; default excluded from mean" in app
+    assert "not proof of provider outage" in app
+
+
+def test_snapshot_coverage_does_not_requery_or_relabel_fresh(app):
+    assert "faRecord(x.symbol,x.fa,'scan-snapshot')" in app
+    assert "provider receipt unverified" in app
+    assert "source age unknown" in app
+    assert "server-labelled live" in app.lower()
+
+
+def test_mean_and_veto_have_distinct_denominators(app):
+    assert "faNumber(r.score) && r.state!=='unmapped'" in app
+    assert "rows.filter(r=>r.vetoes!==null)" in app
+    assert "reason instances" in app
+    assert "rows.length-evaluated.length" in app
 
 
 def test_the_old_message_does_not_accuse_nobitex_any_more(app):

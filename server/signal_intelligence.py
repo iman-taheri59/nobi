@@ -280,7 +280,8 @@ def linked_summary(*, days: int = 30, horizon: str = "H1") -> dict[str, Any]:
     base = summary(days=days, horizon=horizon)
     with journal.connect() as status_conn:
         base["price_contracts"] = journal.price_contract_status(status_conn)
-    since = int(time.time()) - days * 86400
+    now = int(time.time())
+    since = now - days * 86400
     with journal.connect() as conn:
         signal_cycles.ensure(conn)
         linked = int(
@@ -293,14 +294,19 @@ def linked_summary(*, days: int = 30, horizon: str = "H1") -> dict[str, Any]:
                 "SELECT count(*) FROM signal_evidence WHERE ts>=? AND linkage_status!='linked'", (since,)
             ).fetchone()[0]
         )
-        overdue = int(
-            conn.execute(
-                """SELECT count(*) FROM signal_evidence s LEFT JOIN signal_outcomes o
-          ON o.signal_id=s.id AND o.horizon_key=? WHERE s.ts>=? AND s.voided_at IS NULL
-          AND o.resolved_at IS NULL AND s.ts + ? < ?""",
-                (horizon, since, journal.HORIZONS[horizon], int(time.time())),
-            ).fetchone()[0]
-        )
+        eligibility = conn.execute(
+            """SELECT
+              sum(CASE WHEN s.direction!='LONG' THEN 1 ELSE 0 END) non_long,
+              sum(CASE WHEN s.direction='LONG' AND NOT (coalesce(s.entry,0)>0 AND coalesce(s.atr,0)>0) THEN 1 ELSE 0 END) invalid_inputs,
+              sum(CASE WHEN s.direction='LONG' AND s.entry>0 AND s.atr>0 AND s.ts + ? < ? THEN 1 ELSE 0 END) overdue,
+              sum(CASE WHEN s.direction='LONG' AND s.entry>0 AND s.atr>0 AND s.ts + ? >= ? THEN 1 ELSE 0 END) pending
+            FROM signal_evidence s LEFT JOIN signal_outcomes o
+              ON o.signal_id=s.id AND o.horizon_key=?
+            WHERE s.ts>=? AND s.voided_at IS NULL AND o.resolved_at IS NULL""",
+            (journal.HORIZONS[horizon], now, journal.HORIZONS[horizon], now, horizon, since),
+        ).fetchone()
+        assert eligibility is not None
+        overdue = int(eligibility["overdue"] or 0)
         values = [
             float(r[0])
             for r in conn.execute(
@@ -331,8 +337,19 @@ def linked_summary(*, days: int = 30, horizon: str = "H1") -> dict[str, Any]:
                 "coverage_pct": round(linked / total * 100, 2) if total else None,
             },
             "outcome_maturity": {
-                "pending_not_due": max(0, int(base["unresolved"]) - overdue),
+                "pending_not_due": int(eligibility["pending"] or 0),
                 "due_unresolved": overdue,
+            },
+            "unresolved_eligibility": {
+                "non_long_not_applicable": int(eligibility["non_long"] or 0),
+                "invalid_model_inputs": int(eligibility["invalid_inputs"] or 0),
+            },
+            "measurement": {
+                "basis": "modeled-ohlc-gross-r",
+                "net_account_pnl": False,
+                "sample_threshold_is_count_only": True,
+                "independent_samples_established": False,
+                "horizon_seconds": journal.HORIZONS[horizon],
             },
             "resolver_backlog": overdue,
             "win_rate_ci95_pct": signal_cycles.wilson(wins, n),

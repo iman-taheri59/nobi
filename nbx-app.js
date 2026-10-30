@@ -317,9 +317,9 @@
       'page.signals.desc': 'رتبه‌بندی زنده دنیای نوبیتکس با موتور TA و FA',
       'sg.hdr': 'اسکنر زنده نوبیتکس',
       'sg.scanned': '{ranked} نماد اسکن شد',
-      'sg.faCoverage': 'بنیادی زنده: {n} از {t}',
+      'sg.faCoverage': 'برچسب live سرور: {n} از {t}',
       'sg.faScored': 'بنیادی: {n} از {t}',
-      'sg.faCoverageTitle': 'محاسبه‌شده: {s} · از پروفایل ثابت: {f} · ناموفق: {x}',
+      'sg.faCoverageTitle': 'گزارش سرور؛ نه تأیید مستقل دریافت: محاسبه‌شده {s} · fallback گزارش‌شده {f} (نه لزوماً ثابت) · ناموفق {x}',
       'sg.basisNoFa': 'بدون بنیادی',
       'sg.basisTitle': 'امتیاز ترکیبی فقط از TA و نقدینگی محاسبه شده است',
       'sg.cycle': 'چرخه: {tf} — auto {m}m',
@@ -338,9 +338,9 @@
       'page.signals.desc': 'Nobitex universe ranking with TA & FA engines',
       'sg.hdr': 'Live Nobitex Scanner',
       'sg.scanned': '{ranked} symbols scanned',
-      'sg.faCoverage': 'Live FA: {n} of {t}',
+      'sg.faCoverage': 'Server-labelled live FA: {n} of {t}',
       'sg.faScored': 'FA: {n} of {t}',
-      'sg.faCoverageTitle': 'Scored: {s} · from static profile: {f} · failed: {x}',
+      'sg.faCoverageTitle': 'Server report; receipt not independently verified: scored {s} · reported fallback {f} (not necessarily static) · failed {x}',
       'sg.basisNoFa': 'no FA',
       'sg.basisTitle': 'Composite computed from TA and liquidity only',
       'sg.cycle': 'Cycle: {tf} — auto {m}m',
@@ -406,13 +406,19 @@
           document.querySelectorAll('.tfSel').forEach((x) => (x.className = 'tfSel px-2.5 py-1 rounded-lg text-[10px] font-bold border transition bg-white/5 text-zinc-400 border-white/10'));
           b.className = 'tfSel px-2.5 py-1 rounded-lg text-[10px] font-bold border transition bg-emerald-400/15 text-emerald-300 border-emerald-300/30';
           live.timeframe = b.dataset.tf;
+          const ovTf = document.querySelector('[data-i18n="ov.tf"]');
+          if (ovTf && typeof window.NBXDisplay === 'object') ovTf.textContent = (LANG === 'fa' ? 'تایم‌فریم ' : '') + window.NBXDisplay.timeframe(live.timeframe) + (LANG === 'fa' ? '' : ' timeframe');
+          if (typeof window.loadMarketOverview === 'function') window.loadMarketOverview(live.timeframe);
           scanNow(true);
         })
     );
   }
 
   let paperSnapshot = null;
+  let paperRefreshId = 0;
   async function refreshPaperState() {
+    const refreshId = ++paperRefreshId;
+    const controlEpoch = window.paperControlEpoch || 0;
     const api = NBX.core.api;
     let posRes = null;
     let metRes = null;
@@ -420,14 +426,20 @@
     try { posRes = await api.getPaperPositions(); } catch (e) {}
     try { metRes = await api.getPaperMetrics(); } catch (e) {}
     try { riskRes = await api.getBackendRiskState(); } catch (e) {}
-    paperSnapshot = [posRes, metRes, riskRes];
+    if (refreshId !== paperRefreshId) return;
+    paperSnapshot = [posRes, metRes, riskRes, controlEpoch];
     paintPaperState(...paperSnapshot);
   }
 
-  function paintPaperState(posRes, metRes, riskRes) {
-    const rows = (posRes && posRes.positions) || [];
-    const list = rows
-      .filter((p) => p.state !== 'CLOSED')
+  function paintPaperState(posRes, metRes, riskRes, controlEpoch = window.paperControlEpoch || 0) {
+    const localMode = !!NBX.core.api.standaloneMobile;
+    const usable = r => !!r && r.ok !== false && !r.unavailable && (localMode ? r.source === 'browser-local' : r.source !== 'browser-local');
+    const positionsKnown = usable(posRes) && Array.isArray(posRes.positions);
+    window.__NBX_PAPER_POSITIONS_KNOWN = positionsKnown;
+    const rows = positionsKnown ? posRes.positions : [];
+    const openRows = rows.filter((p) => p.state !== 'CLOSED');
+    window.__NBX_PAPER_OPEN_TOTAL = positionsKnown ? openRows.length : null;
+    const list = openRows
       .slice(0, 8)
       .map((p) => {
         const mark = Number(p.last_price || p.entry_price || 0);
@@ -440,6 +452,8 @@
           sym: p.symbol,
           label: { fa: p.symbol.replace('IRT', '/تومان'), en: p.symbol },
           entry: p.entry_price,
+          stop_pct: p.stop_pct,
+          side: p.side,
           price: mark,
           size: p.filled_qty ?? p.qty,
           sl: window.NBXDisplay.percent(p.stop_pct == null ? null : -Math.abs(p.stop_pct), 1),
@@ -459,8 +473,34 @@
       if (typeof renderPositions === 'function') renderPositions();
     }
 
-    const m = (metRes && metRes.metrics) || (posRes && posRes.metrics) || null;
-    const rs = riskRes || window.__NBX_RISK_STATE || null;
+    const validMetrics = m => !!m && m.equity != null && typeof m.equity !== 'boolean' && String(m.equity).trim() !== '' && Number.isFinite(Number(m.equity));
+    const metricsKnown = usable(metRes) && validMetrics(metRes.metrics);
+    const m = (metricsKnown && metRes.metrics) || (usable(posRes) && validMetrics(posRes.metrics) && posRes.metrics) || null;
+    // Never resurrect an unlabelled, previously cached risk read after failure.
+    const rs = controlEpoch === (window.paperControlEpoch || 0) && usable(riskRes) ? riskRes : null;
+    const notice = $('paperStateNotice');
+    if (notice) {
+      notice.dataset.source = localMode ? 'browser-local' : 'server';
+      notice.dataset.state = !m || !positionsKnown || !rs ? 'partial-or-unavailable' : 'current-read';
+      notice.textContent = localMode
+        ? (LANG === 'fa' ? 'منبع: دفتر مستقل مرورگر؛ این داده‌ها حساب سرور نیستند.' : 'Source: browser-local paper book; not the server account.')
+        : (LANG === 'fa' ? 'منبع: دفتر کاغذی سرور.' : 'Source: server paper book.');
+      if (!m || !positionsKnown || !rs) notice.textContent += LANG === 'fa'
+        ? ' بعضی داده‌ها خوانده نشد؛ نامشخص به معنی صفر یا قطعی صرافی نیست.'
+        : ' Some reads failed; unknown does not mean zero or an exchange outage.';
+      else if (!metricsKnown) notice.textContent += LANG === 'fa'
+        ? ' معیارها از پاسخ پوزیشن‌ها؛ منحنی سرمایه خوانده نشد.'
+        : ' Metrics from positions response; equity curve read unavailable.';
+    }
+    ['paperRiskNotice','paperDeskNotice'].forEach(id => {
+      const el=$(id);if (!el) return;
+      el.dataset.state=rs ? 'read' : 'unknown';
+      el.textContent=!rs
+        ? (LANG === 'fa' ? 'خواندن وضعیت ریسک ناموفق بود؛ مقادیر قبلی ممکن است قدیمی باشند. این وضعیت تأیید ایمنی نیست؛ کنترل نهایی هر سفارش با سرور است.' : 'Risk read failed; previous values may be stale. This is not a safety approval; the server owns order preflight.')
+        : localMode
+        ? (LANG === 'fa' ? 'وضعیت ریسک دفتر مستقل مرورگر؛ نه حساب سرور.' : 'Risk state of the browser-local book, not the server account.')
+        : (LANG === 'fa' ? 'وضعیت ریسک از پاسخ سرور؛ کنترل نهایی هر سفارش جداگانه انجام می‌شود.' : 'Risk state read from server; each order has a separate server preflight.');
+    });
     const eq = m && m.equity != null && m.equity !== '' && typeof m.equity !== 'boolean' && Number.isFinite(Number(m.equity)) ? Number(m.equity) : null;
     const startEq = m && m.start_equity != null && m.start_equity !== '' && typeof m.start_equity !== 'boolean' && Number.isFinite(Number(m.start_equity)) ? Number(m.start_equity) : null;
     const pct = eq !== null && startEq ? ((eq - startEq) / startEq) * 100 : null;
@@ -468,7 +508,7 @@
     if ($('kEquity')) $('kEquity').textContent = eq !== null ? window.NBXDisplay.money(eq, 'USD') : '\u2014';
     if ($('kToday')) {
       $('kToday').textContent = pct !== null ? window.NBXDisplay.percent(pct, 2) : '\u2014';
-      $('kToday').className = 'num kpi-num ' + (pct !== null && pct < 0 ? 'text-red-400' : 'text-emerald-400');
+      $('kToday').className = 'num kpi-num ' + (pct === null ? 'text-zinc-400' : pct < 0 ? 'text-red-400' : 'text-emerald-400');
     }
     if ($('kTodayV')) {
       $('kTodayV').textContent = eq !== null && startEq !== null ? window.NBXDisplay.money(eq - startEq, 'USD', 2, true) : '';
@@ -485,133 +525,107 @@
       }
     }
 
-    // The kill switch has to be visible AND reversible from the dashboard.
-    const resumeBtn = $('resumeBtn');
-    if (resumeBtn) {
-      const isHalted = !!(rs && rs.halted);
-      resumeBtn.classList.toggle('hidden', !isHalted);
-      if (isHalted) resumeBtn.textContent = LANG === 'fa' ? 'رفع توقف اضطراری' : 'Reset kill switch';
-    }
+    // Only a current read may repaint the control badge. In-flight/unknown
+    // command handling owns its own lock and cannot be cleared by a poll.
+    if(typeof window.paintPaperControl === 'function') window.paintPaperControl(rs && rs.halted,localMode?'browser-local':'server',controlEpoch);
     if ($('kPf')) {
-      const pfOk = !!(m && m.trades);
-      const pfUp = !!(window.live && window.live.unavailable);
-      // An em-dash on its own reads like a broken widget, and a bare "unavailable"
-      // marker claims the exchange is down when it may simply be that no trade
-      // has closed yet. Three states, three sentences.
-      const pfCard = $('kPf') && $('kPf').closest('.glass');
+      const pfCard = $('kPf').closest('.glass');
       const pfSub = pfCard && pfCard.querySelector('[data-i18n="ov.kpi4sub"]');
-      if (pfOk) {
-        $('kPf').textContent = faNum(m.profit_factor, 2);
-        if (pfSub) pfSub.textContent = inFa('ov.kpi4sub');
-        if (pfCard) pfCard.removeAttribute('data-unavailable');
-      } else if (pfUp) {
-        $('kPf').textContent = '\u2014';
-        if (pfSub) pfSub.textContent = LANG === 'fa'
-          ? 'سرور نوبیتکس در دسترس نیست — عملکرد کاغذی خوانده نمی‌شود.'
-          : 'Nobitex unreachable — the paper record cannot be read.';
-        if (pfCard) pfCard.setAttribute('data-unavailable', '1');
-      } else {
-        $('kPf').textContent = LANG === 'fa' ? 'بدون داده' : 'no data';
-        if (pfSub) pfSub.textContent = LANG === 'fa'
-          ? 'هنوز معاملهٔ بسته‌شدهٔ کاغذی ثبت نشده — PF تعریف‌نشده است.'
-          : 'no closed paper trade yet — PF is undefined.';
-        if (pfCard) pfCard.removeAttribute('data-unavailable');
-      }
+      const events = m && m.trades != null && m.trades !== '' && typeof m.trades !== 'boolean' && Number.isSafeInteger(Number(m.trades)) && Number(m.trades) >= 0 ? Number(m.trades) : null;
+      const pf = m && m.profit_factor;
+      const validPf = m && m.profit_factor_defined !== false && pf !== null && pf !== undefined && pf !== '' && typeof pf !== 'boolean' && Number.isFinite(Number(pf));
+      $('kPf').textContent = events > 0 && validPf ? (m.profit_factor_is_capped ? '≥' : '') + faNum(Number(pf), 2) : '—';
+      if (pfSub) pfSub.textContent = !m
+        ? (LANG === 'fa' ? 'دفتر کاغذی خوانده نشد؛ علت قطعی صرافی تأیید نشده است.' : 'Paper book read unavailable; exchange outage not established.')
+        : events === null
+        ? (LANG === 'fa' ? 'شمارش خروج‌ها نامشخص؛ PF تأیید نشده است.' : 'Exit-event count unknown; PF not established.')
+        : !events
+        ? (LANG === 'fa' ? 'رویداد خروج ثبت نشده؛ PF تعریف نشده است.' : 'No recorded exit events; PF is undefined.')
+        : m.profit_factor_defined === false
+        ? (LANG === 'fa' ? 'فقط خروج سربه‌سر ثبت شده؛ PF تعریف نشده است.' : 'Only break-even exits recorded; PF is undefined.')
+        : localMode
+        ? (LANG === 'fa' ? 'PF دفتر محلی مرورگر؛ مستقل از حساب سرور.' : 'Browser-local PF; independent of the server account.')
+        : (LANG === 'fa' ? 'PF رویدادهای خروج نگهداری‌شده؛ خروج جزئی جدا شمرده می‌شود، بدون کارمزد ورود؛ بدون فیلتر زمانی؛ سقف نمایشی ۹۹٫۹۹.' : 'Retained exit-event PF; partial exits counted separately, excludes entry fees; no time filter; display cap 99.99.');
+      if (pfCard) pfCard.toggleAttribute('data-unavailable', !m);
     }
     const bar = document.querySelector('#page-overview .bar-fill[data-w]');
-    if (bar && rs) {
-      const cap = (rs.caps && rs.caps.maxHeatPct) || 6;
-      bar.style.width = Math.min(100, Math.max(0, ((rs.openHeat || 0) / cap) * 100)) + '%';
+    if (bar) {
+      const heat = rs && rs.openHeat, cap = rs && rs.caps && rs.caps.maxHeatPct;
+      const known = heat != null && Number.isFinite(Number(heat)) && Number(cap) > 0;
+      bar.style.width = known ? Math.min(100, Math.max(0, (Number(heat) / Number(cap)) * 100)) + '%' : '0%';
+      bar.dataset.w = known ? String(Math.min(100, Math.max(0, (Number(heat) / Number(cap)) * 100))) : '0';
+      bar.parentElement.setAttribute('aria-label', known ? String(heat) + ' / ' + String(cap) : 'unknown');
+      bar.parentElement.dataset.state = known ? 'known' : 'unknown';
     }
 
+    const capLabel = document.querySelector('[data-i18n="ov.kpi3cap"]');
+    const heatCap = rs && rs.caps && rs.caps.maxHeatPct;
+    if (capLabel) capLabel.textContent = heatCap != null && Number(heatCap) > 0
+      ? (LANG === 'fa' ? 'از سقف ' : 'of cap ') + window.NBXDisplay.percent(heatCap, 2, false)
+      : (LANG === 'fa' ? 'سقف ریسک نامشخص' : 'Risk cap unknown');
+
     // Keep the sizing preview (Desk page) on the same equity as the backend.
-    if (rs && Number.isFinite(Number(rs.equity))) {
-      try { EQUITY = Number(rs.equity); } catch (e) {}
+    const allocEq = rs && typeof rs.equity === 'number' && Number.isFinite(rs.equity) && rs.equity > 0
+      ? Number(rs.equity)
+      : (eq !== null && eq > 0 ? eq : null);
+    window.__NBX_PAPER_EQUITY_KNOWN = allocEq !== null;
+    if (allocEq !== null) {
+      try { EQUITY = allocEq; } catch (e) {}
     }
+    if (typeof window.renderAlloc === 'function') window.renderAlloc();
 
     // The ticket's preview compares against these numbers; it must be the same
     // object the server gates on, not a second literal set.
-    if (rs && rs.caps && typeof RISK_LIMITS !== 'undefined') {
-      RISK_LIMITS = {
-        riskPct: Number(rs.caps.riskPct),
-        maxSingleAssetPct: Number(rs.caps.maxSingleAssetPct),
-        minRR: Number(rs.caps.minRR),
-      };
+    if (typeof RISK_LIMITS !== 'undefined') {
+      const c=rs && rs.caps;
+      const valid=v=>typeof v==='number' && Number.isFinite(v) && v>=0;
+      RISK_LIMITS=c && ['riskPct','maxSingleAssetPct','minRR'].every(k=>valid(c[k])) ? {
+        riskPct:c.riskPct,maxSingleAssetPct:c.maxSingleAssetPct,minRR:c.minRR,
+      } : null;
     }
 
-    // Risk caps / kill switches come from /api/risk/state, not demo arrays.
-    if (rs && typeof caps !== 'undefined' && Array.isArray(caps)) {
-      const c = rs.caps || {};
-      const openCount = list.length;
-      const cashPct = m && Number(m.equity) ? (Number(m.cash) / Number(m.equity)) * 100 : null;
-      const rows = [
-        {
-          name: { fa: 'پوزیشن‌های همزمان', en: 'Concurrent positions' },
-          val: { fa: `${faNum(openCount)} / ${faNum(c.maxConcurrent || 0)}`, en: `${faNum(openCount)} / ${faNum(c.maxConcurrent || 0)}` },
-          pct: c.maxConcurrent ? (openCount / c.maxConcurrent) * 100 : 0,
-          tone: 'sky',
-        },
-        {
-          name: { fa: 'دمای کل سبد', en: 'Portfolio heat' },
-          val: { fa: `${faNum(rs.openHeat || 0, 2)}٪ / ${faNum(c.maxHeatPct || 0)}٪`, en: `${goodPct(rs.openHeat || 0,2)} / ${goodPct(c.maxHeatPct || 0)}` },
-          pct: c.maxHeatPct ? ((rs.openHeat || 0) / c.maxHeatPct) * 100 : 0,
-          tone: 'amber',
-        },
-        {
-          name: { fa: 'سقف تک‌دارایی', en: 'Single-asset cap' },
-          val: { fa: `${faNum(c.maxSingleAssetPct || 0)}٪`, en: `${goodPct(c.maxSingleAssetPct || 0)}` },
-          pct: Math.min(100, c.maxSingleAssetPct || 0),
-          tone: 'indigo',
-        },
-        {
-          name: { fa: 'بافر نقد', en: 'Cash buffer' },
-          val: {
-            fa: cashPct !== null ? `${faNum(cashPct, 1)}٪ (حداقل ${faNum(c.minCashPct || 0)}٪)` : '—',
-            en: cashPct !== null ? `${goodPct(cashPct,1)} (min ${goodPct(c.minCashPct || 0)})` : '—',
-          },
-          pct: cashPct !== null ? Math.min(100, Math.max(0, cashPct)) : 0,
-          tone: 'emerald',
-        },
-      ];
-      caps.length = 0;
-      caps.push(...rows);
-      if (typeof renderCaps === 'function') renderCaps();
+    // Missing fields must not turn into green zeros or fabricated defaults.
+    const numeric=v=>typeof v==='number' && Number.isFinite(v) && v>=0 ? v : null;
+    const pctText=v=>v===null?'—':window.NBXDisplay.percent(v,2,false);
+    const same=v=>({fa:v,en:v});
+    if (typeof caps !== 'undefined' && Array.isArray(caps)) {
+      const c=rs && rs.caps || {};
+      const concurrent=numeric(c.maxConcurrent),heat=numeric(rs && rs.openHeat),maxHeat=numeric(c.maxHeatPct),single=numeric(c.maxSingleAssetPct),minCash=numeric(c.minCashPct);
+      const count=positionsKnown?posRes.positions.filter(p=>p.state!=='CLOSED').length:null;
+      const cash=m && numeric(m.cash)!==null && numeric(m.equity)>0 ? m.cash/m.equity*100 : null;
+      const ratio=(v,max)=>v!==null && max!==null && max>0 ? Math.min(100,Math.max(0,v/max*100)) : 0;
+      caps.length=0;caps.push(
+        {name:{fa:'پوزیشن‌های همزمان',en:'Concurrent positions'},val:same((count===null?'—':faNum(count))+' / '+(concurrent===null?'—':faNum(concurrent))),pct:ratio(count,concurrent),tone:'sky'},
+        {name:{fa:'دمای کل سبد',en:'Portfolio heat'},val:same(pctText(heat)+' / '+pctText(maxHeat)),pct:ratio(heat,maxHeat),tone:'amber'},
+        {name:{fa:'سقف نامینال هر سفارش (نه تجمع نماد)',en:'Per-order nominal cap (not cumulative symbol)'},val:same(pctText(single)),pct:single===null?0:Math.min(100,single),tone:'indigo'},
+        {name:{fa:'بافر نقد',en:'Cash buffer'},val:same(pctText(cash)+' ('+(LANG==='fa'?'حداقل ':'min ')+pctText(minCash)+')'),pct:cash===null?0:Math.min(100,cash),tone:'zinc'}
+      );
+      if(typeof renderCaps==='function') renderCaps();
     }
-
-    if (rs && typeof kills !== 'undefined' && Array.isArray(kills)) {
-      const up = live.upstream || {};
-      const rows = [
-        {
-          n: { fa: 'کلید اضطراری', en: 'Kill switch' },
-          v: { fa: rs.halted ? 'مسلح' : 'غیرفعال', en: rs.halted ? 'Armed' : 'Off' },
-          ok: !rs.halted,
-        },
-        {
-          n: { fa: 'زیان روزانه', en: 'Daily P&L' },
-          v: { fa: `${faNum(rs.dailyPnl || 0, 2)}٪ / −۳٪`, en: `${goodPct(rs.dailyPnl || 0,2)} / ${goodPct(-3)}` },
-          ok: (rs.dailyPnl || 0) > -3,
-        },
-        {
-          n: { fa: 'سلامت API صرافی', en: 'Exchange API health' },
-          v: {
-            fa: up.ok === true ? 'سالم' : up.ok === false ? 'در دسترس نیست' : 'نامشخص',
-            en: up.ok === true ? 'healthy' : up.ok === false ? 'unreachable' : 'unknown',
-          },
-          ok: up.ok !== false,
-        },
-      ];
-      kills.length = 0;
-      kills.push(...rows);
-      if (typeof renderKills === 'function') renderKills();
+    if (typeof kills !== 'undefined' && Array.isArray(kills)) {
+      const up=live.upstream || {},h=rs && typeof rs.halted==='boolean'?rs.halted:null;
+      // Engine daily_pnl is not a reconciled day/session ledger. Never show a
+      // green automatic daily-stop guarantee from this raw scalar.
+      const daily=rs && typeof rs.dailyPnl==='number' && Number.isFinite(rs.dailyPnl)?rs.dailyPnl:null;
+      kills.length=0;kills.push(
+        {n:{fa:'توقف ورود جدید',en:'New-entry halt'},v:same(h===null?(LANG==='fa'?'نامشخص':'unknown'):h?(LANG==='fa'?'مسلح':'Armed'):(LANG==='fa'?'غیرفعال':'Off')),ok:h===null?null:!h},
+        {n:{fa:'PnL خام موتور؛ روز تطبیق‌نیافته',en:'Raw engine P&L; day unreconciled'},v:same(daily===null?'—':window.NBXDisplay.percent(daily,2)),ok:null},
+        {n:{fa:'خوراک بازار؛ نه سلامت کنترل‌ها',en:'Market feed; not control health'},v:same(up.ok===true?(LANG==='fa'?'پاسخ موفق گزارش شد':'successful read reported'):up.ok===false?(LANG==='fa'?'خطای خوراک گزارش شد':'feed failure reported'):(LANG==='fa'?'نامشخص':'unknown')),ok:up.ok===true?true:up.ok===false?false:null}
+      );
+      if(typeof renderKills==='function') renderKills();
     }
 
     live.risk = rs;
     // Store the response *envelope*, not m: drawEquity() reads `.curve` from
     // here, and assigning the inner metrics object left that key undefined —
     // so the equity chart painted "Nobitex unreachable" forever, live or not.
-    live.paperMetrics = metRes ? Object.assign({}, metRes, { metrics: m })
-                               : { metrics: m, curve: [] };
-    if (metRes && Array.isArray(metRes.curve) && metRes.curve.length) {
+    live.paperMetrics = metricsKnown ? Object.assign({}, metRes, { metrics: m })
+                                     : { metrics: m, curve: [], unavailable: true };
+    if (!metricsKnown || !Array.isArray(metRes.curve) || !metRes.curve.length) {
+      if (typeof equitySeries !== 'undefined' && equitySeries) { try { equitySeries.setData([]); } catch (e) {} }
+      if (typeof window.drawEquity === 'function') window.drawEquity(0);
+    }
+    if (metricsKnown && Array.isArray(metRes.curve) && metRes.curve.length) {
       try {
         // The first paint happened before this response and wrote "Nobitex
         // unreachable" into the slot; it created no series, so the update below
@@ -688,7 +702,7 @@
   const sparkRows = (sym, tf) => {
     const eng = NBX.core && NBX.core.engine;
     if (!eng) return null;
-    return eng.candles[sym + ':' + tf] || eng.candles[sym] || null;
+    return eng.candles[sym + ':' + tf] || null;
   };
 
   async function prefetchSparkCandles(symbols, tf, force) {
@@ -750,33 +764,74 @@
     });
   }
 
+  function signalSnapshotMeta(reply,tf){
+    return {rows:reply.scored,tf:typeof reply.tf==='string'?reply.tf:tf,received:Date.now(),
+      responseAt:typeof reply.ts==='string' && Number.isFinite(Date.parse(reply.ts))?reply.ts:null,
+      age:typeof reply.age_s==='number' && Number.isFinite(reply.age_s) && reply.age_s>=0?reply.age_s:null,
+      stale:typeof reply.stale==='boolean'?reply.stale:null};
+  }
+  function signalFaState(s){
+    if(!faNumber(s.fa_score)) return 'absent';
+    const record=faRecord(s.symbol,s.fa,'scan-snapshot');
+    return !record?'score-only':record.score!==s.fa_score?'mismatch':record.state;
+  }
+  function signalFaLabel(state){
+    const labels={server:['برچسب سرور؛ دریافت اختصاصی تأییدنشد','server-labelled; receipt unverified'],
+      cached:['کش گزارش‌شده؛ سن منبع نامشخص','reported cache; source age unknown'],
+      static:['پروفایل ثابت؛ نه دادهٔ امروز','static profile; not today’s data'],
+      unmapped:['بدون نگاشت؛ عدد پیش‌فرض مدل','unmapped; model default'],
+      'score-only':['فقط عدد اسکن؛ منشأ نامشخص','scan number only; origin unknown'],
+      mismatch:['اختلاف عدد مؤلفه و metadata؛ منشأ نامشخص','component/metadata mismatch; origin unknown'],
+      absent:['مؤلفهٔ FA ناموجود/نامعتبر','FA component absent/invalid']};
+    const value=labels[state]||labels.absent;return faText(value[0],value[1]);
+  }
+  function signalGateRow(symbol){
+    const g=live.gates,v=g && g.verdicts && Object.prototype.hasOwnProperty.call(g.verdicts,symbol)?g.verdicts[symbol]:null;
+    if(!g || g.mode!=='shadow' || g.applied!==false || !v || typeof v.code!=='string') return faText('گیت سایه: نامشخص','Shadow gate: unknown');
+    const status=v.code==='ok'?faText('بدون اعتراض گزارش‌شده؛ نه پذیرش سفارش','no reported objection; not order approval'):v.code.slice(0,120);
+    const input=v.inputs||{},num=x=>typeof x==='number' && Number.isFinite(x) && x>=0?faNum(x,1):'—';
+    return faText('گیت سایه: ','Shadow gate: ')+status+' · spread '+num(input.spread_bps)+' bps · depth '+num(input.depth_usd)+' USD'
+      +faText(' · سن دفترِ این نماد گزارش نشده',' · per-symbol book age not reported');
+  }
+  function signalProvenanceSummary(){
+    const node=$('sgFaProvenanceSummary');if(!node)return;
+    const counts={};for(const s of live.ranked){const state=signalFaState(s);counts[state]=(counts[state]||0)+1;}
+    node.textContent=faText('تمام ردیف‌های همین اسکن: ','All rows in this scan: ')+faNum(live.ranked.length)+' · '+Object.entries(counts).map(([state,n])=>signalFaLabel(state)+': '+faNum(n)).join(' · ');
+  }
+
   /* The strip above the signal list is rewritten by applyStaticI18n() on every
      tab switch, which used to restore "Scanning…" and a fixed "last cycle: 23s
      ago" even with the exchange down. This function is the single writer. */
   function syncSignalsHeader() {
-    const sh = $('page-signals');
-    if (!sh) return;
-    const noData = !!live.unavailable || !live.ranked.length;
-    const set = (sel, txt, cls) => {
-      const el = sh.querySelector(sel);
-      if (el) { el.textContent = txt; if (cls) el.className = cls; }
-    };
-    if (noData) {
-      set('[data-i18n="sg.scanned"]', LANG === 'fa' ? 'بدون داده' : 'no data',
-          'chip num text-red-300 border-red-300/40');
-      set('[data-i18n="sg.cycle"]', LANG === 'fa' ? 'چرخه: —' : 'cycle: —', 'chip');
-      set('[data-i18n="sg.last"]', LANG === 'fa' ? 'سرور پاسخ نداد' : 'no reply from the server',
-          'text-[10px] sm:text-[11px] text-red-200/70 self-center');
-      set('#sgFaCoverage', LANG === 'fa' ? 'بنیادی زنده: —' : 'live FA: —',
-          'chip num text-violet-300 border-violet-300/30');
-      return;
+    const sh=$('page-signals');if(!sh)return;
+    const noData=!!live.unavailable || !live.ranked.length;
+    const set=(sel,txt,cls)=>{const el=sh.querySelector(sel);if(el){el.textContent=txt;if(cls)el.className=cls;}};
+    const sec=scanInterval();
+    const cadence=Number.isFinite(sec) && sec>0
+      ? faText('دریافت صفحه هر ','page fetch every ')+faNum(sec)+faText(' ثانیه',' seconds')
+      : sec===0?faText('دریافت دستی صفحه','manual page fetch'):faText('دورهٔ دریافت نامشخص','page fetch interval unknown');
+    set('[data-i18n="sg.cycle"]',faText('کندل: ','Candle: ')+window.NBXDisplay.timeframe(live.timeframe)+' · '+cadence,'chip');
+    set('[data-i18n="sg.scanned"]',noData?faText('اسکن قابل استفاده نیست','No usable scan'):inFa('sg.scanned').replace('{ranked}',faNum(live.ranked.length)), 'chip num text-zinc-300');
+    const meta=!noData && live.signalSnapshot && live.signalSnapshot.rows===live.ranked?live.signalSnapshot:null;
+    const elapsed=meta && typeof meta.received==='number'?(Date.now()-meta.received)/1000:null;
+    const age=elapsed!==null && Number.isFinite(elapsed) && elapsed>=0?faNum(Math.floor(elapsed)): '—';
+    set('[data-i18n="sg.last"]',faText('دریافت صفحه: ','Page received: ')+age+faText(' ثانیه پیش؛ نه زمان تولید اسکن',' seconds ago; not scan generation time'),'text-[10px] sm:text-[11px] text-zinc-400 self-center');
+    const note=$('sgReceiptSummary');if(note){
+      note.textContent=noData?faText('اسکن موجود نیست یا دریافت ناموفق بوده؛ این وضعیت به‌تنهایی قطع همهٔ بازارها را ثابت نمی‌کند.','No usable scan or scan read failed; this alone does not prove all markets are down.')
+        : meta?faText('سن cache در پاسخ سرور: ','Server-reported cache age at response: ')+(meta.age===null?'—':faNum(meta.age,1)+faText(' ثانیه',' seconds'))
+          +' · '+(meta.stale===null?faText('وضعیت cache نامشخص','cache state unknown'):meta.stale?faText('cache کهنه گزارش شده','cache reported stale'):faText('cache کهنه گزارش نشده؛ نه تأیید سن کندل','cache not reported stale; not candle-age verification'))
+          +(meta.tf!==live.timeframe?faText(' · هشدار: گزارش برای ',' · Warning: report is for ')+meta.tf+faText('؛ انتخاب فعلی ','; current selection ')+live.timeframe:'')
+          +(meta.responseAt?faText(' · زمان پاسخ API (نه تولید اسکن): ',' · API response time (not scan generation): ')+new Date(meta.responseAt).toLocaleString(window.NBXDisplay.dateLocale()):'')
+        : faText('زمان دریافت و سن cache این snapshot نامشخص است.','This snapshot’s receipt time and cache age are unknown.');
+      const f=!noData && live.scanFreshness;
+      note.textContent+=' · '+(f && typeof f.stale==='boolean'?faText('تازگی کندل طبق بلوک سرور؛ نه تأیید مستقل دریافت','candle age per server block; receipt not independently verified'):faText('تازگی کندل نامشخص','Candle freshness unknown'));
     }
-    set('[data-i18n="sg.scanned"]', inFa('sg.scanned').replace('{ranked}', faNum(live.ranked.length)),
-        'chip num');
-    set('[data-i18n="sg.cycle"]', inFa('sg.cycle').replace('{tf}', window.NBXDisplay.timeframe(live.timeframe)).replace('{m}', faNum(2)), 'chip');
-    set('[data-i18n="sg.last"]',
-        inFa('sg.last').replace('{s}', live.lastScanAt ? faNum(Math.round((Date.now() - live.lastScanAt) / 1000)) : '—'),
-        'text-[10px] sm:text-[11px] text-zinc-500 self-center');
+    if(noData){
+      set('#sgFaCoverage','—','chip num text-zinc-300');const fa=$('sgFaCoverage');if(fa)fa.title='';
+      const provenance=$('sgFaProvenanceSummary');if(provenance)provenance.textContent=faText('پوشش FA این نشست نامشخص است.','FA coverage in this session is unknown.');
+    }else signalProvenanceSummary();
+    if(typeof window.sgRenderGates==='function')window.sgRenderGates(noData?null:live.gates);
+    if(typeof window.sgRenderFresh==='function')window.sgRenderFresh(noData?null:live.scanFreshness);
   }
   window.syncSignalsHeader = syncSignalsHeader;
 
@@ -812,11 +867,11 @@
         list.innerHTML = `<div data-unavailable="1" class="glass p-5 sm:p-6 border-red-400/40 bg-red-500/10 text-center">
           <i data-lucide="plug-zap" class="w-5 h-5 text-red-300 mx-auto mb-2"></i>
           <div class="text-[12px] sm:text-sm font-bold text-red-200">${
-            LANG === 'fa' ? 'سرور نوبیتکس در دسترس نیست' : 'The Nobitex server is unreachable'}</div>
+            LANG === 'fa' ? 'دریافت اسکن ناموفق یا داده ناموجود است' : 'Scan read failed or data unavailable'}</div>
           <div class="text-[10px] sm:text-[11px] text-red-200/80 leading-5 mt-1">${
             LANG === 'fa'
-              ? 'دسترسی به سرور نوبیتکس امکان‌پذیر نیست؛ دادهٔ زنده دریافت نشد. اتصال شبکه یا فیلتر را بررسی کن و دوباره تلاش کن.'
-              : 'The Nobitex server is unreachable; no live data was received. Check the network or filtering and try again.'}</div>
+              ? 'خطای این مسیر، خرابی کلید حساب یا قطع قطعی همهٔ بازارها را ثابت نمی‌کند. برای خواندن دوباره تلاش کنید.'
+              : 'This read failure does not prove account-key failure or an outage of every market. Retry the read.'}</div>
           ${live.unavailableDetail ? `<div class="text-[9px] text-red-200/60 mt-1.5 num" dir="ltr">${esc(String(live.unavailableDetail).slice(0,120))}</div>` : ''}
           <button type="button" data-retry-scan="1" class="mt-3 text-[10px] font-bold px-2.5 py-1.5 rounded-lg bg-red-400/15 text-red-200 border border-red-300/40">${
             LANG === 'fa' ? 'تلاش دوباره' : 'Retry'}</button>
@@ -826,42 +881,35 @@
         });
         syncSignalsHeader();
         if (typeof refreshIcons === 'function') refreshIcons();
-      } else if (!list.children.length) {
+      } else {
         list.innerHTML = `<div class="glass p-6 text-center text-[11px] text-zinc-500">${
-          LANG === 'fa' ? 'در حال اسکن نمادها…' : 'scanning symbols…'}</div>`;
+          LANG === 'fa' ? 'اسکن قابل استفاده‌ای در این نشست بارگذاری نشده است.' : 'No usable scan loaded in this session.'}</div>`;
       }
+      syncSignalsHeader();
       return;
     }
+    syncSignalsHeader();
     const shdr = $('page-signals');
     if (shdr) {
-      const scannedEl = shdr.querySelector('[data-i18n="sg.scanned"]');
-      if (scannedEl) scannedEl.textContent = inFa('sg.scanned').replace('{ranked}', faNum(ranked.length));
-      const cycleEl = shdr.querySelector('[data-i18n="sg.cycle"]');
-      if (cycleEl) cycleEl.textContent = inFa('sg.cycle').replace('{tf}', window.NBXDisplay.timeframe(live.timeframe)).replace('{m}', faNum(2));
-      const lastEl = shdr.querySelector('[data-i18n="sg.last"]');
-      if (lastEl) lastEl.textContent = inFa('sg.last').replace('{s}', live.lastScanAt ? faNum(Math.round((Date.now() - live.lastScanAt) / 1000)) : '—');
       const faEl = shdr.querySelector('#sgFaCoverage') || shdr.querySelector('[data-i18n="sg.faCoverage"]');
       if (faEl) {
         const c = live.faCoverage;
         if (!c) {
-          faEl.textContent = '—';
+          faEl.textContent = '—';faEl.title='';faEl.className='chip num text-zinc-300';
         } else {
-          // `live` counts scores backed by a live provider call; the rest come
-          // from the static profile table and are labelled as such.
+          // These are backend labels, not proof of successful per-coin fetches.
+          // The engine may combine cached/default/context components.
           // An older backend reports only `scored`; do not relabel that as "live".
           const hasLive = c.live !== undefined;
           const liveN = hasLive ? c.live : c.scored;
           faEl.textContent = inFa(hasLive ? 'sg.faCoverage' : 'sg.faScored')
             .replace('{n}', faNum(liveN))
             .replace('{t}', faNum(c.total));
-          faEl.className = 'chip num ' + (!hasLive
-            ? 'text-zinc-300 border-zinc-300/30'
-            : liveN === c.total ? 'text-emerald-300 border-emerald-300/30'
-            : liveN === 0 ? 'text-red-300 border-red-300/30' : 'text-amber-300 border-amber-300/30');
+          faEl.className = 'chip num text-zinc-300 border-zinc-300/30';
           faEl.title = inFa('sg.faCoverageTitle')
             .replace('{s}', faNum(c.scored))
-            .replace('{f}', faNum(c.fallback || 0))
-            .replace('{x}', faNum(c.failed || 0));
+            .replace('{f}', Number.isInteger(c.fallback) && c.fallback>=0?faNum(c.fallback):'—')
+            .replace('{x}', Number.isInteger(c.failed) && c.failed>=0?faNum(c.failed):'—');
         }
       }
     }
@@ -870,10 +918,13 @@
     const shown = live.showAll ? ranked : ranked.slice(0, SIG_ROW_LIMIT);
     list.innerHTML = shown
       .map((s, i) => {
-        const col = s.composite >= 60 ? 'emerald' : s.composite >= 45 ? 'amber' : 'red';
+        const composite=faNumber(s.composite)?s.composite:null;
+        const col = composite===null?'zinc':composite >= 60 ? 'emerald' : composite >= 45 ? 'amber' : 'red';
+        const vetoes=Array.isArray(s.fa && s.fa.vetoes)?s.fa.vetoes.filter(v=>typeof v==='string').slice(0,32):[];
         const comp = s.components || {};
         const dir = s.direction === 'LONG' ? 'text-emerald-300' : s.direction === 'EXIT' ? 'text-red-300' : 'text-zinc-300';
-        const sparkU = s.composite >= 50;
+        const faState=signalFaState(s);
+        const gateText=signalGateRow(s.symbol);
         const symLabel = LANG === 'fa' ? s.symbol.replace('IRT', '/تومان') : s.symbol;
         return `
       <div data-sig-sym="${esc(s.symbol)}" data-sig-idx="${i}" tabindex="0" role="button"
@@ -886,8 +937,8 @@
             <span class="chip ${dir}"${
           s.direction_raw && s.direction_raw !== s.direction
             ? ` title="${esc(LANG === 'fa'
-                ? `${s.direction_raw} بود؛ وتوی فاندامنتال (${(s.fa && s.fa.vetoes || []).join('، ')}) سقف ${faNum(+s.veto_cap)} گذاشت`
-                : `was ${s.direction_raw}; a fundamental veto (${(s.fa && s.fa.vetoes || []).join(', ')}) capped it at ${+s.veto_cap}`)}"`
+                ? `${s.direction_raw} بود؛ وتوی فاندامنتال (${vetoes.join('، ')}) سقف ${faNum(+s.veto_cap)} گذاشت`
+                : `was ${s.direction_raw}; a fundamental veto (${vetoes.join(', ')}) capped it at ${+s.veto_cap}`)}"`
             : ''
         }><span class="dot ${
           s.direction === 'LONG' ? 'bg-emerald-400' : s.direction === 'EXIT' ? 'bg-red-400' : 'bg-zinc-400'
@@ -902,16 +953,17 @@
         <div class="flex-1 min-w-0">
           <div class="flex items-center gap-2 sm:gap-3 mb-1.5">
             <span class="text-[10px] text-zinc-500 hidden sm:block w-24">${inFa('sg.score')}</span>
-            <div class="nbx-mini-hbar flex-1"><i style="width:${clamp(s.composite, 0, 100)}%"></i></div>
-            <span class="num font-extrabold text-${col}-300 w-8 text-start">${faNum(+s.composite.toFixed(0))}</span>
+            <div class="nbx-mini-hbar flex-1"><i style="width:${composite===null?0:clamp(composite,0,100)}%"></i></div>
+            <span class="num font-extrabold text-${col}-300 w-8 text-start">${composite===null?'—':faNum(composite,0)}</span>
             ${s.composite_basis && s.composite_basis !== 'ta+fa+liq'
               ? `<span class="chip text-[9px] text-amber-300 border-amber-300/30" title="${esc(inFa('sg.basisTitle'))}">${inFa('sg.basisNoFa')}</span>`
               : ''}
           </div>
+          <p data-signal-gate class="text-[10px] text-zinc-400 leading-5">${esc(gateText)}</p>
           <div class="flex flex-wrap items-center gap-1.5 text-[10px]">
-            <span class="chip">${LANG==='fa'?'تکنیکال':'TA'} <b class="num">${faNum(+(s.score || 0).toFixed(0))}</b></span>
-            <span class="chip${s.fa_score == null ? ' text-zinc-500' : ''}" title="${esc(s.composite_basis || '')}">${inFa('sg.faN')} <b class="num">${s.fa_score == null ? '—' : faNum(Math.round(s.fa_score))}</b></span>
-            <span class="chip">${inFa('sg.liq')} <b class="num">${faNum(s.liquidity_score)}</b></span>
+            <span class="chip">${LANG==='fa'?'تکنیکال':'TA'} <b class="num">${faNumber(s.score)?faNum(s.score,0):'—'}</b></span>
+            <span class="chip" data-signal-fa="${faState}" title="${esc(s.composite_basis || '')}">${inFa('sg.faN')} <b class="num">${faNumber(s.fa_score) ? faNum(Math.round(s.fa_score)) : '—'}</b> · ${esc(signalFaLabel(faState))}</span>
+            <span class="chip" data-signal-liquidity>${inFa('sg.liq')} <b class="num">${faNumber(s.liquidity_score)?faNum(s.liquidity_score):'—'}</b></span>
             <span class="chip">${window.NBXDisplay.label('trend')} <b class="num">${faNum(+(comp.trend || 0))}</b></span>
             <span class="chip">${window.NBXDisplay.label('momentum')} <b class="num">${faNum(+(comp.momentum || 0))}</b></span>
             <span class="chip ${s.regime === 'TREND' ? 'text-emerald-300' : 'text-zinc-500'}">${esc(window.NBXDisplay.label(s.regime || ''))}</span>
@@ -919,7 +971,7 @@
           </div>
         </div>
         <div class="w-full md:w-48 lg:w-60 xl:w-72 2xl:w-80 shrink-0">
-          ${typeof spark === 'function' ? spark(sparkU, s.symbol, {big: true}) : ''}
+          ${typeof spark === 'function' ? spark(false, s.symbol, {big: true, neutral:true, strictTF:true}) : ''}
           <div class="text-[9px] text-zinc-600 text-center mt-0.5">${t('sg.expand')}</div>
         </div>
       </div>`;
@@ -936,18 +988,112 @@
     if (typeof refreshIcons === 'function') refreshIcons();
   }
 
-  /* ---------- FA page data-driven products ---------- */
-  async function fetchBackendFA(symbols) {
-    const api = NBX.core.api;
-    const results = [];
-    for (const sym of symbols.slice(0, 6)) {
-      try {
-        const r = await api.getBackendFA(sym);
-        if (r) results.push(r);
-      } catch (e) {}
-    }
-    return results;
+  /* ---------- Fundamentals: scan-bound coverage, not provider-health guesses ---------- */
+  const FA_REQUEST_BUDGET=6;
+  let faGeneration=0;
+  const faView={rows:[],context:null,loading:false,showAll:false,received:null,premium:null};
+  const faNumber=v=>typeof v==='number' && Number.isFinite(v) && v>=0 && v<=100;
+  const faText=(fa,en)=>LANG==='fa'?fa:en;
+  function faContextCurrent(context){
+    return !!context && context.ranked===live.ranked && context.tf===live.timeframe && context.scan===live.lastScanAt && !live.unavailable;
   }
+  function faRecord(symbol,f,origin){
+    if(!f || f.ok===false || f.unavailable || !faNumber(f.score) || (f.symbol!==undefined && f.symbol!==symbol)) return null;
+    const profile=f.profile || f.evidence && f.evidence.profile;
+    const state=f.source==='no-provider' || profile==='none' ? 'unmapped'
+      : f.source==='fallback' || profile==='fallback' ? 'static'
+      : f.cached===true || f.source==='cached' ? 'cached' : 'server';
+    const vetoes=Array.isArray(f.vetoes) && f.vetoes.length<=32 && f.vetoes.every(v=>typeof v==='string' && v.length<=256)
+      ? Array.from(new Set(f.vetoes)) : null;
+    const tvl=f.evidence && f.evidence.tvl;
+    return {symbol,state,score:f.score,scanScore:null,vetoes,origin,cached:f.cached===true || f.source==='cached',
+      tvl:typeof tvl==='number' && Number.isFinite(tvl) && tvl>=0?tvl:null};
+  }
+  function invalidateFaPreview(){
+    ++faGeneration;faView.rows=[];faView.context=null;faView.loading=false;faView.received=null;faView.premium=null;renderFaPreview();
+  }
+  async function fetchBackendFA(records,generation,context){
+    const api=NBX.core && NBX.core.api;
+    for(const record of records){
+      if(generation!==faGeneration || !faContextCurrent(context)) return;
+      let reply=null;
+      try{if(api && !api.standaloneMobile && api.getBackendFA) reply=await api.getBackendFA(record.symbol);}catch(_){}
+      if(generation!==faGeneration || !faContextCurrent(context)) return;
+      const value=faRecord(record.symbol,reply,'detail-response');
+      if(value) Object.assign(record,value);
+      else{record.state='failed';record.error=reply && reply.auth_error ? 'auth' : 'request';}
+    }
+  }
+  async function updateFaPreview(){
+    const generation=++faGeneration;
+    const context={ranked:live.ranked,tf:live.timeframe,scan:live.lastScanAt};
+    faView.context=context;faView.rows=[];faView.received=null;faView.premium=null;faView.loading=false;
+    if(!Array.isArray(live.ranked) || !live.ranked.length || live.unavailable){renderFaPreview();return;}
+    const seen=new Set(),missing=[];
+    for(const x of live.ranked){
+      if(!x || typeof x.symbol!=='string' || seen.has(x.symbol)) continue;
+      seen.add(x.symbol);
+      const known=/^[A-Z0-9_]{2,40}$/.test(x.symbol)?faRecord(x.symbol,x.fa,'scan-snapshot'):null;
+      if(known){faView.rows.push(known);continue;}
+      const record={symbol:x.symbol,state:'not-requested',score:null,scanScore:faNumber(x.fa_score)?x.fa_score:null,vetoes:null,origin:'scan-partial'};
+      if(!/^[A-Z0-9_]{2,40}$/.test(x.symbol)) record.state='invalid-symbol';
+      else missing.push(record);
+      faView.rows.push(record);
+    }
+    // The scan already contains full FA for modern backends. Fetch only missing
+    // details, sequentially, within the existing six-request budget.
+    const picked=missing.slice(0,FA_REQUEST_BUDGET);
+    picked.forEach(r=>{r.state='pending';});faView.loading=!!picked.length;
+    const premium=NBX.core && NBX.core.engine && NBX.core.engine.premium_pct;
+    faView.premium=typeof premium==='number' && Number.isFinite(premium)?premium:null;
+    renderFaPreview();
+    await fetchBackendFA(picked,generation,context);
+    if(generation!==faGeneration) return;
+    if(!faContextCurrent(context)){invalidateFaPreview();return;}
+    faView.loading=false;faView.received=Date.now();renderFaPreview();
+  }
+  function renderFaPreview(){
+    const current=faContextCurrent(faView.context),rows=current?faView.rows:[];
+    const covered=rows.filter(r=>faNumber(r.score) && r.state!=='unmapped');
+    const evaluated=rows.filter(r=>r.vetoes!==null);
+    const vetoed=evaluated.filter(r=>r.vetoes.length>0).length;
+    const reasons=evaluated.reduce((n,r)=>n+r.vetoes.length,0);
+    const average=covered.length?covered.reduce((n,r)=>n+r.score,0)/covered.length:null;
+    const avg=$('faAvg'),veto=$('faVetoes'),prem=$('faPrem');
+    if(avg) avg.textContent=average===null?'—':faNum(average,1);
+    const bar=$('faAvgBar');if(bar){bar.dataset.w=average===null?'0':String(average);bar.style.width=(average===null?0:average)+'%';bar.parentElement.setAttribute('aria-label',average===null?'unknown':String(average));}
+    const counts=state=>rows.filter(r=>r.state===state).length;
+    const summary=$('faAvgSub');
+    if(summary) summary.textContent=faText('میانگین: ','Mean: ')+faNum(covered.length)+' / '+faNum(rows.length)+faText(' نماد؛ ثابت: ',' symbols; static: ')+faNum(counts('static'))+faText('؛ کش: ','; cached: ')+faNum(counts('cached'))+faText('؛ منشأ دریافت تأییدنشد: ','; receipt unverified: ')+faNum(counts('server'))+faText('؛ بدون نگاشت: ','; unmapped: ')+faNum(counts('unmapped'))+faText('؛ خطای درخواست: ','; request failed: ')+faNum(counts('failed'))+faText('؛ درخواست‌نشده: ','; not requested: ')+faNum(counts('not-requested'))+faText('؛ در انتظار: ','; pending: ')+faNum(counts('pending'))+faText('؛ نماد نامعتبر: ','; invalid symbol: ')+faNum(counts('invalid-symbol'));
+    if(veto) veto.textContent=evaluated.length?faNum(vetoed)+' / '+faNum(evaluated.length):'—';
+    const vetoSub=$('faVetoSub');if(vetoSub) vetoSub.textContent=faText('نماد دارای وتو / پاسخ دارای فهرست وتو؛ علت در نماد: ','Vetoed symbols / replies with veto list; reason instances: ')+faNum(reasons)+faText('؛ نامعلوم: ','; unknown: ')+faNum(rows.length-evaluated.length)+faText('؛ نه تأیید ایمنی.','; not safety approval.');
+    const premium=current?faView.premium:null;
+    if(prem){prem.textContent=premium===null?'—':window.NBXDisplay.percent(premium,2);prem.title=faText('مرجع متقاطع BTCIRT، BTCUSDT و USDTIRT؛ سن مستقل هر سه منبع مشخص نیست.','BTCIRT/BTCUSDT/USDTIRT cross reference; independent age of all three legs is unknown.');}
+    for(const id of ['faAvg','faVetoes','faPrem']){
+      const card=$(id) && $(id).closest('.glass');if(card){card.dataset.state=!current?'unknown':faView.loading?'partial-loading':'read';card.removeAttribute('data-unavailable');}
+    }
+    const status=$('faCoverageNote');if(status){status.dataset.state=!current?'unknown':faView.loading?'loading':'read';status.textContent=!rows.length
+      ? faText('اسکن قابل استفاده‌ای برای نمایش بنیادی نیست؛ علت، قطع بودن ارائه‌دهنده فرض نمی‌شود.','No usable scan for Fundamentals; this does not establish a provider outage.')
+      : faText('فهرستِ همین اسکن و تایم‌فریم ','List from this scan and timeframe ')+faView.context.tf+faText('؛ امتیاز خنثیِ بدون نگاشت و مقدار صرفاً عددی اسکن در میانگین نیست. دریافت تکمیلی حداکثر ۶ نماد و جدا از snapshot تصمیم؛ تازه‌بودن اختصاصی ارائه‌دهنده تأیید نشده.','; unmapped defaults and scan-only numbers are excluded from the mean. At most 6 detail requests, separate from the decision snapshot; provider-specific freshness is unverified.')
+        +(faView.received?faText(' زمان دریافت صفحه (نه مشاهدهٔ منبع): ',' Page received time (not source observation): ')+new Date(faView.received).toLocaleTimeString(window.NBXDisplay.dateLocale()):'');}
+    const labels={static:['پروفایل ثابت؛ نه دادهٔ امروز','static profile; not today’s data'],cached:['کش گزارش‌شده؛ سن منبع نامشخص','reported cache; source age unknown'],server:['امتیاز سرور؛ دریافت اختصاصی تأیید نشده','server score; provider receipt unverified'],unmapped:['بدون نگاشت؛ پیش‌فرض خارج از میانگین','unmapped; default excluded from mean'],failed:['خواندن تکمیلی ناموفق؛ نه اثبات خرابی ارائه‌دهنده','detail read failed; not proof of provider outage'],'not-requested':['درخواست تکمیلی نشده','detail not requested'],pending:['در انتظار پاسخ تکمیلی','detail reply pending'],'invalid-symbol':['شناسهٔ نامعتبر؛ درخواست ارسال نشد','invalid symbol; no request sent']};
+    const list=$('faList');if(list){
+      list.innerHTML=rows.length?rows.slice(0,faView.showAll?rows.length:SIG_ROW_LIMIT).map(r=>{
+        const score=faNumber(r.score) && r.state!=='unmapped'?r.score:null;
+        const label=r.state==='failed' && r.error==='auth' ? ['خطای دسترسی در دریافت تکمیلی؛ نه خرابی ارائه‌دهنده','detail access denied; not a provider outage'] : labels[r.state] || labels.failed;
+        const partial=score===null && r.scanScore!==null ? faText(' · فقط عدد اسکن، خارج میانگین: ',' · scan-only score, excluded: ')+faNum(r.scanScore,1):'';
+        const details=r.vetoes===null?faText('وتو نامشخص','veto unknown'):r.vetoes.length?r.vetoes.join(' · '):faText('فهرست وتوی پاسخ خالی است؛ نه تأیید ایمنی','reply veto list empty; not safety approval');
+        const tvl=r.tvl!==undefined && r.tvl!==null ? ' · TVL '+window.NBXDisplay.money(r.tvl,'USD',0)+faText(' (زمان مشاهده تأییدنشد)',' (observation time unverified)'):'';
+        return `<div data-fa-symbol="${esc(r.symbol)}" data-fa-state="${r.state}" class="rounded-xl border border-white/5 p-2.5 text-[11px]">
+          <div class="flex flex-wrap items-center gap-2"><span class="font-bold">${window.coinIcon(r.symbol, 20)}${esc(r.symbol)}</span><span data-fa-score class="num font-bold">${score===null?'—':faNum(score,1)}</span><span class="text-zinc-400">${esc(faText(label[0],label[1])+partial)}</span></div>
+          ${score===null?'':`<div class="nbx-mini-hbar mt-1"><i style="width:${score}%"></i></div>`}
+          <div class="text-[10px] text-zinc-500 leading-5">${esc((r.origin==='scan-snapshot'?faText('از snapshot اسکن','from scan snapshot'):r.origin==='detail-response'?faText('پاسخ FA جداگانه؛ نه snapshot تصمیم','separate FA reply; not decision snapshot'):faText('دادهٔ جزئی اسکن؛ بدون پاسخ تکمیلی','partial scan data; no detail reply'))+(r.cached && r.state!=='cached'?faText(' · کش گزارش‌شده',' · reported cache'):'')+' · '+details+tvl)}</div></div>`;
+      }).join(''):'<div class="text-zinc-400 text-[11px] py-4">'+esc(faText('دادهٔ بنیادی خوانده نشده یا اسکن ناموجود است.','Fundamentals not read or scan unavailable.'))+'</div>';
+      if(rows.length>SIG_ROW_LIMIT){const button=document.createElement('button');button.type='button';button.dataset.faShowAll='1';button.className='w-full mt-2 text-[11px] text-zinc-300';button.textContent=faView.showAll?inFa('sg.showLess'):inFa('sg.showAll').replace('{n}',faNum(rows.length));button.onclick=()=>{faView.showAll=!faView.showAll;renderFaPreview();};list.appendChild(button);}
+    }
+    if($('faRefresh')) $('faRefresh').disabled=faView.loading && current;
+  }
+  if($('faRefresh')) $('faRefresh').addEventListener('click',updateFaPreview);
 
   /* Surfaces that cannot show a number when the exchange is down. Each one
    * gets the sentence, in the same red style, instead of a blank box. */
@@ -980,147 +1126,9 @@
   }
   window.renderUnavailablePanels = renderUnavailablePanels;
 
-  function faUnavailableHTML() {
-    return `<div class="text-center py-4">
-      <i data-lucide="plug-zap" class="w-4.5 h-4.5 text-red-300 mx-auto mb-1.5"></i>
-      <div class="text-[11px] font-bold text-red-200">${LANG === 'fa'
-        ? 'دادهٔ فاندامنتال در دسترس نیست' : 'Fundamentals are unavailable'}</div>
-      <div class="text-[10px] text-red-200/70 leading-5 mt-0.5">${LANG === 'fa'
-        ? 'دسترسی به سرور نوبیتکس امکان‌پذیر نیست؛ دادهٔ زنده دریافت نشد.'
-        : 'The Nobitex server is unreachable; no live data was received.'}</div>
-    </div>`;
-  }
-
-  async function updateFaPreview() {
-    if (!live.ranked.length) {
-      if ($('faList')) $('faList').innerHTML = faUnavailableHTML();
-      // The three KPI tiles above the list must not keep a previous value (or a
-      // static caption) while nothing was computed.
-      if ($('faAvg')) $('faAvg').textContent = '—';
-      if ($('faVetoes')) $('faVetoes').textContent = '—';
-      if ($('faPrem')) $('faPrem').textContent = '—';
-      const bar = document.querySelector('#page-fa .bar-fill');
-      if (bar) bar.style.width = '0%';
-      // Three tiles reading "—" with no reason is the bug the live probe
-      // reports; mark the cards so the sentence beneath them is the answer.
-      ['faAvg', 'faVetoes', 'faPrem'].forEach((id) => {
-        const card = $(id) && $(id).closest('.glass');
-        if (card) card.setAttribute('data-unavailable', '1');
-      });
-      return;
-    }
-    const fa = await fetchBackendFA(live.ranked.map((x) => x.symbol));
-    // A provider that answers with `unavailable` must not be averaged into a
-    // number: the page would show a "fundamental score" nobody computed.
-    const usable = fa.filter((x) => x && typeof x.score === 'number');
-    if (!usable.length && $('faList')) {
-      $('faList').innerHTML = faUnavailableHTML();
-      if ($('faAvg')) $('faAvg').textContent = '—';
-      if ($('faVetoes')) $('faVetoes').textContent = '—';
-      return;
-    }
-    const avgFA = usable.length ? usable.reduce((a, x) => a + x.score, 0) / usable.length : null;
-    if ($('faAvg')) $('faAvg').textContent = avgFA !== null ? faNum(Math.round(avgFA)) : '—';
-    // A score assembled from a hard-coded profile is not a live reading. It is
-    // still the best number available, so it is shown — labelled, not hidden
-    // and not passed off as live (ADR-0014). Only `fallback` counts: a cached
-    // live read is stale-by-minutes, not invented.
-    const isStatic = (x) => x.source === 'fallback' || (x.profile || (x.evidence || {}).profile) === 'fallback';
-    const fb = usable.filter(isStatic);
-    const sub = $('faAvgSub');
-    if (sub) {
-      if (!usable.length) {
-        sub.textContent = '';
-      } else if (fb.length) {
-        sub.textContent = LANG === 'fa'
-          ? `${faNum(fb.length)} از ${faNum(usable.length)} نماد از پروفایل ثابت (بدون تماس زندهٔ ارائه‌دهنده)`
-          : `${faNum(fb.length)} of ${faNum(usable.length)} symbols from a static profile (no live provider call)`;
-        sub.className = 'text-[10px] text-amber-300/90 leading-5 mt-0.5';
-      } else {
-        sub.textContent = LANG === 'fa' ? 'همه از ارائه‌دهندهٔ زنده' : 'all from a live provider';
-        sub.className = 'text-[10px] text-zinc-500 leading-5 mt-0.5';
-      }
-    }
-    const vetoCt = fa.filter((x) => x.vetoes && x.vetoes.length).length;
-    if ($('faVetoes')) $('faVetoes').textContent = fa.length ? faNum(vetoCt) : '—';
-    if ($('faPrem')) {
-      const pp = NBX.core.engine.premium_pct;
-      const known = typeof pp === 'number' && Number.isFinite(pp);
-      $('faPrem').textContent = known
-        ? window.NBXDisplay.percent(pp, 2)
-        : LANG === 'fa' ? 'محاسبه‌نشدنی' : 'not available';
-      // A dash here reads as "zero" or "loading". The premium needs all three
-      // of BTCIRT, BTCUSDT and USDTIRT to be quoted; say that instead.
-      $('faPrem').title = known
-        ? ''
-        : LANG === 'fa'
-          ? 'پرمیوم به هر سه جفت BTCIRT، BTCUSDT و USDTIRT نیاز دارد؛ دست‌کم یکی در فهرست بازار نیست.'
-          : 'The premium needs BTCIRT, BTCUSDT and USDTIRT; at least one is missing from the market list.';
-      $('faPrem').classList.toggle('text-base', !known);
-    }
-    if ($('faList')) {
-      const faScoreBySym = {};
-      fa.forEach((x) => (faScoreBySym[x.symbol] = x));
-      /* Same defect as the signals list had (1.1.2): a hard-coded `.slice(0, 6)`
-       * drew six rows of a ranked list of thirty-nine, and nothing said the rest
-       * existed. It shares the named constant and the same show-all switch. */
-      const faHidden = Math.max(0, live.ranked.length - SIG_ROW_LIMIT);
-      const faRows = live.ranked.slice(0, live.showAll ? live.ranked.length : SIG_ROW_LIMIT);
-      $('faList').innerHTML = faRows
-        .map((x) => {
-          const f = faScoreBySym[x.symbol] || NBX.FA.scoreSymbol(x.symbol);
-          const sc = f && typeof f.score === 'number' ? f.score : null;
-          // ADR-0025: "no provider is mapped for this coin" is a different fact
-          // from "the provider did not answer", and it used to accuse Nobitex —
-          // which is not where fundamentals come from at all.
-          const noProvider = !!(f && (f.source === 'no-provider' || f.profile === 'none'
-            || (f.evidence || {}).profile === 'none'));
-          if (sc === null || noProvider) {
-            return `<div class="flex items-center gap-2.5 sm:gap-3">
-              <span class="font-bold text-[13px] sm:text-sm shrink-0">${window.coinIcon(x.symbol, 20)}${x.symbol.replace(/IRT|USDT/g, '')}</span>
-              <span class="flex-1 text-[10px] text-zinc-400">${LANG === 'fa'
-                ? (noProvider ? 'منبع بنیادی برای این نماد نگاشت نشده (امتیاز خنثی)'
-                              : 'منبع بنیادی پاسخ نداد')
-                : (noProvider ? 'no fundamental provider is mapped for this coin (neutral score)'
-                              : 'the fundamental provider did not answer')}</span>
-            </div>`;
-          }
-          const isFallback = f && (f.source === 'fallback' ||
-            f.profile === 'fallback' || (f.evidence || {}).profile === 'fallback');
-          const extra =
-            f && f.evidence && f.evidence.tvl
-              ? (LANG==='fa'?'ارزش قفل‌شده ':'TVL ') + window.NBXDisplay.money(f.evidence.tvl, 'USD', 0)
-              : window.NBXDisplay.label(x.direction) + (LANG==='fa'?' · قدرت روند ':' · ADX ') + faNum(+((x.diagnostics?.adx || 24).toFixed(0)));
-          const fallbackChip = isFallback
-            ? `<span class="chip text-[9px] text-amber-300 border-amber-300/30 ms-1">${LANG === 'fa' ? 'پروفایل ثابت' : 'static profile'}</span>`
-            : '';
-          return `
-        <div class="flex items-center gap-2.5 sm:gap-3">
-          <span class="font-bold text-[13px] sm:text-sm shrink-0">${window.coinIcon(x.symbol, 20)}${x.symbol.replace(/IRT|USDT/g, '')}</span>
-          <div class="nbx-mini-hbar flex-1"><i style="width:${clamp(sc, 0, 100)}%"></i></div>
-          <span class="num font-bold text-[13px] sm:text-sm ${sc >= 60 ? 'text-sky-300' : sc >= 45 ? 'text-amber-300' : 'text-red-300'}">${faNum(
-            +sc.toFixed(0)
-          )}${fallbackChip}</span>
-          <span class="text-[10px] text-zinc-500 w-32 lg:w-48 hidden md:block truncate">${extra}</span>
-        </div>`;
-        })
-        .join('')
-        + (faHidden
-          ? `<button type="button" class="w-full mt-1 text-[10px] font-bold text-zinc-400 hover:text-white"
-                     onclick="window.sigShowAll(${live.showAll ? 'false' : 'true'})">${
-              live.showAll ? inFa('sg.showLess')
-                           : inFa('sg.showAll').replace('{n}', faNum(live.ranked.length))}</button>`
-          : '');
-    }
-
-    try {
-      const rs = await NBX.core.api.getBackendRiskState();
-      window.__NBX_RISK_STATE = rs;
-    } catch (e) {}
-  }
-
   /* ---------- Scan scheduler (Backend first → Mobile Standalone Engine) ---------- */
   async function scanNow(force) {
+    invalidateFaPreview();
     // A slow server must not leave the panel blank.
     try { renderSignalsLive(); } catch (e) {}
     try {
@@ -1147,7 +1155,9 @@
         NBX.core.engine.premium_pct = uni.premium_pct;
         live.source = uni.source || null;
         live.universeUnavailable = !!uni.unavailable;
-        const sig = await api.getBackendSignals(live.timeframe);
+        const signalTf=live.timeframe;
+        const sig = await api.getBackendSignals(signalTf);
+        live.signalSnapshot=signalSnapshotMeta(sig,signalTf);
         live.faCoverage = sig.fa_coverage || null;
         live.source = sig.source || live.source;
         live.dataAge = sig.age_s;
@@ -1356,9 +1366,15 @@
     return inFa('auth.role.' + role);
   }
 
+  let auditAuthIdentity = null;
   function paintUser(state) {
     const chip = $('userChip'), name = $('userName'), role = $('userRole'), out = $('logoutBtn');
     if (!state || !chip) return;
+    const identity = JSON.stringify([state.user && state.user.username, state.user && state.user.role, !!state.can_mutate, !!state.token]);
+    if (identity !== auditAuthIdentity) {
+      auditAuthIdentity = identity;
+      if (typeof window.invalidateAuditServer === 'function') window.invalidateAuditServer();
+    }
     const accountNav = $('accountNav');
     if (accountNav) accountNav.classList.toggle('hidden', !(state && state.user));
     if (state.user) {
@@ -1386,6 +1402,9 @@
         }
       }
     } else if (state.token) {
+      document.documentElement.dataset.canMutate = '0';
+      const auditPanel = $('operatorAuditPanel');
+      if (auditPanel) auditPanel.classList.add('hidden');
       name.textContent = 'token';
       role.textContent = '';
       chip.classList.remove('hidden');
@@ -1708,37 +1727,49 @@
     const res = await AUTH.call('/install/settings', null, 'GET');
     if (!res.ok) { box.hidden = true; return; }
     box.hidden = false;
-    const values = (res.data && res.data.values) || {};
-    const fields = [
-      ['NBX_AUTH_DB', '/var/lib/nobitrader/auth.db'],
-      ['NBX_JOURNAL_DB', '/var/lib/nobitrader/journal.db'],
-      ['NBX_LIVE_DB', '/var/lib/nobitrader/live_execution.db'],
-      ['NBX_CANDLE_CACHE', '/var/lib/nobitrader/candle_cache'],
-      ['NBX_BT_DIR', '/var/lib/nobitrader/backtests'],
-      ['NBX_EXPORT_DIR', '/var/lib/nobitrader/exports'],
-      ['NBX_SCAN_LOOP_S', '900'], ['NBX_SCAN_LOOP_TF', '15m'],
-      ['NBX_GATE_PREFETCH', '20'], ['NBX_BOOK_TTL_S', '120'],
-      ['NBX_BOOK_GATE_TTL_S', '300'], ['NBX_BOOK_KEEP_S', '3600'],
-      ['NBX_LIVE_MODE', 'disabled'],
-    ];
-    body.innerHTML = `<div class="grid grid-cols-1 lg:grid-cols-2 gap-2">${fields.map(([key, fallback]) => `
-      <label class="auth-field !mb-0"><span class="num">${key}</span>
-        <input data-install="${key}" value="${String(values[key] ?? fallback).replaceAll('&','&amp;').replaceAll('"','&quot;')}">
-      </label>`).join('')}</div>
+    const data = res.data || {};
+    const values = data.values || {};
+    const details = data.fields || {};
+    const fields = data.allowed || Object.keys(values);
+    const baseline = Object.fromEntries(fields.map(key => [key,
+      String(values[key] ?? (details[key] || {}).effective ?? '')]));
+    const fa = LANG === 'fa';
+    body.innerHTML = `<div class="grid grid-cols-1 lg:grid-cols-2 gap-2">${fields.map(key => {
+      const info = details[key] || {};
+      const pending = info.pending_or_overridden ? (fa ? ' · در انتظار اعمال یا overridden' : ' · pending or overridden') : '';
+      return `<label class="auth-field !mb-0"><span class="num">${esc(key)}</span>
+        <input data-install="${esc(key)}" value="${esc(baseline[key])}">
+        <span class="text-[10px] text-zinc-500 num">${fa ? 'مؤثر' : 'effective'}: ${esc(info.effective ?? '—')} · ${esc(info.source || 'unknown')}${esc(pending)}</span>
+        <span class="text-[10px] text-zinc-500 num">managed: ${esc(info.managed ?? '—')} · default: ${esc(info.default ?? '—')}</span>
+      </label>`;
+    }).join('')}</div>
       <div class="flex flex-wrap justify-end gap-2 pt-2 border-t border-white/5">
         <span id="installMsg" class="text-[10px] text-zinc-400 me-auto"></span>
         <button id="installProbe" class="auth-btn !flex-none" type="button">${inFa('install.probe')}</button>
         <button id="installSave" class="auth-btn !flex-none" type="button">${inFa('install.save')}</button>
       </div>`;
     const payload = () => Object.fromEntries([...body.querySelectorAll('[data-install]')]
-      .map((el) => [el.dataset.install, el.value.trim()]));
+      .filter(el => el.value.trim() !== baseline[el.dataset.install])
+      .map(el => [el.dataset.install, el.value.trim()]));
     const run = async (path) => {
       const msg = $('installMsg');
-      const out = await AUTH.call(path, payload());
+      const edits = payload();
+      if (!Object.keys(edits).length) {
+        if (msg) msg.textContent = fa ? 'تغییری برای ارسال نیست' : 'No edits to submit';
+        return;
+      }
+      if (path.endsWith('settings') && Object.keys(edits).some(key => /_DB$|_DIR$|_CACHE$/.test(key))) {
+        if (!window.confirm(fa ? 'تغییر مسیر داده نیازمند برنامهٔ مهاجرت جداگانه است. فقط draft ذخیره شود؟' : 'Data paths require a separate migration plan. Save the draft only?')) return;
+      }
+      const out = await AUTH.call(path, edits);
       if (msg) {
         msg.textContent = out.ok ? (path.endsWith('probe') ? inFa('install.ok') : inFa('install.restart'))
-          : ((out.data && out.data.detail) || inFa('install.failed'));
+          : JSON.stringify((out.data && out.data.detail) || inFa('install.failed'));
         msg.className = `text-[10px] me-auto ${out.ok ? 'text-emerald-300' : 'text-red-300'}`;
+      }
+      if (out.ok && path.endsWith('settings')) {
+        Object.assign(baseline, edits);
+        // Reload on explicit Refresh to show persisted/overridden provenance.
       }
     };
     $('installProbe').onclick = () => run('/install/probe');
@@ -1775,11 +1806,12 @@
     const liveOn = !!(liveStatus.ok && liveStatus.data && liveStatus.data.placement_enabled);
     const evidenceReady = !!(liveEvidence.ok && liveEvidence.data && liveEvidence.data.ready);
     const archives = (res.data.archives || []);
-    body.innerHTML = `<div class="flex flex-wrap gap-2">
+    body.innerHTML = `<p class="text-[10px] text-amber-300">${esc(LANG === 'fa' ? 'بازیابی وب غیرفعال است؛ بازیابی فقط آفلاین پس از توقف سرویس و همهٔ نویسنده‌ها. پشتیبان حاوی دادهٔ حساس حساب است.' : 'Web restore is disabled. Restore offline only after stopping all writers. Backups contain sensitive account data.')}</p><div class="flex flex-wrap gap-2">
+      <div class="text-[10px] text-zinc-500 num">${esc(res.data.backup_directory || '—')}</div>
       <button id="opsBackup" class="auth-btn !flex-none" type="button">${inFa('ops.backup')}</button>
       <select id="opsArchive" class="auth-input !w-auto">${archives.map((a) => `<option value="${a.name}">${a.name} · ${a.bytes} B</option>`).join('')}</select>
       <input id="opsConfirm" class="auth-input !w-auto" placeholder="RESTORE filename.zip">
-      <button id="opsRestore" class="auth-btn !flex-none" type="button">${inFa('ops.restore')}</button>
+      <button id="opsRestore" class="auth-btn !flex-none" type="button" ${res.data.restore_available && archives.length ? '' : 'disabled'}>${inFa('ops.restore')}</button>
     </div><div class="flex flex-wrap gap-2 pt-2 border-t border-white/5">
       <span class="text-[10px] text-zinc-500 self-center">${
         LANG === 'fa'
@@ -1836,6 +1868,8 @@
       const msg = $('accountPasswordMsg'); if (msg) msg.textContent = r.ok ? 'OK' : ((r.data && r.data.detail) || 'Failed');
       if (r.ok) location.reload();
     };
+    const settingsRefresh = $('setRefresh');
+    if (settingsRefresh) settingsRefresh.addEventListener('click', () => { renderInstall(); renderOperations(); });
     const prefsSave = $('accountPrefsSave');
     if (prefsSave) prefsSave.onclick = async () => {
       const r = await AUTH.call('/auth/me/preferences', { language: $('accountLanguage').value, timezone: $('accountTimezone').value.trim(), theme: 'dark', default_page: $('accountDefaultPage').value }, 'PATCH');
@@ -1894,7 +1928,11 @@
     // *says* nobody is signed in, never on a network error.
     setInterval(async () => {
       const now = await AUTH.me();
-      if (now && now.auth_required && !now.user && !now.token) location.reload();
+      if (now && now.auth_required && !now.user && !now.token) {
+        document.documentElement.dataset.canMutate = '0';
+        if (typeof window.invalidateAuditServer === 'function') window.invalidateAuditServer();
+        location.reload();
+      } else if (now && now.user) paintUser(now);
     }, 5 * 60 * 1000);
 
     try {
@@ -1914,14 +1952,18 @@
   window.NBX_APP = {
     refreshDisplay() {
       if(paperSnapshot) paintPaperState(...paperSnapshot);
-      if(live.ranked.length) { renderSignalsLive(); updateFaPreview(); }
+      if(typeof window.renderMarketOverview === 'function') window.renderMarketOverview();
+      if(typeof window.renderAuditServer === 'function') window.renderAuditServer();
+      renderSignalsLive(); renderFaPreview();
       if(typeof lastCandle!=='undefined' && lastCandle && $('lastPrice')) $('lastPrice').textContent = fmtPrice(lastCandle.close, live.activeSymbol);
     },
+    refreshPaperBook: () => refreshPaperState(),
     setScanInterval(sec) {
       if (!Number.isFinite(Number(sec))) return null;
       schedule();
       return scanInterval();
     },
+    refreshFundamentals: updateFaPreview,
     scanNow: () => scanNow(true),
     ensureSparks: () =>
       prefetchSparkCandles((live.ranked || []).slice(0, SIG_ROW_LIMIT).map((s) => s.symbol), live.timeframe),

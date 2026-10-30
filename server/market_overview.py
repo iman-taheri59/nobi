@@ -42,8 +42,12 @@ def _stdev(xs: list[float]) -> float | None:
     return math.sqrt(sum((x - m) ** 2 for x in xs) / (n - 1))
 
 
-def overview(rows: list[dict], signals: dict[str, dict] | None = None,
-             premium_pct: float | None = None, top_n: int = 5) -> dict:
+def overview(
+    rows: list[dict],
+    signals: dict[str, dict] | None = None,
+    premium_pct: float | None = None,
+    top_n: int = 5,
+) -> dict:
     """Summarise one snapshot of the universe.
 
     ``rows`` are exchange tickers: ``{symbol, last, vol24, change24}`` where
@@ -53,8 +57,13 @@ def overview(rows: list[dict], signals: dict[str, dict] | None = None,
     # USDT/IRT is the toman rate, not a market participant: including it drags
     # the median toward zero and makes every breadth reading look calm. It is
     # reported on its own, as FX.
+    rows = [r for r in (rows or []) if isinstance(r, dict)]
     fx_pair = next((r for r in rows if r.get("symbol") == "USDTIRT"), None)
-    usable = [r for r in rows if r.get("symbol") and r.get("symbol") != "USDTIRT"]
+    usable = [
+        r
+        for r in rows
+        if isinstance(sym := r.get("symbol"), str) and sym.strip() and sym != "USDTIRT"
+    ]
 
     # One row per asset. BTC/IRT and BTC/USDT are the same coin quoted twice;
     # counting both double-weights Bitcoin in the breadth and makes a nine-name
@@ -84,7 +93,7 @@ def overview(rows: list[dict], signals: dict[str, dict] | None = None,
 
     excluded = {
         "no_change": len(usable) - len(priced),
-        "no_volume": len([r for r in priced if _num(r.get("vol24")) is None]),
+        "no_volume": len([r for r in priced if _vol24(r) is None]),
         "no_fx": len([r for r in priced if _vol_usd(r) is None]),
         "same_asset": same_asset,
     }
@@ -95,7 +104,7 @@ def overview(rows: list[dict], signals: dict[str, dict] | None = None,
 
     with_vol: list[tuple[float, float, float]] = []
     for r, c in zip(priced, changes, strict=True):
-        v = _num(r.get("vol24"))
+        v = _vol24(r)
         u = _vol_usd(r)
         if v is not None and u is not None:
             with_vol.append((c, v, u))
@@ -112,9 +121,13 @@ def overview(rows: list[dict], signals: dict[str, dict] | None = None,
     top = []
     for r in ranked[:top_n]:
         vol_usd = _vol_usd(r)
-        top.append({"symbol": r["symbol"],
-                    "vol_usd": round(vol_usd, 2) if vol_usd is not None else None,
-                    "change24": _num(r.get("change24"))})
+        top.append(
+            {
+                "symbol": r["symbol"],
+                "vol_usd": round(vol_usd, 2) if vol_usd is not None else None,
+                "change24": _num(r.get("change24")),
+            }
+        )
     top3_share = None
     if total_usd > 0:
         top3_share = sum((_vol_usd(r) or 0.0) for r in ranked[:3]) / total_usd * 100
@@ -128,9 +141,12 @@ def overview(rows: list[dict], signals: dict[str, dict] | None = None,
 
     def _brief(r: dict) -> dict:
         vol_usd = _vol_usd(r)
-        return {"symbol": r["symbol"], "change24": _num(r.get("change24")),
-                "last": _num(r.get("last")),
-                "vol_usd": (round(vol_usd, 2) if vol_usd is not None else None)}
+        return {
+            "symbol": r["symbol"],
+            "change24": _num(r.get("change24")),
+            "last": _num(r.get("last")),
+            "vol_usd": (round(vol_usd, 2) if vol_usd is not None else None),
+        }
 
     enough = len(priced) >= MIN_ROWS
     median = _median(changes) if enough else None
@@ -141,14 +157,18 @@ def overview(rows: list[dict], signals: dict[str, dict] | None = None,
         "priced": len(priced),
         "excluded": excluded,
         "breadth": {
-            "up": len(up), "down": len(down), "flat": len(flat),
+            "up": len(up),
+            "down": len(down),
+            "flat": len(flat),
             "pct_up": round(len(up) / len(priced) * 100, 2) if priced else None,
             "pct_up_vol_weighted": round(up_vol_share, 2) if up_vol_share is not None else None,
         },
         "change": {
             "median_24h": round(median, 3) if median is not None else None,
             "mean_24h": round(sum(changes) / len(changes), 3) if enough else None,
-            "vol_weighted_24h": round(weighted_change, 3) if weighted_change is not None and enough else None,
+            "vol_weighted_24h": round(weighted_change, 3)
+            if weighted_change is not None and enough
+            else None,
             "dispersion_24h": (round(dispersion, 3) if dispersion is not None else None),
         },
         "turnover": {
@@ -162,17 +182,26 @@ def overview(rows: list[dict], signals: dict[str, dict] | None = None,
         # least-bad, and the panel should say so rather than implying a rally.
         "all_down": bool(changes) and all(c < 0 for c in changes),
         "all_up": bool(changes) and all(c > 0 for c in changes),
-        "premium_pct": premium_pct,
-        "fx": ({"symbol": "USDTIRT", "last": _num(fx_pair.get("last")),
-                "change24": _num(fx_pair.get("change24"))} if fx_pair else None),
+        "premium_pct": _num(premium_pct),
+        "fx": (
+            {
+                "symbol": "USDTIRT",
+                "last": _num(fx_pair.get("last")) if (_num(fx_pair.get("last")) or 0) > 0 else None,
+                "change24": _num(fx_pair.get("change24")),
+            }
+            if fx_pair
+            else None
+        ),
         "note": (
             "volume-weighted change is not a market index; it is the average "
             "24 h move of the tracked symbols weighted by their dollar turnover"
         ),
     }
     if not enough:
-        out["reason"] = (f"only {len(priced)} symbols had a 24 h change; "
-                         f"at least {MIN_ROWS} are needed for a breadth reading")
+        out["reason"] = (
+            f"only {len(priced)} symbols had a 24 h change; "
+            f"at least {MIN_ROWS} are needed for a breadth reading"
+        )
 
     if signals:
         # Count each asset once, like the breadth above: a board that scores both
@@ -180,7 +209,7 @@ def overview(rows: list[dict], signals: dict[str, dict] | None = None,
         # 8-asset market and look far busier than it is.
         keep = {r["symbol"] for r in usable}
         by_base = {}
-        for sym in (signals or {}):
+        for sym in signals or {}:
             if sym == "USDTIRT":
                 continue
             base = _base(sym)
@@ -191,15 +220,16 @@ def overview(rows: list[dict], signals: dict[str, dict] | None = None,
         regimes: dict[str, int] = {}
         comps: list[float] = []
         for sym in set(by_base.values()):
-            snap = signals.get(sym) or {}
-            d = (snap or {}).get("direction")
-            if d:
+            raw_snap = signals.get(sym) if isinstance(signals, dict) else None
+            snap = raw_snap if isinstance(raw_snap, dict) else {}
+            d = snap.get("direction")
+            if isinstance(d, str) and d in {"LONG", "EXIT", "NEUTRAL"}:
                 dirs[d] = dirs.get(d, 0) + 1
-            rg = (snap or {}).get("regime")
-            if rg:
-                regimes[rg] = regimes.get(rg, 0) + 1
-            c = _num((snap or {}).get("composite"))
-            if c is not None:
+            rg = snap.get("regime")
+            if isinstance(rg, str) and rg.strip():
+                regimes[rg.strip()] = regimes.get(rg.strip(), 0) + 1
+            c = _num(snap.get("composite"))
+            if c is not None and 0.0 <= c <= 100.0:
                 comps.append(c)
         out["signals"] = {
             "directions": dirs,
@@ -225,7 +255,9 @@ def _base(sym: str) -> str:
 
 def _num(v) -> float | None:
     try:
-        if v is None:
+        if v is None or isinstance(v, bool):
+            return None
+        if isinstance(v, str) and not v.strip():
             return None
         f = float(v)
         return f if math.isfinite(f) else None
@@ -233,10 +265,16 @@ def _num(v) -> float | None:
         return None
 
 
+def _vol24(row: dict) -> float | None:
+    v = _num(row.get("vol24"))
+    return v if v is not None and v >= 0 else None
+
+
 def _vol_usd(row: dict) -> float | None:
     """Turnover in USD. Mixing IRT and USDT volumes would add tomans to dollars."""
-    v = _num(row.get("vol24"))
+    v = _vol24(row)
     fx = _num(row.get("fx_usd"))
     if v is None or fx is None or fx <= 0:
         return None
-    return v / fx
+    u = v / fx
+    return u if math.isfinite(u) else None

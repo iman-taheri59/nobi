@@ -1471,7 +1471,7 @@ def test_every_data_panel_can_explain_itself():
         "allocation donut": "allocUnavailable",
         "order book": "obUnavailable",
         "signals list": "data-unavailable",
-        "fundamentals": "faUnavailableHTML",
+        "fundamentals": "faCoverageNote",
         "backtest slot": "btUnavailableHTML",
         "equity curve": "drawEquity",
         "empty table rows": "emptyRow",

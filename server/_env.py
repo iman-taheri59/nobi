@@ -24,8 +24,12 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+from runtime_settings import parse_managed
+
 ENV_PATH = Path(__file__).resolve().with_name(".env")
 MANAGED_ENV_PATH = Path(os.getenv("NBX_MANAGED_ENV") or Path(__file__).resolve().with_name("managed.env"))
+
+SOURCES = {key: "process_environment" for key, value in os.environ.items() if value}
 
 STATUS: dict = {
     "path": str(ENV_PATH),
@@ -84,6 +88,7 @@ def load(path: Path | None = None) -> dict:
         if key in os.environ and os.environ[key] != "":
             continue                            # real env wins
         os.environ[key] = value
+        SOURCES[key] = "server/.env"
         applied += 1
     STATUS.update(loaded=True, vars=applied, error=None)
     return STATUS
@@ -100,14 +105,15 @@ def load_managed(path: Path | None = None) -> dict:
     if not target.is_file():
         return status
     try:
-        values = _parse(target.read_text(encoding="utf-8"))
-    except OSError as exc:
+        values = parse_managed(target.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
         status["error"] = f"{type(exc).__name__}: {exc}"
         return status
     applied = 0
     for key, value in values.items():
         if key not in os.environ or os.environ[key] == "":
             os.environ[key] = value
+            SOURCES[key] = "managed.env"
             applied += 1
     status.update(loaded=True, vars=applied)
     return status

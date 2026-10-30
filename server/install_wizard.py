@@ -15,6 +15,7 @@ import subprocess
 import sys
 import threading
 import time
+from contextlib import closing
 from pathlib import Path
 from typing import Any
 
@@ -179,39 +180,40 @@ def run_action(action: str, actor: str) -> dict[str, Any]:
         raise ValueError("unsupported installation action")
     if not _MUTATION_LOCK.acquire(blocking=False):
         raise RuntimeError("an installation action is already running")
-    step = ACTIONS[action]
-    started = int(time.time())
-    with journal.connect() as conn:
-        ensure(conn)
-        cur = conn.execute(
-            "INSERT INTO install_wizard_runs(action,state,actor,started_at) VALUES(?,'running',?,?)",
-            (action, actor, started),
-        )
-        run_id = int(cur.lastrowid or 0)
-        conn.commit()
-    _set(step, "running", actor, {"run_id": run_id, "action": action})
     try:
-        proc = subprocess.run(
-            [str(HELPER), "--protocol", str(PROTOCOL), action],
-            capture_output=True, text=True, encoding="utf-8", timeout=120, check=False,
-        )
-        output = _redact((proc.stdout or "") + ("\n" if proc.stderr else "") + (proc.stderr or ""))
-        state = "passed" if proc.returncode == 0 else "failed"
-        rollback = int(action in {"install-service", "install-proxy"})
-    except (OSError, subprocess.SubprocessError) as exc:
-        output, state, rollback = _redact(f"{type(exc).__name__}: {exc}"), "failed", 0
+        step = ACTIONS[action]
+        started = int(time.time())
+        with closing(journal.connect()) as conn:
+            ensure(conn)
+            cur = conn.execute(
+                "INSERT INTO install_wizard_runs(action,state,actor,started_at) VALUES(?,'running',?,?)",
+                (action, actor, started),
+            )
+            run_id = int(cur.lastrowid or 0)
+            conn.commit()
+        _set(step, "running", actor, {"run_id": run_id, "action": action})
+        try:
+            proc = subprocess.run(
+                [str(HELPER), "--protocol", str(PROTOCOL), action],
+                capture_output=True, text=True, encoding="utf-8", timeout=120, check=False,
+            )
+            output = _redact((proc.stdout or "") + ("\n" if proc.stderr else "") + (proc.stderr or ""))
+            state = "passed" if proc.returncode == 0 else "failed"
+            rollback = int(action in {"install-service", "install-proxy"})
+        except (OSError, subprocess.SubprocessError) as exc:
+            output, state, rollback = _redact(f"{type(exc).__name__}: {exc}"), "failed", 0
+        with closing(journal.connect()) as conn:
+            ensure(conn)
+            conn.execute(
+                "UPDATE install_wizard_runs SET state=?,finished_at=?,output=?,rollback_available=? WHERE id=?",
+                (state, int(time.time()), output, rollback, run_id),
+            )
+            conn.commit()
+        _set(step, state, actor, {"run_id": run_id, "action": action})
+        return {"id": run_id, "action": action, "state": state, "output": output,
+                "rollback_available": bool(rollback)}
     finally:
         _MUTATION_LOCK.release()
-    with journal.connect() as conn:
-        ensure(conn)
-        conn.execute(
-            "UPDATE install_wizard_runs SET state=?,finished_at=?,output=?,rollback_available=? WHERE id=?",
-            (state, int(time.time()), output, rollback, run_id),
-        )
-        conn.commit()
-    _set(step, state, actor, {"run_id": run_id, "action": action})
-    return {"id": run_id, "action": action, "state": state, "output": output,
-            "rollback_available": bool(rollback)}
 
 
 @router.get("/status")

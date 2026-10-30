@@ -87,9 +87,11 @@ async function run(file) {
     w.eval("execMode = 'auto';");
     await w.refreshQueue();
     assert.equal(w.eval('queue.length'), 0, 'automatic symbols do not await approval');
-    w.eval("execMode = 'semi'; queueDismissed.add('BTCIRT');");
+    w.eval("execMode = 'semi';");
     await w.refreshQueue();
-    assert.equal(w.eval('queue.length'), 0, 'dismissed symbols stay dismissed');
+    w.resolveQ(w.eval("queue[0].id"), false);
+    await w.refreshQueue();
+    assert.equal(w.eval('queue.length'), 0, 'same-candle decision stays dismissed');
     w.eval('queueDismissed.clear();');
     // An old request must not overwrite a newer result.
     let release;

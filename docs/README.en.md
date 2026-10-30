@@ -82,6 +82,7 @@ What is written twice, what is written once, and what is pending. The gate in
 
 | Document | Persian | English |
 |---|---|---|
+| Offline recovery | [`operations-recovery.md`](operations-recovery.md) | [`operations-recovery.en.md`](operations-recovery.en.md) |
 | Root README | [`README.md`](../README.md) | [`README.en.md`](../README.en.md) |
 | Documentation map | [`README.md`](README.md) | [`README.en.md`](README.en.md) |
 | Versioning and releases | [`releases.md`](releases.md) | [`releases.en.md`](releases.en.md) |

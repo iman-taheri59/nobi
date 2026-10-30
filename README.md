@@ -199,11 +199,16 @@ docs/                   ADR، تحلیل، ops، بازبینی‌ها
 
 ## عملیات و بازیابی
 
-پشتیبان سازگار از دیتابیس‌های در حال استفاده (بدون `.env` و کلیدهای API):
+پشتیبان سازگار برای هر دیتابیس، نه یک تراکنش مشترک بین همهٔ DBها؛ بدون `.env` و کلیدهای API ولی دارای دادهٔ حساس حساب. مسیرهای نمونه را با مسیر مؤثر نصب تطبیق دهید. بازیابی وب غیرفعال است؛ [راهنمای بازیابی آفلاین](docs/operations-recovery.md) را ببینید.
 
 ```bash
-python scripts/state_backup.py backup --output backups/
-python scripts/state_backup.py restore backups/nobitrader-state-....zip --force
+python scripts/state_backup.py backup --output backups/ \
+  --journal /srv/nobi-data/journal.db --auth /srv/nobi-data/auth.db \
+  --live /srv/nobi-data/live_execution.db
+# OFFLINE ONLY: stop the service and ALL SQLite writers first
+python scripts/state_backup.py restore backups/nobitrader-state-....zip --force --offline \
+  --journal /srv/nobi-data/journal.db --auth /srv/nobi-data/auth.db \
+  --live /srv/nobi-data/live_execution.db
 
 # snapshot روزانهٔ soak؛ NBX_API_TOKEN فقط از environment خوانده می‌شود
 python scripts/live_evidence_snapshot.py --csv data/live-evidence.csv

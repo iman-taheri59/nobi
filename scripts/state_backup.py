@@ -2,7 +2,8 @@
 """Atomic backup and guarded restore for nobitrader SQLite state.
 
 The archive deliberately excludes API keys and .env. SQLite's online backup API
-produces a consistent snapshot even while the dashboard is reading/writing.
+produces a per-database snapshot, not a cross-database transaction. Archives
+contain sensitive account data. Restore is OFFLINE ONLY; stop every writer first.
 """
 from __future__ import annotations
 
@@ -34,19 +35,17 @@ def _sha256(path: Path) -> str:
 
 
 def _snapshot(source: Path, destination: Path) -> None:
+    if not source.is_file():
+        raise FileNotFoundError("required source database is missing")
+    if source.stat().st_size == 0:
+        raise ValueError("required source database is empty")
     destination.parent.mkdir(parents=True, exist_ok=True)
-    if not source.exists():
-        # A valid empty SQLite database is more useful than silently omitting a
-        # state domain: restore then has a complete, explicit set.
-        with contextlib.closing(sqlite3.connect(destination)):
-            pass
-        return
     # sqlite3.Connection's context manager commits/rolls back but does not
     # close. POSIX lets a still-open temporary file be unlinked; Windows does
     # not, so explicit closing is part of the portability contract.
     with (
         contextlib.closing(sqlite3.connect(
-            f"file:{source.resolve()}?mode=ro", uri=True,
+            source.resolve().as_uri() + "?mode=ro", uri=True,
         )) as src,
         contextlib.closing(sqlite3.connect(destination)) as dst,
     ):
@@ -60,12 +59,19 @@ def create_backup(
     output: Path, journal: Path = DEFAULT_JOURNAL, auth: Path = DEFAULT_AUTH,
     live: Path = DEFAULT_LIVE,
 ) -> Path:
+    sources = (journal.resolve(), auth.resolve(), live.resolve())
+    if len(set(sources)) != 3:
+        raise ValueError("state domains must use distinct database paths")
+    if any(not source.is_file() or source.stat().st_size == 0 for source in sources):
+        raise ValueError("required source database is missing or empty; backup refused")
     output = output.resolve()
     if output.suffix.lower() != ".zip":
-        output.mkdir(parents=True, exist_ok=True)
+        output.mkdir(parents=True, exist_ok=True, mode=0o700)
         stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
         output = output / f"nobitrader-state-{stamp}.zip"
-    output.parent.mkdir(parents=True, exist_ok=True)
+    output.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    if output.exists():
+        raise FileExistsError("backup already exists; choose another output name")
     with tempfile.TemporaryDirectory(prefix="nobi-backup-") as raw_tmp:
         tmp = Path(raw_tmp)
         files = {"journal.db": journal, "auth.db": auth, "live_execution.db": live}
@@ -78,17 +84,26 @@ def create_backup(
             "format": FORMAT_VERSION,
             "created_at": datetime.now(UTC).isoformat(),
             "product": "nobitrader",
-            "contains_secrets": False,
+            "contains_secrets": False,  # excludes environment/API credentials, NOT public data
+            "sensitive_account_data": True,
+            "consistency": "per-database; not a cross-database transaction",
             "files": manifest_files,
         }
         (tmp / "manifest.json").write_text(
             json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
         )
-        partial = output.with_suffix(output.suffix + ".partial")
-        with zipfile.ZipFile(partial, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-            for name in ("manifest.json", *files):
-                archive.write(tmp / name, name)
-        os.replace(partial, output)
+        fd, raw_partial = tempfile.mkstemp(prefix=".nobi-backup-", dir=output.parent)
+        partial = Path(raw_partial)
+        try:
+            with os.fdopen(fd, "w+b") as file:
+                with zipfile.ZipFile(file, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+                    for name in ("manifest.json", *files):
+                        archive.write(tmp / name, name)
+                file.flush()
+                os.fsync(file.fileno())
+            os.replace(partial, output)
+        finally:
+            partial.unlink(missing_ok=True)
     return output
 
 
@@ -110,9 +125,12 @@ def restore_backup(
     live: Path = DEFAULT_LIVE,
     *,
     force: bool = False,
+    offline: bool = False,
 ) -> None:
     if not force:
         raise ValueError("restore is destructive; pass --force")
+    if not offline:
+        raise ValueError("restore requires stopped service and all writers; pass --offline")
     with tempfile.TemporaryDirectory(prefix="nobi-restore-") as raw_tmp:
         tmp = Path(raw_tmp)
         with zipfile.ZipFile(archive_path, "r") as archive:
@@ -130,20 +148,68 @@ def restore_backup(
                 expected = manifest.get("files", {}).get(name, {}).get("sha256")
                 if not expected or not secrets_compare(_sha256(path), str(expected)):
                     raise ValueError(f"checksum mismatch for {name}")
+                if path.stat().st_size == 0:
+                    raise ValueError(f"empty archived database: {name}")
                 with contextlib.closing(sqlite3.connect(
-                    f"file:{path}?mode=ro", uri=True,
+                    path.resolve().as_uri() + "?mode=ro", uri=True,
                 )) as conn:
                     result = conn.execute("PRAGMA integrity_check").fetchone()
                     if not result or result[0] != "ok":
                         raise ValueError(f"database integrity check failed for {name}")
                 extracted[name] = path
         destinations = {"journal.db": journal, "auth.db": auth, "live_execution.db": live}
-        for name in extracted:
-            destination = destinations[name].resolve()
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            partial = destination.with_suffix(destination.suffix + ".restore")
-            shutil.copy2(extracted[name], partial)
-            os.replace(partial, destination)
+        targets = [destinations[name].resolve() for name in extracted]
+        if len(set(targets)) != len(targets):
+            raise ValueError("restore destinations must be distinct")
+        if archive_path.resolve() in targets:
+            raise ValueError("archive cannot also be a restore destination")
+        for target in targets:
+            if any(Path(str(target) + suffix).exists() for suffix in ("-wal", "-shm", "-journal")):
+                raise ValueError("SQLite sidecars exist; stop/checkpoint all writers before offline restore")
+        # Stage ALL replacements and undo copies before replacing the first DB.
+        # Roll back ordinary failures. This is not crash-atomic across files;
+        # --offline is an operator attestation, never a proof that writers stopped.
+        stages: list[tuple[Path, Path, Path | None]] = []
+        directories: list[Path] = []
+        changed: list[tuple[Path, Path | None]] = []
+        cleanup = True
+        try:
+            for name, destination in zip(extracted, targets, strict=True):
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                directory = Path(tempfile.mkdtemp(prefix=".nobi-restore-", dir=destination.parent))
+                directories.append(directory)
+                staged = directory / "replacement.db"
+                shutil.copy2(extracted[name], staged)
+                staged.chmod(0o600)
+                previous = directory / "previous.db" if destination.exists() else None
+                if previous is not None:
+                    shutil.copy2(destination, previous)
+                    previous.chmod(0o600)
+                recovery = directory / "recovery.json"
+                recovery.write_text(json.dumps({
+                    "destination": str(destination), "previous_exists": previous is not None,
+                    "previous_sha256": _sha256(previous) if previous is not None else None,
+                }), encoding="utf-8")
+                recovery.chmod(0o600)
+                stages.append((destination, staged, previous))
+            for destination, staged, previous in stages:
+                os.replace(staged, destination)
+                changed.append((destination, previous))
+        except BaseException:
+            try:
+                for destination, previous in reversed(changed):
+                    if previous is None:
+                        destination.unlink(missing_ok=True)
+                    else:
+                        os.replace(previous, destination)
+            except OSError as exc:
+                cleanup = False
+                raise RuntimeError("restore rollback incomplete; private recovery copies retained") from exc
+            raise
+        finally:
+            if cleanup:
+                for directory in directories:
+                    shutil.rmtree(directory)
 
 
 def secrets_compare(left: str, right: str) -> bool:
@@ -163,15 +229,17 @@ def main() -> int:
     backup.add_argument("--live", type=Path, default=DEFAULT_LIVE)
     restore = sub.add_parser("restore")
     restore.add_argument("archive", type=Path)
-    restore.add_argument("--journal", type=Path, default=DEFAULT_JOURNAL)
-    restore.add_argument("--auth", type=Path, default=DEFAULT_AUTH)
-    restore.add_argument("--live", type=Path, default=DEFAULT_LIVE)
+    restore.add_argument("--journal", type=Path, required=True)
+    restore.add_argument("--auth", type=Path, required=True)
+    restore.add_argument("--live", type=Path, required=True)
     restore.add_argument("--force", action="store_true")
+    restore.add_argument("--offline", action="store_true",
+                         help="attest that the service and ALL database writers are stopped")
     args = parser.parse_args()
     if args.command == "backup":
         print(create_backup(args.output, args.journal, args.auth, args.live))
     else:
-        restore_backup(args.archive, args.journal, args.auth, args.live, force=args.force)
+        restore_backup(args.archive, args.journal, args.auth, args.live, force=args.force, offline=args.offline)
         print("restore complete; restart nobitrader before accepting traffic")
     return 0
 

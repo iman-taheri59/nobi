@@ -708,7 +708,12 @@ class PaperBroker:
         wins = [p for p in pnl_list if p > 0]
         losses = [p for p in pnl_list if p <= 0]
         hit_rate = (len(wins) / len(pnl_list) * 100) if pnl_list else 0
-        pf = (sum(wins) / abs(sum(losses))) if losses else (99.99 if wins else 0.0)
+        # A break-even exit is not a positive loss denominator. In particular,
+        # [profit, 0] must not turn a read-only dashboard request into ZeroDivisionError.
+        loss_total = abs(sum(losses))
+        pf = (sum(wins) / loss_total) if loss_total > 0 else (99.99 if wins else 0.0)
+        pf_capped = bool(wins) and (loss_total == 0 or pf >= 99.99)
+        pf_defined = bool(pnl_list) and (bool(wins) or loss_total > 0)
         pf = min(float(pf), 99.99)
         expectancy = (sum(pnl_list) / len(pnl_list)) if pnl_list else 0
         eq_vals = [v for _, v in self.equity_curve]
@@ -719,6 +724,18 @@ class PaperBroker:
             mdd = max(mdd, (peak - v) / max(peak, 1) * 100)
         return {
             "trades": len(pnl_list),
+            "exit_events": len(pnl_list),
+            "profit_factor_defined": pf_defined,
+            "profit_factor_is_capped": pf_capped,
+            "measurement": {
+                "basis": "retained-exit-events",
+                "time_filter_days": None,
+                "partial_exits_separate": True,
+                "entry_fees_included": False,
+                "persisted_event_limit": 400,
+                "complete_account_history": False,
+                "profit_factor_display_cap": 99.99,
+            },
             "start_equity": round(self.start_equity, 2),
             "openPositions": sum(1 for p in self.positions.values() if p.state != "CLOSED"),
             "cash": round(self.cash, 2),

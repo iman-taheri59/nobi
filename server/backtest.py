@@ -25,6 +25,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 import pandas as pd
 
@@ -319,6 +320,10 @@ class EventBacktester:
         for tr in list(self.positions):
             self._close_part(tr, ts_col.iloc[end - 1], float(closes.iat[end - 1]), 1.0, "eod")
 
+        # Settlement is reporting/accounting, not another bar or another fill.
+        self.equity = float(self.cash)
+        if self.equity_curve:
+            self.equity_curve[-1][1] = round(self.equity, 2)
         return self._result(df, symbol, tf, start, end)
 
     # ---------------- reporting ----------------
@@ -334,7 +339,7 @@ class EventBacktester:
         expectancy_r = sum(t.r_multiple or 0 for t in self.closed) / total if total else 0.0
 
         eqv = [v for _, v in self.equity_curve]
-        peak = eqv[0] if eqv else self.equity
+        peak = self.initial_equity
         mdd = 0.0
         for v in eqv:
             peak = max(peak, v)
@@ -372,6 +377,8 @@ class EventBacktester:
             equity_curve=[list(x) for x in self.equity_curve],
             sample_trades=[
                 {
+                    "entry_t": datetime.fromtimestamp(self._ts_ms(t.entry_t) / 1000, UTC).isoformat(),
+                    "exit_t": datetime.fromtimestamp(self._ts_ms(t.exit_t) / 1000, UTC).isoformat() if t.exit_t is not None else None,
                     "entry": round(t.entry, 8),
                     "exit": round(t.exit or 0, 8),
                     "reason": t.reason,
@@ -531,7 +538,7 @@ def _aggregate_windows(windows: list[dict], initial_equity: float = 100_000.0) -
     mdd = 0.0
     for w in windows:
         w_start = float(w.get("initial_equity") or initial_equity)
-        w_end = float(w.get("final_equity") or w_start)
+        w_end = float(w["final_equity"]) if w.get("final_equity") is not None else w_start
         ret = (w_end / w_start) - 1.0 if w_start else 0.0
         scale = equity / w_start if w_start else 1.0
         for ts, val in w.get("equity_curve", []):
@@ -818,7 +825,14 @@ def run_and_save(
                 slippage_bps=base_cfg["slippage_bps"])
     stability = _param_stability(windows)
 
+    run_id = uuid4().hex
     report = {
+        "run_id": run_id,
+        "effective_config": {**{k: v for k, v in base_cfg.items() if not k.startswith("_")},
+                             "parameter_selection": "train-selected; see details.params_used" if any(w.get("params_optimised") for w in windows) else "fixed",
+                             "mode": mode, "window_mode": window_mode,
+                             "train_bars": tb, "eval_bars": eb, "source": source},
+        "config_hash_scope": "legacy parameter hash; not a unique run or dataset identity",
         "config_hash": _cfg_hash({**base_cfg, **windows[0]["params"]}),
         "symbol": symbol,
         "tf": tf,
@@ -851,9 +865,9 @@ def run_and_save(
         "gate": gate,
         "details": windows,
     }
-    fp = REPORTS / f"{symbol}-{tf}-{int(time.time())}.json"
-    fp.write_text(json.dumps(report, ensure_ascii=False, indent=1, default=str), encoding="utf-8")
+    fp = REPORTS / f"{symbol}-{tf}-{int(time.time())}-{run_id}.json"
     report["report_file"] = fp.name
+    fp.write_text(json.dumps(report, ensure_ascii=False, indent=1, default=str), encoding="utf-8")
     return report
 
 

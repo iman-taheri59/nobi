@@ -112,6 +112,15 @@ def connect(path: str | Path | None = None) -> sqlite3.Connection:
     return conn
 
 
+def connect_readonly(path: str | Path | None = None) -> sqlite3.Connection:
+    """Read an existing journal without creating/migrating it or setting WAL."""
+    uri = Path(path or DB_PATH).resolve().as_uri() + "?mode=ro"
+    conn = sqlite3.connect(uri, uri=True, timeout=10)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA query_only=ON")
+    return conn
+
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS signal_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -481,7 +490,9 @@ def simulate_long(df: pd.DataFrame, i: int, entry: float, atr: float,
         exit_price = px
 
     return {
-        "exit_ts": int(times[min(end, len(times) - 1)]),
+        # Candle label of the modeled exit, not an exchange fill timestamp.
+        # Only newly resolved outcomes change; never rewrite historical rows.
+        "exit_ts": int(times[min(i + bars_used, len(times) - 1)]),
         "exit_price": round(exit_price, 8),
         "mfe_pct": round(mfe, 3),
         "mae_pct": round(mae, 3),
@@ -786,11 +797,27 @@ def stage_reason_key(current: str, msi_status: str) -> str:
     return "hold_unknown"
 
 
+def stage_snapshot(conn: sqlite3.Connection) -> dict[str, Any]:
+    """Stored advisory state only; a page refresh is NOT a policy evaluation.
+
+    Keep lifecycle()/next_stage() as the explicit legacy policy evaluator. Do
+    not infer a current decision from old counters, nor seed missing metadata.
+    """
+    stored = get_meta(conn, "strategy_stage")
+    stored = stored if isinstance(stored, dict) else {}
+    stage = stored.get("stage")
+    if stage not in STAGES:
+        stage = None
+    return {"stage": stage, "read_only": True, "evaluated": False,
+            "recorded_at": stored.get("changed_at"), "streak": stored.get("streak"),
+            "msi_status": stored.get("msi_status"), "promotion_is_manual": True}
+
+
 def lifecycle(conn: sqlite3.Connection) -> dict[str, Any]:
     """Current stage plus the evaluation that produced it.
 
-    Stored in meta so the stage survives a restart, but recomputed on every
-    read: a stage that disagrees with the current MSI would be worse than none.
+    Explicit legacy evaluator: this advances counters and may persist a stage.
+    GET /journal/stage must call stage_snapshot(), not this mutating function.
     """
     verdict = msi(conn)
     stored = get_meta(conn, "strategy_stage") or {}
@@ -1026,12 +1053,17 @@ def summary(conn: sqlite3.Connection, *, tf: str | None = None,
     horizons = []
     for key in HORIZONS:
         rows = conn.execute(
-            f"""SELECT o.r_multiple FROM signal_log s
+            f"""SELECT o.r_multiple, s.source FROM signal_log s
                 JOIN signal_outcomes o ON o.signal_id = s.id
                 WHERE o.horizon_key=? AND s.direction='LONG' AND s.voided_at IS NULL
                   AND {where}""", [key, *params]).fetchall()
         vals = [float(r["r_multiple"] or 0.0) for r in rows]
+        horizon_sources: dict[str, int] = {}
+        for outcome in rows:
+            src = outcome["source"] or "unknown"
+            horizon_sources[src] = horizon_sources.get(src, 0) + 1
         horizons.append({
+            "sources": horizon_sources,
             "k": key, "n": len(vals),
             "hit": (sum(1 for v in vals if v > 0) / len(vals)) if vals else None,
             "avgr": (sum(vals) / len(vals)) if vals else None,
@@ -1085,19 +1117,21 @@ def summary(conn: sqlite3.Connection, *, tf: str | None = None,
         o = outcomes.get(r["id"], {})
         if r["voided_at"]:
             status = "void"
+        elif r["direction"] != "LONG":
+            status = "not_applicable"
         elif "H2" in o:
             status = "resolved"
         else:
             status = "inprogress" if o else "pending"
-        r2 = o.get("H2")
+        r2 = o.get("H2") if r["direction"] == "LONG" else None
         view.append({
             "id": r["id"], "ts": r["ts"], "sym": r["symbol"], "tf": r["timeframe"],
-            "dir": "long" if r["direction"] == "LONG" else "exit",
+            "dir": {"LONG": "long", "EXIT": "exit", "NEUTRAL": "neutral"}.get(r["direction"], "unknown"),
             "score": round(float(r["composite"] or 0), 1),
             "rank": r["rank_in_cycle"],
-            "h1": (float(o["H1"]["r_multiple"]) > 0 if "H1" in o else None),
-            "h2": (float(o["H2"]["r_multiple"]) > 0 if "H2" in o else None),
-            "h3": (float(o["H3"]["r_multiple"]) > 0 if "H3" in o else None),
+            "h1": (float(o["H1"]["r_multiple"]) > 0 if "H1" in o and r["direction"] == "LONG" else None),
+            "h2": (float(o["H2"]["r_multiple"]) > 0 if "H2" in o and r["direction"] == "LONG" else None),
+            "h3": (float(o["H3"]["r_multiple"]) > 0 if "H3" in o and r["direction"] == "LONG" else None),
             "r": (round(float(r2["r_multiple"]), 3) if r2 else None),
             "st": status, "source": r["source"], "void_reason": r["void_reason"],
             "origin": r["origin"],
@@ -1118,10 +1152,11 @@ def summary(conn: sqlite3.Connection, *, tf: str | None = None,
     return {
         "data_sources": sources,
         "resolved_sources": resolved_sources,
+        "vpf_state": "no_losses" if wins and not losses else "finite" if vpf is not None else "undefined",
         "kpi": {
             "hit": hit,
             "exp": (round(exp, 3) if exp is not None else None),
-            "vpf": (round(vpf, 2) if isinstance(vpf, float) and math.isfinite(vpf) else vpf),
+            "vpf": (round(vpf, 2) if vpf is not None and math.isfinite(vpf) else None),
             "ic": ic,
             "ic_median": ic_block["median"],
             "sig": sig,
@@ -1143,6 +1178,35 @@ def summary(conn: sqlite3.Connection, *, tf: str | None = None,
 # --------------------------------------------------------------------------- #
 # Audit trail — every control action, server-side and durable
 # --------------------------------------------------------------------------- #
+AUDIT_SCOPES: dict[str, tuple[str, ...]] = {
+    "control": (
+        "paper.halt",
+        "paper.resume",
+        "paper.order.auto",
+        "exec.mode",
+        "exec.symbol_mode",
+        "journal.backfill",
+        "journal.void",
+        "journal.msi_baseline",
+        "journal.digest",
+        "errors.clear",
+        "errors.selftest",
+        "diagnostics.run",
+        "devsuite.run",
+        "signal.review",
+        "signal_intelligence.export",
+        "signal_intelligence.drift.schedule",
+        "signal_intelligence.drift.export",
+        "signal_intelligence.drift.run",
+        "signal_intelligence.drift.review",
+    ),
+    "preview": (
+        "risk.whatif",
+        "portfolio.allocate",
+    ),
+}
+
+
 def audit_record(conn: sqlite3.Connection, action: str, *, actor: str = "api",
                  result: str = "ok", detail: Any = None,
                  client: str | None = None) -> int:
@@ -1157,18 +1221,36 @@ def audit_record(conn: sqlite3.Connection, action: str, *, actor: str = "api",
     return int(cur.lastrowid or 0)
 
 
-def audit_list(conn: sqlite3.Connection, *, limit: int = 50, action: str | None = None,
-               since: int | None = None) -> list[dict[str, Any]]:
+def _audit_where(
+    *,
+    action: str | None = None,
+    scope: str | None = None,
+    since: int | None = None,
+) -> tuple[str, list[Any]]:
     where: list[str] = ["1=1"]
     params: list[Any] = []
     if action:
         where.append("action=?")
         params.append(action)
+    elif scope == "control":
+        placeholders = ",".join("?" for _ in AUDIT_SCOPES["preview"])
+        where.append(f"action NOT IN ({placeholders})")
+        params.extend(AUDIT_SCOPES["preview"])
+    elif scope == "preview":
+        placeholders = ",".join("?" for _ in AUDIT_SCOPES["preview"])
+        where.append(f"action IN ({placeholders})")
+        params.extend(AUDIT_SCOPES["preview"])
     if since:
         where.append("ts>=?")
         params.append(int(since))
+    return " AND ".join(where), params
+
+
+def audit_list(conn: sqlite3.Connection, *, limit: int = 50, action: str | None = None,
+               scope: str | None = None, since: int | None = None) -> list[dict[str, Any]]:
+    where_sql, params = _audit_where(action=action, scope=scope, since=since)
     rows = conn.execute(
-        f"""SELECT * FROM audit_log WHERE {' AND '.join(where)}
+        f"""SELECT * FROM audit_log WHERE {where_sql}
             ORDER BY ts DESC, id DESC LIMIT ?""",
         [*params, max(1, min(limit, 500))]).fetchall()
     out = []
@@ -1182,9 +1264,23 @@ def audit_list(conn: sqlite3.Connection, *, limit: int = 50, action: str | None 
     return out
 
 
-def audit_counts(conn: sqlite3.Connection) -> dict[str, int]:
-    return {r["action"]: r["n"] for r in conn.execute(
-        "SELECT action, COUNT(*) AS n FROM audit_log GROUP BY action ORDER BY n DESC")}
+def audit_total(conn: sqlite3.Connection, *, action: str | None = None,
+                scope: str | None = None, since: int | None = None) -> int:
+    where_sql, params = _audit_where(action=action, scope=scope, since=since)
+    row = conn.execute(
+        f"SELECT COUNT(*) AS n FROM audit_log WHERE {where_sql}",
+        params,
+    ).fetchone()
+    return int(row["n"] or 0) if row is not None else 0
+
+
+def audit_counts(conn: sqlite3.Connection, *, since: int | None = None) -> dict[str, int]:
+    where = "WHERE ts>=?" if since else ""
+    params: list[Any] = [int(since)] if since else []
+    return {r["action"]: int(r["n"]) for r in conn.execute(
+        f"SELECT action, COUNT(*) AS n FROM audit_log {where} GROUP BY action ORDER BY n DESC",
+        params,
+    )}
 
 
 # --------------------------------------------------------------------------- #

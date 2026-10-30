@@ -13,6 +13,7 @@ from fastapi import APIRouter, HTTPException, Request
 
 import install_api
 import install_wizard
+from runtime_settings import effective_values
 
 ROOT = Path(__file__).resolve().parents[1]
 AUDIT = Path(os.getenv("NBX_OPERATIONS_AUDIT") or Path(__file__).with_name("operations-audit.jsonl"))
@@ -23,11 +24,11 @@ router = APIRouter(prefix="/api/operations", tags=["owner operations"])
 
 
 def _paths() -> tuple[Path, Path, Path, Path]:
-    values = install_api.read_managed()
-    export = Path(values.get("NBX_EXPORT_DIR") or ROOT / "exports").resolve()
-    journal = Path(values.get("NBX_JOURNAL_DB") or ROOT / "server" / "journal.db").resolve()
-    auth = Path(values.get("NBX_AUTH_DB") or ROOT / "server" / "auth.db").resolve()
-    live = Path(values.get("NBX_LIVE_DB") or ROOT / "server" / "live_execution.db").resolve()
+    values = effective_values()
+    export = Path(values["NBX_EXPORT_DIR"]).resolve()
+    journal = Path(values["NBX_JOURNAL_DB"]).resolve()
+    auth = Path(values["NBX_AUTH_DB"]).resolve()
+    live = Path(values["NBX_LIVE_DB"]).resolve()
     return export / "backups", journal, auth, live
 
 
@@ -88,9 +89,15 @@ def _helper(action: str) -> dict[str, Any]:
 def status(request: Request):
     install_api.require_owner(request)
     helper_ready = bool(HELPER) and Path(HELPER).is_file()
+    backup_dir, journal, auth, live = _paths()
     return {"ok": True, "archives": _archives(), "helper_available": helper_ready,
             "actions": ["backup", "restore", "restart"],
-            "helper_protocol": install_wizard.PROTOCOL}
+            "helper_protocol": install_wizard.PROTOCOL,
+            "restore_available": False,
+            "restore_reason": "online-restore-disabled; stop the service and use the offline CLI",
+            "path_source": "effective-running-process",
+            "backup_directory": str(backup_dir),
+            "databases": {"journal": str(journal), "auth": str(auth), "live": str(live)}}
 
 
 @router.post("/backup")
@@ -108,23 +115,18 @@ def backup(request: Request):
 
 @router.post("/restore")
 def restore(payload: dict, request: Request):
-    user = install_api.require_owner(request, csrf=True)
+    install_api.require_owner(request, csrf=True)
     if set(payload) != {"archive", "confirmation"}:
         raise HTTPException(status_code=422, detail="archive and confirmation are required")
     name = str(payload["archive"])
     if not _ARCHIVE.fullmatch(name) or payload["confirmation"] != f"RESTORE {name}":
         raise HTTPException(status_code=422, detail="invalid archive or confirmation")
-    backup_dir, journal, auth, live = _paths()
-    archive = (backup_dir / name).resolve()
-    if archive.parent != backup_dir.resolve() or not archive.is_file():
-        raise HTTPException(status_code=404, detail="backup not found")
-    try:
-        _state_backup().restore_backup(archive, journal, auth, live, force=True)
-        _audit(user.username, "restore", True, name)
-        return {"ok": True, "restart_required": True}
-    except Exception as exc:
-        _audit(user.username, "restore", False, type(exc).__name__)
-        raise HTTPException(status_code=422, detail="backup validation or restore failed") from exc
+    # Replacing SQLite files while the API/writers are alive is unsafe. An
+    # exact confirmation is necessary, but never a substitute for quiescence.
+    raise HTTPException(status_code=409, detail={
+        "error": "online-restore-disabled",
+        "note": "Stop the service and all writers; use state_backup.py restore --force --offline.",
+    })
 
 
 @router.post("/apply-config")

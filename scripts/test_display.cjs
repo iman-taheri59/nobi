@@ -101,7 +101,7 @@ w.NBX={core:{engine:{metrics:{}},api:{
   getPaperPositions:async()=>({positions:[{symbol:'BTCIRT',entry_price:100,last_price:110,qty:1e-7,state:'OPEN'}]}),
   getPaperMetrics:async()=>({metrics:{equity,start_equity:1000}}),
   getBackendRiskState:async()=>({openHeat:0}),
-  postPaperOrder:p=>{sent.push(p);return new Promise(()=>{});}
+  postPaperOrder:async p=>{sent.push(p);return {ok:true,position:{id:"fixture",client_order_id:"fixture"}};}
 }}};
 // Expose the real private renderer only in this test, with automatic network boot disabled.
 const app=fs.readFileSync('nbx-app.js','utf8')
@@ -116,7 +116,7 @@ w.eval(app);
     check(w.eval('positions[0].size'),1e-7);
     equity=null;await w.__displayTest.refreshPaperState();check(w.document.getElementById('kEquity').textContent,'—');
     equity=0;await w.__displayTest.refreshPaperState();assert.ok(w.document.getElementById('kEquity').textContent.includes(lang==='fa'?'۰':'0'));
-    w.eval(`manual.sym='BTCUSDT';manual.side='buy';manual.amount=2;manual.stop=9;manual.price=12.5;submitManual();`);
+    await w.eval(`manual.sym='BTCUSDT';manual.side='buy';manual.amount=2;manual.stop=9;manual.price=12.5;submitManual();`);
     const payload=sent[sent.length-1];
     assert.deepEqual(JSON.parse(JSON.stringify(payload)), {symbol:'BTCUSDT',side:'buy',qty:2,price:12.5,stop:9,source:'MANUAL',size_quote:25});
   }

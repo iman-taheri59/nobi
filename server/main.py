@@ -13,14 +13,18 @@ Run:
     pip install -r requirements.txt
     uvicorn main:app --port 8000 --reload
 """
+
 from __future__ import annotations
 
 # (notify.TOKEN, security.API_TOKEN, ws_execution.WS_URL are all
 # read at import time, so a later load would be a silent no-op)
 import asyncio
+import base64
 import json
 import logging
+import math
 import os
+import sqlite3
 import sys
 import time
 from contextlib import asynccontextmanager, suppress
@@ -60,6 +64,7 @@ import reference_feed
 import setup_api
 import signal_cycles
 import signal_drift
+import signal_evidence_view
 import signal_intelligence
 from adaptive import AdaptiveError as AdaptiveRefusal
 from backtest import SLIP_BPS, grid_search, run_and_save
@@ -125,8 +130,11 @@ async def tick_once(broker=None) -> list:
     await broker.evaluate_positions()
     closed = [p for p in broker.positions.values() if p.state == "CLOSED" and p.id in before]
     if closed:
-        log.info("tick closed %d position(s): %s", len(closed),
-                 ", ".join(f"{p.symbol}({p.close_reason})" for p in closed))
+        log.info(
+            "tick closed %d position(s): %s",
+            len(closed),
+            ", ".join(f"{p.symbol}({p.close_reason})" for p in closed),
+        )
     return closed
 
 
@@ -153,8 +161,9 @@ async def journal_scan(tf: str = "15m", *, scan_cycle_id: str | None = None) -> 
         if ts > time.time():
             continue
         enriched = {**snap, "tf": tf, "config_hash": signal_journal.CONFIG_HASH}
-        row = signal_journal.make_row(enriched, ts, rank=rank,
-                                      origin="live", source=snap.get("data_source"))
+        row = signal_journal.make_row(
+            enriched, ts, rank=rank, origin="live", source=snap.get("data_source")
+        )
         if row is not None:
             rows.append(row)
     if not rows:
@@ -162,27 +171,40 @@ async def journal_scan(tf: str = "15m", *, scan_cycle_id: str | None = None) -> 
     conn = signal_journal.connect()
     try:
         return signal_journal.insert_rows(
-            conn, rows, scan_cycle_id=scan_cycle_id,
+            conn,
+            rows,
+            scan_cycle_id=scan_cycle_id,
             engine_version=signal_cycles.ENGINE_VERSION if scan_cycle_id else None,
         )
     finally:
         conn.close()
 
 
-def journal_void(active: list[str] | None = None) -> int:
-    """Freeze predictions for symbols that are no longer tradeable."""
-    universe = active or [u["symbol"] for u in _cached["universe"]]
-    if not universe:
+def journal_void(active: list[str] | None = None, *, authoritative: bool = False) -> int:
+    """Only an explicitly authoritative complete market list may retire evidence.
+
+    The cached scan universe is a top-60 ranking, NOT a delisting feed. Absence
+    there cannot justify an irreversible VOID. Automatic retirement is suspended
+    until a complete authoritative lifecycle feed/grace policy is available.
+    Historical VOID records are deliberately not rewritten here.
+    """
+    if not authoritative or not active:
         return 0
     conn = signal_journal.connect()
     try:
-        return signal_journal.mark_void(conn, universe)
+        return signal_journal.mark_void(conn, active)
     finally:
         conn.close()
 
 
-def audit(action: str, *, actor: str = "api", result: str = "ok",
-          detail=None, request: Request | None = None) -> int | None:
+def audit(
+    action: str,
+    *,
+    actor: str = "api",
+    result: str = "ok",
+    detail=None,
+    request: Request | None = None,
+) -> int | None:
     """Record a control action. An audit failure must never break the action."""
     try:
         client_ip = None
@@ -190,9 +212,9 @@ def audit(action: str, *, actor: str = "api", result: str = "ok",
             client_ip = request.client.host if request.client else None
         conn = signal_journal.connect()
         try:
-            return signal_journal.audit_record(conn, action, actor=actor,
-                                               result=result, detail=detail,
-                                               client=client_ip)
+            return signal_journal.audit_record(
+                conn, action, actor=actor, result=result, detail=detail, client=client_ip
+            )
         finally:
             conn.close()
     except Exception as e:
@@ -299,7 +321,7 @@ async def _digest_loop() -> None:
             raise
         except Exception as e:  # the scheduler must survive
             log.warning("digest failed: %s", e)
-            _last_digest[0] = time.time()      # back off a full interval
+            _last_digest[0] = time.time()  # back off a full interval
         await asyncio.sleep(min(300, max(30, interval / 10)))
 
 
@@ -332,9 +354,13 @@ async def lifespan(_app: FastAPI):
     if problem:
         raise RuntimeError(problem)
     await client.connect()
-    log.info("security: auth mode=%s, cors=%s, trusted proxies=%s",
-             auth_mode(), _CORS_ORIGINS or "same-origin",
-             ", ".join(str(n) for n in trusted_proxies()) or "none")
+    log.info(
+        "security: auth mode=%s, cors=%s, trusted proxies=%s",
+        auth_mode(),
+        _CORS_ORIGINS or "same-origin",
+        ", ".join(str(n) for n in trusted_proxies()) or "none",
+    )
+
     # A background task that dies silently is invisible: the dashboard simply
     # stops updating and nobody knows why. Wrap each one so the death is logged
     # and the other loops keep running.
@@ -346,8 +372,10 @@ async def lifespan(_app: FastAPI):
                 raise
             except Exception as exc:
                 log.exception("background task %s crashed", name)
-                errorlog.capture(source=f"task.{name}", exc=exc,
-                                 message=f"background task '{name}' crashed")
+                errorlog.capture(
+                    source=f"task.{name}", exc=exc, message=f"background task '{name}' crashed"
+                )
+
         return asyncio.create_task(runner())
 
     # Market-wide socket channels are worth having even with no position open:
@@ -471,6 +499,7 @@ async def require_login_for_api(request: Request, call_next):
 def security_token_ok(request: Request) -> bool:
     """Read the shared secret lazily so tests can set it after import."""
     from security import token_valid
+
     return token_valid(request)
 
 
@@ -491,7 +520,8 @@ async def budget_api_reads(request: Request, call_next):
     if not read_rate_ok(client_host(request)):
         return JSONResponse(
             {"detail": f"read rate limit: {READ_RATE_LIMIT} requests/minute"},
-            status_code=429, headers={"Retry-After": "60"},
+            status_code=429,
+            headers={"Retry-After": "60"},
         )
     return await call_next(request)
 
@@ -506,7 +536,9 @@ async def no_cache_queue_clocks(request: Request, call_next):
 
 TIMEFRAMES = ["15m", "1h", "4h", "D"]
 client = NobitexClient()
-EQUITY = float(os.getenv("NBX_EQUITY_USD", str(DEFAULT_EQUITY_USD)))  # 1.0.5: one default, from fees.py
+EQUITY = float(
+    os.getenv("NBX_EQUITY_USD", str(DEFAULT_EQUITY_USD))
+)  # 1.0.5: one default, from fees.py
 
 
 def risk_config_from_env() -> RiskConfig:
@@ -619,6 +651,7 @@ def _apply_stream_stat(symbol: str, st) -> None:
     except Exception as e:  # a stats frame must never break the app
         log.debug("stream stats apply failed for %s: %s", symbol, e)
 
+
 _cached: dict = {
     "universe": [],
     "universe_ts": 0.0,
@@ -682,12 +715,16 @@ def apply_vetoes(composite: float, direction: str, vetoes: list[str]) -> tuple[f
     # would be decoration.
     capped = round(min(composite, cap), 1)
     new_dir = "EXIT" if severe else ("NEUTRAL" if direction == "LONG" else direction)
-    return capped, new_dir, {
-        "veto_cap": cap,
-        "veto_severe": severe,
-        "uncapped_composite": round(composite, 1),
-        "uncapped_direction": direction,
-    }
+    return (
+        capped,
+        new_dir,
+        {
+            "veto_cap": cap,
+            "veto_severe": severe,
+            "uncapped_composite": round(composite, 1),
+            "uncapped_direction": direction,
+        },
+    )
 
 
 def composite_score(ta: float, liq: float, fa: float | None) -> tuple[float, str]:
@@ -713,10 +750,14 @@ def _short_proc_error(exc: Exception) -> str:
 
 #: Sent to the dashboard whenever a number cannot be fetched. The UI renders it
 #: in an error style; it never fills the gap with a fabricated value.
-UPSTREAM_MSG_FA = ("دسترسی به سرور نوبیتکس امکان‌پذیر نیست؛ دادهٔ زنده دریافت نشد. "
-                   "اتصال شبکه یا فیلتر را بررسی کن و دوباره تلاش کن.")
-UPSTREAM_MSG_EN = ("The Nobitex server is unreachable; no live data was received. "
-                   "Check the network or filtering and try again.")
+UPSTREAM_MSG_FA = (
+    "دسترسی به سرور نوبیتکس امکان‌پذیر نیست؛ دادهٔ زنده دریافت نشد. "
+    "اتصال شبکه یا فیلتر را بررسی کن و دوباره تلاش کن."
+)
+UPSTREAM_MSG_EN = (
+    "The Nobitex server is unreachable; no live data was received. "
+    "Check the network or filtering and try again."
+)
 
 
 def upstream_error(kind: str, detail: str = "") -> dict:
@@ -769,8 +810,10 @@ def pair_premium_block(rows: list[dict]) -> dict:
         "per_base": {},
         "counts": {"pairs": 0, "outliers": 0, "missing_legs": 0},
         "median_bp": None,
-        "note": ("shadow measurement: a coin's own premium is reported, never fed "
-                 "into a score; adopting it needs evidence first (ADR-0021)"),
+        "note": (
+            "shadow measurement: a coin's own premium is reported, never fed "
+            "into a score; adopting it needs evidence first (ADR-0021)"
+        ),
     }
     if not usdt_irt:
         out["reason"] = "no USDTIRT quote in this scan"
@@ -798,8 +841,7 @@ def pair_premium_block(rows: list[dict]) -> dict:
         except (TypeError, ValueError, ZeroDivisionError):
             out["counts"]["missing_legs"] += 1
             continue
-        row = {"bp": round(pct * 100.0, 1), "pct": round(pct, 3),
-               "irt": irt, "usdt": usd}
+        row = {"bp": round(pct * 100.0, 1), "pct": round(pct, 3), "irt": irt, "usdt": usd}
         if abs(pct) > PAIR_PREMIUM_LIMIT_PCT:
             # Named, kept, and left out of the median: a 40 % "premium" is a bad
             # quote, and letting it in would describe the whole board with it.
@@ -852,8 +894,7 @@ async def _fx(symbol: str = "BTCIRT") -> Rate | None:
     not substitute 1.0 or fall back to the untouched amount.
     """
     if not (symbol or "").upper().endswith("IRT"):
-        return Rate(toman_per_usdt=1.0, as_of=time.time(), source="usdt-quote",
-                    max_age_s=86_400.0)
+        return Rate(toman_per_usdt=1.0, as_of=time.time(), source="usdt-quote", max_age_s=86_400.0)
     broker = get_broker(EQUITY, client, risk)
     rate = await broker._fx()
     if rate is not None:
@@ -867,8 +908,12 @@ async def _fx(symbol: str = "BTCIRT") -> Rate | None:
     # Dated by when the snapshot was taken, not by when it is read. Stamping
     # `time.time()` here made a universe loaded an hour ago look like a rate
     # read a millisecond ago — the same lie as the position row's `as_of=now`.
-    rate = Rate(toman_per_usdt=px, as_of=float(_cached.get("universe_ts") or 0.0),
-                source="universe", max_age_s=float(UNIVERSE_TTL_S) * 2)
+    rate = Rate(
+        toman_per_usdt=px,
+        as_of=float(_cached.get("universe_ts") or 0.0),
+        source="universe",
+        max_age_s=float(UNIVERSE_TTL_S) * 2,
+    )
     return None if rate.is_stale else rate
 
 
@@ -933,6 +978,7 @@ def _upstream_snapshot() -> dict:
 @app.get("/api/cache/stats", dependencies=[Depends(install_api.require_owner)])
 async def cache_stats():
     from candle_cache import CANDLE_CACHE
+
     return CANDLE_CACHE.stats() | {"ok": True, "security": {"auth_mode": auth_mode()}}
 
 
@@ -950,11 +996,14 @@ async def health():
         "version": app.version,
         "ts": datetime.now(UTC).isoformat(),
         "upstream": _upstream_snapshot(),
-        "auth": {"mode": auth_mode(), "token_required": bool(API_TOKEN),
-                 "cors_origins": _CORS_ORIGINS,
-                 # Whether the install has accounts decides how the API behaves;
-                 # a monitor reading this should not have to guess.
-                 "accounts": auth.any_users()},
+        "auth": {
+            "mode": auth_mode(),
+            "token_required": bool(API_TOKEN),
+            "cors_origins": _CORS_ORIGINS,
+            # Whether the install has accounts decides how the API behaves;
+            # a monitor reading this should not have to guess.
+            "accounts": auth.any_users(),
+        },
         "provenance": provenance(),
         # ADR-0024: whether the evidence window is being filled by the process or
         # by a browser tab. "off" here plus a rising `days` means a tab is doing it.
@@ -997,8 +1046,9 @@ async def _options_loop():
     # Good snapshots refresh hourly, failures retry every five minutes.
     while True:
         await _load_options()
-        await asyncio.sleep(nobitex_metadata.RETRY if nobitex_metadata.CACHE.error
-                            else nobitex_metadata.TTL)
+        await asyncio.sleep(
+            nobitex_metadata.RETRY if nobitex_metadata.CACHE.error else nobitex_metadata.TTL
+        )
 
 
 async def _load_universe_locked():
@@ -1019,8 +1069,15 @@ async def _load_universe_locked():
             vol = float(d.get("volumeDst") or d.get("valueDst") or d.get("24h_volume") or 0)
             chg = float(d.get("dayChange") or 0)
             if sym_n and last > 0:
-                rows.append({"symbol": sym_n, "last": last, "vol24": vol,
-                             "change24": chg, "closed": bool(d.get("isClosed"))})
+                rows.append(
+                    {
+                        "symbol": sym_n,
+                        "last": last,
+                        "vol24": vol,
+                        "change24": chg,
+                        "closed": bool(d.get("isClosed")),
+                    }
+                )
         rows.sort(key=lambda x: x["vol24"], reverse=True)
         _cached["universe"] = rows[:60]
         closed = sorted(r["symbol"] for r in rows if r.get("closed"))
@@ -1029,16 +1086,23 @@ async def _load_universe_locked():
         _CACHE_CLOSED.update(closed)
         try:
             import paper_trading as _pt
+
             _pt.market_closed_hook = lambda sym: norm(sym) in _CACHE_CLOSED
         except Exception:  # the hook is optional
             pass
         if closed:
-            log.info("universe: %d market(s) reporting isClosed: %s", len(closed), ", ".join(closed[:6]))
+            log.info(
+                "universe: %d market(s) reporting isClosed: %s", len(closed), ", ".join(closed[:6])
+            )
         _cached["universe_ts"] = time.time()
         usdtirt = next((r for r in rows if r["symbol"] == "USDTIRT"), None)
         _cached["premium"] = usdtirt["last"] if usdtirt else None
         _cached["premium_pct"] = _premium_pct(rows)
-        log.info("universe: %d rows loaded (premium %s%%)", len(_cached["universe"]), _cached["premium_pct"])
+        log.info(
+            "universe: %d rows loaded (premium %s%%)",
+            len(_cached["universe"]),
+            _cached["premium_pct"],
+        )
     except (ClientError, UpstreamUnavailable) as e:
         log.warning("load_universe: %s", e)
         _cached["universe"] = []
@@ -1053,10 +1117,15 @@ async def universe():
         await load_universe()
         age = time.time() - _cached["universe_ts"] if _cached["universe_ts"] else 0.0
     if not _cached["universe"]:
-        return {**upstream_error("universe", _cached.get("universe_error") or ""),
-                "ts": datetime.now(UTC).isoformat(),
-                "age_s": round(age or 0.0, 1),
-                "count": 0, "symbols": [], "premium_usdtirt": None, "premium_pct": None}
+        return {
+            **upstream_error("universe", _cached.get("universe_error") or ""),
+            "ts": datetime.now(UTC).isoformat(),
+            "age_s": round(age or 0.0, 1),
+            "count": 0,
+            "symbols": [],
+            "premium_usdtirt": None,
+            "premium_pct": None,
+        }
     return {
         "ok": True,
         "ts": datetime.now(UTC).isoformat(),
@@ -1097,6 +1166,7 @@ async def rescan(tf: str = "15m", top: int = 40):
     #: ago, and `age_bars` is how the card finds out. Kept per symbol so one dead
     #: feed cannot hide behind the others.
     bars_seen: dict[str, float] = {}
+
     def _composite(ta: float, liq: float, fa: float | None) -> tuple[float, str]:
         return composite_score(ta, liq, fa)
 
@@ -1123,6 +1193,7 @@ async def rescan(tf: str = "15m", top: int = 40):
             sig = ta_score(df)
             vol = u["vol24"]
             import math
+
             liq = round(min(100, max(0, 50 + math.log10(vol + 1) * 4)), 0)
             composite, basis = _composite(sig["score"], liq, None)
             out[u["symbol"]] = {
@@ -1173,9 +1244,7 @@ async def rescan(tf: str = "15m", top: int = 40):
                 }
                 snap["fa_score"] = fa.score
                 snap["fa_fresh"] = fa.fresh
-                raw_composite, basis = _composite(
-                    snap["score"], snap["liquidity_score"], fa.score
-                )
+                raw_composite, basis = _composite(snap["score"], snap["liquidity_score"], fa.score)
                 # Vetoes are not decoration: they cap the score and the verdict,
                 # and the caps travel with the row so the UI can explain them.
                 capped, new_dir, veto_meta = apply_vetoes(
@@ -1197,8 +1266,9 @@ async def rescan(tf: str = "15m", top: int = 40):
     # ADR-0025: three states, not two. `unmapped` is symbols no provider knows;
     # counting them as `fallback` (let alone `live`) is how "39 symbols scored
     # fundamentally" got assembled out of neutral defaults.
-    unmapped = sum(1 for snap in out.values()
-                   if (((snap.get("fa") or {}).get("profile")) == "none"))
+    unmapped = sum(
+        1 for snap in out.values() if (((snap.get("fa") or {}).get("profile")) == "none")
+    )
     _cached["fa_coverage"] = {
         "scored": len(scored),
         "live": len(live),
@@ -1228,22 +1298,30 @@ async def rescan(tf: str = "15m", top: int = 40):
         ranked_now = sorted(out.values(), key=lambda r: r.get("composite") or 0, reverse=True)
         pre = await gate_prefetch(ranked_now)
         if pre.get("ok"):
-            log.info("gates: prefetched %d book(s) (%d failed, %d fresh) on %s",
-                     pre["ok"], pre["failed"], pre["fresh"], tf)
-    except Exception as e:      # a prefetch problem must never break a scan
+            log.info(
+                "gates: prefetched %d book(s) (%d failed, %d fresh) on %s",
+                pre["ok"],
+                pre["failed"],
+                pre["fresh"],
+                tf,
+            )
+    except Exception as e:  # a prefetch problem must never break a scan
         log.warning("gate prefetch failed: %s", e)
     try:
         judged = gate_write(tf)
         if judged:
             log.info("gates: %d shadow verdict(s) on %s", judged, tf)
-    except Exception as e:      # the ledger must never break a scan
+    except Exception as e:  # the ledger must never break a scan
         log.warning("gate ledger write failed: %s", e)
     try:
         ranked_now = sorted(out.values(), key=lambda r: r.get("composite") or 0, reverse=True)
         linked_block = gates_block(ranked_now, tf)
         signal_cycles.complete(
-            cycle_id, snapshots=out, verdicts=linked_block.get("verdicts") or {},
-            skipped=skipped, source=_scan_source(ranked_now),
+            cycle_id,
+            snapshots=out,
+            verdicts=linked_block.get("verdicts") or {},
+            skipped=skipped,
+            source=_scan_source(ranked_now),
         )
     except Exception as e:
         signal_cycles.abandon(cycle_id, str(e))
@@ -1270,7 +1348,9 @@ async def signals(tf: str = Query("15m", pattern="^(15m|1h|4h|D)$")):
     scan forever.
     """
     have = bool(_cached["signals_by_tf"].get(tf))
-    age = time.time() - _cached["signals_ts"].get(tf, 0.0) if _cached["signals_ts"].get(tf) else None
+    age = (
+        time.time() - _cached["signals_ts"].get(tf, 0.0) if _cached["signals_ts"].get(tf) else None
+    )
     stale = (not have) or age is None or age > SIGNALS_TTL_S
 
     if not have:
@@ -1287,20 +1367,31 @@ async def signals(tf: str = Query("15m", pattern="^(15m|1h|4h|D)$")):
         # No live candles ⇒ no scores. Returning an empty list alone would look
         # like "nothing is interesting today"; say which wall was hit.
         skipped = _cached.get("scan_skipped") or []
-        why = (f"{len(skipped)}/{len(_cached['universe'])} symbol(s) had no candles"
-               if _cached["universe"] else (_cached.get("universe_error") or "no universe"))
-        return {**upstream_error("signals", why),
-                "ts": datetime.now(UTC).isoformat(), "tf": tf, "count": 0,
-                "age_s": round(age or 0.0, 1), "stale": stale, "refreshing": False,
-                "scored": [], "premium_usdtirt": _cached["premium"], "premium_pct": _cached["premium_pct"],
-                "fa_coverage": _cached.get("fa_coverage"),
-                "pair_premium": pair_premium_block([]),
-                # No scores is not the same as no candles: the block still says
-                # which wall was hit, with a named reason.
-                "freshness": scan_freshness_block(_cached.get("signals_bars", {}).get(tf) or {}, tf),
-                # ADR-0022 stage 1: with no rows there is nothing to judge, and a
-                # block saying so is better than a missing key.
-                "gates": gates_block([], tf)}
+        why = (
+            f"{len(skipped)}/{len(_cached['universe'])} symbol(s) had no candles"
+            if _cached["universe"]
+            else (_cached.get("universe_error") or "no universe")
+        )
+        return {
+            **upstream_error("signals", why),
+            "ts": datetime.now(UTC).isoformat(),
+            "tf": tf,
+            "count": 0,
+            "age_s": round(age or 0.0, 1),
+            "stale": stale,
+            "refreshing": False,
+            "scored": [],
+            "premium_usdtirt": _cached["premium"],
+            "premium_pct": _cached["premium_pct"],
+            "fa_coverage": _cached.get("fa_coverage"),
+            "pair_premium": pair_premium_block([]),
+            # No scores is not the same as no candles: the block still says
+            # which wall was hit, with a named reason.
+            "freshness": scan_freshness_block(_cached.get("signals_bars", {}).get(tf) or {}, tf),
+            # ADR-0022 stage 1: with no rows there is nothing to judge, and a
+            # block saying so is better than a missing key.
+            "gates": gates_block([], tf),
+        }
     return {
         "ok": True,
         "ts": datetime.now(UTC).isoformat(),
@@ -1333,8 +1424,14 @@ async def candles(symbol: str, tf: str = Query("15m", pattern="^(15m|1h|4h|D)$")
     try:
         rows, src = await client.get_candles_ex(symbol, tf, max(60, min(count, 2000)))
     except UpstreamUnavailable as e:
-        return {**upstream_error("candles", str(e)),
-                "symbol": symbol.upper(), "tf": tf, "count": 0, "rows": [], "rows_expected": 0}
+        return {
+            **upstream_error("candles", str(e)),
+            "symbol": symbol.upper(),
+            "tf": tf,
+            "count": 0,
+            "rows": [],
+            "rows_expected": 0,
+        }
     # The series ends where the last REST poll left it; the socket publishes the
     # same candle every ~10 s. Refreshing only the last row keeps the chart (and
     # the scan that reads this series) on the market's clock, not the poll's.
@@ -1428,8 +1525,12 @@ def book_record(sym: str, stats: dict, *, book_currency_irt: bool) -> dict:
         depth = (stats["total_depth"] / rate) if rate else None
     else:
         depth = stats["total_depth"]
-    return {"spread_bps": stats["spread_bps"], "depth_usd": depth,
-            "mid": stats["mid"], "at": time.time()}
+    return {
+        "spread_bps": stats["spread_bps"],
+        "depth_usd": depth,
+        "mid": stats["mid"],
+        "at": time.time(),
+    }
 
 
 def gate_prefetch_n(value: int | str | None = None) -> int:
@@ -1493,16 +1594,19 @@ async def _scan_loop_tick(tf: str) -> bool:
     except Exception as e:
         ok = False
         log.warning("scheduled scan failed: %s", e)
-        errorlog.capture(source="task.scan-loop", exc=e,
-                         message="scheduled scan failed")
+        errorlog.capture(source="task.scan-loop", exc=e, message="scheduled scan failed")
     prev = _cached.get("scan_loop") or {}
-    _cached["scan_loop"] = {**prev, "last_at": started, "last_ok": ok,
-                            "last_duration_s": round(time.time() - started, 1),
-                            "runs": int(prev.get("runs") or 0) + 1,
-                            "tf": tf, "last_completed_at": time.time(),
-                            "last_scored": len(_cached.get("signals_by_tf", {}).get(tf) or {}),
-                            "last_freshness": scan_freshness_block(
-                                _cached.get("signals_bars", {}).get(tf) or {}, tf)}
+    _cached["scan_loop"] = {
+        **prev,
+        "last_at": started,
+        "last_ok": ok,
+        "last_duration_s": round(time.time() - started, 1),
+        "runs": int(prev.get("runs") or 0) + 1,
+        "tf": tf,
+        "last_completed_at": time.time(),
+        "last_scored": len(_cached.get("signals_by_tf", {}).get(tf) or {}),
+        "last_freshness": scan_freshness_block(_cached.get("signals_bars", {}).get(tf) or {}, tf),
+    }
     return ok
 
 
@@ -1513,27 +1617,34 @@ async def _scan_loop() -> None:
     except ValueError as e:
         # Refuse loudly and stay off. A bad setting must not stop the service:
         # `/api/signals` still scans on demand, exactly as before.
-        log.error("scan loop refused: %s (NBX_SCAN_LOOP_S must be 0 or at least %d)",
-                  e, SCAN_LOOP_MIN_S)
-        errorlog.capture(source="task.scan-loop", exc=e,
-                         message="scheduled scan refused")
-        _cached["scan_loop"] = {"enabled": False, "interval_s": None,
-                                "last_at": None, "error": str(e), "runs": 0}
+        log.error(
+            "scan loop refused: %s (NBX_SCAN_LOOP_S must be 0 or at least %d)", e, SCAN_LOOP_MIN_S
+        )
+        errorlog.capture(source="task.scan-loop", exc=e, message="scheduled scan refused")
+        _cached["scan_loop"] = {
+            "enabled": False,
+            "interval_s": None,
+            "last_at": None,
+            "error": str(e),
+            "runs": 0,
+        }
         return
-    _cached["scan_loop"] = {"enabled": bool(every), "interval_s": every or None,
-                            "last_at": None, "runs": 0}
+    _cached["scan_loop"] = {
+        "enabled": bool(every),
+        "interval_s": every or None,
+        "last_at": None,
+        "runs": 0,
+    }
     if not every:
         return
     tf = os.getenv("NBX_SCAN_LOOP_TF", "15m")
-    log.info("scan loop: every %d s on %s (the ledger no longer needs an open tab)",
-             every, tf)
+    log.info("scan loop: every %d s on %s (the ledger no longer needs an open tab)", every, tf)
     while True:
         await asyncio.sleep(every)
         await _scan_loop_tick(tf)
 
 
-async def gate_prefetch(ranked: list[dict], *, n: int | None = None,
-                        concurrency: int = 4) -> dict:
+async def gate_prefetch(ranked: list[dict], *, n: int | None = None, concurrency: int = 4) -> dict:
     """ADR-0023 S1 — read the top N books so the gates have something to judge.
 
     Order of the list is never touched: this fills `_cached["books"]` and returns
@@ -1572,7 +1683,7 @@ async def gate_prefetch(ranked: list[dict], *, n: int | None = None,
         async with sem:
             try:
                 raw = await asyncio.wait_for(client.get_orderbook(sym), timeout=4)
-            except Exception as e:          # one symbol must never fail the pass
+            except Exception as e:  # one symbol must never fail the pass
                 log.debug("gate prefetch %s failed: %s", sym, e)
                 return False
             stats = book_stats(raw)
@@ -1593,8 +1704,9 @@ async def gate_prefetch(ranked: list[dict], *, n: int | None = None,
             # The budget ran out. Count what actually landed, and say so: a
             # prefetch that reports ten books when four arrived is the kind of
             # number this repository writes ADRs against.
-            result["ok"] = sum(1 for s in targets if s in books
-                               and (now - float(books[s].get("at") or 0)) < 1.0)
+            result["ok"] = sum(
+                1 for s in targets if s in books and (now - float(books[s].get("at") or 0)) < 1.0
+            )
             result["timed_out"] = True
         result["failed"] = result["asked"] - result["ok"]
 
@@ -1606,8 +1718,7 @@ async def gate_prefetch(ranked: list[dict], *, n: int | None = None,
     for sym in evicted:
         books.pop(sym, None)
 
-    payload = {**result, "at": time.time(), "enabled": True, "n": want,
-               "evicted": len(evicted)}
+    payload = {**result, "at": time.time(), "enabled": True, "n": want, "evicted": len(evicted)}
     _cached["gate_prefetch"] = payload
     return payload
 
@@ -1628,21 +1739,35 @@ async def orderbook(symbol: str, limit: int = Query(8, ge=1, le=50)):
     try:
         raw = await asyncio.wait_for(client.get_orderbook(sym), timeout=6)
     except (UpstreamUnavailable, ClientError) as e:
-        return {**upstream_error("orderbook", str(e)), "symbol": sym,
-                "bids": [], "asks": [], "levels": 0}
+        return {
+            **upstream_error("orderbook", str(e)),
+            "symbol": sym,
+            "bids": [],
+            "asks": [],
+            "levels": 0,
+        }
     except TimeoutError:
-        return {**upstream_error("orderbook", "timeout"), "symbol": sym,
-                "bids": [], "asks": [], "levels": 0}
+        return {
+            **upstream_error("orderbook", "timeout"),
+            "symbol": sym,
+            "bids": [],
+            "asks": [],
+            "levels": 0,
+        }
 
     stats = book_stats(raw, limit)
     bids, asks = stats["bids"], stats["asks"]
     if not bids and not asks:
-        return {**upstream_error("orderbook", "empty book"), "symbol": sym,
-                "bids": [], "asks": [], "levels": 0}
+        return {
+            **upstream_error("orderbook", "empty book"),
+            "symbol": sym,
+            "bids": [],
+            "asks": [],
+            "levels": 0,
+        }
     best_bid, best_ask = stats["best_bid"], stats["best_ask"]
     mid, spread, spread_pct = stats["mid"], stats["spread"], stats["spread_pct"]
-    bid_depth, ask_depth, imbalance = (stats["bid_depth"], stats["ask_depth"],
-                                       stats["imbalance"])
+    bid_depth, ask_depth, imbalance = (stats["bid_depth"], stats["ask_depth"], stats["imbalance"])
 
     # ADR-0022: the shadow gate layer reads the spread and the depth this route
     # computes. ADR-0023 S1 makes the same row land here from the scan's prefetch,
@@ -1700,12 +1825,14 @@ def _signal_lookup(symbol: str, tf: str | None = None):
 
 # ---------------- Prediction journal (ADR-0012) ----------------
 @app.get("/api/journal/summary")
-async def journal_summary(tf: str | None = Query(None, pattern="^(15m|1h|4h|D)$"),
-                          symbol: str | None = None,
-                          source: str | None = Query(None, pattern="^(live|cache|synthetic)$"),
-                          origin: str | None = Query(None, pattern="^(live|backfill)$"),
-                          days: int = Query(90, ge=1, le=3650),
-                          limit: int = Query(60, ge=1, le=500)):
+async def journal_summary(
+    tf: str | None = Query(None, pattern="^(15m|1h|4h|D)$"),
+    symbol: str | None = None,
+    source: str | None = Query(None, pattern="^(live|cache|synthetic)$"),
+    origin: str | None = Query(None, pattern="^(live|backfill)$"),
+    days: int = Query(90, ge=1, le=3650),
+    limit: int = Query(60, ge=1, le=500),
+):
     """Everything the Performance page needs, plus its own provenance.
 
     `origins` separates predictions the engine issued in real time (`live`)
@@ -1714,14 +1841,22 @@ async def journal_summary(tf: str | None = Query(None, pattern="^(15m|1h|4h|D)$"
     """
     conn = signal_journal.connect()
     try:
-        payload = signal_journal.summary(conn, tf=tf, since=int(time.time()) - days * 86400,
-                                         source=source, origin=origin, limit=limit)
+        payload = signal_journal.summary(
+            conn,
+            tf=tf,
+            since=int(time.time()) - days * 86400,
+            source=source,
+            origin=origin,
+            limit=limit,
+        )
         payload["origins"] = {
-            r["origin"]: r["n"] for r in conn.execute(
-                "SELECT origin, COUNT(*) AS n FROM signal_log GROUP BY origin")
+            r["origin"]: r["n"]
+            for r in conn.execute("SELECT origin, COUNT(*) AS n FROM signal_log GROUP BY origin")
         }
-        payload["outcomes"] = conn.execute(
-            "SELECT COUNT(*) AS n FROM signal_outcomes").fetchone()["n"]
+        payload["outcomes"] = conn.execute("SELECT COUNT(*) AS n FROM signal_outcomes").fetchone()[
+            "n"
+        ]
+        payload["stage_read_only"] = True  # paired capability: old servers mutate Stage GET
         payload["db"] = str(signal_journal.DB_PATH)
         payload["generated_at"] = datetime.now(UTC).isoformat()
         return {**payload, **provenance()}
@@ -1731,36 +1866,54 @@ async def journal_summary(tf: str | None = Query(None, pattern="^(15m|1h|4h|D)$"
 
 @app.get("/api/journal/stage")
 async def journal_stage():
-    """Current strategy stage and the rule that produced it (ADR-0012 §3).
+    """Read persisted advisory state; never evaluate/promote/demote on GET.
 
-    The stage is advisory: it can move a strategy to `watch` or `retire` on its
-    own, but nothing here promotes a strategy to live money — that gate stays
-    human (ADR-0009) and this payload says so.
+    Missing metadata is unknown, not an implicit healthy/train decision. The
+    legacy evaluator remains separate; scheduling/deduplicating evaluations is
+    not the job of a report refresh. This is not live-order authorization.
     """
+    conn = None
     try:
-        conn = signal_journal.connect()
-    except Exception as e:  # an unreadable journal is not a 500
-        return {"ok": False, "unavailable": True, "error": "journal_unavailable",
-                "detail": str(e)[:200], "stage": None}
-    try:
-        out = signal_journal.lifecycle(conn)
+        conn = signal_journal.connect_readonly()
+        return {"ok": True, **signal_journal.stage_snapshot(conn)}
+    except Exception:  # absent DB/schema is unknown; do not create/migrate it
+        return {
+            "ok": False,
+            "unavailable": True,
+            "error": "journal_unavailable",
+            "stage": None,
+            "read_only": True,
+            "evaluated": False,
+        }
     finally:
-        conn.close()
-    return {"ok": True, **out}
+        if conn is not None:
+            conn.close()
 
 
 @app.get("/api/journal/signals")
-async def journal_signals(tf: str | None = None, symbol: str | None = None,
-                          direction: str | None = None, source: str | None = None,
-                          origin: str | None = None,
-                          days: int = Query(90, ge=1, le=3650),
-                          limit: int = Query(200, ge=1, le=2000),
-                          offset: int = Query(0, ge=0)):
+async def journal_signals(
+    tf: str | None = None,
+    symbol: str | None = None,
+    direction: str | None = None,
+    source: str | None = None,
+    origin: str | None = None,
+    days: int = Query(90, ge=1, le=3650),
+    limit: int = Query(200, ge=1, le=2000),
+    offset: int = Query(0, ge=0),
+):
     conn = signal_journal.connect()
     try:
         rows = signal_journal.fetch_signals(
-            conn, tf=tf, symbol=symbol, direction=direction, source=source, origin=origin,
-            since=int(time.time()) - days * 86400, limit=limit, offset=offset)
+            conn,
+            tf=tf,
+            symbol=symbol,
+            direction=direction,
+            source=source,
+            origin=origin,
+            since=int(time.time()) - days * 86400,
+            limit=limit,
+            offset=offset,
+        )
         return {
             "count": len(rows),
             "signals": [{**dict(r), "features": json.loads(r["features"] or "{}")} for r in rows],
@@ -1771,24 +1924,29 @@ async def journal_signals(tf: str | None = None, symbol: str | None = None,
 
 
 @app.get("/api/journal/msi")
-async def journal_msi(window_days: int = Query(30, ge=7, le=365),
-                      baseline_days: int = Query(180, ge=30, le=3650),
-                      min_samples: int = Query(20, ge=5, le=500)):
+async def journal_msi(
+    window_days: int = Query(30, ge=7, le=365),
+    baseline_days: int = Query(180, ge=30, le=3650),
+    min_samples: int = Query(20, ge=5, le=500),
+):
     """Model Signal Integrity — realized IC vs the reference (ADR-0012 §2.5)."""
     conn = signal_journal.connect()
     try:
-        out = signal_journal.msi(conn, window_days=window_days,
-                                 baseline_days=baseline_days, min_samples=min_samples)
+        out = signal_journal.msi(
+            conn, window_days=window_days, baseline_days=baseline_days, min_samples=min_samples
+        )
         return {**out, **provenance()}
     finally:
         conn.close()
 
 
 @app.post("/api/journal/msi/baseline", dependencies=[Depends(require_client)])
-async def journal_msi_baseline(request: Request,
-                               tf: str = Query("15m", pattern="^(15m|1h|4h|D)$"),
-                               symbols: int = Query(10, ge=1, le=40),
-                               bars: int = Query(1200, ge=200, le=3000)):
+async def journal_msi_baseline(
+    request: Request,
+    tf: str = Query("15m", pattern="^(15m|1h|4h|D)$"),
+    symbols: int = Query(10, ge=1, le=40),
+    bars: int = Query(1200, ge=200, le=3000),
+):
     """Measure the score's own IC on history and store it as the reference.
 
     Deliberately a separate, explicit action: a baseline that silently follows
@@ -1830,20 +1988,22 @@ async def journal_msi_baseline(request: Request,
     try:
         if result["ic"] is not None:
             signal_journal.set_meta(conn, "msi_baseline", payload)
-        audit_id = audit("journal.msi_baseline",
-                         detail={"tf": tf, "ic": result["ic"], "n": result["n"],
-                                 "sources": sources},
-                         request=request)
-        return {"stored": result["ic"] is not None, "audit_id": audit_id,
-                **payload, **provenance()}
+        audit_id = audit(
+            "journal.msi_baseline",
+            detail={"tf": tf, "ic": result["ic"], "n": result["n"], "sources": sources},
+            request=request,
+        )
+        return {"stored": result["ic"] is not None, "audit_id": audit_id, **payload, **provenance()}
     finally:
         conn.close()
 
 
 @app.get("/api/journal/signal/{signal_id}")
-async def journal_signal_detail(signal_id: int,
-                                context_bars: int = Query(30, ge=0, le=200),
-                                horizon: str = Query("H2", pattern="^(H1|H2|H3)$")):
+async def journal_signal_detail(
+    signal_id: int,
+    context_bars: int = Query(30, ge=0, le=200),
+    horizon: str = Query("H2", pattern="^(H1|H2|H3)$"),
+):
     """Everything behind one row of the performance table (ADR-0012).
 
     The UI opens a row to answer "why did this one resolve like that?" — the
@@ -1855,8 +2015,12 @@ async def journal_signal_detail(signal_id: int,
         row = conn.execute("SELECT * FROM signal_log WHERE id=?", (int(signal_id),)).fetchone()
         if row is None:
             raise HTTPException(status_code=404, detail="signal not found")
-        outcomes = {o["horizon_key"]: dict(o) for o in conn.execute(
-            "SELECT * FROM signal_outcomes WHERE signal_id=?", (int(signal_id),))}
+        outcomes = {
+            o["horizon_key"]: dict(o)
+            for o in conn.execute(
+                "SELECT * FROM signal_outcomes WHERE signal_id=?", (int(signal_id),)
+            )
+        }
     finally:
         conn.close()
 
@@ -1872,20 +2036,32 @@ async def journal_signal_detail(signal_id: int,
     except Exception as e:  # the detail view must still render
         log.warning("detail: candles for %s unavailable: %s", row["symbol"], e)
 
-    path = signal_journal.signal_path(row, candles, row["timeframe"],
-                                      context_bars=context_bars, horizon_key=horizon)
+    path = signal_journal.signal_path(
+        row, candles, row["timeframe"], context_bars=context_bars, horizon_key=horizon
+    )
     return {
         "id": row["id"],
         "signal": {
-            "ts": row["ts"], "symbol": row["symbol"], "timeframe": row["timeframe"],
-            "direction": row["direction"], "composite": row["composite"],
-            "ta_score": row["ta_score"], "fa_score": row["fa_score"],
-            "liquidity_score": row["liquidity_score"], "rank_in_cycle": row["rank_in_cycle"],
-            "regime": row["regime"], "entry": row["entry"], "stop": row["stop"],
-            "tp1": row["tp1"], "tp2": row["tp2"], "atr": row["atr"],
-            "source": row["source"], "origin": row["origin"],
+            "ts": row["ts"],
+            "symbol": row["symbol"],
+            "timeframe": row["timeframe"],
+            "direction": row["direction"],
+            "composite": row["composite"],
+            "ta_score": row["ta_score"],
+            "fa_score": row["fa_score"],
+            "liquidity_score": row["liquidity_score"],
+            "rank_in_cycle": row["rank_in_cycle"],
+            "regime": row["regime"],
+            "entry": row["entry"],
+            "stop": row["stop"],
+            "tp1": row["tp1"],
+            "tp2": row["tp2"],
+            "atr": row["atr"],
+            "source": row["source"],
+            "origin": row["origin"],
             "config_hash": row["config_hash"],
-            "voided_at": row["voided_at"], "void_reason": row["void_reason"],
+            "voided_at": row["voided_at"],
+            "void_reason": row["void_reason"],
             "components": features.get("components") or {},
             "composite_basis": features.get("composite_basis"),
         },
@@ -1904,11 +2080,13 @@ async def journal_signal_detail(signal_id: int,
 
 
 @app.get("/api/journal/export")
-async def journal_export(format: str = Query("csv", pattern="^(csv|json)$"),
-                         tf: str | None = Query(None, pattern="^(15m|1h|4h|D)$"),
-                         days: int = Query(0, ge=0, le=3650),
-                         origin: str | None = Query(None, pattern="^(live|backfill)$"),
-                         source: str | None = None):
+async def journal_export(
+    format: str = Query("csv", pattern="^(csv|json)$"),
+    tf: str | None = Query(None, pattern="^(15m|1h|4h|D)$"),
+    days: int = Query(0, ge=0, le=3650),
+    origin: str | None = Query(None, pattern="^(live|backfill)$"),
+    source: str | None = None,
+):
     """Full journal export (ADR-0012 §2.6). Never paginated.
 
     One row per prediction with all three horizons joined in, so the file can
@@ -1917,20 +2095,23 @@ async def journal_export(format: str = Query("csv", pattern="^(csv|json)$"),
     since = int(time.time()) - days * 86400 if days else None
     conn = signal_journal.connect()
     try:
-        rows = signal_journal.export_rows(conn, tf=tf, since=since,
-                                          source=source, origin=origin)
+        rows = signal_journal.export_rows(conn, tf=tf, since=since, source=source, origin=origin)
     finally:
         conn.close()
 
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%MZ")
     if format == "json":
-        body = json.dumps({
-            "generated_at": int(time.time()),
-            "filters": {"tf": tf, "days": days or None, "origin": origin, "source": source},
-            "rows": len(rows),
-            "config_hash": signal_journal.CONFIG_HASH,
-            "data": rows,
-        }, ensure_ascii=False, indent=1)
+        body = json.dumps(
+            {
+                "generated_at": int(time.time()),
+                "filters": {"tf": tf, "days": days or None, "origin": origin, "source": source},
+                "rows": len(rows),
+                "config_hash": signal_journal.CONFIG_HASH,
+                "data": rows,
+            },
+            ensure_ascii=False,
+            indent=1,
+        )
         media, ext = "application/json; charset=utf-8", "json"
     else:
         body = signal_journal.export_csv(rows)
@@ -1972,34 +2153,40 @@ async def _unhandled(request: Request, exc: Exception):
     """
     leaf = _innermost(exc)
     row = errorlog.capture(
-        level="critical", source="http.unhandled", exc=leaf,
+        level="critical",
+        source="http.unhandled",
+        exc=leaf,
         # The message carries the cause, because the traceback is truncated and
         # the list view shows the message first.
-        message=f"{request.method} {request.url.path} failed: "
-                f"{type(leaf).__name__}: {leaf}",
-        context={"path": request.url.path, "method": request.method,
-                 "query": str(request.url.query)[:300]},
+        message=f"{request.method} {request.url.path} failed: {type(leaf).__name__}: {leaf}",
+        context={
+            "path": request.url.path,
+            "method": request.method,
+            "query": str(request.url.query)[:300],
+        },
         client=(request.client.host if request.client else None),
     )
     # The message is stored (scrubbed) for the owner in /api/errors. Returning
     # it here leaked internal paths, SQL and exception text to every caller.
     # The log_id is enough to find the row without describing the internals.
-    return JSONResponse(status_code=500,
-                        content={"ok": False, "error": "internal",
-                                 "log_id": row.get("id")})
+    return JSONResponse(
+        status_code=500, content={"ok": False, "error": "internal", "log_id": row.get("id")}
+    )
 
 
 @app.get("/api/errors", dependencies=[Depends(install_api.require_owner)])
-async def errors_index(limit: int = Query(100, ge=1, le=500),
-                       level: str | None = Query(None, pattern="^(debug|info|warning|error|critical)$"),
-                       source: str | None = None,
-                       hours: int = Query(0, ge=0, le=8760),
-                       q: str | None = Query(None, max_length=120)):
+async def errors_index(
+    limit: int = Query(100, ge=1, le=500),
+    level: str | None = Query(None, pattern="^(debug|info|warning|error|critical)$"),
+    source: str | None = None,
+    hours: int = Query(0, ge=0, le=8760),
+    q: str | None = Query(None, max_length=120),
+):
     """Newest first. `hours=0` means no time filter."""
     since = int(time.time()) - hours * 3600 if hours else None
-    rows = errorlog.recent(limit=limit, level=level, source=source, since=since, q=q)
-    return {"errors": rows, "n": len(rows), "counts": errorlog.counts(),
-            "filters": {"level": level, "source": source, "hours": hours, "q": q}}
+    payload = errorlog.snapshot(limit=limit, level=level, source=source, since=since, q=q)
+    payload["filters"]["hours"] = hours
+    return payload
 
 
 @app.post("/api/errors", dependencies=[Depends(require_client)])
@@ -2020,7 +2207,7 @@ async def errors_report(payload: dict, request: Request):
         source=src,
         message=msg,
         detail=str(payload.get("stack") or "")[:3000] or None,
-        context=str(payload.get("context") or "")[:500] or None,
+        context=payload.get("context"),
         client=(request.client.host if request.client else None),
     )
     return {"ok": True, "id": row["id"]}
@@ -2030,7 +2217,12 @@ async def errors_report(payload: dict, request: Request):
 async def errors_clear(request: Request):
     """Wipe the log. Clearing evidence is itself a control action, so it is
     audited — otherwise "there were no errors" would be unfalsifiable."""
-    removed = errorlog.clear()
+    try:
+        removed = errorlog.clear()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503, detail="error log clear failed; evidence retained"
+        ) from exc
     audit_id = audit("errors.clear", actor="api", detail={"removed": removed}, request=request)
     return {"ok": True, "removed": removed, "audit_id": audit_id}
 
@@ -2040,9 +2232,15 @@ async def errors_selftest(request: Request):
     """Prove the log can write and read back — a log that is silently dead is
     worse than none, because its emptiness looks like health."""
     result = errorlog.self_test()
-    audit("errors.selftest", actor="owner", detail={
-        "readable": result.get("readable"), "writable": result.get("writable"),
-    }, request=request)
+    audit(
+        "errors.selftest",
+        actor="owner",
+        detail={
+            "readable": result.get("readable"),
+            "writable": result.get("writable"),
+        },
+        request=request,
+    )
     return result
 
 
@@ -2057,17 +2255,22 @@ def _diag_ctx() -> diagnostics.Ctx:
     broker = get_broker(EQUITY, client, risk)
 
     def paper_state() -> dict:
-        return {"equity": broker.equity, "cash": broker.cash,
-                "positions": dict(broker.positions)}
+        return {"equity": broker.equity, "cash": broker.cash, "positions": dict(broker.positions)}
 
     def risk_state() -> dict:
         eq, _start = _live_equity()
-        return {"equity": eq, "halted": risk.halted, "openHeat": risk.open_heat,
-                "caps": {"riskPct": risk.cfg.risk_pct,
-                         "maxConcurrent": risk.cfg.max_concurrent,
-                         "maxSingleAssetPct": risk.cfg.max_single_asset_pct,
-                         "maxHeatPct": risk.cfg.max_heat_pct,
-                         "minCashPct": risk.cfg.min_cash_pct}}
+        return {
+            "equity": eq,
+            "halted": risk.halted,
+            "openHeat": risk.open_heat,
+            "caps": {
+                "riskPct": risk.cfg.risk_pct,
+                "maxConcurrent": risk.cfg.max_concurrent,
+                "maxSingleAssetPct": risk.cfg.max_single_asset_pct,
+                "maxHeatPct": risk.cfg.max_heat_pct,
+                "minCashPct": risk.cfg.min_cash_pct,
+            },
+        }
 
     def ws_state() -> dict:
         st = dict(STREAM_EXECUTOR.status())
@@ -2075,9 +2278,14 @@ def _diag_ctx() -> diagnostics.Ctx:
         return st
 
     import settings_view
+
     return diagnostics.Ctx(
-        client=client, cached=_cached, paper_state=paper_state, risk_state=risk_state,
-        fx=lambda: _fx("BTCIRT"), ws_status=ws_state,
+        client=client,
+        cached=_cached,
+        paper_state=paper_state,
+        risk_state=risk_state,
+        fx=lambda: _fx("BTCIRT"),
+        ws_status=ws_state,
         secrets={s["name"]: bool(s.get("present")) for s in settings_view.secrets()},
     )
 
@@ -2103,9 +2311,15 @@ async def diagnostics_run(request: Request, body: dict | None = None):
         raise HTTPException(status_code=400, detail="`only` must be a list of check ids")
     try:
         result = await diagnostics.run(_diag_ctx(), only=only, kinds=kinds)
-        audit("diagnostics.run", actor="owner", detail={
-            "overall": result.get("overall"), "checks": len(result.get("results", [])),
-        }, request=request)
+        audit(
+            "diagnostics.run",
+            actor="owner",
+            detail={
+                "overall": result.get("overall"),
+                "checks": len(result.get("results", [])),
+            },
+            request=request,
+        )
         return result
     except KeyError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
@@ -2120,12 +2334,15 @@ class SignalReviewBody(BaseModel):
 
 
 @app.get("/api/signal-intelligence/summary")
-async def signal_intelligence_summary(days: int = Query(30, ge=1, le=3650),
-                                      symbol: str | None = None,
-                                      timeframe: str | None = None,
-                                      horizon: str = Query("H1", pattern="^H[123]$")):
-    return signal_intelligence.summary(days=days, symbol=symbol, timeframe=timeframe,
-                                       horizon=horizon)
+async def signal_intelligence_summary(
+    days: int = Query(30, ge=1, le=3650),
+    symbol: str | None = None,
+    timeframe: str | None = None,
+    horizon: str = Query("H1", pattern="^H[123]$"),
+):
+    return signal_intelligence.summary(
+        days=days, symbol=symbol, timeframe=timeframe, horizon=horizon
+    )
 
 
 @app.get("/api/signal-intelligence/funnel")
@@ -2134,19 +2351,25 @@ async def signal_intelligence_funnel(days: int = Query(30, ge=1, le=3650)):
 
 
 @app.get("/api/signal-intelligence/cohorts")
-async def signal_intelligence_cohorts(days: int = Query(30, ge=1, le=3650),
-                                      horizon: str = Query("H1", pattern="^H[123]$")):
+async def signal_intelligence_cohorts(
+    days: int = Query(30, ge=1, le=3650), horizon: str = Query("H1", pattern="^H[123]$")
+):
     return {"rows": signal_intelligence.cohorts(days=days, horizon=horizon)}
 
 
 @app.get("/api/signal-intelligence/signals")
-async def signal_intelligence_signals(days: int = Query(30, ge=1, le=3650),
-                                      limit: int = Query(100, ge=1, le=500),
-                                      symbol: str | None = None,
-                                      timeframe: str | None = None,
-                                      horizon: str = Query("H1", pattern="^H[123]$")):
-    return {"rows": signal_intelligence.signals(days=days, limit=limit, symbol=symbol,
-                                                 timeframe=timeframe, horizon=horizon)}
+async def signal_intelligence_signals(
+    days: int = Query(30, ge=1, le=3650),
+    limit: int = Query(100, ge=1, le=500),
+    symbol: str | None = None,
+    timeframe: str | None = None,
+    horizon: str = Query("H1", pattern="^H[123]$"),
+):
+    return {
+        "rows": signal_intelligence.signals(
+            days=days, limit=limit, symbol=symbol, timeframe=timeframe, horizon=horizon
+        )
+    }
 
 
 @app.get("/api/signal-intelligence/signals/{signal_id}")
@@ -2158,27 +2381,69 @@ async def signal_intelligence_detail(signal_id: int):
 
 
 @app.post("/api/signal-intelligence/signals/{signal_id}/review")
-async def signal_intelligence_review(signal_id: int, payload: SignalReviewBody,
-                                     request: Request):
+async def signal_intelligence_review(signal_id: int, payload: SignalReviewBody, request: Request):
     user = install_api.require_operator_mutation(request)
     try:
         result = signal_intelligence.review(
-            signal_id, user_id=user.id, username=user.username,
-            tag=payload.tag, note=payload.note,
+            signal_id,
+            user_id=user.id,
+            username=user.username,
+            tag=payload.tag,
+            note=payload.note,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    audit("signal.review", actor=user.username,
-          detail={"signal_id": signal_id, "tag": result["tag"]}, request=request)
+    audit(
+        "signal.review",
+        actor=user.username,
+        detail={"signal_id": signal_id, "tag": result["tag"]},
+        request=request,
+    )
     return {"ok": True, "review": result}
 
 
 # ---------------- Signal Intelligence v1.1 linked evidence ------------------
+def _signal_evidence_read(**kwargs):
+    try:
+        return signal_evidence_view.read(**kwargs)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except sqlite3.Error as exc:
+        raise HTTPException(
+            status_code=503, detail="Signal evidence unavailable; schema/data not ready"
+        ) from exc
+
+
+@app.get("/api/v1/signal-intelligence/evidence")
+async def signal_intelligence_evidence(
+    days: int = Query(30, ge=1, le=3650),
+    horizon: str = Query("H1", pattern="^H[123]$"),
+    symbol: str | None = None,
+    timeframe: str | None = None,
+    as_of: int | None = Query(None, gt=0),
+    limit: int = Query(100, ge=1, le=500),
+    cohort_limit: int = Query(50, ge=1, le=500),
+):
+    return JSONResponse(
+        _signal_evidence_read(
+            days=days,
+            horizon=horizon,
+            symbol=symbol,
+            timeframe=timeframe,
+            as_of=as_of,
+            limit=limit,
+            cohort_limit=cohort_limit,
+        ),
+        headers={"Cache-Control": "no-store"},
+    )
+
+
 @app.get("/api/v1/signal-intelligence/summary")
-async def signal_intelligence_v1_summary(days: int = Query(30, ge=1, le=3650),
-                                         horizon: str = Query("H1", pattern="^H[123]$")):
+async def signal_intelligence_v1_summary(
+    days: int = Query(30, ge=1, le=3650), horizon: str = Query("H1", pattern="^H[123]$")
+):
     return signal_intelligence.linked_summary(days=days, horizon=horizon)
 
 
@@ -2188,15 +2453,18 @@ async def signal_intelligence_v1_pipeline(days: int = Query(30, ge=1, le=3650)):
 
 
 @app.get("/api/v1/signal-intelligence/gate-reasons")
-async def signal_intelligence_v1_gate_reasons(days: int = Query(30, ge=1, le=3650),
-                                              mode: str = Query("primary", pattern="^(primary|all)$")):
+async def signal_intelligence_v1_gate_reasons(
+    days: int = Query(30, ge=1, le=3650), mode: str = Query("primary", pattern="^(primary|all)$")
+):
     return {"rows": signal_intelligence.gate_reason_counts(days=days, mode=mode)}
 
 
 @app.get("/api/v1/signal-intelligence/signals")
-async def signal_intelligence_v1_signals(days: int = Query(30, ge=1, le=3650),
-                                         limit: int = Query(100, ge=1, le=500),
-                                         cursor: str | None = None):
+async def signal_intelligence_v1_signals(
+    days: int = Query(30, ge=1, le=3650),
+    limit: int = Query(100, ge=1, le=500),
+    cursor: str | None = None,
+):
     try:
         return signal_intelligence.paged_signals(days=days, limit=limit, cursor=cursor)
     except ValueError as exc:
@@ -2204,21 +2472,71 @@ async def signal_intelligence_v1_signals(days: int = Query(30, ge=1, le=3650),
 
 
 @app.get("/api/v1/signal-intelligence/export")
-async def signal_intelligence_v1_export(request: Request,
-                                        days: int = Query(30, ge=1, le=3650),
-                                        format: str = Query("csv", pattern="^(csv|json)$")):
+async def signal_intelligence_v1_export(
+    request: Request,
+    days: int = Query(30, ge=1, le=3650),
+    format: str = Query("csv", pattern="^(csv|json)$"),
+    view: str = Query("legacy", pattern="^(legacy|evidence)$"),
+    horizon: str = Query("H1", pattern="^H[123]$"),
+    symbol: str | None = None,
+    timeframe: str | None = None,
+    as_of: int | None = Query(None, gt=0),
+):
     session = identity.session_of(request)
     actor = session.user.username if session else "machine-token"
-    audit("signal_intelligence.export", actor=actor,
-          detail={"days": days, "format": format}, request=request)
+    audit(
+        "signal_intelligence.export",
+        actor=actor,
+        detail=(
+            {"days": days, "format": format}
+            if view == "legacy"
+            else {
+                "days": days,
+                "format": format,
+                "view": view,
+                "horizon": horizon,
+                "symbol": symbol,
+                "timeframe": timeframe,
+                "as_of": as_of,
+            }
+        ),
+        request=request,
+    )
+    if view == "evidence":
+        result = _signal_evidence_read(
+            days=days,
+            horizon=horizon,
+            symbol=symbol,
+            timeframe=timeframe,
+            as_of=as_of,
+            export=True,
+            limit=signal_evidence_view.EXPORT_LIMIT,
+        )
+        meta = json.dumps(
+            signal_evidence_view.metadata(result), separators=(",", ":"), allow_nan=False
+        )
+        headers = {
+            "Cache-Control": "no-store",
+            "X-NBX-Evidence": base64.b64encode(meta.encode()).decode(),
+            "Content-Disposition": f"attachment; filename=signal-evidence.{format}",
+        }
+        if format == "json":
+            return JSONResponse(result, headers=headers)
+        return Response(
+            signal_evidence_view.to_csv(result),
+            media_type="text/csv; charset=utf-8",
+            headers=headers,
+        )
     if format == "json":
         return JSONResponse(
             {"rows": signal_intelligence.export_linked_rows(days=days), "limit": 10_000},
             headers={"Content-Disposition": "attachment; filename=signal-intelligence.json"},
         )
-    return Response(signal_intelligence.export_linked_csv(days=days),
-                    media_type="text/csv; charset=utf-8",
-                    headers={"Content-Disposition": "attachment; filename=signal-intelligence.csv"})
+    return Response(
+        signal_intelligence.export_linked_csv(days=days),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": "attachment; filename=signal-intelligence.csv"},
+    )
 
 
 class DriftRunBody(BaseModel):
@@ -2226,7 +2544,10 @@ class DriftRunBody(BaseModel):
     days: int = Field(default=30, ge=7, le=365)
     horizon: str = Field(default="H1", pattern="^H[123]$")
     config_hash: str | None = Field(default=None, max_length=128)
-    cohort_mode: str = Field(default="global", pattern=r"^(global|config|symbol|timeframe|regime|symbol\+timeframe|timeframe\+regime)$")
+    cohort_mode: str = Field(
+        default="global",
+        pattern=r"^(global|config|symbol|timeframe|regime|symbol\+timeframe|timeframe\+regime)$",
+    )
 
 
 class DriftScheduleBody(BaseModel):
@@ -2235,7 +2556,10 @@ class DriftScheduleBody(BaseModel):
     interval_s: int = Field(default=86400)
     window_days: int = Field(default=30, ge=7, le=365)
     horizon: str = Field(default="H1", pattern="^H[123]$")
-    cohort_mode: str = Field(default="global", pattern=r"^(global|config|symbol|timeframe|regime|symbol\+timeframe|timeframe\+regime)$")
+    cohort_mode: str = Field(
+        default="global",
+        pattern=r"^(global|config|symbol|timeframe|regime|symbol\+timeframe|timeframe\+regime)$",
+    )
 
 
 class DriftReviewBody(BaseModel):
@@ -2261,13 +2585,22 @@ async def signal_drift_schedule_get():
 async def signal_drift_schedule_put(payload: DriftScheduleBody, request: Request):
     user = install_api.require_owner_mutation(request)
     try:
-        result = signal_drift.update_schedule(enabled=payload.enabled,
-            interval_s=payload.interval_s, window_days=payload.window_days,
-            horizon=payload.horizon, cohort_mode=payload.cohort_mode, actor=user.username)
+        result = signal_drift.update_schedule(
+            enabled=payload.enabled,
+            interval_s=payload.interval_s,
+            window_days=payload.window_days,
+            horizon=payload.horizon,
+            cohort_mode=payload.cohort_mode,
+            actor=user.username,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    audit("signal_intelligence.drift.schedule", actor=user.username,
-          detail={"enabled": payload.enabled, "interval_s": payload.interval_s}, request=request)
+    audit(
+        "signal_intelligence.drift.schedule",
+        actor=user.username,
+        detail={"enabled": payload.enabled, "interval_s": payload.interval_s},
+        request=request,
+    )
     return result
 
 
@@ -2278,7 +2611,8 @@ async def signal_drift_config_inventory(days: int = Query(30, ge=7, le=365)):
 
 @app.get("/api/v1/signal-intelligence/drift/cohorts")
 async def signal_drift_cohorts(
-    mode: str = Query("global"), days: int = Query(30, ge=7, le=365),
+    mode: str = Query("global"),
+    days: int = Query(30, ge=7, le=365),
     limit: int = Query(100, ge=1, le=100),
 ):
     try:
@@ -2300,13 +2634,20 @@ async def signal_drift_export(request: Request, run_id: int = Query(..., ge=1)):
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     session = identity.session_of(request)
     actor = session.user.username if session else "machine-token"
-    audit("signal_intelligence.drift.export", actor=actor, detail={"run_id": run_id}, request=request)
-    return Response(body, media_type="text/csv; charset=utf-8",
-                    headers={"Content-Disposition": "attachment; filename=signal-drift.csv"})
+    audit(
+        "signal_intelligence.drift.export", actor=actor, detail={"run_id": run_id}, request=request
+    )
+    return Response(
+        body,
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": "attachment; filename=signal-drift.csv"},
+    )
 
 
 @app.get("/api/v1/signal-intelligence/drift/runs/{run_id}")
-async def signal_drift_detail(run_id: int, cohort_key: str | None = Query(default=None, max_length=256)):
+async def signal_drift_detail(
+    run_id: int, cohort_key: str | None = Query(default=None, max_length=256)
+):
     result = signal_drift.detail(run_id, cohort_key=cohort_key)
     if result is None:
         raise HTTPException(status_code=404, detail="drift run not found")
@@ -2367,15 +2708,20 @@ async def devsuite_run(request: Request, body: dict | None = None):
     try:
         run = await devsuite.start(gates)
     except devsuite.Busy as e:
-        raise HTTPException(status_code=409,
-                            detail={"message": str(e), "run_id": e.run_id}) from e
+        raise HTTPException(status_code=409, detail={"message": str(e), "run_id": e.run_id}) from e
     except RuntimeError as e:
         raise HTTPException(status_code=503, detail=str(e)) from e
     except KeyError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
-    audit("devsuite.run", actor="owner", detail={
-        "run_id": run.id, "gates": list(run.gates),
-    }, request=request)
+    audit(
+        "devsuite.run",
+        actor="owner",
+        detail={
+            "run_id": run.id,
+            "gates": list(run.gates),
+        },
+        request=request,
+    )
     return {"run_id": run.id, "state": run.state}
 
 
@@ -2411,14 +2757,19 @@ async def settings_telegram_test():
     token = os.getenv("NBX_TELEGRAM_TOKEN", "").strip()
     chat = os.getenv("NBX_TELEGRAM_CHAT_ID", "").strip()
     if not token:
-        return {"has_token": False, "token_valid": None, "chat_configured": bool(chat),
-                "reason": "no-token", "sent_message": False}
+        return {
+            "has_token": False,
+            "token_valid": None,
+            "chat_configured": bool(chat),
+            "reason": "no-token",
+            "sent_message": False,
+        }
     import httpx
 
     from logsafe import quiet_httpx
 
     try:
-        with quiet_httpx():          # getMe URL contains the bot token
+        with quiet_httpx():  # getMe URL contains the bot token
             async with httpx.AsyncClient(timeout=8.0) as client:
                 r = await client.get(f"https://api.telegram.org/bot{token}/getMe")
         try:
@@ -2430,7 +2781,7 @@ async def settings_telegram_test():
             "has_token": True,
             "token_valid": ok,
             "chat_configured": bool(chat),
-            "sent_message": False,          # getMe never sends anything
+            "sent_message": False,  # getMe never sends anything
             "http_status": r.status_code,
         }
         if ok:
@@ -2442,42 +2793,105 @@ async def settings_telegram_test():
             # error string from the request URL: it contains the token.
             out["error"] = str(body.get("description") or "rejected")[:120]
         return out
-    except Exception as exc:               # network / DNS / TLS
-        return {"has_token": True, "token_valid": None, "chat_configured": bool(chat),
-                "sent_message": False, "error": type(exc).__name__}
+    except Exception as exc:  # network / DNS / TLS
+        return {
+            "has_token": True,
+            "token_valid": None,
+            "chat_configured": bool(chat),
+            "sent_message": False,
+            "error": type(exc).__name__,
+        }
 
 
 @app.get("/api/audit", dependencies=[Depends(install_api.require_operator)])
-async def audit_events(limit: int = Query(50, ge=1, le=500),
-                       action: str | None = None,
-                       days: int = Query(0, ge=0, le=3650)):
+async def audit_events(
+    limit: int = Query(50, ge=1, le=500),
+    action: str | None = None,
+    scope: str | None = None,
+    days: int = Query(0, ge=0, le=3650),
+):
     """Control actions recorded server-side. Newest first."""
+    if scope is None:
+        since = int(time.time()) - days * 86400 if days else None
+        conn = signal_journal.connect()
+        try:
+            events = signal_journal.audit_list(conn, limit=limit, action=action, since=since)
+            counts = signal_journal.audit_counts(conn)
+        finally:
+            conn.close()
+        return {"events": events, "counts": counts, "n": len(events)}
+    clean_action = action.strip() if isinstance(action, str) and action.strip() else None
+    if scope is not None and scope not in ("all", "control", "preview"):
+        raise HTTPException(status_code=422, detail="invalid audit scope")
+    clean_scope = (
+        scope.strip().lower()
+        if isinstance(scope, str) and scope.strip().lower() in ("all", "control", "preview")
+        else None
+    )
+    if clean_scope == "all":
+        clean_scope = None
     since = int(time.time()) - days * 86400 if days else None
-    conn = signal_journal.connect()
+    readonly_conn: sqlite3.Connection | None = None
     try:
-        events = signal_journal.audit_list(conn, limit=limit, action=action, since=since)
-        counts = signal_journal.audit_counts(conn)
+        readonly_conn = signal_journal.connect_readonly()
+        readonly_conn.execute("BEGIN")
+        events = signal_journal.audit_list(
+            readonly_conn, limit=limit, action=clean_action, scope=clean_scope, since=since
+        )
+        total = signal_journal.audit_total(
+            readonly_conn, action=clean_action, scope=clean_scope, since=since
+        )
+        counts = signal_journal.audit_counts(readonly_conn)
+    except Exception:
+        return {
+            "ok": False,
+            "unavailable": True,
+            "error": "audit_unavailable",
+            "events": None,
+            "counts": None,
+            "n": None,
+            "total": None,
+            "limit": limit,
+            "action": clean_action,
+            "scope": clean_scope or "all",
+            "days": days,
+        }
     finally:
-        conn.close()
-    return {"events": events, "counts": counts, "n": len(events)}
+        if readonly_conn is not None:
+            readonly_conn.close()
+    return {
+        "ok": True,
+        "events": events,
+        "counts": counts,
+        "n": len(events),
+        "total": total,
+        "limit": limit,
+        "action": clean_action,
+        "scope": clean_scope or "all",
+        "days": days,
+    }
 
 
 @app.get("/api/notify/status", dependencies=[Depends(install_api.require_operator)])
 async def notify_status():
     """Whether Telegram can actually receive anything right now."""
-    return notify.status()
+    return {"ok": True, **notify.status()}
 
 
 # NOTE: declared before /api/journal/void for readability only — the paths are
 # distinct literals, so route order does not matter here.
 @app.post("/api/journal/digest", dependencies=[Depends(require_client)])
-async def journal_digest_now(request: Request, days: int = Query(1, ge=1, le=90),
-                             push: bool = Query(True)):
+async def journal_digest_now(
+    request: Request, days: int = Query(1, ge=1, le=90), push: bool = Query(True)
+):
     """Run the scheduled export immediately (same code path as the timer)."""
     info = await asyncio.to_thread(write_digest_files, days=days)
-    audit_id = audit("journal.digest", actor="api:manual",
-                     detail={"rows": info["rows"], "path": info["path"], "days": days},
-                     request=request)
+    audit_id = audit(
+        "journal.digest",
+        actor="api:manual",
+        detail={"rows": info["rows"], "path": info["path"], "days": days},
+        request=request,
+    )
     tg = await notify.send(signal_journal.digest_text(info)) if push else None
     return {"digest": info, "audit_id": audit_id, "telegram": tg}
 
@@ -2492,27 +2906,30 @@ async def journal_void_now(request: Request, grace_hours: int = Query(12, ge=0, 
     conn = signal_journal.connect()
     try:
         n = signal_journal.mark_void(conn, universe, grace_s=grace_hours * 3600)
-        audit_id = audit("journal.void", detail={"voided": n, "grace_hours": grace_hours},
-                         request=request)
-        return {"voided": n, "active_symbols": len(universe),
-                "audit_id": audit_id, **provenance()}
+        audit_id = audit(
+            "journal.void", detail={"voided": n, "grace_hours": grace_hours}, request=request
+        )
+        return {"voided": n, "active_symbols": len(universe), "audit_id": audit_id, **provenance()}
     finally:
         conn.close()
 
 
 @app.post("/api/journal/resolve", dependencies=[Depends(require_client)])
-async def journal_resolve_now(tf: str = Query("15m", pattern="^(15m|1h|4h|D)$"),
-                              symbol: str | None = None):
+async def journal_resolve_now(
+    tf: str = Query("15m", pattern="^(15m|1h|4h|D)$"), symbol: str | None = None
+):
     """Resolve horizons on demand (the tick loop also does this every 5 min)."""
     filled = await journal_resolve(tf, [symbol.upper()] if symbol else None)
     return {"resolved": filled, "tf": tf, **provenance()}
 
 
 @app.post("/api/journal/backfill", dependencies=[Depends(require_client)])
-async def journal_backfill(request: Request,
-                           tf: str = Query("15m", pattern="^(15m|1h|4h|D)$"),
-                           symbols: int = Query(10, ge=1, le=40),
-                           bars: int = Query(800, ge=200, le=2000)):
+async def journal_backfill(
+    request: Request,
+    tf: str = Query("15m", pattern="^(15m|1h|4h|D)$"),
+    symbols: int = Query(10, ge=1, le=40),
+    bars: int = Query(800, ge=200, le=2000),
+):
     """Reconstruct historical predictions so the report is not empty on day 1.
 
     `ta_score_series` is causal, so every row carries exactly the score the
@@ -2541,23 +2958,44 @@ async def journal_backfill(request: Request,
             for i, snap in enumerate(series):
                 if snap is None:
                     continue
-                batch.append(signal_journal.make_row(
-                    {**snap, "symbol": sym, "tf": tf, "composite": snap["score"],
-                     "config_hash": signal_journal.CONFIG_HASH},
-                    int(stamps[i]) + signal_journal.TF_SECONDS.get(tf, 900),
-                    origin="backfill", source=src))
+                batch.append(
+                    signal_journal.make_row(
+                        {
+                            **snap,
+                            "symbol": sym,
+                            "tf": tf,
+                            "composite": snap["score"],
+                            "config_hash": signal_journal.CONFIG_HASH,
+                        },
+                        int(stamps[i]) + signal_journal.TF_SECONDS.get(tf, 900),
+                        origin="backfill",
+                        source=src,
+                    )
+                )
                 if len(batch) >= 50:
                     written += signal_journal.insert_rows(conn, batch)
                     batch = []
             written += signal_journal.insert_rows(conn, batch)
             resolved += signal_journal.resolve_symbol(conn, sym, tf, df)
-        audit_id = audit("journal.backfill",
-                         detail={"tf": tf, "symbols": len(picked), "bars": bars,
-                                 "rows_written": written, "resolved": resolved},
-                         request=request)
-        return {"symbols": len(picked), "rows_written": written,
-                "outcomes_resolved": resolved, "tf": tf,
-                "audit_id": audit_id, **provenance()}
+        audit_id = audit(
+            "journal.backfill",
+            detail={
+                "tf": tf,
+                "symbols": len(picked),
+                "bars": bars,
+                "rows_written": written,
+                "resolved": resolved,
+            },
+            request=request,
+        )
+        return {
+            "symbols": len(picked),
+            "rows_written": written,
+            "outcomes_resolved": resolved,
+            "tf": tf,
+            "audit_id": audit_id,
+            **provenance(),
+        }
     finally:
         conn.close()
 
@@ -2628,15 +3066,25 @@ def _queue_order_context(body: dict) -> dict:
 
 
 @app.get("/api/risk/plan")
-async def risk_plan(symbol: str, side: str = "buy", tf: str = Query("15m", pattern="^(15m|1h|4h|D)$"),
-                    approval: bool = False):
+async def risk_plan(
+    symbol: str,
+    side: str = "buy",
+    tf: str = Query("15m", pattern="^(15m|1h|4h|D)$"),
+    approval: bool = False,
+):
     symbol = symbol.upper()
-    s = ((_cached.get("signals_by_tf", {}).get(tf) or {}).get(symbol)
-         if approval else _signal_lookup(symbol, tf))
+    s = (
+        (_cached.get("signals_by_tf", {}).get(tf) or {}).get(symbol)
+        if approval
+        else _signal_lookup(symbol, tf)
+    )
     if not s:
         await rescan(tf, top=60)
-        s = ((_cached.get("signals_by_tf", {}).get(tf) or {}).get(symbol)
-             if approval else _signal_lookup(symbol, tf))
+        s = (
+            (_cached.get("signals_by_tf", {}).get(tf) or {}).get(symbol)
+            if approval
+            else _signal_lookup(symbol, tf)
+        )
     if not s:
         return {"error": "symbol not loaded"}
     rate = await _fx(symbol)
@@ -2645,11 +3093,16 @@ async def risk_plan(symbol: str, side: str = "buy", tf: str = Query("15m", patte
         # the amount untouched: 100,000 USD of equity read as 100,000 Toman,
         # i.e. ~10,000 USD, and every plan came back ~10× too small with no
         # indication that anything was missing.
-        return {**upstream_error("risk-plan", "no USDT/IRT rate to size an IRT trade"),
-                "symbol": symbol.upper(), "side": side, "ok": False,
-                "error": "no-fx-rate",
-                "message": ("a Toman order cannot be sized against a dollar balance "
-                            "without the USDT/IRT rate")}
+        return {
+            **upstream_error("risk-plan", "no USDT/IRT rate to size an IRT trade"),
+            "symbol": symbol.upper(),
+            "side": side,
+            "ok": False,
+            "error": "no-fx-rate",
+            "message": (
+                "a Toman order cannot be sized against a dollar balance without the USDT/IRT rate"
+            ),
+        }
     context = None
     if approval:
         context = _queue_context(symbol, tf, side)
@@ -2662,8 +3115,15 @@ async def risk_plan(symbol: str, side: str = "buy", tf: str = Query("15m", patte
     equity_quote = usd(eq).to_irt(rate).amount
     # Preview: report the plan without reserving heat (a concurrent order must
     # not observe a phantom reservation).
-    plan = risk.evaluate(symbol.upper(), side, s["lastClose"], s["risk"]["atr"], tf,
-                         equity_quote=equity_quote, preview=True)
+    plan = risk.evaluate(
+        symbol.upper(),
+        side,
+        s["lastClose"],
+        s["risk"]["atr"],
+        tf,
+        equity_quote=equity_quote,
+        preview=True,
+    )
     return {
         "symbol": symbol.upper(),
         "side": side,
@@ -2701,30 +3161,42 @@ async def risk_whatif(payload: dict, request: Request):
     snap = _signal_lookup(sym, tf)
     entry = float(body.get("entry") or 0.0) or float((snap or {}).get("lastClose") or 0.0)
     if entry <= 0:
-        return {**upstream_error("whatif", f"no price for {sym}"),
-                "symbol": sym, "ok": False}
+        return {**upstream_error("whatif", f"no price for {sym}"), "symbol": sym, "ok": False}
 
     atr = float(((snap or {}).get("risk") or {}).get("atr") or 0.0)
     stop = float(body.get("stop") or 0.0)
     if stop <= 0:
         if atr <= 0:
-            return {**upstream_error("whatif", f"no ATR for {sym} on {tf}"),
-                    "symbol": sym, "ok": False}
+            return {
+                **upstream_error("whatif", f"no ATR for {sym} on {tf}"),
+                "symbol": sym,
+                "ok": False,
+            }
         stop = entry - RISK_K * atr if side == "buy" else entry + RISK_K * atr
     if abs(entry - stop) <= 0:
-        return {**upstream_error("whatif", "entry equals stop; risk is zero"),
-                "symbol": sym, "ok": False}
+        return {
+            **upstream_error("whatif", "entry equals stop; risk is zero"),
+            "symbol": sym,
+            "ok": False,
+        }
 
     br = get_broker(EQUITY, client, risk)
     rate = await _fx(sym)
     if rate is None:
         # `or 1.0` here read a 300,000-Toman minimum as 300,000 USD, so the
         # single-asset gate vetoed orders that were perfectly sound.
-        return {"ok": False, "symbol": sym, "side": side, "blocked": True,
-                "blocked_by": "no-fx-rate", "error": "no-fx-rate",
-                "message": ("no USDT/IRT rate: a Toman order cannot be valued "
-                            "against a dollar balance"),
-                **provenance()}
+        return {
+            "ok": False,
+            "symbol": sym,
+            "side": side,
+            "blocked": True,
+            "blocked_by": "no-fx-rate",
+            "error": "no-fx-rate",
+            "message": (
+                "no USDT/IRT rate: a Toman order cannot be valued against a dollar balance"
+            ),
+            **provenance(),
+        }
     fx = rate.toman_per_usdt
     equity_quote = usd(br.equity).to_irt(rate).amount
 
@@ -2732,18 +3204,33 @@ async def risk_whatif(payload: dict, request: Request):
     size_quote = float(body.get("size_quote") or 0.0)
     sized_by = "caller"
     if size_quote <= 0:
-        plan = risk.evaluate(sym, side, entry, abs(entry - stop) / RISK_K, tf,
-                             equity_quote=equity_quote, preview=True)
+        plan = risk.evaluate(
+            sym,
+            side,
+            entry,
+            abs(entry - stop) / RISK_K,
+            tf,
+            equity_quote=equity_quote,
+            preview=True,
+        )
         if plan.blocked:
             # Name the actual gate. Reporting "sizing" for an armed kill switch
             # sends the reader looking at ATR and position maths.
             why = "halted" if "kill-switch-armed" in plan.warnings else "sizing"
-            return {"ok": False, "symbol": sym, "side": side, "blocked": True,
-                    "blocked_by": why, "detail": plan.warnings,
-                    "message": ("the kill switch is armed"
-                                if why == "halted"
-                                else "the risk engine would not size this trade"),
-                    **provenance()}
+            return {
+                "ok": False,
+                "symbol": sym,
+                "side": side,
+                "blocked": True,
+                "blocked_by": why,
+                "detail": plan.warnings,
+                "message": (
+                    "the kill switch is armed"
+                    if why == "halted"
+                    else "the risk engine would not size this trade"
+                ),
+                **provenance(),
+            }
         size_quote = plan.size_quote
         sized_by = "risk-engine"
     qty = size_quote / entry
@@ -2756,7 +3243,8 @@ async def risk_whatif(payload: dict, request: Request):
 
     open_positions = len([p for p in br.positions.values() if p.state != "CLOSED"])
     pf = preflight(
-        equity=br.equity, cash=br.cash,
+        equity=br.equity,
+        cash=br.cash,
         open_heat=getattr(risk, "open_heat", 0.0),
         open_positions=open_positions,
         concurrent_limit=br.concurrent_limit,
@@ -2765,19 +3253,28 @@ async def risk_whatif(payload: dict, request: Request):
         max_single_asset_pct=risk.cfg.max_single_asset_pct,
         risk_pct_cap=risk.cfg.risk_pct,
         halted=bool(br.halted or risk.halted),
-        notional_usd=notional_usd, fee_usd=fee_usd, risk_usd=risk_usd,
+        notional_usd=notional_usd,
+        fee_usd=fee_usd,
+        risk_usd=risk_usd,
         # The same two documented exchange rules the broker applies, or the
         # preview promises an order the exchange would refuse.
         min_notional_usd=min_notional_usd(sym, fx),
         market_closed=sym in _cached["closed_markets"],
     )
     out = pf.summary()
-    audit("risk.whatif", actor="ui", detail={"symbol": sym, "side": side,
-                                             "blocked_by": out["blocked_by"]}, request=request)
+    audit(
+        "risk.whatif",
+        actor="ui",
+        detail={"symbol": sym, "side": side, "blocked_by": out["blocked_by"]},
+        request=request,
+    )
     return {
         "ok": True,
-        "symbol": sym, "side": side, "tf": tf,
-        "entry": round(entry, 8), "stop": round(stop, 8),
+        "symbol": sym,
+        "side": side,
+        "tf": tf,
+        "entry": round(entry, 8),
+        "stop": round(stop, 8),
         "stop_pct": round(abs(entry - stop) / entry * 100, 3),
         "size_quote": round(notional_quote, 2),
         "notional_usdt": round(notional_usd, 8),
@@ -2820,13 +3317,21 @@ async def portfolio_allocate(payload: dict, request: Request):
 
     br = get_broker(EQUITY, client, risk)
     if br.halted or risk.halted:
-        return {"ok": False, "blocked": True, "blocked_by": "halted",
-                "message": "the kill switch is armed", **provenance()}
+        return {
+            "ok": False,
+            "blocked": True,
+            "blocked_by": "halted",
+            "message": "the kill switch is armed",
+            **provenance(),
+        }
 
     board = _cached.get("signals_by_tf", {}).get(tf) or _cached.get("signals") or {}
     if not board:
-        return {**upstream_error("portfolio", "no scan has run yet"),
-                "ok": False, "allocations": []}
+        return {
+            **upstream_error("portfolio", "no scan has run yet"),
+            "ok": False,
+            "allocations": [],
+        }
 
     explicit = body.get("symbols")
     if explicit:
@@ -2837,15 +3342,20 @@ async def portfolio_allocate(payload: dict, request: Request):
         if why_absent:
             return {"ok": False, "error": f"not in the scanned universe: {', '.join(why_absent)}"}
     else:
-        longs = [(sym, row.get("composite") or 0.0) for sym, row in board.items()
-                 if row.get("direction") == "LONG"]
+        longs = [
+            (sym, row.get("composite") or 0.0)
+            for sym, row in board.items()
+            if row.get("direction") == "LONG"
+        ]
         selected = [sym for sym, _ in sorted(longs, key=lambda kv: -kv[1])[:limit]]
 
     if not selected:
-        return {"ok": False,
-                "error": "the board has no LONG candidate to allocate",
-                "message": "nothing to allocate; a NEUTRAL board is not a reason to invent trades",
-                **provenance()}
+        return {
+            "ok": False,
+            "error": "the board has no LONG candidate to allocate",
+            "message": "nothing to allocate; a NEUTRAL board is not a reason to invent trades",
+            **provenance(),
+        }
 
     candidates: list[Candidate] = []
     series: dict[str, list[tuple[int, float]]] = {}
@@ -2867,15 +3377,22 @@ async def portfolio_allocate(payload: dict, request: Request):
         except UpstreamUnavailable as e:
             notes.append({"symbol": sym, "reason": f"no candles: {e}"})
             continue
-        series[sym] = [(int(r["t"]), float(r["c"])) for r in rows
-                       if r.get("c") is not None and float(r["c"]) > 0]
+        series[sym] = [
+            (int(r["t"]), float(r["c"]))
+            for r in rows
+            if r.get("c") is not None and float(r["c"]) > 0
+        ]
         srcs[sym] = src
         candidates.append(Candidate(sym, entry, stop, float(snap.get("composite") or 0.0)))
 
     if not candidates:
-        return {"ok": False, "allocations": [], "dropped": notes,
-                "error": "no candidate had a price, a stop and candles",
-                **provenance()}
+        return {
+            "ok": False,
+            "allocations": [],
+            "dropped": notes,
+            "error": "no candidate had a price, a stop and candles",
+            **provenance(),
+        }
 
     _stamps, closes = aligned_closes(series)
     returns: dict[str, list[float]] = {}
@@ -2886,7 +3403,8 @@ async def portfolio_allocate(payload: dict, request: Request):
             notes.append({"symbol": sym, "reason": "non-positive close in the series"})
 
     lim = Limits(
-        equity=br.equity, cash=br.cash,
+        equity=br.equity,
+        cash=br.cash,
         open_heat_pct=float(getattr(risk, "open_heat", 0.0) or 0.0),
         open_positions=len([p for p in br.positions.values() if p.state != "CLOSED"]),
         concurrent_limit=br.concurrent_limit,
@@ -2896,8 +3414,7 @@ async def portfolio_allocate(payload: dict, request: Request):
         per_trade_risk_pct=risk.cfg.risk_pct,
         fee_pct=PAPER_FEE_PCT,
         halted=bool(br.halted or risk.halted),
-        shrinkage=(float(body["shrinkage"]) if body.get("shrinkage") is not None
-                   else 0.30),
+        shrinkage=(float(body["shrinkage"]) if body.get("shrinkage") is not None else 0.30),
     )
     res = allocate_portfolio(candidates, returns, lim)
     res["dropped"] = notes + list(res.get("dropped") or [])
@@ -2920,18 +3437,31 @@ async def portfolio_allocate(payload: dict, request: Request):
         row["qty"] = round(row["notional_usd"] * fx / row["entry"], 10)
         row["stop_pct"] = round(row["stop_pct"] * 100, 3)
     res["totals"]["invested_quote"] = round(
-        sum(r["notional_quote"] for r in res.get("allocations", [])), 2)
+        sum(r["notional_quote"] for r in res.get("allocations", [])), 2
+    )
 
     # `provenance()["source"]` is the exchange status (live/unavailable); the
     # candle origins travel under their own key so the two cannot overwrite
     # each other — the first version of this line did, and the page crashed on
     # a string where it expected a list.
-    res.update({"tf": tf, "lookback": lookback,
-                "candles_from": sorted(set(srcs.values())) or ["none"],
-                **provenance()})
-    audit("portfolio.allocate", actor="ui",
-          detail={"tf": tf, "n": len(res.get("allocations", [])),
-                  "invested_usd": res["totals"]["invested_usd"]}, request=request)
+    res.update(
+        {
+            "tf": tf,
+            "lookback": lookback,
+            "candles_from": sorted(set(srcs.values())) or ["none"],
+            **provenance(),
+        }
+    )
+    audit(
+        "portfolio.allocate",
+        actor="ui",
+        detail={
+            "tf": tf,
+            "n": len(res.get("allocations", [])),
+            "invested_usd": res["totals"]["invested_usd"],
+        },
+        request=request,
+    )
     return res
 
 
@@ -2959,6 +3489,7 @@ async def benchmark_relative(payload: dict, request: Request):
     explicit = body.get("symbols")
     if explicit is not None and not isinstance(explicit, list):
         return {"ok": False, "error": "symbols must be a list"}
+
     # Two exclusions, both about not comparing things that are the same thing:
     #   * USDT/IRT is a currency pair, not an asset — "alpha vs BTC" for a
     #     stablecoin is noise dressed as performance;
@@ -2976,12 +3507,18 @@ async def benchmark_relative(payload: dict, request: Request):
     def _default_ok(sym: str) -> bool:
         return sym != bench and sym not in STABLE and _base(sym) != _base(bench)
 
-    symbols = ([str(x).upper() for x in explicit][:12] if explicit
-               else [sym for sym in (board or {}) if _default_ok(sym)][:12])
+    symbols = (
+        [str(x).upper() for x in explicit][:12]
+        if explicit
+        else [sym for sym in (board or {}) if _default_ok(sym)][:12]
+    )
     symbols = [sym for sym in symbols if sym != bench]
     if not symbols:
-        return {"ok": False, "error": "no symbol to measure",
-                "message": "run a scan first; an empty board has nothing to compare"}
+        return {
+            "ok": False,
+            "error": "no symbol to measure",
+            "message": "run a scan first; an empty board has nothing to compare",
+        }
 
     series: dict[str, list[tuple[int, float]]] = {}
     dropped: list[dict] = []
@@ -2992,8 +3529,11 @@ async def benchmark_relative(payload: dict, request: Request):
         except UpstreamUnavailable as e:
             dropped.append({"symbol": sym, "reason": f"no candles: {e}"})
             continue
-        clean = [(int(r["t"]), float(r["c"])) for r in rows
-                 if r.get("c") is not None and float(r["c"]) > 0]
+        clean = [
+            (int(r["t"]), float(r["c"]))
+            for r in rows
+            if r.get("c") is not None and float(r["c"]) > 0
+        ]
         if len(clean) < BENCH_MIN_OBS + 1:
             dropped.append({"symbol": sym, "reason": f"fewer than {BENCH_MIN_OBS} usable bars"})
             continue
@@ -3001,16 +3541,25 @@ async def benchmark_relative(payload: dict, request: Request):
         sources.add(src)
 
     if bench not in series:
-        return {"ok": False, "bench": bench,
-                "error": f"no usable candles for the benchmark {bench}",
-                "dropped": dropped, **provenance()}
+        return {
+            "ok": False,
+            "bench": bench,
+            "error": f"no usable candles for the benchmark {bench}",
+            "dropped": dropped,
+            **provenance(),
+        }
 
     _stamps, closes = aligned_closes(series)
     try:
         bench_returns = log_returns(closes[bench])
     except (KeyError, ValueError):
-        return {"ok": False, "bench": bench, "error": "the benchmark series is unusable",
-                "dropped": dropped, **provenance()}
+        return {
+            "ok": False,
+            "bench": bench,
+            "error": "the benchmark series is unusable",
+            "dropped": dropped,
+            **provenance(),
+        }
 
     ppy = PERIODS_PER_YEAR[tf]
     out_rows: list[dict] = []
@@ -3027,17 +3576,25 @@ async def benchmark_relative(payload: dict, request: Request):
             dropped.append({"symbol": sym, "reason": f"fewer than {BENCH_MIN_OBS} shared bars"})
             continue
         snap = (board or {}).get(sym) or {}
-        out_rows.append({
-            "symbol": sym,
-            **{k: (round(v, 4) if isinstance(v, float) else v) for k, v in stat.items()},
-            "direction": snap.get("direction"),
-            "composite": snap.get("composite"),
-        })
+        out_rows.append(
+            {
+                "symbol": sym,
+                **{k: (round(v, 4) if isinstance(v, float) else v) for k, v in stat.items()},
+                "direction": snap.get("direction"),
+                "composite": snap.get("composite"),
+            }
+        )
 
     if not out_rows:
-        return {"ok": False, "bench": bench, "rows": [], "dropped": dropped,
-                "error": "no symbol had enough overlapping history",
-                "min_obs": BENCH_MIN_OBS, **provenance()}
+        return {
+            "ok": False,
+            "bench": bench,
+            "rows": [],
+            "dropped": dropped,
+            "error": "no symbol had enough overlapping history",
+            "min_obs": BENCH_MIN_OBS,
+            **provenance(),
+        }
 
     out_rows.sort(key=lambda r: -(r.get("alpha_annual_pct") or 0))
     return {
@@ -3056,6 +3613,44 @@ async def benchmark_relative(payload: dict, request: Request):
     }
 
 
+def _finite_pos(v: Any) -> float | None:
+    try:
+        if v is None or isinstance(v, bool):
+            return None
+        f = float(v)
+        return f if math.isfinite(f) and f > 0 else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _market_overview_freshness(tf: str, signals_for_tf: dict) -> dict[str, Any]:
+    now = time.time()
+    uni_ts = _finite_pos(_cached.get("universe_ts"))
+    uni_age = round(now - uni_ts, 1) if uni_ts is not None and now >= uni_ts else None
+    sig_ts_map = _cached.get("signals_ts")
+    sig_ts = _finite_pos(sig_ts_map.get(tf)) if isinstance(sig_ts_map, dict) else None
+    sig_age = round(now - sig_ts, 1) if sig_ts is not None and now >= sig_ts else None
+    return {
+        "universe": {
+            "as_of": datetime.fromtimestamp(uni_ts, UTC).isoformat() if uni_ts else None,
+            "age_s": uni_age,
+            "ttl_s": UNIVERSE_TTL_S,
+            "stale": True if uni_age is None else uni_age > UNIVERSE_TTL_S,
+        },
+        "signals": {
+            "tf": tf,
+            "available": bool(signals_for_tf),
+            "as_of": datetime.fromtimestamp(sig_ts, UTC).isoformat() if sig_ts else None,
+            "age_s": sig_age,
+            "ttl_s": SIGNALS_TTL_S,
+            "stale": (True if sig_age is None else sig_age > SIGNALS_TTL_S)
+            if signals_for_tf
+            else None,
+        },
+        "response_generated_at": datetime.now(UTC).isoformat(),
+    }
+
+
 @app.get("/api/market/overview")
 async def market_overview_route(tf: str = Query("15m", pattern="^(15m|1h|4h|D)$")):
     """Breadth, dispersion, concentration and the signal mix in one shot.
@@ -3065,28 +3660,60 @@ async def market_overview_route(tf: str = Query("15m", pattern="^(15m|1h|4h|D)$"
     numbers are ~100,000× larger, so an unconverted sum is wrong by exactly the
     exchange rate.
     """
-    rows = list(_cached.get("universe") or [])
+    rows = [r for r in list(_cached.get("universe") or []) if isinstance(r, dict)]
+    by_tf = _cached.get("signals_by_tf")
+    tf_Map = by_tf.get(tf) if isinstance(by_tf, dict) else None
+    signals_for_tf = tf_Map if isinstance(tf_Map, dict) else {}
+    fresh = _market_overview_freshness(tf, signals_for_tf)
     if not rows:
-        return {**upstream_error("market-overview", "the universe has not loaded"),
-                "ok": False, "universe_size": 0, "reason": "no exchange tickers yet"}
+        return {
+            **upstream_error("market-overview", "the universe has not loaded"),
+            "ok": False,
+            "tf": tf,
+            "universe_size": 0,
+            "reason": "no exchange tickers yet",
+            "freshness": fresh,
+        }
 
-    usdt_irt = next((float(r["last"]) for r in rows
-                     if r.get("symbol") == "USDTIRT" and r.get("last")), 0.0)
+    usdt_irt = next(
+        (
+            px
+            for r in rows
+            if r.get("symbol") == "USDTIRT" and (px := _finite_pos(r.get("last"))) is not None
+        ),
+        0.0,
+    )
     if usdt_irt <= 0:
-        return {**upstream_error("market-overview", "no USDTIRT rate to convert turnover"),
-                "ok": False, "universe_size": len(rows),
-                "reason": "turnover cannot be mixed without a toman rate"}
+        return {
+            **upstream_error("market-overview", "no USDTIRT rate to convert turnover"),
+            "ok": False,
+            "tf": tf,
+            "universe_size": len(rows),
+            "reason": "turnover cannot be mixed without a toman rate",
+            "freshness": fresh,
+        }
 
     enriched = []
     for r in rows:
-        sym = str(r.get("symbol") or "")
-        fx = 1.0 if sym.endswith("USDT") else usdt_irt
+        sym = str(r.get("symbol") or "").upper()
+        fx = 1.0 if sym.endswith("USDT") else (usdt_irt if sym.endswith("IRT") else None)
         enriched.append({**r, "fx_usd": fx})
 
-    signals = _cached.get("signals_by_tf", {}).get(tf) or _cached.get("signals") or {}
-    out = market_overview(enriched, signals=signals,
-                          premium_pct=_cached.get("premium_pct"))
-    out.update({"tf": tf, "as_of": datetime.now(UTC).isoformat(), **provenance()})
+    out = market_overview(
+        enriched, signals=signals_for_tf or None, premium_pct=_cached.get("premium_pct")
+    )
+    uni_as_of = fresh["universe"]["as_of"]
+    out.update(
+        {
+            **provenance(),
+            "tf": tf,
+            "as_of": uni_as_of or fresh["response_generated_at"],
+            "as_of_basis": "universe_snapshot"
+            if uni_as_of
+            else "response_generated_unverified_universe_ts",
+            "freshness": fresh,
+        }
+    )
     return out
 
 
@@ -3168,8 +3795,11 @@ async def paper_order(payload: dict):
         # sending only `size_quote` got an error about `qty`.
         px = (body.get("price") and float(body["price"])) or None
         if px is None:
-            cached = ((_cached["signals_by_tf"].get(queue_context["tf"]) or {}).get(symbol)
-                      if queue_context else _cached["signals"].get(symbol))
+            cached = (
+                (_cached["signals_by_tf"].get(queue_context["tf"]) or {}).get(symbol)
+                if queue_context
+                else _cached["signals"].get(symbol)
+            )
             px = cached["lastClose"] if cached else None
         if not px or px <= 0:
             return {"error": "price required to convert size_quote into qty"}
@@ -3185,15 +3815,30 @@ async def paper_order(payload: dict):
         price = (body.get("price") and float(body["price"])) or None
         queue_options: dict[str, Any] = {}
         if queue_context:
+
             def guard() -> str | None:
                 latest = _queue_order_context(body)
                 return None if latest.get("ok") else latest["error"]
-            queue_options = {"approval_guard": guard,
-                             "client_order_id": queue_policy.order_id(queue_context)}
-        levels = {key: float(body[key]) if body.get(key) is not None else None
-                  for key in ("stop", "tp1", "tp2")}
-        pos = await broker.place_limit(symbol, side, qty, price, levels["stop"],
-                                       levels["tp1"], levels["tp2"], src, **queue_options)
+
+            queue_options = {
+                "approval_guard": guard,
+                "client_order_id": queue_policy.order_id(queue_context),
+            }
+        levels = {
+            key: float(body[key]) if body.get(key) is not None else None
+            for key in ("stop", "tp1", "tp2")
+        }
+        pos = await broker.place_limit(
+            symbol,
+            side,
+            qty,
+            price,
+            levels["stop"],
+            levels["tp1"],
+            levels["tp2"],
+            src,
+            **queue_options,
+        )
         return {
             "ok": bool(pos),
             "position": pos.__dict__ if pos else None,
@@ -3230,10 +3875,18 @@ def _position_payload(pos) -> dict:
             # API boundary. Wrapping it in `from_api` would read Toman as Rial
             # and divide the result by ten again — the same mistake as the
             # original bug, arriving through the helper meant to prevent it.
-            value_usd = toman(value_quote).to_usd(
-                Rate(toman_per_usdt=rate, as_of=_broker.usdt_irt_at,
-                     source="paper-broker",
-                     max_age_s=paper_trading.RATE_TTL_S)).amount
+            value_usd = (
+                toman(value_quote)
+                .to_usd(
+                    Rate(
+                        toman_per_usdt=rate,
+                        as_of=_broker.usdt_irt_at,
+                        source="paper-broker",
+                        max_age_s=paper_trading.RATE_TTL_S,
+                    )
+                )
+                .amount
+            )
             fx_used = rate
         else:
             # No rate: report the quote-currency value and say the USD figure is
@@ -3243,121 +3896,166 @@ def _position_payload(pos) -> dict:
     else:
         value_usd = value_quote
         fx_used = 1.0
-    return {**pos.__dict__, "last_price": last, "pnl_pct": pnl_pct,
-            "value_usd": None if value_usd is None else round(value_usd, 2),
-            "value_quote": round(value_quote, 2), "fx": fx_used}
+    return {
+        **pos.__dict__,
+        "last_price": last,
+        "pnl_pct": pnl_pct,
+        "value_usd": None if value_usd is None else round(value_usd, 2),
+        "value_quote": round(value_quote, 2),
+        "fx": fx_used,
+    }
 
 
 def _order_rows(broker, limit: int = 100) -> list[dict]:
-    """One row per order attempt, built from the broker's own event stream.
+    """Read-only projection of retained events; never repair positions/history.
 
-    The Orders page used to render a hard-coded empty array and describe itself
-    as "the live order book read from the Nobitex server" — a source that never
-    existed. The events below are what the broker actually recorded: a `submit`
-    opens a row, a `fill` prices it, `tp1`/`close` finish it, and a `reject`
-    is a row of its own (an order that was refused, with the gate named).
-
-    Nothing here is derived from a price we did not see. Slippage stays `None`
-    unless a mid price was measured at submit.
+    Entry fill, retained exits and model-reported remaining quantity are distinct.
+    Missing entry events stay unknown, even when a position snapshot is available.
+    An exit rejection is its own attempt, not the state of its related position.
     """
-    pos_by_coid = {p.client_order_id: p for p in broker.positions.values()
-                   if getattr(p, "client_order_id", "")}
+    pos_by_coid = {
+        p.client_order_id: p for p in broker.positions.values() if getattr(p, "client_order_id", "")
+    }
     rows: dict[str, dict] = {}
-    #: Events written before `clientOrderId` existed have nothing to pair on, so
-    #: a `fill` looks for the oldest `submit` still waiting on the same
-    #: symbol+side. Without this, every legacy order showed up twice: once as
-    #: "submitted" and once as a fill with no head.
     dangling: dict[tuple[str, str], list[str]] = {}
-    for ev in broker.orders:
+    for index, ev in enumerate(broker.orders):
         coid = ev.extra.get("clientOrderId") or ""
         if ev.kind == "reject":
-            key = f"rej-{ev.ts:.6f}-{ev.symbol}"
+            key = f"rej-{index}-{ev.ts:.6f}-{ev.symbol}"
         elif coid:
             key = coid
         elif ev.kind == "submit":
-            key = f"ev-{ev.ts:.6f}-{ev.symbol}"
+            key = f"ev-{index}-{ev.ts:.6f}-{ev.symbol}"
             dangling.setdefault((ev.symbol, ev.side), []).append(key)
         else:
             waiting = dangling.get((ev.symbol, ev.side))
-            key = waiting.pop(0) if waiting else f"ev-{ev.ts:.6f}-{ev.symbol}"
+            key = waiting.pop(0) if waiting else f"ev-{index}-{ev.ts:.6f}-{ev.symbol}"
         row = rows.get(key)
         if row is None:
             row = rows[key] = {
                 "clientOrderId": coid or None,
-                "symbol": ev.symbol, "side": ev.side,
-                "type": ev.extra.get("execution") or "limit",
-                "price": float(ev.price or 0.0),
-                "amount": float(ev.qty or 0.0),
-                "filled": 0.0, "requested": 0.0, "fee": 0.0, "pnl_usd": 0.0,
+                "symbol": ev.symbol,
+                "side": ev.side,
+                "type": ev.extra.get("execution") or "unknown",
+                "price": float(ev.price) if ev.price else None,
+                "amount": float(ev.qty or 0),
+                "requested": None,
+                "filled": None,
+                "entry_filled": None,
+                "retained_exit_qty": 0.0,
+                "remaining_open": None,
+                "fee": None,
+                "retained_exit_fees_quote": 0.0,
+                "pnl_usd": None,
+                "pnl_usd_basis": "retained-exit-events",
                 "slip_bps": None,
-                "state": "SUBMITTED", "reason": None, "source": ev.extra.get("source"),
-                "opened_at": ev.ts, "closed_at": None, "close_reason": None,
+                "adverse_slip_bps": None,
+                "state": "SUBMITTED",
+                "position_state": None,
+                "reason": None,
+                "source": ev.extra.get("source"),
+                "opened_at": ev.ts,
+                "closed_at": None,
+                "close_reason": None,
                 "events": [],
+                "event_details": [],
+                "position_link": "unavailable",
             }
         row["events"].append(ev.kind)
+        row["event_details"].append(
+            {
+                "kind": ev.kind,
+                "ts": ev.ts,
+                "qty": ev.qty,
+                "price": ev.price,
+                "fee_quote": ev.extra.get("fee"),
+                "pnl_usd": ev.extra.get("pnl"),
+                "reason": ev.extra.get("reason"),
+            }
+        )
         if ev.kind == "submit":
-            row["price"] = float(ev.price or 0.0)
-            row["amount"] = float(ev.qty or 0.0)
-            # `qty` on a submit is what the book could take, not what was asked
-            # for; the difference is the part of the order that never filled.
-            row["requested"] = float(ev.extra.get("requested") or ev.qty or 0.0)
+            row["price"] = float(ev.price) if ev.price else None
+            row["amount"] = float(ev.qty or 0)
+            row["requested"] = (
+                float(ev.extra["requested"]) if ev.extra.get("requested") is not None else None
+            )
             row["state"] = "SUBMITTED"
-            row["mid"] = float(ev.extra.get("mid") or 0.0)
+            row["mid"] = float(ev.extra.get("mid") or 0)
+            row["type"] = ev.extra.get("execution") or row["type"]
         elif ev.kind == "fill":
-            row["filled"] = float(ev.qty or 0.0)
-            row["fee"] = float(ev.extra.get("fee") or 0.0)
+            row["entry_filled"] = float(row["entry_filled"] or 0) + float(ev.qty or 0)
+            row["price"] = float(ev.price) if ev.price else None
+            row["fee"] = float(ev.extra["fee"]) if ev.extra.get("fee") is not None else None
             row["state"] = "FILLED"
-            # Slippage is measured only when a mid was recorded at submit;
-            # otherwise it stays unknown, because a number nobody measured is a
-            # lie with a decimal point.
-            mid = float(row.get("mid") or 0.0)
+            mid = float(row.get("mid") or 0)
             if mid > 0 and ev.price:
                 row["slip_bps"] = round((float(ev.price) - mid) / mid * 10_000, 2)
-        elif ev.kind == "tp1":
-            row["filled"] = max(0.0, row["filled"] - float(ev.qty or 0.0))
-            row["pnl_usd"] += float(ev.extra.get("pnl") or 0.0)
-            row["state"] = "PARTIAL"
-        elif ev.kind == "close":
-            row["filled"] = 0.0
-            row["pnl_usd"] += float(ev.extra.get("pnl") or 0.0)
-            row["state"] = "CLOSED"
-            row["closed_at"] = ev.ts
-            row["close_reason"] = ev.extra.get("reason")
+                row["adverse_slip_bps"] = row["slip_bps"] * (-1 if ev.side == "sell" else 1)
+        elif ev.kind in ("tp1", "close"):
+            row["retained_exit_qty"] += float(ev.qty or 0)
+            row["retained_exit_fees_quote"] += float(ev.extra.get("fee") or 0)
+            if ev.extra.get("pnl") is not None:
+                row["pnl_usd"] = float(row["pnl_usd"] or 0) + float(ev.extra["pnl"])
+            row["state"] = "PARTIAL" if ev.kind == "tp1" else "CLOSED"
+            if ev.kind == "close":
+                row["closed_at"] = ev.ts
+                row["close_reason"] = ev.extra.get("reason")
         elif ev.kind == "reject":
             row["state"] = "REJECTED"
             row["reason"] = ev.extra.get("reason")
-            row["rejection"] = {k: ev.extra.get(k) for k in (
-                "detail", "gate_value", "gate_limit", "stop", "risk_pct",
-                "equity_usd", "quote_rate")}
+            row["rejection"] = {
+                k: ev.extra.get(k)
+                for k in (
+                    "detail",
+                    "gate_value",
+                    "gate_limit",
+                    "stop",
+                    "risk_pct",
+                    "equity_usd",
+                    "quote_rate",
+                )
+            }
 
-    # The position is the authority on what is still open: an event stream that
-    # says FILLED after the position was closed by a stop would be wrong.
     for row in rows.values():
         pos = pos_by_coid.get(row["clientOrderId"] or "")
-        if pos is None and not row["clientOrderId"] and row["state"] in ("FILLED", "PARTIAL"):
-            # Legacy row: the newest position on that market is its owner.
-            pos = next((p for p in broker.positions.values()
-                        if p.symbol == row["symbol"] and getattr(p, "client_order_id", "") == ""),
-                       None)
         if pos is not None:
-            row["state"] = pos.state
-            row["filled"] = float(pos.filled_qty)
-            row["price"] = float(pos.entry_price)
-            row["pnl_usd"] = round(float(pos.realized_pnl), 4)
-            row["closed_at"] = pos.closed_at
-            row["close_reason"] = pos.close_reason
-            row["execution"] = pos.execution
-        row["pnl_usd"] = round(row["pnl_usd"], 4)
-        if pos is not None and getattr(pos, "requested_qty", None):
-            row["requested"] = float(pos.requested_qty)
-    out = sorted(rows.values(), key=lambda r: r["opened_at"], reverse=True)
-    for r in out[:limit]:
-        r["opened_at_iso"] = datetime.fromtimestamp(r["opened_at"], UTC).isoformat()
-        r["closed_at_iso"] = (datetime.fromtimestamp(r["closed_at"], UTC).isoformat()
-                              if r["closed_at"] else None)
-        denom = r.get("requested") or r["amount"]
-        r["filled_pct"] = round(min(100.0, r["filled"] / denom * 100), 1) if denom else 0.0
-    return out[:limit]
+            row["position_link"] = "clientOrderId"
+            row["position_state"] = pos.state
+            # Never promote a failed attempt to its associated position's state.
+            if row["state"] != "REJECTED":
+                row["state"] = pos.state
+                row["remaining_open"] = 0.0 if pos.state == "CLOSED" else float(pos.filled_qty)
+                row["price"] = float(pos.entry_price)
+                row["pnl_usd"] = float(pos.realized_pnl)
+                row["pnl_usd_basis"] = "position-snapshot"
+                row["closed_at"] = pos.closed_at
+                row["close_reason"] = pos.close_reason
+                row["type"] = getattr(pos, "execution", None) or row["type"]
+                if getattr(pos, "requested_qty", 0) > 0:
+                    row["requested"] = float(pos.requested_qty)
+        # No arbitrary newest-position match for unlinked legacy rows.
+        row["filled"] = row["entry_filled"]
+        row["pnl_usd"] = round(row["pnl_usd"], 4) if row["pnl_usd"] is not None else None
+        row["record_kind"] = (
+            "rejected-attempt"
+            if row["state"] == "REJECTED"
+            else "entry"
+            if "fill" in row["events"] or "submit" in row["events"]
+            else "retained-events-only"
+        )
+        row["opened_at_basis"] = "first-retained-event"
+        row["execution"] = row["type"]
+        row["opened_at_iso"] = datetime.fromtimestamp(row["opened_at"], UTC).isoformat()
+        row["closed_at_iso"] = (
+            datetime.fromtimestamp(row["closed_at"], UTC).isoformat() if row["closed_at"] else None
+        )
+        denom = row["requested"]
+        row["filled_pct"] = (
+            round(min(100.0, row["entry_filled"] / denom * 100), 1)
+            if row["entry_filled"] is not None and denom and denom > 0
+            else None
+        )
+    return sorted(rows.values(), key=lambda row: row["opened_at"], reverse=True)[:limit]
 
 
 @app.get("/api/paper/orders")
@@ -3371,8 +4069,19 @@ async def paper_orders(limit: int = Query(100, ge=1, le=500)):
         "closed": sum(1 for r in rows if r["state"] == "CLOSED"),
         "rejected": sum(1 for r in rows if r["state"] == "REJECTED"),
     }
-    return {"ok": True, "rows": rows, "counts": counts,
-            "source": "paper-broker", "as_of": datetime.now(UTC).isoformat()}
+    return {
+        "ok": True,
+        "rows": rows,
+        "counts": counts,
+        "source": "paper-broker",
+        "as_of": datetime.now(UTC).isoformat(),
+        "coverage": {
+            "complete_history": False,
+            "persisted_event_limit": 400,
+            "row_limit": limit,
+            "counts_scope": "returned-rows",
+        },
+    }
 
 
 @app.get("/api/paper/positions")
@@ -3454,9 +4163,15 @@ async def paper_halt(request: Request, flat: bool = Query(False)):
     opened = sum(1 for p in broker.positions.values() if p.state != "CLOSED")
     tg = await notify.send(
         f"🛑 Nobi: kill switch armed\nopen positions {opened}\nflat request {flat}\n"
-        f"audit #{audit_id}")
-    return {"halted": broker.halted, "resumed": False, "open_positions": opened,
-            "audit_id": audit_id, "telegram": tg}
+        f"audit #{audit_id}"
+    )
+    return {
+        "halted": broker.halted,
+        "resumed": False,
+        "open_positions": opened,
+        "audit_id": audit_id,
+        "telegram": tg,
+    }
 
 
 @app.post("/api/paper/resume", dependencies=[Depends(require_client)])
@@ -3488,13 +4203,14 @@ _EXEC_LOADED = [False]
 def _exec_mode_load() -> None:
     if _EXEC_LOADED[0]:
         return
-    _EXEC_LOADED[0] = True
     if os.getenv("NBX_JOURNAL", "1") == "0":
+        _EXEC_LOADED[0] = True
         return
     try:
         conn = signal_journal.connect()
         try:
             EXEC_MODE.load(signal_journal.get_meta(conn, "exec_mode", None))
+            _EXEC_LOADED[0] = True
         finally:
             conn.close()
     except Exception as e:  # defaults are a safe fallback
@@ -3523,8 +4239,13 @@ _AUTO_LAST: dict[str, float] = {}
 # Counters plus the last rejection: the values are mixed types, so the dict is
 # annotated rather than left to be inferred as `dict[str, int | None]`.
 _AUTO_STATE: dict[str, Any] = {
-    "last_tick_at": None, "placed": 0, "skipped": 0, "rejected": 0,
-    "last_error": None, "last_symbol": None, "last_action": None,
+    "last_tick_at": None,
+    "placed": 0,
+    "skipped": 0,
+    "rejected": 0,
+    "last_error": None,
+    "last_symbol": None,
+    "last_action": None,
 }
 
 
@@ -3554,9 +4275,11 @@ async def auto_tick(tf: str = "15m") -> dict:
         if (snap.get("direction") or "").upper() != "LONG":
             out["skipped"] += 1
             continue
-        if any(p.symbol == sym and getattr(p, "state", "OPEN") != "CLOSED"
-               for p in broker.positions.values()):
-            out["skipped"] += 1                       # one position per market
+        if any(
+            p.symbol == sym and getattr(p, "state", "OPEN") != "CLOSED"
+            for p in broker.positions.values()
+        ):
+            out["skipped"] += 1  # one position per market
             continue
         if now - _AUTO_LAST.get(sym, 0.0) < AUTO_COOLDOWN_S:
             out["skipped"] += 1
@@ -3570,41 +4293,66 @@ async def auto_tick(tf: str = "15m") -> dict:
             # size the order against a number in the wrong currency.
             out["skipped"] += 1
             out["rejected"].append({"symbol": sym, "reason": "no-fx-rate"})
-            audit("paper.order.auto", actor="auto", result="blocked",
-                  detail={"symbol": sym, "reason": "no-fx-rate"})
+            audit(
+                "paper.order.auto",
+                actor="auto",
+                result="blocked",
+                detail={"symbol": sym, "reason": "no-fx-rate"},
+            )
             continue
         equity_quote = usd(eq).to_irt(rate).amount
-        plan = risk.evaluate(sym, "buy", entry, atr, tf, equity_quote=equity_quote,
-                             preview=True)
+        plan = risk.evaluate(sym, "buy", entry, atr, tf, equity_quote=equity_quote, preview=True)
         _AUTO_LAST[sym] = now
         if plan.blocked or not plan.size_quote or not plan.entry:
             reason = ",".join(plan.warnings or []) or "no-size"
             out["skipped"] += 1
             out["rejected"].append({"symbol": sym, "reason": reason})
-            audit("paper.order.auto", actor="auto", result="blocked",
-                  detail={"symbol": sym, "reason": reason})
+            audit(
+                "paper.order.auto",
+                actor="auto",
+                result="blocked",
+                detail={"symbol": sym, "reason": reason},
+            )
             continue
         qty = plan.size_quote / plan.entry
-        pos = await broker.place_limit(sym, "buy", qty, plan.entry, plan.stop,
-                                       plan.tp1, plan.tp2, source="AUTO")
+        pos = await broker.place_limit(
+            sym, "buy", qty, plan.entry, plan.stop, plan.tp1, plan.tp2, source="AUTO"
+        )
         if pos is None:
             out["rejected"].append({"symbol": sym, "reason": broker.last_error or "rejected"})
-            audit("paper.order.auto", actor="auto", result="rejected",
-                  detail={"symbol": sym, "reason": broker.last_error or "rejected"})
+            audit(
+                "paper.order.auto",
+                actor="auto",
+                result="rejected",
+                detail={"symbol": sym, "reason": broker.last_error or "rejected"},
+            )
         else:
             out["placed"] += 1
-            audit("paper.order.auto", actor="auto", result="ok",
-                  detail={"symbol": sym, "qty": round(qty, 8), "entry": plan.entry,
-                          "stop": plan.stop, "size_quote": plan.size_quote})
-    _AUTO_STATE.update({
-        "last_tick_at": now,
-        "placed": _AUTO_STATE["placed"] + out["placed"],
-        "skipped": _AUTO_STATE["skipped"] + out["skipped"],
-        "rejected": _AUTO_STATE["rejected"] + len(out["rejected"]),
-        "last_error": (out["rejected"][-1]["reason"] if out["rejected"] else None),
-        "last_symbol": (out["rejected"][-1]["symbol"] if out["rejected"] else None),
-        "last_action": ("placed" if out["placed"] else ("rejected" if out["rejected"] else "idle")),
-    })
+            audit(
+                "paper.order.auto",
+                actor="auto",
+                result="ok",
+                detail={
+                    "symbol": sym,
+                    "qty": round(qty, 8),
+                    "entry": plan.entry,
+                    "stop": plan.stop,
+                    "size_quote": plan.size_quote,
+                },
+            )
+    _AUTO_STATE.update(
+        {
+            "last_tick_at": now,
+            "placed": _AUTO_STATE["placed"] + out["placed"],
+            "skipped": _AUTO_STATE["skipped"] + out["skipped"],
+            "rejected": _AUTO_STATE["rejected"] + len(out["rejected"]),
+            "last_error": (out["rejected"][-1]["reason"] if out["rejected"] else None),
+            "last_symbol": (out["rejected"][-1]["symbol"] if out["rejected"] else None),
+            "last_action": (
+                "placed" if out["placed"] else ("rejected" if out["rejected"] else "idle")
+            ),
+        }
+    )
     return out
 
 
@@ -3628,8 +4376,9 @@ async def _auto_loop() -> None:
             raise
         except Exception as e:  # one bad pass must not kill the loop
             log.warning("auto tick failed: %s", e)
-            errorlog.capture(source="task.auto-exec", exc=e,
-                             message="automatic execution tick failed")
+            errorlog.capture(
+                source="task.auto-exec", exc=e, message="automatic execution tick failed"
+            )
         await asyncio.sleep(min(15.0, AUTO_INTERVAL_S))
 
 
@@ -3689,24 +4438,34 @@ async def reference_status():
     """Is the fallback feed alive, and what does it say BTCUSDT is worth?"""
     try:
         return {"ok": True, **(await reference_feed.status())}
-    except Exception as e:      # a status probe must never 500
+    except Exception as e:  # a status probe must never 500
         log.warning("reference status failed: %s", e)
         return {"ok": False, "reachable": False, "error": str(e)}
 
 
 @app.get("/api/reference/candles/{symbol}")
-async def reference_candles(symbol: str, tf: str = "4h", limit: int = 500,
-                            toman_per_usdt: float | None = None):
+async def reference_candles(
+    symbol: str, tf: str = "4h", limit: int = 500, toman_per_usdt: float | None = None
+):
     """Candles from the reference venue, shaped exactly like the exchange's."""
     try:
         rows, meta = await reference_feed.fetch_candles(
-            symbol.upper(), tf, limit=max(10, min(int(limit), 2000)),
+            symbol.upper(),
+            tf,
+            limit=max(10, min(int(limit), 2000)),
             fx=toman_per_usdt,
         )
     except reference_feed.ReferenceError as e:
         return {"ok": False, "error": e.code, "message": e.message, "meta": e.meta}
-    return {"ok": True, "symbol": symbol.upper(), "tf": tf, "rows": rows,
-            "count": len(rows), "reference": meta, **provenance()}
+    return {
+        "ok": True,
+        "symbol": symbol.upper(),
+        "tf": tf,
+        "rows": rows,
+        "count": len(rows),
+        "reference": meta,
+        **provenance(),
+    }
 
 
 @app.get("/api/reference/cross-check")
@@ -3735,13 +4494,13 @@ async def reference_cross_check(symbol: str = "BTCUSDT"):
         gap = (out["venue"] / out["reference"] - 1.0) * 100
         out["gap_pct"] = round(gap, 3)
         out["verdict"] = (
-            "aligned" if abs(gap) <= 2.0
-            else "wide" if abs(gap) <= 10.0
-            else "divergent"
+            "aligned" if abs(gap) <= 2.0 else "wide" if abs(gap) <= 10.0 else "divergent"
         )
         if out["verdict"] != "aligned":
-            out["note"] = ("a gap this size is a stale or mis-scaled feed, not an "
-                           "arbitrage: check both before trusting either")
+            out["note"] = (
+                "a gap this size is a stale or mis-scaled feed, not an "
+                "arbitrage: check both before trusting either"
+            )
     return out
 
 
@@ -3754,9 +4513,9 @@ def freshness_block(rows: list[dict], tf: str) -> dict:
     """
     try:
         return freshness.assess(rows, tf)
-    except AdaptiveRefusal as e:                   # bad timeframes and timestamps
+    except AdaptiveRefusal as e:  # bad timeframes and timestamps
         return {"stale": True, "reason": e.code, "age_bars": None}
-    except Exception as e:                          # pragma: no cover - last resort
+    except Exception as e:  # pragma: no cover - last resort
         return {"stale": True, "reason": type(e).__name__, "age_bars": None}
 
 
@@ -3782,7 +4541,7 @@ def volatility_block(rows: list[dict]) -> dict:
         }
     except AdaptiveRefusal as e:
         return {**base, "ok": False, "error": e.code, "message": e.message, **e.meta}
-    except Exception as e:                          # pragma: no cover - last resort
+    except Exception as e:  # pragma: no cover - last resort
         return {**base, "ok": False, "error": type(e).__name__, "message": str(e)}
 
 
@@ -3794,8 +4553,7 @@ def _toman_per_usdt() -> float | None:
     `None` — and `None` makes the depth gate answer `no-book` for that symbol
     rather than compare tomans to dollars.
     """
-    row = next((r for r in (_cached.get("universe") or [])
-                if r.get("symbol") == "USDTIRT"), None)
+    row = next((r for r in (_cached.get("universe") or []) if r.get("symbol") == "USDTIRT"), None)
     try:
         rate = float((row or {}).get("last") or 0.0)
     except (TypeError, ValueError):
@@ -3827,8 +4585,13 @@ async def gates_evidence(
         finally:
             conn.close()
     except Exception as e:
-        return {**upstream_error("gates", str(e)), "applied": False, "gates": {},
-                "tf": tf, "horizon_bars": horizon}
+        return {
+            **upstream_error("gates", str(e)),
+            "applied": False,
+            "gates": {},
+            "tf": tf,
+            "horizon_bars": horizon,
+        }
 
     symbols = sorted({str(r["symbol"]) for r in evidence_rows})[:40]
     frames: dict[str, dict[str, list[float]]] = {}
@@ -3836,12 +4599,11 @@ async def gates_evidence(
     async def one(sym: str) -> None:
         try:
             bars, _src = await client.get_candles_ex(sym, tf, 800)
-        except Exception:                      # one symbol's feed must not fail the answer
+        except Exception:  # one symbol's feed must not fail the answer
             return
         if not bars:
             return
-        frames[sym] = {"t": [int(b["t"]) for b in bars],
-                       "c": [float(b["c"]) for b in bars]}
+        frames[sym] = {"t": [int(b["t"]) for b in bars], "c": [float(b["c"]) for b in bars]}
 
     if symbols:
         await asyncio.gather(*(one(s) for s in symbols))
@@ -3849,9 +4611,10 @@ async def gates_evidence(
     # One reference row anywhere in this ledger is enough to cap every verdict: the
     # comparison must be made on the exchange's candles or on nothing (ADR-0014).
     source = "reference" if any(r.get("source") == "reference" for r in evidence_rows) else None
-    measured = {g: gate_ledger.measure(evidence_rows, frames, gate=g, horizon=horizon,
-                                       source=source)
-                for g in gate_ledger.MEASURABLE}
+    measured = {
+        g: gate_ledger.measure(evidence_rows, frames, gate=g, horizon=horizon, source=source)
+        for g in gate_ledger.MEASURABLE
+    }
     return {
         "ok": True,
         "tf": tf,
@@ -3864,8 +4627,10 @@ async def gates_evidence(
         "ledger": summary,
         "symbols_read": len(frames),
         "source": source,
-        "note": ("each verdict is per gate, on that gate's own sample; no gate changes "
-                 "the ranking until it is supported here and adopted in an ADR"),
+        "note": (
+            "each verdict is per gate, on that gate's own sample; no gate changes "
+            "the ranking until it is supported here and adopted in an ADR"
+        ),
     }
 
 
@@ -3888,13 +4653,19 @@ def gate_ledger_summary(max_age_s: float = 30.0) -> dict:
             out["distribution"] = gate_ledger.distributions(conn)
         finally:
             conn.close()
-    except Exception as e:                      # a ledger problem is not a scan problem
+    except Exception as e:  # a ledger problem is not a scan problem
         log.warning("gate ledger unavailable: %s", e)
-        out = {"gates": {}, "ready": [], "error": str(e),
-               "limits": {"min_verdicts": gate_ledger.MIN_VERDICTS,
-                          "min_days": gate_ledger.MIN_DAYS,
-                          "delta_bp": gate_ledger.DELTA_BP,
-                          "min_share": gate_ledger.MIN_SHARE}}
+        out = {
+            "gates": {},
+            "ready": [],
+            "error": str(e),
+            "limits": {
+                "min_verdicts": gate_ledger.MIN_VERDICTS,
+                "min_days": gate_ledger.MIN_DAYS,
+                "delta_bp": gate_ledger.DELTA_BP,
+                "min_share": gate_ledger.MIN_SHARE,
+            },
+        }
     _cached["gate_ledger_summary"] = (time.time(), out)
     return out
 
@@ -3931,12 +4702,13 @@ def gate_write(tf: str) -> int:
     ts_of = {sym: int(t) + step for sym, t in bars.items() if t is not None}
     conn = gate_ledger.connect()
     try:
-        n = gate_ledger.record(conn, block.get("verdicts") or {}, tf=tf, ts_of=ts_of,
-                               source=_scan_source(ranked))
+        n = gate_ledger.record(
+            conn, block.get("verdicts") or {}, tf=tf, ts_of=ts_of, source=_scan_source(ranked)
+        )
     finally:
         conn.close()
     if n:
-        _cached.pop("gate_ledger_summary", None)     # the counts just changed
+        _cached.pop("gate_ledger_summary", None)  # the counts just changed
     return n
 
 
@@ -3981,13 +4753,18 @@ def gates_block(ranked: list[dict], tf: str) -> dict:
                 book = None
             else:
                 oldest_usable = age_s if oldest_usable is None else max(oldest_usable, age_s)
-        rows.append({
-            "symbol": sym,
-            "age_bars": age_bars,
-            "halted": sym in closed,
-            "book": ({"spread_bps": book.get("spread_bps"),
-                      "depth_usd": book.get("depth_usd")} if book else None),
-        })
+        rows.append(
+            {
+                "symbol": sym,
+                "age_bars": age_bars,
+                "halted": sym in closed,
+                "book": (
+                    {"spread_bps": book.get("spread_bps"), "depth_usd": book.get("depth_usd")}
+                    if book
+                    else None
+                ),
+            }
+        )
     out = gates.evaluate(rows)
     # How much of the list could actually be judged, so the card can say "no book
     # has been read for these yet" instead of implying the market is clean.
@@ -4013,8 +4790,9 @@ def gates_block(ranked: list[dict], tf: str) -> dict:
     return out
 
 
-def scan_freshness_block(bars: dict[str, float | None], tf: str,
-                         *, now: datetime | None = None) -> dict:
+def scan_freshness_block(
+    bars: dict[str, float | None], tf: str, *, now: datetime | None = None
+) -> dict:
     """Freshness for a *list* of symbols: the worst one decides (1.0.23).
 
     1.0.21 measured the newest candle across the whole scan and called that the
@@ -4041,10 +4819,11 @@ def scan_freshness_block(bars: dict[str, float | None], tf: str,
             per[sym] = freshness.assess_bar(ts, tf, now=now)
         except AdaptiveRefusal as e:
             per[sym] = {"stale": True, "reason": e.code, "age_bars": None}
-        except Exception as e:                      # pragma: no cover - last resort
+        except Exception as e:  # pragma: no cover - last resort
             per[sym] = {"stale": True, "reason": type(e).__name__, "age_bars": None}
 
     stale = {sym: r for sym, r in per.items() if r.get("stale")}
+
     # "Worst" is the oldest bar; a symbol with no usable stamp outranks any age,
     # because an unknown age is not a small one.
     def _rank(item: tuple[str, dict]) -> float:
@@ -4059,8 +4838,11 @@ def scan_freshness_block(bars: dict[str, float | None], tf: str,
         "stale": len(stale),
         "no_candles": sum(1 for r in per.values() if r.get("reason") == "no-candles"),
     }
-    out["worst"] = ({"symbol": worst_sym, "age_bars": worst.get("age_bars"),
-                     "reason": worst.get("reason")} if stale else None)
+    out["worst"] = (
+        {"symbol": worst_sym, "age_bars": worst.get("age_bars"), "reason": worst.get("reason")}
+        if stale
+        else None
+    )
     return out
 
 
@@ -4075,7 +4857,7 @@ def freshness_block_at(bar_at: float | None, tf: str) -> dict:
         return freshness.assess_bar(bar_at, tf)
     except AdaptiveRefusal as e:
         return {"stale": True, "reason": e.code, "age_bars": None}
-    except Exception as e:                          # pragma: no cover - last resort
+    except Exception as e:  # pragma: no cover - last resort
         return {"stale": True, "reason": type(e).__name__, "age_bars": None}
 
 
@@ -4102,7 +4884,8 @@ async def adaptive_thresholds(
     try:
         if source == "reference":
             rows, ref_meta = await reference_feed.fetch_candles(
-                sym, tf, limit=limit, fx=toman_per_usdt)
+                sym, tf, limit=limit, fx=toman_per_usdt
+            )
             out["reference"] = ref_meta
         else:
             rows, _src = await client.get_candles_ex(sym, tf, limit)
@@ -4150,7 +4933,8 @@ async def adaptive_evidence(
     try:
         if source == "reference":
             rows, ref_meta = await reference_feed.fetch_candles(
-                sym, tf, limit=limit, fx=toman_per_usdt)
+                sym, tf, limit=limit, fx=toman_per_usdt
+            )
             out["reference"] = ref_meta
         else:
             rows, _src = await client.get_candles_ex(sym, tf, limit)
@@ -4159,8 +4943,7 @@ async def adaptive_evidence(
     except UpstreamUnavailable as e:
         return {**out, "ok": False, **upstream_error("candles", str(e))}
     try:
-        out.update(await asyncio.to_thread(
-            compare, rows, tf, sym, factor=factor, source=source))
+        out.update(await asyncio.to_thread(compare, rows, tf, sym, factor=factor, source=source))
     except AdaptiveError as e:
         return {**out, "ok": False, "error": e.code, "message": e.message, "meta": e.meta}
     try:
@@ -4176,13 +4959,16 @@ async def backtest_run(payload: dict):
     """Walk-forward backtest: optimise on train, report out-of-sample only."""
     b = payload or {}
     symbol = (b.get("symbol") or "BTCIRT").upper()
-    tf = (b.get("tf") or "1h")
+    tf = b.get("tf") or "1h"
     mode = (b.get("mode") or "wf").lower()
     bars = max(200, min(int(b.get("bars", 600)), 2000))
     candles_source = (b.get("candles_source") or "nobitex").lower()
     if candles_source not in ("nobitex", "reference"):
-        return {"ok": False, "error": f"unknown candles_source {candles_source!r}",
-                "allowed": ["nobitex", "reference"]}
+        return {
+            "ok": False,
+            "error": f"unknown candles_source {candles_source!r}",
+            "allowed": ["nobitex", "reference"],
+        }
     cfg = {
         "initial_equity": float(b.get("equity", 50000)),
         "risk_pct": float(b.get("risk_pct", 0.75)),
@@ -4209,12 +4995,19 @@ async def backtest_run(payload: dict):
             # never be PASS.
             try:
                 rows, ref_meta = await reference_feed.fetch_candles(
-                    symbol, tf, limit=bars,
+                    symbol,
+                    tf,
+                    limit=bars,
                     fx=b.get("toman_per_usdt"),
                 )
             except reference_feed.ReferenceError as e:
-                return {"ok": False, "error": e.code, "message": e.message,
-                        "meta": e.meta, "candles_source": candles_source}
+                return {
+                    "ok": False,
+                    "error": e.code,
+                    "message": e.message,
+                    "meta": e.meta,
+                    "candles_source": candles_source,
+                }
             src = "reference"
         else:
             rows, src = await client.get_candles_ex(symbol, tf, bars)
@@ -4245,6 +5038,7 @@ async def backtest_run(payload: dict):
     except Exception as e:
         log.exception("backtest failed")
         import traceback
+
         return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
 
 
@@ -4254,33 +5048,59 @@ async def backtest_quick(symbol: str = "BTCIRT", tf: str = "1h", bars: int = 600
     try:
         rows, src = await client.get_candles_ex(symbol, tf, max(200, min(bars, 2000)))
     except UpstreamUnavailable as e:
-        row = errorlog.capture(level="warning", source="api.backtest.quick",
-                               message=f"candles unavailable for {symbol} {tf}: {e}")
+        row = errorlog.capture(
+            level="warning",
+            source="api.backtest.quick",
+            message=f"candles unavailable for {symbol} {tf}: {e}",
+        )
         return {**upstream_error("backtest", str(e)), "log_id": row["id"]}
     except Exception as e:
-        row = errorlog.capture(level="error", source="api.backtest.quick",
-                               message=f"candle fetch failed for {symbol} {tf}: {e}", exc=e)
+        row = errorlog.capture(
+            level="error",
+            source="api.backtest.quick",
+            message=f"candle fetch failed for {symbol} {tf}: {e}",
+            exc=e,
+        )
         return {"ok": False, "error": f"candle fetch failed: {e}", "log_id": row["id"]}
     if not rows:
-        row = errorlog.capture(level="warning", source="api.backtest.quick",
-                               message=f"no candles returned for {symbol} {tf}")
-        return {"ok": False, "error": "no candles returned — check connectivity to apiv2.nobitex.ir",
-                "log_id": row["id"]}
-    cfg = {"initial_equity": 50000, "risk_pct": 0.75, "atr_stop_k": 2.0,
-           "max_concurrent": 5, "train_bars": 240, "eval_bars": 120}
+        row = errorlog.capture(
+            level="warning",
+            source="api.backtest.quick",
+            message=f"no candles returned for {symbol} {tf}",
+        )
+        return {
+            "ok": False,
+            "error": "no candles returned — check connectivity to apiv2.nobitex.ir",
+            "log_id": row["id"],
+        }
+    cfg = {
+        "initial_equity": 50000,
+        "risk_pct": 0.75,
+        "atr_stop_k": 2.0,
+        "max_concurrent": 5,
+        "train_bars": 240,
+        "eval_bars": 120,
+    }
     try:
-        res = await asyncio.to_thread(run_and_save, symbol.upper(), tf, rows, cfg, "wf", None, True, src)
+        res = await asyncio.to_thread(
+            run_and_save, symbol.upper(), tf, rows, cfg, "wf", None, True, src
+        )
     except ValueError as e:
         return {"ok": False, "error": str(e)}
-    return {"ok": True, "report": res, "bars": len(rows), "source": src,
-            "freshness": freshness_block(rows, tf)}
+    return {
+        "ok": True,
+        "report": res,
+        "bars": len(rows),
+        "source": src,
+        "freshness": freshness_block(rows, tf),
+    }
 
 
 @app.post("/api/grid-multi", dependencies=[Depends(require_client)])
 async def grid_multi(payload: dict):
     b = payload or {}
     symbols = b.get("symbols") or ["BTCIRT", "ETHIRT"]
-    tf = (b.get("tf") or "1h")
+    tf = b.get("tf") or "1h"
     syms = [s.upper() for s in symbols][:16]
     sem = asyncio.Semaphore(4)
 
@@ -4291,14 +5111,23 @@ async def grid_multi(payload: dict):
                 if not rows:
                     return {"symbol": sym, "error": "no candles"}
                 res = await asyncio.to_thread(grid_search, sym, tf, rows, b.get("grid"))
-            return {"symbol": sym, "best": res.get("best"), "elapsed_s": res.get("elapsed_s"), "combo_count": res.get("combo_count")}
+            return {
+                "symbol": sym,
+                "best": res.get("best"),
+                "elapsed_s": res.get("elapsed_s"),
+                "combo_count": res.get("combo_count"),
+            }
         except UpstreamUnavailable as e:
             log.warning("multi-grid %s skipped: %s", sym, e)
             return {"symbol": sym, "unavailable": True, "error": UPSTREAM_MSG_FA}
         except Exception as e:
-            row = errorlog.capture(level="error", source="api.grid-multi",
-                                   message=f"{sym} {tf}: {e}", exc=e,
-                                   context={"symbol": sym, "tf": tf})
+            row = errorlog.capture(
+                level="error",
+                source="api.grid-multi",
+                message=f"{sym} {tf}: {e}",
+                exc=e,
+                context={"symbol": sym, "tf": tf},
+            )
             log.error("multi-grid %s failed: %s", sym, e, extra={"nbx_captured": True})
             return {"symbol": sym, "error": str(e), "log_id": row["id"]}
 
@@ -4310,8 +5139,10 @@ async def grid_multi(payload: dict):
 async def backtest_reports(limit: int = 20):
     """List saved run reports (newest first) so the dashboard can browse history."""
     import json as _json
-    from pathlib import Path
-    d = Path(__file__).parent / "backtest_reports"
+
+    from backtest import REPORTS
+
+    d = REPORTS
     if not d.exists():
         return {"ok": True, "reports": []}
     files = sorted(d.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)[:limit]
@@ -4319,14 +5150,19 @@ async def backtest_reports(limit: int = 20):
     for f in files:
         try:
             j = _json.loads(f.read_text(encoding="utf-8"))
-            out.append({
-                "file": f.name,
-                "config_hash": j.get("config_hash"),
-                "symbol": j.get("symbol"),
-                "tf": j.get("tf"),
-                "windows": j.get("windows"),
-                "aggregate": j.get("aggregate", {}),
-            })
+            out.append(
+                {
+                    "file": f.name,
+                    "run_id": j.get("run_id"),
+                    "generated_at": j.get("generated_at"),
+                    "config_hash_scope": j.get("config_hash_scope"),
+                    "config_hash": j.get("config_hash"),
+                    "symbol": j.get("symbol"),
+                    "tf": j.get("tf"),
+                    "windows": (j.get("aggregate") or {}).get("windows", j.get("windows")),
+                    "aggregate": j.get("aggregate", {}),
+                }
+            )
         except Exception:
             continue
     return {"ok": True, "reports": out}
@@ -4344,25 +5180,38 @@ async def backtest_grid(payload: dict):
         except UpstreamUnavailable as e:
             return {**upstream_error("grid", str(e))}
         if not rows:
-            row = errorlog.capture(level="warning", source="api.backtest.grid",
-                                   message=f"no candles for {symbol} {tf} — grid not run",
-                                   context={"symbol": symbol, "tf": tf})
-            log.warning("grid skipped for %s %s: no candles", symbol, tf,
-                        extra={"nbx_captured": True})
+            row = errorlog.capture(
+                level="warning",
+                source="api.backtest.grid",
+                message=f"no candles for {symbol} {tf} — grid not run",
+                context={"symbol": symbol, "tf": tf},
+            )
+            log.warning(
+                "grid skipped for %s %s: no candles", symbol, tf, extra={"nbx_captured": True}
+            )
             return {"ok": False, "error": "no candles fetched", "log_id": row["id"]}
         res = await asyncio.to_thread(
-            grid_search, symbol, tf, rows, custom,
-            float(b["slippage_bps"]) if b.get("slippage_bps") is not None
-            else SLIP_BPS,
+            grid_search,
+            symbol,
+            tf,
+            rows,
+            custom,
+            float(b["slippage_bps"]) if b.get("slippage_bps") is not None else SLIP_BPS,
         )
         return {"ok": True, **res}
     except Exception as e:
-        row = errorlog.capture(level="error", source="api.backtest.grid",
-                               message=f"grid failed for {symbol} {tf}: {e}", exc=e,
-                               context={"symbol": symbol, "tf": tf,
-                                        "combos": len((custom or {}).get("risk_pct") or [])})
-        log.error("grid failed for %s %s: %s", symbol, tf, e,
-                  extra={"nbx_captured": True})
+        row = errorlog.capture(
+            level="error",
+            source="api.backtest.grid",
+            message=f"grid failed for {symbol} {tf}: {e}",
+            exc=e,
+            context={
+                "symbol": symbol,
+                "tf": tf,
+                "combos": len((custom or {}).get("risk_pct") or []),
+            },
+        )
+        log.error("grid failed for %s %s: %s", symbol, tf, e, extra={"nbx_captured": True})
         return {"ok": False, "error": str(e), "log_id": row["id"]}
 
 
@@ -4370,8 +5219,10 @@ async def backtest_grid(payload: dict):
 async def backtest_promotion_gate():
     """ADR-0009 promotion gate evaluation over the latest report for each config."""
     import json as _json
-    from pathlib import Path
-    d = Path(__file__).parent / "backtest_reports"
+
+    from backtest import REPORTS
+
+    d = REPORTS
     if not d.exists():
         return {"ok": True, "gate": None, "reason": "no reports yet"}
     files = sorted(d.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
@@ -4408,9 +5259,21 @@ async def backtest_promotion_gate():
         }
     a = latest["aggregate"]
     checks = {
-        "profit_factor_ge_1_3": {"value": a.get("profit_factor", 0), "pass": (a.get("profit_factor", 0) or 0) >= 1.3, "required": 1.3},
-        "max_drawdown_lt_15": {"value": a.get("max_drawdown", 0), "pass": (a.get("max_drawdown", 0) or 0) < 15, "required": 15},
-        "trades_ge_min": {"value": a.get("trades", 0), "pass": (a.get("trades", 0) or 0) >= 30, "required": 30},
+        "profit_factor_ge_1_3": {
+            "value": a.get("profit_factor", 0),
+            "pass": (a.get("profit_factor", 0) or 0) >= 1.3,
+            "required": 1.3,
+        },
+        "max_drawdown_lt_15": {
+            "value": a.get("max_drawdown", 0),
+            "pass": (a.get("max_drawdown", 0) or 0) < 15,
+            "required": 15,
+        },
+        "trades_ge_min": {
+            "value": a.get("trades", 0),
+            "pass": (a.get("trades", 0) or 0) >= 30,
+            "required": 30,
+        },
     }
     passed = all(c["pass"] for c in checks.values())
     return {
@@ -4442,9 +5305,11 @@ async def coin_logo(coin_id: str):
     media_type = coin_metadata.image_type(data)
     if media_type is None:
         raise HTTPException(404, "لوگوی ذخیره‌شده معتبر نیست")
-    return Response(data, media_type=media_type,
-                    headers={"Cache-Control": "private, max-age=3600",
-                             "X-Content-Type-Options": "nosniff"})
+    return Response(
+        data,
+        media_type=media_type,
+        headers={"Cache-Control": "private, max-age=3600", "X-Content-Type-Options": "nosniff"},
+    )
 
 
 # ---------------- Static Frontend Hosting ----------------
@@ -4484,7 +5349,7 @@ def _build_page_once() -> None:
     if _build_attempted or os.getenv("NBX_AUTOBUILD_PAGE", "0") != "1":
         return
     if not (REPO_ROOT / "scripts" / "build_standalone.py").exists():
-        return                      # a deployed tree: nothing to build with
+        return  # a deployed tree: nothing to build with
     _build_attempted = True
     import subprocess
 
@@ -4494,20 +5359,32 @@ def _build_page_once() -> None:
     # (classes added since the last CSS build would be missing), so rebuild the
     # CSS first when the toolchain is present.
     stylesheet_behind = bool(css) and any(
-        p.stat().st_mtime > max(c.stat().st_mtime for c in css) for p in markup if p.exists())
+        p.stat().st_mtime > max(c.stat().st_mtime for c in css) for p in markup if p.exists()
+    )
     if stylesheet_behind and (REPO_ROOT / "node_modules" / ".bin" / "tailwindcss").exists():
         try:
-            subprocess.run(["npm", "run", "css"], cwd=str(REPO_ROOT),
-                           check=True, capture_output=True, timeout=60)
-        except Exception as exc:          # report, then try the build anyway
+            subprocess.run(
+                ["npm", "run", "css"],
+                cwd=str(REPO_ROOT),
+                check=True,
+                capture_output=True,
+                timeout=60,
+            )
+        except Exception as exc:  # report, then try the build anyway
             log.warning("css build failed: %s", _short_proc_error(exc))
     try:
-        subprocess.run([sys.executable, str(REPO_ROOT / "scripts" / "build_standalone.py")],
-                       cwd=str(REPO_ROOT), check=True, capture_output=True, timeout=30)
+        subprocess.run(
+            [sys.executable, str(REPO_ROOT / "scripts" / "build_standalone.py")],
+            cwd=str(REPO_ROOT),
+            check=True,
+            capture_output=True,
+            timeout=30,
+        )
         log.info("inlined dashboard rebuilt (NBX_AUTOBUILD_PAGE=1)")
     except Exception as exc:
-        log.warning("standalone build failed (%s); serving the previous build",
-                    _short_proc_error(exc))
+        log.warning(
+            "standalone build failed (%s); serving the previous build", _short_proc_error(exc)
+        )
 
 
 def _self_contained_page() -> Path:
@@ -4536,7 +5413,8 @@ def _self_contained_page() -> Path:
             log.warning(
                 "inlined dashboard is older than its sources; serving the previous "
                 "build. Run `npm run build` (or set NBX_AUTOBUILD_PAGE=1 to build "
-                "once at startup).")
+                "once at startup)."
+            )
     return standalone if standalone.exists() else REPO_ROOT / "index.html"
 
 
@@ -4545,8 +5423,9 @@ def _self_contained_page() -> Path:
 async def serve_index():
     # no-store on purpose: the dashboard is edited in place, and a browser that
     # heuristically caches it can keep serving a build from before a tab existed.
-    return FileResponse(_self_contained_page(),
-                        headers={"Cache-Control": "no-store, must-revalidate"})
+    return FileResponse(
+        _self_contained_page(), headers={"Cache-Control": "no-store, must-revalidate"}
+    )
 
 
 @app.get("/version-check.html", include_in_schema=False)
@@ -4556,14 +5435,20 @@ async def serve_version_check():
 
 @app.get("/nbx-core.js", include_in_schema=False)
 async def serve_nbx_core():
-    return FileResponse(REPO_ROOT / "nbx-core.js", media_type="application/javascript",
-                        headers={"Cache-Control": "no-store, must-revalidate"})
+    return FileResponse(
+        REPO_ROOT / "nbx-core.js",
+        media_type="application/javascript",
+        headers={"Cache-Control": "no-store, must-revalidate"},
+    )
 
 
 @app.get("/nbx-app.js", include_in_schema=False)
 async def serve_nbx_app():
-    return FileResponse(REPO_ROOT / "nbx-app.js", media_type="application/javascript",
-                        headers={"Cache-Control": "no-store, must-revalidate"})
+    return FileResponse(
+        REPO_ROOT / "nbx-app.js",
+        media_type="application/javascript",
+        headers={"Cache-Control": "no-store, must-revalidate"},
+    )
 
 
 @app.get("/manifest.json", include_in_schema=False)
@@ -4598,11 +5483,10 @@ async def download_package_zip():
     """
     data = await asyncio.to_thread(package_bundle.build_archive)
     return Response(
-        content=data, media_type="application/zip",
+        content=data,
+        media_type="application/zip",
         headers={
             "Content-Disposition": 'attachment; filename="nobitex-trader-robat.zip"',
             "Cache-Control": "no-store",
         },
     )
-
-

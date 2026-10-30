@@ -740,14 +740,17 @@
      * anything it cannot know (`fee`, slippage) stays null instead of 0. */
     orderRows() {
       return this.positions.map((p) => ({
-        clientOrderId: p.client_order_id || null,
-        symbol: p.symbol, side: p.side,
-        type: p.execution || 'limit',
-        price: p.entry_price, amount: p.qty, filled: p.filled_qty,
-        filled_pct: p.qty ? +((p.filled_qty / p.qty) * 100).toFixed(1) : 0,
-        fee: null, slip_bps: null, pnl_usd: p.realized_pnl || 0,
-        state: p.state, reason: null, source: 'browser',
-        opened_at: p.opened_at,
+        clientOrderId: p.client_order_id || null, symbol: p.symbol, side: p.side,
+        type: p.execution || 'unknown', price: p.entry_price, amount: p.qty,
+        requested: p.requested_qty > 0 ? p.requested_qty : null,
+        filled: p.qty, entry_filled: p.qty,
+        filled_pct: p.requested_qty > 0 ? +(p.qty / p.requested_qty * 100).toFixed(1) : null,
+        remaining_open: p.state === 'CLOSED' ? 0 : p.filled_qty,
+        retained_exit_qty: null, fee: null, slip_bps: null, adverse_slip_bps: null,
+        pnl_usd: p.realized_pnl ?? null, pnl_usd_basis: 'browser-position-snapshot',
+        state: p.state, position_state: p.state, reason: null, source: 'browser',
+        record_kind: 'position-snapshot', position_link: 'browser-position', event_details: [],
+        opened_at: p.opened_at, opened_at_basis: 'position-opened-at',
         opened_at_iso: new Date(p.opened_at * 1000).toISOString(),
         closed_at_iso: null, close_reason: null,
       }));
@@ -961,7 +964,7 @@
             const notionalIn = tr.entry * tr.qty;
             const notionalOut = exitPx * tr.qty;
             const pnl = notionalOut - notionalIn - (notionalIn + notionalOut) * feePct;
-            const riskUnit = Math.abs(tr.entry - tr.stop) * tr.qty;
+            const riskUnit = tr.risk_amount;
             tr.exit = exitPx;
             tr.exit_t = c.t;
             tr.reason = reason;
@@ -985,7 +988,7 @@
           const cost = qty * entry * (1 + slip) * (1 + feePct);
           if (qty > 0 && cost < cash) {
             cash -= cost;
-            openPos.push({ side: 'buy', entry_t: c.t, entry, stop, tp1, tp2, qty });
+            openPos.push({ side: 'buy', entry_t: c.t, entry: entry * (1 + slip), stop, tp1, tp2, qty, risk_amount: stopDist * qty });
           }
         }
 
@@ -999,18 +1002,22 @@
         while (openPos.length) {
           const tr = openPos.pop();
           const notionalIn = tr.entry * tr.qty;
-          const notionalOut = lastC.c * tr.qty;
+          const notionalOut = lastC.c * (1 - slip) * tr.qty;
           const pnl = notionalOut - notionalIn - (notionalIn + notionalOut) * feePct;
-          const riskUnit = Math.abs(tr.entry - tr.stop) * tr.qty;
-          tr.exit = lastC.c;
+          const riskUnit = tr.risk_amount;
+          tr.exit = lastC.c * (1 - slip);
           tr.exit_t = lastC.t;
           tr.reason = 'eod';
+          cash += notionalOut * (1 - feePct);
           tr.realized_pnl = pnl;
           tr.r_multiple = riskUnit > 0 ? pnl / riskUnit : 0;
           closed.push(tr);
         }
       }
 
+      // Keep every intrawindow point for chained MDD; truncate only the final
+      // display curve, after accounting for interwindow peaks and losses.
+      if (equityCurve.length) equityCurve[equityCurve.length - 1][1] = +cash.toFixed(2);
       const wins = closed.filter((t) => t.realized_pnl > 0);
       const losses = closed.filter((t) => t.realized_pnl <= 0);
       const total = closed.length;
@@ -1045,8 +1052,10 @@
         initial_equity: initEq,
         final_equity: equityCurve.length ? equityCurve[equityCurve.length - 1][1] : initEq,
         ambiguous_exits: ambiguous,
-        equity_curve: equityCurve.slice(-300),
+        equity_curve: equityCurve,
         sample_trades: closed.slice(-8).map((t) => ({
+          entry_t: fmtIso(t.entry_t),
+          exit_t: fmtIso(t.exit_t),
           entry: t.entry,
           exit: t.exit,
           reason: t.reason,
@@ -1131,7 +1140,7 @@
       const pooledPf = grossL > 0 ? Math.min(99.99, grossP / grossL) : (grossP > 0 ? 99.99 : 0);
       const denom = Math.max(1, totalTrades);
       const expR = windows.reduce((a, w) => a + w.expectancy_r * w.trades, 0) / denom;
-      const mdd = Math.max(...windows.map((w) => w.max_drawdown), 0);
+      let mdd = 0;
       const ambiguousTotal = windows.reduce((a, w) => a + (w.ambiguous_exits || 0), 0);
       const ambiguousShare = totalTrades ? +((ambiguousTotal / totalTrades) * 100).toFixed(1) : 0;
       const profitable = windows.filter((w) => (w.final_equity || 0) > (w.initial_equity || 0)).length;
@@ -1139,13 +1148,19 @@
 
       // chain the per-window curves so the chart shows one OOS line
       const initialEquity = +(cfg.equity || cfg.initial_equity || 50000);
-      let eq = initialEquity;
+      let eq = initialEquity, peak = initialEquity;
       const curve = [];
       for (const w of windows) {
         const wStart = w.initial_equity || initialEquity;
         const scale = eq / Math.max(wStart, 1e-9);
-        for (const [ts, v] of (w.equity_curve || [])) curve.push([ts, +(+v * scale).toFixed(2)]);
-        eq = eq * (1 + ((w.final_equity || wStart) / Math.max(wStart, 1e-9) - 1));
+        for (const [ts, v] of (w.equity_curve || [])) {
+          const value = +(+v * scale).toFixed(2);
+          curve.push([ts, value]);
+          peak = Math.max(peak, value);
+          if (peak > 0) mdd = Math.max(mdd, (peak - value) / peak * 100);
+        }
+        const wEnd = w.final_equity == null ? wStart : w.final_equity;
+        eq = eq * (wEnd / Math.max(wStart, 1e-9));
       }
 
       const checks = {
@@ -1164,6 +1179,8 @@
 
       return {
         config_hash: hash,
+        generated_at: new Date().toISOString(),
+        engine: 'browser-experimental',
         symbol,
         tf,
         mode: 'wf',
@@ -1400,27 +1417,30 @@
     }
 
     async getBackendFA(symbol) {
-      if (!this.standaloneMobile) {
-        try {
-          const r = await this.get(cfg.pythonApi + '/fa/' + encodeURIComponent(symbol), 1);
-          if (r && typeof r.score === 'number') return r;
-        } catch (e) {}
+      const sym=normSymbol(symbol);
+      const failure=(error,extra)=>Object.assign({ok:false,unavailable:true,symbol:sym,score:null,error},extra||{});
+      if(this.standaloneMobile) return failure('fa-backend-required');
+      try{
+        const r=await this.get(cfg.pythonApi+'/fa/'+encodeURIComponent(sym),1);
+        if(r && r.ok!==false && !r.unavailable && r.symbol===sym && typeof r.score==='number' && Number.isFinite(r.score) && r.score>=0 && r.score<=100) return r;
+        return failure('invalid-fa-response');
+      }catch(e){
+        const status=e && e.meta && e.meta.status;
+        return status===401 || status===403 ? failure('auth-required',{auth_error:true}) : failure('fa-request-failed');
       }
-      // The old fallback scored coins from a hard-coded market-cap table that
-      // went stale the day it was typed. No data is better than wrong data.
-      return { ok: false, unavailable: true, symbol: normSymbol(symbol),
-               score: null, error: 'upstream_unavailable',
-               message: NBX.UPSTREAM_MSG[DOC_LANG()] };
     }
 
     async getBackendRiskState() {
       if (!this.standaloneMobile) {
         try {
           const r = await this.get(cfg.pythonApi + '/risk/state', 1);
-          if (r && r.equity !== undefined) return r;
+          if (r && r.ok !== false && !r.unavailable && r.equity != null && typeof r.equity !== 'boolean' && String(r.equity).trim() !== '' && Number.isFinite(Number(r.equity)) && r.openHeat != null && typeof r.openHeat !== 'boolean' && Number.isFinite(Number(r.openHeat))) return Object.assign({}, r, { source: 'server', received_at: Date.now() });
         } catch (e) {}
       }
+      // A failed server read is not permission to substitute a browser account.
+      if (!this.standaloneMobile) return null;
       return {
+        source: 'browser-local', received_at: Date.now(),
         equity: NBX.Paper.equity,
         openHeat: NBX.Paper.openHeat,
         dailyPnl: NBX.Paper.dailyPnl,
@@ -1463,10 +1483,12 @@
       // them. Turnover has to be converted to USD before any of it means
       // anything, and that conversion lives next to the exchange client.
       if (this.standaloneMobile) return null;
-      const res = await fetch(cfg.pythonApi + '/market/overview?tf=' + encodeURIComponent(tf || '15m'),
-                             { headers: this._authHeaders() });
-      const r = await res.json();
-      if (!res.ok) throw new NBXError('DATA', (r && r.detail) || 'market overview failed');
+      const wanted = ['15m', '1h', '4h', 'D'].includes(tf) ? tf : '15m';
+      const res = await fetch(cfg.pythonApi + '/market/overview?tf=' + encodeURIComponent(wanted),
+                             { headers: this._authHeaders(), cache: 'no-store' });
+      const r = await res.json().catch(() => null);
+      if (!res.ok) throw new NBXError('DATA', (r && (r.detail || r.message || r.error)) || ('HTTP ' + res.status));
+      if (!r || typeof r !== 'object') throw new NBXError('DATA', 'market overview malformed');
       return r;
     }
 
@@ -1523,62 +1545,60 @@
       return h;
     }
 
+    async getSignalEvidence(params) {
+      if (this.standaloneMobile) throw new NBXError('DATA', 'Signal evidence requires the backend');
+      const res = await fetch(cfg.pythonApi + '/v1/signal-intelligence/evidence?' + String(params), {
+        headers: this._authHeaders(), cache: 'no-store',
+      });
+      if (!res.ok) throw new NBXError('HTTP', 'HTTP ' + res.status);
+      return res.json();
+    }
+
     async postPaperOrder(payload) {
-      if (!this.standaloneMobile) {
-        try {
-          const res = await fetch(cfg.pythonApi + '/paper/order', {
-            method: 'POST',
-            headers: this._authHeaders(),
-            body: JSON.stringify(payload),
-          });
-          const r = await res.json();
-          if (res.ok && r && r.ok !== undefined) return r;
-          // 401/403 must surface: silently falling back to the browser engine
-          // would hide the fact that the order never reached the backend.
-          if (res.status === 401 || res.status === 403) {
-            return { ok: false, error: (r && r.detail) || 'withheld by server policy (auth)', auth_error: true };
-          }
-          if (r && r.ok === false) return r;
-        } catch (e) {
-          // The order never reached the backend. Filling it in the browser
-          // produced a position that exists only in this tab — a fake fill,
-          // with two gates instead of the broker's ten. Say it failed.
-          return { ok: false, network_error: true,
-                   error: 'paper_order_unreachable',
-                   message: NBX.UPSTREAM_MSG[DOC_LANG()] };
-        }
-        return { ok: false, error: 'paper_order_failed',
-                 message: 'the server answered but did not place the order' };
-      }
-      return NBX.Paper.placeOrder(payload || {});
+      if (this.standaloneMobile) return NBX.Paper.placeOrder(payload || {});
+      const unknown = { ok: false, outcome_unknown: true, error: 'paper_order_outcome_unknown',
+        message: DOC_LANG() === 'fa'
+          ? 'نتیجهٔ ارسال نامشخص است؛ ممکن است درخواست به سرور رسیده باشد. خودکار تکرار نکنید؛ سفارش‌ها را بررسی کنید.'
+          : 'Submission outcome unknown; the request may have reached the server. Do not automatically retry; inspect Orders.' };
+      try {
+        const res = await fetch(cfg.pythonApi + '/paper/order', {
+          method: 'POST', headers: this._authHeaders(), body: JSON.stringify(payload),
+        });
+        let body = null;
+        try { body = await res.json(); } catch (_) {}
+        if (res.status === 401 || res.status === 403) return {
+          ok: false, auth_error: true, error: (body && body.detail) || 'withheld by server policy (auth)',
+        };
+        if (res.ok && body && body.ok === true && body.position && body.position.id) return body;
+        if (res.ok && body && body.ok === false) return body;
+        return unknown;
+      } catch (_) { return unknown; }
     }
 
-    async postResume() {
-      if (this.standaloneMobile) {
-        if (NBX.Paper && typeof NBX.Paper.resume === 'function') NBX.Paper.resume();
-        return { halted: false, standalone: true };
+    async _postPaperControl(arm) {
+      const unknown={ok:false,halted:null,outcome_unknown:true,error:'paper-control-outcome-unknown'};
+      if(this.standaloneMobile){
+        try{
+          const method=arm?'halt':'resume';
+          if(!NBX.Paper || typeof NBX.Paper[method]!=='function') return {ok:false,halted:null,error:'local-control-unavailable'};
+          NBX.Paper[method]();
+          return NBX.Paper.halted===arm ? {ok:true,halted:arm,standalone:true} : unknown;
+        }catch(_){return unknown;}
       }
-      try {
-        const res = await fetch(cfg.pythonApi + '/paper/resume', { method: 'POST', headers: this._authHeaders() });
-        const r = await res.json();
-        if (res.status === 401 || res.status === 403) return { halted: true, error: r.detail || 'auth required' };
-        return r;
-      } catch (e) {
-        return { halted: true, error: String(e) };
-      }
+      try{
+        const res=await fetch(cfg.pythonApi+(arm?'/paper/halt':'/paper/resume'),{method:'POST',headers:this._authHeaders()});
+        if(res.status===401 || res.status===403) return {ok:false,halted:null,auth_error:true,error:'auth-required'};
+        let r;try{r=await res.json();}catch(_){return unknown;}
+        if(!res.ok) return unknown;
+        if(r && r.ok===false && !r.outcome_unknown && !r.network_error) return {ok:false,halted:null,error:'server-declined'};
+        if(!r || r.error || r.outcome_unknown || r.network_error || r.halted!==arm) return unknown;
+        return Object.assign({},r,{ok:true});
+      }catch(_){return unknown;}
     }
-
-    async postHalt(flat) {
-      if (this.standaloneMobile) {
-        if (NBX.Paper && typeof NBX.Paper.halt === 'function') NBX.Paper.halt();
-        return { halted: true, standalone: true };
-      }
-      try {
-        const res = await fetch(cfg.pythonApi + '/paper/halt', { method: 'POST', headers: this._authHeaders() });
-        return await res.json();
-      } catch (e) {
-        return { halted: false, error: String(e) };
-      }
+    async postResume(){return this._postPaperControl(false);}
+    async postHalt(flat){
+      if(flat) return {ok:false,halted:null,error:'flatten-unsupported'};
+      return this._postPaperControl(true);
     }
 
     /* The order log. `null` means "the server did not answer" — distinct from
@@ -1591,7 +1611,7 @@
       }
       try {
         const r = await this.get(cfg.pythonApi + '/paper/orders?limit=' + (limit || 100), 1);
-        if (r && Array.isArray(r.rows)) return r;
+        if (r && Array.isArray(r.rows) && r.rows.every(o => o && typeof o.symbol === 'string' && typeof o.state === 'string')) return r;
         return null;
       } catch (e) {
         return null;
@@ -1602,10 +1622,11 @@
       if (!this.standaloneMobile) {
         try {
           const r = await this.get(cfg.pythonApi + '/paper/positions', 1);
-          if (r && Array.isArray(r.positions)) return r;
+          if (r && Array.isArray(r.positions) && r.positions.every(p => p && typeof p.symbol === 'string' && p.symbol.length > 0 && Number.isFinite(Number(p.entry_price)) && Number(p.entry_price) > 0 && ['OPEN','PARTIAL','CLOSED'].includes(p.state))) return Object.assign({}, r, { source: 'server', received_at: Date.now() });
         } catch (e) {}
+        return { unavailable: true, source: 'server', positions: null, metrics: null };
       }
-      return { positions: NBX.Paper.positions, metrics: NBX.Paper.getMetrics() };
+      return { source: 'browser-local', received_at: Date.now(), positions: NBX.Paper.positions, metrics: NBX.Paper.getMetrics() };
     }
 
     /* Depth is only meaningful from the exchange: a locally synthesised book
@@ -1626,10 +1647,11 @@
       if (!this.standaloneMobile) {
         try {
           const r = await this.get(cfg.pythonApi + '/paper/metrics', 1);
-          if (r && r.metrics) return r;
+          if (r && r.metrics && r.metrics.equity != null && typeof r.metrics.equity !== 'boolean' && String(r.metrics.equity).trim() !== '' && Number.isFinite(Number(r.metrics.equity))) return Object.assign({}, r, { source: 'server', received_at: Date.now() });
         } catch (e) {}
+        return { unavailable: true, source: 'server', metrics: null, curve: [] };
       }
-      return { metrics: NBX.Paper.getMetrics(), curve: [] };
+      return { source: 'browser-local', received_at: Date.now(), metrics: NBX.Paper.getMetrics(), curve: [] };
     }
 
     async getWsStatus() {
@@ -1666,19 +1688,30 @@
     }
 
     async getJournalSummary(opts) {
-      const o = opts || {};
-      const qs = new URLSearchParams();
-      qs.set('days', String(o.days || 90));
-      qs.set('limit', String(o.limit || 60));
-      if (o.tf) qs.set('tf', o.tf);
-      if (o.source) qs.set('source', o.source);
-      if (o.origin) qs.set('origin', o.origin);
-      if (this.standaloneMobile) return { kpi: {}, horizons: [], families: [], calibration: [], signals: [], origins: {}, standalone: true };
+      const o = opts || {}, qs = new URLSearchParams();
+      qs.set('days', String(o.days || 90)); qs.set('limit', String(o.limit || 60));
+      for (const k of ['tf', 'source', 'origin']) if (o[k]) qs.set(k, o[k]);
+      if (this.standaloneMobile) return { ok: false, standalone: true, error: 'requires-server' };
       try {
         const r = await this.get(cfg.pythonApi + '/journal/summary?' + qs.toString(), 1);
-        if (r && r.kpi) return r;
+        if (r && !r.error && r.ok !== false && r.kpi &&
+            ['sig', 'res', 'void'].every(k => Number.isInteger(r.kpi[k]) && r.kpi[k] >= 0) &&
+            r.kpi.res <= r.kpi.sig &&
+            ['horizons', 'families', 'calibration', 'signals'].every(k => Array.isArray(r[k]))) return r;
       } catch (e) {}
-      return { kpi: {}, horizons: [], families: [], calibration: [], signals: [], origins: {}, error: 'unavailable' };
+      return { ok: false, unavailable: true, error: 'unavailable' };
+    }
+
+    async getJournalStage(opts) {
+      // Older servers evaluate and write on this GET. Never probe them blindly.
+      if (!opts || opts.readOnlyContract !== true) return { ok: false, error: 'readonly-contract-required' };
+      if (this.standaloneMobile) return { ok: false, standalone: true };
+      try {
+        const r = await this.get(cfg.pythonApi + '/journal/stage', 1);
+        if (r && r.ok === true && r.read_only === true && r.evaluated === false &&
+            (r.stage === null || ['train', 'run', 'watch', 'retire'].includes(r.stage))) return r;
+      } catch (e) {}
+      return { ok: false, unavailable: true };
     }
 
     async getJournalSignal(id) {
@@ -1733,18 +1766,17 @@
     }
 
     async getErrors(opts) {
-      const o = opts || {};
-      const qs = new URLSearchParams();
+      const o = opts || {}, qs = new URLSearchParams();
+      if (this.standaloneMobile) return { ok: false, standalone: true, error: 'requires-server' };
       qs.set('limit', String(o.limit || 200));
-      if (o.level) qs.set('level', o.level);
-      if (o.hours) qs.set('hours', String(o.hours));
-      if (o.q) qs.set('q', o.q);
+      for (const key of ['level', 'source', 'hours', 'q']) if (o[key]) qs.set(key, String(o[key]));
       try {
         const r = await this.get(cfg.pythonApi + '/errors?' + qs.toString(), 1);
-        return r && Array.isArray(r.errors) ? r : { errors: [], n: 0, counts: {} };
-      } catch (e) {
-        return { errors: [], n: 0, counts: {}, error: 'unavailable' };
-      }
+        if (r && !r.error && r.ok !== false && Array.isArray(r.errors) &&
+            r.errors.every(x => x && typeof x === 'object' && !Array.isArray(x)) &&
+            r.counts && ['total', 'error', 'critical', 'last_24h'].every(k => Number.isInteger(r.counts[k]) && r.counts[k] >= 0) && r.counts.error+r.counts.critical<=r.counts.total && r.counts.last_24h<=r.counts.total) return r;
+      } catch (e) {}
+      return { ok: false, unavailable: true, error: 'unavailable' };
     }
 
     async postError(payload) {
@@ -1765,8 +1797,9 @@
         const res = await fetch(cfg.pythonApi + '/errors/clear', {
           method: 'POST', headers: this._authHeaders(),
         });
-        return await res.json();
-      } catch (e) { return { ok: false, error: String(e).slice(0, 80) }; }
+        const r = await res.json();
+        return res.ok ? r : { ok: false, error: 'HTTP ' + res.status };
+      } catch (e) { return { ok: false, error: 'unavailable' }; }
     }
 
     async selfTestErrors() {
@@ -1775,8 +1808,9 @@
         const res = await fetch(cfg.pythonApi + '/errors/selftest', {
           method: 'POST', headers: this._authHeaders(),
         });
-        return await res.json();
-      } catch (e) { return { ok: false, error: String(e).slice(0, 80) }; }
+        const r = await res.json();
+        return res.ok ? r : { ok: false, error: 'HTTP ' + res.status };
+      } catch (e) { return { ok: false, error: 'unavailable' }; }
     }
 
     async getDiagnostics() {
@@ -1784,7 +1818,7 @@
       if (this.standaloneMobile) return { checks: [], devsuite: { available: false, reason: 'offline' } };
       try {
         const r = await this.get(cfg.pythonApi + '/diagnostics', 1);
-        return r && Array.isArray(r.checks) ? r : { checks: [], devsuite: { available: false } };
+        return r && !r.error && Array.isArray(r.checks) ? r : { error: 'unavailable', checks: [], devsuite: { available: false } };
       } catch (e) {
         return { checks: [], devsuite: { available: false }, error: 'unavailable' };
       }
@@ -1860,23 +1894,44 @@
 
     async getAudit(opts) {
       const o = opts || {};
-      if (this.standaloneMobile) return { events: [], counts: {}, standalone: true };
+      if (this.standaloneMobile) return { ok: false, standalone: true, unavailable: true, events: null, counts: null };
       try {
         const qs = new URLSearchParams({ limit: String(o.limit || 25) });
         if (o.days) qs.set('days', String(o.days));
-        const r = await this.get(cfg.pythonApi + '/audit?' + qs.toString(), 1);
-        if (r && Array.isArray(r.events)) return r;
+        if (o.scope) qs.set('scope', String(o.scope));
+        if (o.action) qs.set('action', String(o.action));
+        const res = await fetch(cfg.pythonApi + '/audit?' + qs.toString(), {
+          headers: this._authHeaders(), cache: 'no-store',
+        });
+        let r = null;
+        try { r = await res.json(); } catch (_) {}
+        if (res.status === 401 || res.status === 403) {
+          return { ok: false, auth_error: true, unavailable: true, events: null, counts: null, error: (r && r.detail) || 'auth-required' };
+        }
+        if (res.ok && r && r.ok !== false && !r.unavailable && Array.isArray(r.events)) {
+          return Object.assign({ ok: true }, r);
+        }
+        return { ok: false, unavailable: true, events: null, counts: null, error: (r && (r.error || r.detail)) || ('HTTP ' + res.status) };
       } catch (e) {}
-      return { events: [], counts: {}, error: 'unavailable' };
+      return { ok: false, unavailable: true, events: null, counts: null, error: 'unavailable' };
     }
 
     async getNotifyStatus() {
-      if (this.standaloneMobile) return { configured: false, transport: 'disabled' };
+      if (this.standaloneMobile) return { ok: false, standalone: true, unavailable: true, configured: null, transport: 'standalone' };
       try {
-        const r = await this.get(cfg.pythonApi + '/notify/status', 1);
-        if (r && typeof r.configured === 'boolean') return r;
+        const res = await fetch(cfg.pythonApi + '/notify/status', {
+          headers: this._authHeaders(), cache: 'no-store',
+        });
+        let r = null;
+        try { r = await res.json(); } catch (_) {}
+        if (res.status === 401 || res.status === 403) {
+          return { ok: false, auth_error: true, unavailable: true, configured: null, transport: 'unknown', error: (r && r.detail) || 'auth-required' };
+        }
+        if (res.ok && r && r.ok !== false && !r.unavailable && typeof r.configured === 'boolean') {
+          return Object.assign({ ok: true }, r);
+        }
       } catch (e) {}
-      return { configured: false, transport: 'unknown' };
+      return { ok: false, unavailable: true, configured: null, transport: 'unknown', error: 'unavailable' };
     }
 
     async postMsiBaseline(opts) {
@@ -1943,7 +1998,7 @@
       try {
         if (typeof this.postError === 'function') {
           this.postError({ level: 'warning', source: 'api.' + what + '-fallback',
-                           message: 'server ' + what + ' failed, computed locally: ' + msg,
+                           message: 'server ' + what + ' failed; no local replacement: ' + msg,
                            stack: err && err.stack, context: context });
         }
       } catch (_) { /* logging must never break the feature */ }
@@ -1959,10 +2014,14 @@
             body: JSON.stringify({ symbol, tf, ...btCfg }),
           });
           const r = await res.json().catch(() => ({}));
-          if (res.ok && r && (r.ok || r.error)) return r;
-          reason = new Error('HTTP ' + res.status);
+          if (res.ok && r && (r.ok === false || typeof r.error === 'string')) return { ...r, ok: false };
+          if (res.ok && r && r.ok === true && r.report && typeof r.report === 'object' && r.report.aggregate && typeof r.report.aggregate === 'object') return r;
+          reason = new Error(res.ok ? 'invalid-backend-response' : 'HTTP ' + res.status);
         } catch (e) { reason = e; }
         this._reportFallback('backtest', reason, (symbol || '') + ' ' + (tf || ''));
+        return { ok: false, unavailable: true, error: 'backend_result_unavailable',
+          message: DOC_LANG() === 'fa' ? 'نتیجهٔ بک‌اند در دسترس نیست؛ محاسبهٔ محلی جایگزین نشد.' : 'Backend result unavailable; no local replacement was computed.',
+          detail: String(reason && reason.message || reason) };
       }
       await sleep(60);
       const sym = normSymbol(symbol || 'BTCIRT');
@@ -1984,13 +2043,17 @@
           const res = await fetch(cfg.pythonApi + '/backtest/grid', {
             method: 'POST',
             headers: this._authHeaders(),
-            body: JSON.stringify({ symbol, tf, grid: grid || undefined }),
+            body: JSON.stringify({ symbol, tf, grid: grid || undefined, bars: bars || 600 }),
           });
           const r = await res.json().catch(() => ({}));
-          if (res.ok && r && (r.ok || r.error)) return r;
-          reason = new Error('HTTP ' + res.status);
+          if (res.ok && r && (r.ok === false || typeof r.error === 'string')) return { ...r, ok: false };
+          if (res.ok && r && r.ok === true && r.heatmap && Array.isArray(r.heatmap.values) && r.best) return r;
+          reason = new Error(res.ok ? 'invalid-backend-response' : 'HTTP ' + res.status);
         } catch (e) { reason = e; }
         this._reportFallback('grid', reason, (symbol || '') + ' ' + (tf || ''));
+        return { ok: false, unavailable: true, error: 'backend_result_unavailable',
+          message: DOC_LANG() === 'fa' ? 'نتیجهٔ بک‌اند در دسترس نیست؛ محاسبهٔ محلی جایگزین نشد.' : 'Backend result unavailable; no local replacement was computed.',
+          detail: String(reason && reason.message || reason) };
       }
       await sleep(80);
       const sym = normSymbol(symbol || 'BTCIRT');
@@ -2001,8 +2064,7 @@
                  detail: reason ? String(reason.message || reason) : 'no candles' };
       }
       const out = NBX.Backtest.gridSearch(rows, sym, tf || '1h', grid);
-      return reason ? Object.assign({}, out, { fallback: true,
-               fallback_reason: String(reason.message || reason) }) : out;
+      return Object.assign({}, out, { standalone: true, engine: 'browser-experimental' });
     }
 
     async runGridMulti(symbols, tf, grid, bars) {
@@ -2015,10 +2077,14 @@
             body: JSON.stringify({ symbols, tf, grid: grid || undefined }),
           });
           const r = await res.json().catch(() => ({}));
-          if (res.ok && r && (r.ok || r.error)) return r;
-          reason = new Error('HTTP ' + res.status);
+          if (res.ok && r && (r.ok === false || typeof r.error === 'string')) return { ...r, ok: false };
+          if (res.ok && r && r.ok === true && Array.isArray(r.results)) return r;
+          reason = new Error(res.ok ? 'invalid-backend-response' : 'HTTP ' + res.status);
         } catch (e) { reason = e; }
         this._reportFallback('grid-multi', reason, (symbols || []).join(','));
+        return { ok: false, unavailable: true, error: 'backend_result_unavailable',
+          message: DOC_LANG() === 'fa' ? 'نتیجهٔ بک‌اند در دسترس نیست؛ محاسبهٔ محلی جایگزین نشد.' : 'Backend result unavailable; no local replacement was computed.',
+          detail: String(reason && reason.message || reason) };
       }
       await sleep(100);
       const syms = (symbols || ['BTCIRT', 'ETHIRT', 'TONIRT', 'SOLIRT', 'BTCUSDT', 'ETHUSDT']).slice(0, 8);
@@ -2038,7 +2104,7 @@
                  message: NBX.UPSTREAM_MSG[DOC_LANG()], symbols: syms_no_data,
                  detail: reason ? String(reason.message || reason) : 'no candles' };
       }
-      const out = { ok: true, tf: tf || '1h', results };
+      const out = { ok: true, standalone: true, engine: 'browser-experimental', tf: tf || '1h', results };
       if (reason) { out.fallback = true; out.fallback_reason = String(reason.message || reason); }
       return out;
     }

@@ -66,7 +66,12 @@ def test_schema_rollback_restores_old_contract_and_preserves_failed_upgrade_evid
         assert conn.execute('SELECT COUNT(*) FROM signal_evidence').fetchone()[0] == 1
     # Never discard the newer state when deciding to revert to the old contract.
     after = sb.create_backup(tmp_path / 'after-failure.zip', db, auth, live)
-    sb.restore_backup(before, db, auth, live, force=True)
+    # The offline contract requires cleanly checkpointed/closed SQLite state.
+    # Read-only WAL snapshots may leave empty sidecars; never unlink them by hand.
+    for path in (db, auth, live):
+        with contextlib.closing(sqlite3.connect(path)) as conn:
+            assert conn.execute('PRAGMA wal_checkpoint(TRUNCATE)').fetchone()[0] == 0
+    sb.restore_backup(before, db, auth, live, force=True, offline=True)
     assert {p.name: _schema_and_data(p) for p in (db, auth, live)} == original
     # Old-schema reads work without triggering the new application's migration.
     with contextlib.closing(sqlite3.connect(db)) as conn:
@@ -77,7 +82,7 @@ def test_schema_rollback_restores_old_contract_and_preserves_failed_upgrade_evid
     saved = tmp_path / 'preserved-post-upgrade'
     saved.mkdir()
     saved_db, saved_auth, saved_live = [saved / p.name for p in (db, auth, live)]
-    sb.restore_backup(after, saved_db, saved_auth, saved_live, force=True)
+    sb.restore_backup(after, saved_db, saved_auth, saved_live, force=True, offline=True)
     with contextlib.closing(sqlite3.connect(saved_db)) as conn:
         assert conn.execute('SELECT COUNT(*) FROM signal_log').fetchone()[0] == 2
         assert conn.execute('SELECT COUNT(*) FROM signal_evidence').fetchone()[0] == 1

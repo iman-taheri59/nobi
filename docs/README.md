@@ -12,6 +12,7 @@
 
 | می‌خواهی… | برو به |
 |---|---|
+| پشتیبان و بازیابی آفلاین ایمن را بررسی کنی | [`operations-recovery.md`](operations-recovery.md) · [English](operations-recovery.en.md) |
 | پروژه را راه بیندازی | [`../README.md`](../README.md) |
 | بفهمی چرا معماری این‌طور است | [`adr/`](adr) — ۱۸ ADR، هر کدام فارسی و انگلیسی |
 | ببینی کدام تصمیم واقعاً پیاده شده | [`adr/README.md`](adr/README.md) — جدول وضعیت با شاهد کد |

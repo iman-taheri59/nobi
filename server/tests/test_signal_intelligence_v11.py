@@ -210,14 +210,13 @@ def test_cursor_is_stable_when_timestamps_are_equal(monkeypatch, tmp_path):
 
 def test_dashboard_wires_linked_metrics_taxonomy_and_bounded_exports():
     html = (Path(__file__).parents[2] / "index.html").read_text(encoding="utf-8")
-    for endpoint in (
-        "/v1/signal-intelligence/summary",
-        "/v1/signal-intelligence/pipeline",
-        "/v1/signal-intelligence/gate-reasons",
-        "/v1/signal-intelligence/export",
-    ):
-        assert endpoint in html
+    core = (Path(__file__).parents[2] / "nbx-core.js").read_text(encoding="utf-8")
+    assert "/v1/signal-intelligence/evidence" in core
+    assert "api.getSignalEvidence(qs)" in html
+    assert "/v1/signal-intelligence/export" in html
     assert "siExportCsv" in html and "siExportJson" in html
+    assert "validateSignalEvidence" in html and "view:'evidence'" in html
+    assert "siReadScope" in html and "siExportStatus" in html
     assert "win_rate_ci95_pct" in html and "outcome_maturity" in html
     assert "coverage_pct" in html and "expectancy_ci95_r" in html
 

@@ -1,7 +1,9 @@
 """Owner backup/restore and privileged-helper boundary tests."""
 from __future__ import annotations
 
+import contextlib
 import os
+import sqlite3
 
 from test_install_api import _owner_client
 
@@ -14,10 +16,14 @@ def _configured(monkeypatch, tmp_path):
     monkeypatch.setattr(operations_api, "_paths", lambda: (
         tmp_path / "backups", tmp_path / "journal.db", tmp_path / "auth-state.db",
         tmp_path / "live.db"))
+    for name in ("journal.db", "auth-state.db", "live.db"):
+        with contextlib.closing(sqlite3.connect(tmp_path / name)) as conn:
+            conn.execute("CREATE TABLE fixture(value TEXT)")
+            conn.commit()
     return client, csrf
 
 
-def test_owner_backup_and_confirmed_restore(monkeypatch, tmp_path):
+def test_owner_backup_and_online_restore_blocked(monkeypatch, tmp_path):
     client, csrf = _configured(monkeypatch, tmp_path)
     headers = {"X-CSRF-Token": csrf}
     with client:
@@ -27,8 +33,8 @@ def test_owner_backup_and_confirmed_restore(monkeypatch, tmp_path):
         restored = client.post("/api/operations/restore", json={"archive": name, "confirmation": f"RESTORE {name}"}, headers=headers)
     assert made.status_code == 200
     assert bad.status_code == 422
-    assert restored.status_code == 200
-    assert restored.json()["restart_required"] is True
+    assert restored.status_code == 409
+    assert restored.json()["detail"]["error"] == "online-restore-disabled"
     if os.name != "nt":
         assert operations_api.AUDIT.stat().st_mode & 0o777 == 0o600
 

@@ -48,7 +48,7 @@ async function verify(file) {
       const ttls = Array.from(w.eval('queue.map(q => q.ttl)'));
       assert.equal(ttls.length, 5);
       assert.ok(ttls.every(t=>t>800 && t<=812), 'closed bar must retain its bounded server-time window');
-      assert.equal(w.eval('queue[0].id'), 'TRXIRT:'+sourceBar, 'identity must not come from unrelated chart cache');
+      assert.equal(w.eval('queue[0].id'), 'TRXIRT:15m:'+sourceBar+':'+ 'a'.repeat(64), 'identity must not come from unrelated chart cache');
       const expiry=w.eval('queue[0].approval.expires_at');
       await w.refreshQueue();
       assert.equal(w.eval('queue[0].approval.expires_at'),expiry,'refresh must never extend expiry');

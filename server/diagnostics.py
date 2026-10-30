@@ -115,33 +115,27 @@ def _ago(seconds: float) -> str:
 async def check_errorlog(ctx: Ctx) -> Result:
     """Write a marker row and read it back from the same store the UI reads."""
     res = errorlog.self_test()
-    if not res.get("readable"):
+    if not res.get("sqlite_verified"):
         return Result(FAIL, f"wrote #{res.get('wrote')} but it did not come back from recent()",
-                      "the log is write-only right now — the errors tab will look empty")
+                      "SQLite round-trip not verified; memory fallback is not durable storage")
     return Result(OK, f"wrote #{res.get('wrote')}, read it back, {res.get('total_after')} rows",
                   data={"wrote": res.get("wrote"), "total": res.get("total_after")})
 
 
 async def check_journal(ctx: Ctx) -> Result:
-    """Open the database the predictions live in and ask it a real question.
-
-    `lifecycle()` is the same call `/api/journal/stage` makes, so this exercises
-    the schema, the migrations and the MSI query — not just "does the file
-    exist". An empty journal is `ok`: it is a fresh install, and calling that a
-    failure would make the panel red on day one and stay ignored forever.
-    """
-    conn = journal.connect()
+    """Read journal schema/state without migration or lifecycle evaluation."""
+    conn = journal.connect_readonly()
     try:
-        journal.init(conn)
-        journal.lifecycle(conn)                     # runs MSI over the schema
+        stage = journal.stage_snapshot(conn)
+        verdict = journal.msi(conn)  # calculation only, no counter/meta writes
         rows = int(conn.execute("SELECT COUNT(*) FROM signal_log").fetchone()[0])
         last = conn.execute("SELECT MAX(ts) FROM signal_log").fetchone()[0]
     finally:
         conn.close()
     detail = f"{rows} row(s) in signal_log"
-    detail += (f", newest {_ago(time.time() - float(last))} old" if last
-               else " — a fresh install")
-    return Result(OK, detail, data={"rows": rows, "db": str(journal.DB_PATH)})
+    detail += (f", newest {_ago(time.time() - float(last))} old" if last else " — no rows")
+    return Result(OK, detail, data={"rows": rows, "db": str(journal.DB_PATH),
+                  "stage": stage["stage"], "msi_status": verdict["status"], "read_only": True})
 
 
 async def check_paper(ctx: Ctx) -> Result:
