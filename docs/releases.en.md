@@ -2,7 +2,7 @@
 
 [فارسی](releases.md) · **English**
 
-The current version is **2.0.3**; check Releases for actual publication status. Publish it only after CI for that exact commit is green; check Releases for actual publication status.
+The current version is **2.0.4**; check Releases for actual publication status. Publish it only after CI for that exact commit is green; check Releases for actual publication status.
 `VERSION` is the source of truth for the release number; the tag name is exactly `v`
 plus that number.
 

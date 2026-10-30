@@ -83,7 +83,10 @@ for (const file of ['index.html','nobitex-mobile.html']) {
   ok(strip(d.getElementById('kEquity').textContent).includes('1,100.00'),'local metrics cannot override valid server positions metrics');
   eq(d.getElementById('kPf').textContent,'1.25');
   w.__phase2.paintPaperState({unavailable:true,positions:null},{unavailable:true,metrics:null},null);
-  for(const id of ['kEquity','kToday','kRisk','kPf'])eq(d.getElementById(id).textContent,'—',id+' unknown');
+  eq(d.getElementById('kEquity').textContent,'—','kEquity unknown');
+  eq(d.getElementById('kToday').textContent,'Performance data not recorded','kToday unknown');
+  eq(d.getElementById('kRisk').textContent,'—','kRisk unknown');
+  eq(d.getElementById('kPf').textContent,'Profit factor not recorded','kPf unknown');
   ok(d.getElementById('posBody').textContent.includes('unknown'),'unknown is not no positions');
   ok(d.getElementById('paperStateNotice').textContent.includes('unknown does not mean zero'));
   ok(!d.getElementById('kToday').className.includes('emerald'),'unknown PnL not green');
@@ -93,7 +96,7 @@ for (const file of ['index.html','nobitex-mobile.html']) {
   w.__phase2.paintPaperState({...pos,positions:[]},met,risk);
   ok(d.getElementById('posBody').textContent.includes('No open positions'),'genuine empty success distinct');
   w.__phase2.paintPaperState(pos,{...met,metrics:{...pos.metrics,profit_factor:0,profit_factor_defined:false}},risk);
-  eq(d.getElementById('kPf').textContent,'—','break-even PF undefined, not zero success');
+  eq(d.getElementById('kPf').textContent,'Profit factor not recorded','break-even PF undefined, not zero success');
   ok(d.querySelector('[data-i18n="ov.kpi4sub"]').textContent.includes('break-even'));
   w.__phase2.paintPaperState(pos,{...met,metrics:{...pos.metrics,profit_factor:99.99,profit_factor_is_capped:true}},risk);
   eq(d.getElementById('kPf').textContent,'≥99.99','cap is not a measured exact 99.99');

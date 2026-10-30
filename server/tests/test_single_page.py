@@ -136,7 +136,7 @@ def test_the_dashboard_asks_for_online_coin_metadata() -> None:
     assert "window.setCoinMetadata(data.coins" in app
     assert "/coins" in app
     # Defined here, consumed there: the page must actually load the script.
-    assert '<script src="nbx-app.js"></script>' in page
+    assert re.search(r'<script src="nbx-app\.js(?:\?[^"]*)?"', page)
     assert "window.setCoinMetadata = function setCoinMetadata" in page
     # Polled, so a coin added to the registry appears without a redeploy... and
     # slow enough that it is not a request per tab switch.

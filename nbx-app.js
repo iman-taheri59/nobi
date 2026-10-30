@@ -507,7 +507,7 @@
 
     if ($('kEquity')) $('kEquity').textContent = eq !== null ? window.NBXDisplay.money(eq, 'USD') : '\u2014';
     if ($('kToday')) {
-      $('kToday').textContent = pct !== null ? window.NBXDisplay.percent(pct, 2) : '\u2014';
+      $('kToday').textContent = pct !== null ? window.NBXDisplay.percent(pct, 2) : (LANG === 'fa' ? 'آمار کارایی ثبت نشده است' : 'Performance data not recorded');
       $('kToday').className = 'num kpi-num ' + (pct === null ? 'text-zinc-400' : pct < 0 ? 'text-red-400' : 'text-emerald-400');
     }
     if ($('kTodayV')) {
