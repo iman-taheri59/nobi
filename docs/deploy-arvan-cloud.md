@@ -77,7 +77,7 @@ sudo -u nobi /opt/nobi/.venv/bin/python /opt/nobi/scripts/check_deploy.py \
 | تصمیم | پیشنهاد | دلیل فنی |
 |---|---|---|
 | **ریجن** | داخل ایران (تهران، یا نزدیکترین به کاربران) | برنامه با `NBX_BASE_URL=https://apiv2.nobitex.ir` کار میکند. مستندات مخزن صریح میگوید صرافی از شبکههای خارج ایران پاسخ نمیدهد؛ سرور بالا میآید ولی همهٔ پنلها «سرور نوبیتکس در دسترس نیست» نشان میدهند — استقرار سالمِ بیفایده. پیش از خرید با `curl -sS -m 10 https://apiv2.nobitex.ir/market/stats` از همان ریجن تست کنید. |
-| **سیستمعامل** | Ubuntu 24.04 LTS | پایتون ۳٫۱۲ دارد؛ کد به ۳٫۱۱+ نیاز دارد (`datetime.UTC`). اسکریپت Debian 12/13 را هم قبول میکند. |
+| **سیستمعامل** | Ubuntu 24.04 LTS | پایتون ۳٫۱۲ دارد و همین حداقل است: پین `numpy==2.5.4` شرط `Requires-Python >=3.12` دارد، پس روی ۳٫۱۱ نصب وابستگی‌ها شکست می‌خورد. اسکریپت Debian 12/13 را هم قبول میکند. |
 | **اندازه** | ۲ vCPU / ۴ GB RAM / ۴۰ GB دیسک (استاندارد) | پانداز و بکست حافظه میخواهند. یونیت systemd سقف `MemoryMax=2G` و `TasksMax=512` دارد — اگر بکستهای سنگین مینمایید، `systemctl edit nobi` و `MemoryMax=4G`. |
 | **دیسک داده** | یک دیسک SSD جداگانه، mount روی `/srv/nobi-data` | بازسازی ابرک از ایمیج، دیسک ریشه را پاک میکند. ژورنال، `auth.db` و پوزیشنها روی ریشه = از دست رفتن قطعی. |
 | **دسترسی** | SSH Key (نه رمز) | رمز فقط یکبار در پنل نشان داده میشود. |
@@ -269,7 +269,7 @@ sudo bash /opt/nobi/scripts/deploy_arvan.sh --domain "$DOMAIN" --tls "$EMAIL"
 
 | گام | اقدام | نتیجهای که باید ببینید |
 |---|---|---|
-| ۰ | بررسی OS و پایتون ≥ ۳٫۱۱ | `python: Python 3.12.x` |
+| ۰ | بررسی OS و پایتون ≥ ۳٫۱۲ | `python: Python 3.12.x` |
 | ۱ | `apt install python3-venv python3-dev git nginx curl …` | `git nginx python3-venv ok` |
 | ۲ | ساخت کاربر سیستمی `nobi` و کپی/نگهداری checkout در `/opt/nobi` | `user nobi created` |
 | ۲ | ساخت venv و نصب `server/requirements.txt` | `deps ok` |

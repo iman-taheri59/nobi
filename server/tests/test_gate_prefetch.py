@@ -21,6 +21,7 @@ Four properties have to hold, and each is a test below:
 from __future__ import annotations
 
 import asyncio
+import re
 import sys
 import time
 from pathlib import Path
@@ -228,7 +229,9 @@ def test_a_prefetch_failure_cannot_break_a_scan():
     src = _main_source()
     at = src.index("pre = await gate_prefetch(")
     window = src[max(0, at - 300):at + 500]
-    assert "except Exception as e:      # a prefetch problem must never break a scan" in window
+    # Whitespace-insensitive on purpose: the guard is the contract, and a
+    # formatter-only change to main.py must not turn this gate red.
+    assert re.search(r"except Exception as e:\s+# a prefetch problem must never break a scan", window)
 
 
 def test_the_unknowns_fall_once_the_books_arrive(monkeypatch):
