@@ -8,7 +8,7 @@ pandas==3.1.0
 numpy==2.5.4
 pyarrow==23.0.1
 python-dotenv==1.2.4
-websockets==14.2  # future: Centrifugo streaming wiring
+websockets==17.3  # future: Centrifugo streaming wiring
 # Pinned explicitly (fastapi resolves it transitively) so pip-audit can see
 # the exact Starlette version that answers requests in production.
 starlette==1.10.0
