@@ -4199,7 +4199,7 @@ function renderPerf(){
   if(chip){chip.textContent=ready?(perfMeta.origin || t('perf.allOrigins')):perfStateText();chip.className='chip text-[10px] text-zinc-400';}
   const empty = key => `<tr><td colspan="10" class="text-[11px] text-zinc-500">${escText(ready?t(key):perfStateText())}</td></tr>`;
   const k=perfKpi, pct=v=>pNumber(v)===null?'—':PC(v*100,1,false);
-  byId('pHit').textContent=ready?pct(k.hit):'—';
+  byId('pHit').textContent=ready?pct(k.hit):(LANG==='fa'?'آمار کارایی ثبت نشده است':'Performance data not recorded');
   byId('pHit').removeAttribute('title');
   byId('pHitSub').textContent=ready?t('perf.sub1').replace('{n}',pFmt(k.res)):perfStateText();
   byId('pExp').textContent=ready&&pNumber(k.exp)!==null?`${k.exp>=0?'+':''}${pFmt(k.exp,2)}R`:'—';
@@ -10581,7 +10581,7 @@ window.addEventListener('resize', resizeCharts);
       const events = m && m.trades != null && m.trades !== '' && typeof m.trades !== 'boolean' && Number.isSafeInteger(Number(m.trades)) && Number(m.trades) >= 0 ? Number(m.trades) : null;
       const pf = m && m.profit_factor;
       const validPf = m && m.profit_factor_defined !== false && pf !== null && pf !== undefined && pf !== '' && typeof pf !== 'boolean' && Number.isFinite(Number(pf));
-      $('kPf').textContent = events > 0 && validPf ? (m.profit_factor_is_capped ? '≥' : '') + faNum(Number(pf), 2) : '—';
+      $('kPf').textContent = events > 0 && validPf ? (m.profit_factor_is_capped ? '≥' : '') + faNum(Number(pf), 2) : (LANG === 'fa' ? 'ضریب سود ثبت نشده است' : 'Profit factor not recorded');
       if (pfSub) pfSub.textContent = !m
         ? (LANG === 'fa' ? 'دفتر کاغذی خوانده نشد؛ علت قطعی صرافی تأیید نشده است.' : 'Paper book read unavailable; exchange outage not established.')
         : events === null

@@ -110,7 +110,6 @@ PANELS: dict[str, list[tuple[str, str, str]]] = {
     "risk": [
         ("rkEq", "server", "paper equity"),
         ("rkRpt", "market", "risk per trade"),
-        ("rkAtr", "market", "ATR(14)"),
         ("rkDist", "market", "stop distance"),
         ("capCards", "server", "risk caps"),
         ("killList", "server", "kill switches"),

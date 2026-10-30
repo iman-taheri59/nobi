@@ -534,7 +534,7 @@
       const events = m && m.trades != null && m.trades !== '' && typeof m.trades !== 'boolean' && Number.isSafeInteger(Number(m.trades)) && Number(m.trades) >= 0 ? Number(m.trades) : null;
       const pf = m && m.profit_factor;
       const validPf = m && m.profit_factor_defined !== false && pf !== null && pf !== undefined && pf !== '' && typeof pf !== 'boolean' && Number.isFinite(Number(pf));
-      $('kPf').textContent = events > 0 && validPf ? (m.profit_factor_is_capped ? '≥' : '') + faNum(Number(pf), 2) : '—';
+      $('kPf').textContent = events > 0 && validPf ? (m.profit_factor_is_capped ? '≥' : '') + faNum(Number(pf), 2) : (LANG === 'fa' ? 'ضریب سود ثبت نشده است' : 'Profit factor not recorded');
       if (pfSub) pfSub.textContent = !m
         ? (LANG === 'fa' ? 'دفتر کاغذی خوانده نشد؛ علت قطعی صرافی تأیید نشده است.' : 'Paper book read unavailable; exchange outage not established.')
         : events === null

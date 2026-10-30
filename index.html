@@ -3728,7 +3728,7 @@ function renderPerf(){
   if(chip){chip.textContent=ready?(perfMeta.origin || t('perf.allOrigins')):perfStateText();chip.className='chip text-[10px] text-zinc-400';}
   const empty = key => `<tr><td colspan="10" class="text-[11px] text-zinc-500">${escText(ready?t(key):perfStateText())}</td></tr>`;
   const k=perfKpi, pct=v=>pNumber(v)===null?'—':PC(v*100,1,false);
-  byId('pHit').textContent=ready?pct(k.hit):'—';
+  byId('pHit').textContent=ready?pct(k.hit):(LANG==='fa'?'آمار کارایی ثبت نشده است':'Performance data not recorded');
   byId('pHit').removeAttribute('title');
   byId('pHitSub').textContent=ready?t('perf.sub1').replace('{n}',pFmt(k.res)):perfStateText();
   byId('pExp').textContent=ready&&pNumber(k.exp)!==null?`${k.exp>=0?'+':''}${pFmt(k.exp,2)}R`:'—';
@@ -7229,6 +7229,6 @@ window.addEventListener('resize', resizeCharts);
 <!-- INLINE-MOBILE-JS-END -->
 <!-- Phase 1: live data + TA engine integration -->
 <script src="nbx-core.js"></script>
-<script src="nbx-app.js"></script>
+<script src="nbx-app.js?v=20261030"></script>
 </body>
 </html>
