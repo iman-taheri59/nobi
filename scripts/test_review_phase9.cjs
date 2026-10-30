@@ -49,7 +49,8 @@ for(const file of ['index.html','nobitex-mobile.html'])for(const lang of ['fa','
   const beforeStage=stages;api.getJournalSummary=async()=>payload({stage_read_only:false});await w.loadPerf();eq(stages,beforeStage,'old server is not probed');ok(txt('stageWhy').includes(t('perf.stageAbsent')));
   // Failure clears every previously rendered number/row/chart; not a green zero or empty success.
   api.getJournalSummary=async()=>({error:'unavailable'});await w.loadPerf();eq(readState(),'error');
-  for(const id of ['pHit','pExp','pPf','pIc','pSig','pRes','pVoid'])eq(txt(id),'—');
+  for(const id of ['pExp','pPf','pIc','pSig','pRes','pVoid'])eq(txt(id),'—');
+  eq(txt('pHit'),lang==='fa'?'آمار کارایی ثبت نشده است':'Performance data not recorded');
   ok(txt('perfBody').includes(t('perf.readError')));ok(!txt('perfBody').includes('XUSDT'));eq(d.querySelectorAll('#calChart circle').length,0);ok(!txt('stageNow').includes('run'));
   api.getJournalSummary=async()=>({standalone:true});await w.loadPerf();eq(readState(),'standalone');ok(txt('msiMsg').includes(t('perf.requiresServer')));
   api.getJournalSummary=async()=>payload({kpi:{hit:null,exp:null,vpf:null,ic:null,sig:0,res:0,void:0},signals:[]});await w.loadPerf();eq(readState(),'ready');eq(txt('pSig'),'0');ok(txt('perfBody').includes(t('perf.empty')));
