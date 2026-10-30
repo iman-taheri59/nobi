@@ -2,7 +2,7 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
-## In progress — unreleased
+## 2.0.4
 
 - Twelfth reviewed-page fixes: on Overview, the Market State card separates ticker snapshot time from browser receipt time, reports ticker and selected-timeframe signal-mix age/staleness, refuses boolean/non-finite/negative-volume or late responses, and clears stale renders on error or invalid payloads. The capital-allocation donut hides zero-share arcs so 100% cash cannot render a false altcoin dot and refuses USD allocation when a valid USDT/IRT conversion rate is unavailable. The open-positions count badge and read-only paper-book refresh button now state their actual behaviour. Users/My Account and execution/account/server policies are unchanged.
 
