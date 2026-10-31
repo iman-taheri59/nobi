@@ -38,6 +38,7 @@ will not download, point the script at a browser you already have:
 from __future__ import annotations
 
 import argparse
+import contextlib
 import http.cookiejar
 import json
 import re
@@ -488,8 +489,35 @@ def run_probe(base: str, wait_s: float, json_path: str | None, md_path: str | No
         if username and password:
             pg.locator("#authUser").fill(username)
             pg.locator("#authPass").fill(password)
-            pg.locator("#authLoginBtn").click()
-            pg.locator("#authGate").wait_for(state="hidden", timeout=10_000)
+            # A successful login answers and then reloads the whole page — an
+            # 887 KB document plus a fresh scan — so the gate can stay visible
+            # well past a short timeout on a loaded runner. Wait for the reply
+            # first: that separates "the credentials were refused" (a real bug,
+            # reportable now) from "the runner is slow" (worth retrying), which
+            # a bare wait_for timeout cannot tell apart.
+            with pg.expect_response(lambda r: "/auth/login" in r.url,
+                                    timeout=60_000) as reply:
+                pg.locator("#authLoginBtn").click()
+            login = reply.value
+            if login.status != 200:
+                body = ""
+                with contextlib.suppress(Exception):
+                    body = (login.text() or "")[:200]
+                print(f"login refused: HTTP {login.status} {body}", file=sys.stderr)
+                b.close()
+                return 1
+            try:
+                pg.locator("#authGate").wait_for(state="hidden", timeout=60_000)
+            except Exception:
+                # Still gated after a minute: say what the page is complaining
+                # about instead of emitting a Playwright timeout with no cause.
+                said = ""
+                with contextlib.suppress(Exception):
+                    said = pg.locator("#authMsg").inner_text(timeout=2_000)[:200]
+                print("login succeeded but the gate never cleared"
+                      + (f": {said}" if said else ""), file=sys.stderr)
+                b.close()
+                return 1
 
         # Wait for the first scan to settle instead of guessing a delay.
         for _ in range(int(wait_s * 2)):
