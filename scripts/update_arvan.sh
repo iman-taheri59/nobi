@@ -10,8 +10,10 @@
 #   sudo bash scripts/update_arvan.sh --check      # look, and touch nothing
 #   sudo bash scripts/update_arvan.sh --yes        # unattended, no prompt
 #   sudo bash scripts/update_arvan.sh --reset      # fork/branch: fetch + reset --hard
+#   sudo bash scripts/update_arvan.sh --force      # with --reset, also discard uncommitted edits
 #   sudo bash scripts/update_arvan.sh --backup     # run the documented backup first
 #   sudo bash scripts/update_arvan.sh --verify     # then run check_deploy.py
+#   sudo bash scripts/update_arvan.sh --public https://nobi.example.ir   # same, with a URL
 #
 # It never touches /etc/nobi/nobi.env, the data directory, or the firewall. The
 # service is restarted, so plan a minute of downtime.
