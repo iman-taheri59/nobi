@@ -766,50 +766,7 @@ scp -i nobitrader-key.pem -r ubuntu@203.0.113.10:/srv/nobi-data/backup ./nobi-ba
 
 ## ۱۳. بهروزرسانی، بازگشت و جابهجایی
 
-### بهروزرسانی خودکار از گیتهاب (اختیاری)
-
-اگر میخواهید انتشار تگ، خودش سرور را ارتقا بدهد، workflow
-`.github/workflows/deploy.yml` آماده است. **پیشفرض خاموش است**: تا وقتی
-متغیر مخزن `DEPLOY_AUTO` دقیقاً `true` نباشد، انتشار تگ سرور را دستنخورده
-میلرد و رن سبز میماند (اجرای دستی از تب Actions همیشه کار میکند).
-
-```bash
-# ۱. روی سرور، deploy key بسازید (public را در GitHub → Deploy keys، read-only)
-sudo -u nobi ssh-keygen -t ed25519 -C nobi-deploy -f /opt/nobi/.ssh/id_deploy -N ""
-sudo cat /opt/nobi/.ssh/id_deploy.pub      # این را در GitHub بگذارید
-
-# ۲. سه secret و یک متغیر در مخزن GitHub تنظیم کنید
-#    secrets.SSH_PRIVATE_KEY  کلید خصوصی همان زوج (برای ورود Actions به سرور)
-#    secrets.SSH_KNOWN_HOSTS  خروجی `ssh-keyscan -H IP-سرور`
-#    secrets.SSH_USER         مثلا root
-#    secrets.SSH_HOST         IP یا دامنهٔ سرور
-#    vars.DEPLOY_AUTO         true  ← تا وقتی این نباشد، ارتقا انجام نمیشود
-
-# ۳. یک بار با دست تست کنید: Actions → deploy → Run workflow → vX.Y.Z
-```
-
-اسکریپت سمت سرور `scripts/deploy_remote.sh` است و سه چیز را تضمین میکند که
-نسخهٔ قبلی این workflow نمیتوانست:
-
-| تضمین | چرا |
-|---|---|
-| تگ استقرار مییابد، نه `main` | تگ تغییرناپذیر است؛ `main` هر چیزی است که هنگام fetch آنجا بوده |
-| بعد از restart، `/api/health` را میپرسد چه نسخهای زنده است و با تگ مقایسه میکند | «سرویس restart شد» یعنی «سرویس این کد را اجرا میکند» نیست |
-| اگر health check رد شود، همان commit قبلی را برمیگرداند | مسیر بازگشت همان کد مسیر رفت است، پس آزمایششده است نه teorیک |
-
-`DEPLOY_AUTO=true` را تنها وقتی بگذارید که یک بار اجرای دستی را دیده باشید که
-موفق شده. برای درخواست تأیید انسانی، یک Environment بهنام `production` با
-required reviewers در تنظیمات مخزن بسازید — گیتهاب خودش رن را برای تأیید
-متوقف میکند.
-
-> **چرا workflow به `environment` ارجاع نمیدهد:** محیطی که هنوز وجود ندارد
-> گیتهاب آن را **خودکار و بدون هیچ قاعدهای** میسازد؛ پس نامبردنش مثل یک گیت
-> تأیید بهنظر میرسد در حالی که هیچ نیست. علاوهبر این، یک باگ قدیمی runner
-> باعث میشود اولین اجرای jobی که محیط تازهی نام میبرد، بیدلیل قرمز شود. پس
-> اول محیط را در Settings → Environments بسازید، بعد خط `environment: production`
-> را به job اضافه کنید.
-
-### بهروزرسانی معمولی (دستی)
+### بهروزرسانی معمولی
 
 ```bash
 sudo -u nobi git -C /opt/nobi pull --ff-only
