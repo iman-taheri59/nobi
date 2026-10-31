@@ -2,6 +2,13 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 2.0.9
+
+- `scripts/update_arvan.sh` is added: the manual update path on the server. The installer leaves three commands in the guide; this script is those three commands plus the things a human forgets. The most important one: **the installed systemd unit does not update with `git pull`** — the running unit is the copy in /etc, not the one in the checkout, so a hardening change to `deploy/nobi.service` never reached a deployed host. The script compares both before the restart and installs if they differ. The other three guards each came from a measured run: a dirty checkout is refused (`pull --ff-only` breaks on one anyway), local commits are counted (`--reset` silently discarded a local commit, because `status --porcelain` only sees uncommitted work), and if the service does not come back the rollback command is printed with the previous SHA. Flags: `--check` (look only), `--yes`, `--reset` (fork/branch), `--backup`, `--verify`, `--public URL`. `/etc/nobi/nobi.env` is never written, the data directory is untouched, and no firewall is opened.
+- 19 new tests (text checks plus `bash -n`) cover the guards, including that no line writes to the env file and that `git clean` cannot delete the data. The script itself was run against fake `sudo`/`systemctl`/`curl` on PATH and every path measured: `--check` unchanged, a full update, already-current, dirty tree, diverged history, `--reset`, and a service that does not come back with the rollback message.
+- `docs/deploy-arvan.md` §۱۰ and `docs/deploy-arvan-cloud.md` §۱۳ both point at the script and explain why the "root-owned templates" step is no longer manual.
+- No data, order, setting, account or Live/Auto path changed; this release is one command-line tool.
+
 ## 2.0.8
 
 - A defect that the measurement itself exposed, now fixed: `--resolve` showed the first eight candidates and hid the rest. When `WBTC` was resolved, the search returned 25 rows — the first 24 are wrapped derivatives (`instadapp-wbtc`, `cWBTC`, `aave-wbtc`, …) and the coin Nobitex means, `wrapped-bitcoin`, is **row 14**. The correct answer was not on screen. Worse: the id a reader expects, `wbtc`, returns **HTTP 404** from `/coins/wbtc`; CoinGecko renamed the coin to `wrapped-bitcoin`, so even the "obvious" id is wrong. The eight-row limit was removed rather than warned about, because a warning can be scrolled past. A new test builds exactly that case: 25 candidates with the right answer at row 14.

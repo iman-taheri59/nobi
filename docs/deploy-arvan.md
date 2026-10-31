@@ -516,14 +516,37 @@ scp -i nobitrader-key.pem -r ubuntu@203.0.113.10:/srv/nobi-data/backup ./nobitra
 
 ## ۱۰. به‌روزرسانی
 
+سه دستور ساده است:
+
 ```bash
 sudo -u nobi git -C /opt/nobi pull --ff-only
 sudo /opt/nobi/.venv/bin/pip install -q -r /opt/nobi/server/requirements.txt
 sudo systemctl restart nobi
 ```
 
-بعد دوباره گام ۸ را اجرا کنید. اگر استقرارتان از یک fork/برنچ است، `pull` را با `fetch` و
-`reset --hard origin/main` جایگزین کنید — همان دستوری که در `docs/run-windows.md` هم هست.
+و `scripts/update_arvan.sh` همان سه دستور است، به‌همراه چیزهایی که آدم فراموش می‌کند:
+
+```bash
+sudo bash /opt/nobi/scripts/update_arvan.sh --check   # اول ببین چه می‌خواهد بنشیند
+sudo bash /opt/nobi/scripts/update_arvan.sh           # نشان می‌دهد، می‌پرسد، بعد انجام می‌دهد
+```
+
+چهار کاری که به‌دست فراموش می‌شود و این اسکریپت می‌کند:
+
+| چه می‌کند | چرا مهم است |
+|---|---|
+| قبل از کشیدن، کامیت‌های ورودی را نشان می‌دهد و `VERSION` تازه را از درخت ورودی می‌خواند | می‌دانید روی چه نسخه‌ای می‌نشینید، نه بعدش |
+| checkout کثیف را رد می‌کند و کامیت‌های محلی را می‌شمارد | `pull --ff-only` روی درخت کثیف می‌شکند؛ `--reset` کامیت محلی را بی‌صدا دور می‌اندازد |
+| واحد systemd نصب‌شده را با `deploy/nobi.service` مقایسه می‌کند | **سخت‌سازیِ واحد با `git pull` به سرور نمی‌رسد**: واحدِ در حال اجرا همان نسخهٔ `/etc` است، نه نسخهٔ checkout. بدون این گام، یک اصلاح امنیتی هرگز به میزبان مستقر نمی‌رسد |
+| بعد از restart سلامتی را می‌سنجد و اگر سرویس بالا نیامد، دستور برگشت را با SHA قبلی چاپ می‌کند | وسط شب تنها چیزی که لازم دارید همان یک دستور است |
+
+پرچم‌ها: `--check` (فقط نگاه، هیچ تغییری)، `--yes` (بدون پرسش)، `--reset` (fork/برنچ:
+`fetch` + `reset --hard`، همان مسیر مستند)، `--backup` (پیش از به‌روزرسانی نسخهٔ پشتیبان
+بگیر)، `--verify` (بعدش `check_deploy.py` را اجرا کن)، `--public URL` (همراه `--verify`).
+
+`/etc/nobi/nobi.env` را هرگز نمی‌نویسد، به `DATA_DIR` دست نمی‌زند و فایروال را باز نمی‌کند.
+اگر استقرارتان از یک fork/برنچ است، `--reset` را بگیرید — همان `reset --hard origin/main`ای
+که در `docs/run-windows.md` هم هست.
 
 > اگر بعد از به‌روزرسانی سرویس بالا نیامد، اول `journalctl -u nobi -n 50 --no-pager` را
 > بخوانید. شایع‌ترین علت، همان گاردِ `NBX_TRUSTED_PROXIES`/`NBX_API_TOKEN` است؛ یعنی نسخهٔ

@@ -780,6 +780,15 @@ sudo /usr/local/libexec/nobi-privileged-helper --protocol 1 check
 # سپس بخش ۹ را دوباره اجرا کنید
 ```
 
+یا همان کار با `scripts/update_arvan.sh`، که مرحلهٔ «قالب‌های root-owned» و سنجش سلامتی را
+خودش انجام می‌دهد و اگر سرویس بالا نیامد دستور برگشت را چاپ می‌کند:
+
+```bash
+sudo bash /opt/nobi/scripts/update_arvan.sh --check   # ببین چه میخواهد بنشیند
+sudo bash /opt/nobi/scripts/update_arvan.sh --yes     # بدون پرسش
+```
+```
+
 > چرا `deploy_arvan.sh` را دوباره اجرا میکنیم: یونیتها، helperها، قالبها و
 > `/etc/nobi/domain` در `/usr/local/...` و `/etc/systemd/system` نصب شدهاند،
 > نه داخل `/opt/nobi`. فقط `git pull` کافی نیست. اجرای دوباره امن است و
