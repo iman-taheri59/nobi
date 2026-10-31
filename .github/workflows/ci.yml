@@ -5,7 +5,7 @@
 #
 #   python  types, behaviour and dependency advisories
 #   js      the browser bundle — eslint, parity, escaping, generated artifact
-#   ui      the page itself — 45 panels must be able to explain themselves
+#   ui      the page itself — every panel must be able to explain itself
 #   windows the same python gate on the other documented platform (Laragon,
 #           docs/run-windows.md). Advisory: a failure is reported but does not
 #           block the Linux gates, because continue-on-error is set below.

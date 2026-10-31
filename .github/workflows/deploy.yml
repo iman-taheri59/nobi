@@ -1,0 +1,165 @@
+# Deploy the dashboard to the Nobi server.
+#
+# Two triggers, and nothing else:
+#
+#   workflow_dispatch  a human named a tag and pressed the button
+#   push: tags         a release tag was published
+#
+# A tag is the unit of deployment, not `main`. release.yml has already proved
+# that the tag points at a commit whose generated dashboard is current and
+# whose gates are green, so what lands on the server is an artifact that was
+# checked rather than whatever `main` happened to be when the fetch landed.
+#
+# Auto-deploy is off until someone turns it on. The `gate` job lets a tag push
+# through only when the repository variable DEPLOY_AUTO is exactly "true"; a
+# workflow_dispatch run is always allowed, because a human chose it. Setting an
+# `environment` with required reviewers on the `deploy` job adds a second,
+# native gate before the server is touched at all.
+#
+# What this deliberately does NOT do, each of which the previous version of
+# this file did:
+#
+#   * write the private key to ~/.ssh/id_rsa. It goes to $RUNNER_TEMP and is
+#     shredded at the end, so it cannot leak into a later step or an artifact.
+#   * trust a host key it just scraped. `ssh-keyscan ... || true` accepts
+#     anything that answers on port 22, which is the one check worth making.
+#     The expected key comes from a secret; without it the run stops.
+#   * build on the server. CI already refuses to release a stale
+#     nobitex-mobile.html, and compiling here would only let the two diverge.
+#   * restart a service and call it deployed. scripts/deploy_remote.sh asks
+#     /api/health which version is live and rolls back if it is not this one.
+
+name: deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to deploy (e.g. v2.0.6)
+        required: true
+        type: string
+  push:
+    tags:
+      - 'v[0-9]*.[0-9]*.[0-9]*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    name: decide whether this tag may deploy
+    runs-on: ubuntu-latest
+    outputs:
+      deploy: ${{ steps.decide.outputs.deploy }}
+      tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - name: resolve the tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = workflow_dispatch ]; then
+            echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: decide
+        id: decide
+        run: |
+          if [ "${{ github.event_name }}" = workflow_dispatch ]; then
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+            echo "manual dispatch — deploying ${{ steps.tag.outputs.tag }}"
+          elif [ "${{ vars.DEPLOY_AUTO }}" = "true" ]; then
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+            echo "DEPLOY_AUTO is true — deploying ${{ steps.tag.outputs.tag }}"
+          else
+            # Green on purpose. Publishing a tag is the normal end of a
+            # release; making every release a red X until someone remembers
+            # to flip a variable trains people to ignore this workflow.
+            echo "deploy=false" >> "$GITHUB_OUTPUT"
+            echo "DEPLOY_AUTO is not 'true', so the server was left alone."
+            echo "To deploy ${{ steps.tag.outputs.tag }}: set the repository"
+            echo "variable DEPLOY_AUTO=true, or run this workflow by hand."
+          fi
+
+  deploy:
+    name: deploy to the Nobi server
+    needs: gate
+    if: needs.gate.outputs.deploy == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # No `environment:` here on purpose. An environment that does not exist yet
+    # is created on the fly with *no* rules, so naming one would look like an
+    # approval gate while providing none — and there is a long-standing runner
+    # bug that makes the first run of a job naming a fresh environment fail for
+    # no reason. Once Settings → Environments has a `production` with required
+    # reviewers, add `environment: production` to this job; until then the gate
+    # job above is the only control, and it is a real one.
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.gate.outputs.tag }}
+          fetch-depth: 0
+
+      - name: the tag must point at what was checked out
+        run: |
+          git tag --points-at HEAD | grep -qx "${{ needs.gate.outputs.tag }}" || {
+            echo "::error::tag ${{ needs.gate.outputs.tag }} does not point at HEAD"
+            exit 1
+          }
+
+      - name: stage the SSH key and the expected host key
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          key="$RUNNER_TEMP/deploy_key"
+          printf '%s\n' "$SSH_PRIVATE_KEY" > "$key"
+          chmod 600 "$key"
+          # No keyscan. Either the expected key was supplied, or the run stops:
+          # accepting whatever answers on port 22 is worse than not deploying.
+          if [ -n "${SSH_KNOWN_HOSTS:-}" ]; then
+            printf '%s\n' "$SSH_KNOWN_HOSTS" > "$RUNNER_TEMP/known_hosts"
+          else
+            echo "::error::set the SSH_KNOWN_HOSTS secret — refusing to trust a scraped host key"
+            exit 1
+          fi
+          echo "DEPLOY_KEY=$key" >> "$GITHUB_ENV"
+          echo "DEPLOY_KNOWN_HOSTS=$RUNNER_TEMP/known_hosts" >> "$GITHUB_ENV"
+
+      - name: the server is reachable
+        run: |
+          ssh -i "$DEPLOY_KEY" \
+              -o BatchMode=yes -o IdentitiesOnly=yes \
+              -o StrictHostKeyChecking=yes \
+              -o UserKnownHostsFile="$DEPLOY_KNOWN_HOSTS" \
+              -o ConnectTimeout=15 \
+              "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" \
+              'echo "reachable: $(hostname) $(id -un)"'
+
+      - name: deploy ${{ needs.gate.outputs.tag }}
+        run: |
+          # deploy_remote.sh runs the whole sequence on the server and verifies
+          # the result; it rolls itself back and exits non-zero if the service
+          # does not come up reporting this tag's version.
+          scp -i "$DEPLOY_KEY" -o BatchMode=yes -o IdentitiesOnly=yes \
+              -o StrictHostKeyChecking=yes \
+              -o UserKnownHostsFile="$DEPLOY_KNOWN_HOSTS" \
+              scripts/deploy_remote.sh \
+              "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/tmp/deploy_remote.sh"
+          ssh -i "$DEPLOY_KEY" \
+              -o BatchMode=yes -o IdentitiesOnly=yes \
+              -o StrictHostKeyChecking=yes \
+              -o UserKnownHostsFile="$DEPLOY_KNOWN_HOSTS" \
+              -o ConnectTimeout=15 \
+              -t "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" \
+              "sudo bash /tmp/deploy_remote.sh ${{ needs.gate.outputs.tag }}; rc=\$?; rm -f /tmp/deploy_remote.sh; exit \$rc"
+
+      - name: shred the key
+        if: always()
+        run: |
+          rm -f "${DEPLOY_KEY:-}" "${DEPLOY_KNOWN_HOSTS:-}"
