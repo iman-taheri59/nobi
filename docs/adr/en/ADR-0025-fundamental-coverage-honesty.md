@@ -86,7 +86,11 @@ reason is measured:
 A real example: `DOGS` matches four coins (`doggsnout-skeptic`, `dogs-2`, …) and `NOT` matches two
 (`notcoin`, `nothing-3`). Taking the first is a **guess**, and a guess produces a fundamental score
 that gets read. So new mappings are resolved **offline and confirmed by a human**
-(`scripts/resolve_fa.py`, output → `coin_registry.json` → commit), never during a scan.
+(edited by hand in `server/coin_registry.json`, then committed), never during a scan.
+There is no resolver script and there has never been one: the file was curated for the
+coin icons long before this engine read it, so a new mapping is a human adding one line
+and committing it. An earlier draft of this ADR named a resolver script under
+scripts/ that does not exist; the point of the decision — never guess during a scan — is unchanged.
 
 ### 4. The pair premium: measured in shadow, given no weight
 
