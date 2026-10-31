@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import ast
 import re
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -132,8 +134,34 @@ def test_nothing_is_built_on_the_server(workflow) -> None:
 
 def test_remote_script_exists_is_executable_and_is_the_one_used(workflow) -> None:
     assert REMOTE.is_file()
-    assert REMOTE.stat().st_mode & 0o111, "deploy_remote.sh must be executable"
     assert "scripts/deploy_remote.sh" in _executed(workflow)
+
+
+def _index_mode(path: Path) -> str | None:
+    """The permission bits git recorded for a file, or None if untracked.
+
+    `stat()` cannot answer this on Windows, which does not carry the exec bit
+    at all — that is what the advisory Windows job caught the first time. The
+    index is the platform-independent truth about how the file was committed.
+    """
+    try:
+        out = subprocess.run(
+            ["git", "ls-files", "--stage", "--", path.name],
+            cwd=path.parent, capture_output=True, text=True, check=True,
+        ).stdout.split("\t")
+        return out[0].split()[0] if out and out[0].strip() else None
+    except (OSError, subprocess.CalledProcessError, IndexError):
+        return None
+
+
+def test_remote_script_is_committed_executable() -> None:
+    mode = _index_mode(REMOTE)
+    if mode is None:  # an untracked checkout has no index entry to read
+        if sys.platform == "win32":
+            pytest.skip("no index entry and no exec bit on Windows")
+        assert REMOTE.stat().st_mode & 0o111, "deploy_remote.sh must be executable"
+        return
+    assert mode == "100755", f"git records deploy_remote.sh as {mode}, not 100755"
 
 
 def test_remote_script_deploys_a_tag_not_a_branch(remote) -> None:
