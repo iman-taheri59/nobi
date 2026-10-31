@@ -428,7 +428,7 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(
     title="nobiTrader",
-    version="2.0.5",
+    version="2.0.6",
     lifespan=lifespan,
 )
 

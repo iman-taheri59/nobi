@@ -2,6 +2,14 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 2.0.6
+
+- The "no panel stays blank" contract in `probe_live.py` is now actually enforced: a panel with no meaningful content no longer sits behind an em-dash but says why. Two panels that used to come up empty — paper profit factor (`kPf`) and performance statistics (`pHit`) — now state the not-recorded condition, and `rkAtr`, which has no element with that id in the page, was removed from the probe's list. The result: the probe checks **44 panels**, not 45.
+- The panel count is no longer hardcoded in a step name. The name said "45 panels" while the probe verified 44 — an inconsistency left behind when `rkAtr` was removed in `0bc4d3d` without renaming the step. The step is now just `every panel explains itself`, and `probe_live.py --json probe-panels.json` writes structured output; the next step, with `if: always()`, publishes the real panel count, the API cross-checks and the list of broken panels to `$GITHUB_STEP_SUMMARY`. There is no number left to go stale.
+- The probe's login wait now tells refusal apart from slowness. Run 183 went red on `#authGate` with a `TimeoutError`: a successful login calls `location.reload()`, and re-reading an 887 KB page on a loaded CI runner takes longer than 10 seconds — so "credentials refused" was indistinguishable from "the runner is slow". The probe now waits for the `/auth/login` reply first: a non-200 is reported immediately with the server's own detail, and the gate then gets 60 seconds, quoting the page's `#authMsg` if it is still up. Both paths were exercised locally.
+- The regressions that the phase 1–13 test files themselves introduced were repaired (`f3f5d96`), and the development dependencies were refreshed: playwright 1.64.1, pydantic-settings 2.16.1, pytest 9.1.1, pyarrow 26.0.0, websockets 17.3.
+- No data, order, real setting, account, execution policy or Live/Auto path changed; this release only fixes the probe tooling, the CI structure and the version number.
+
 ## 2.0.5
 
 - CI red fixes: the two shadow-gate tests (ledger and prefetch) no longer depend on the exact number of spaces before the `except` comment in `server/main.py`; they match the guard's shape, so reformatting the file can no longer turn them red. The portability test now reads and writes the files in two test modules with `encoding="utf-8"` (cp1252 on Windows raised), and the execution-mode load test no longer counts the error log's own journal write as a retry — it failed only in a full-suite run, never alone.
