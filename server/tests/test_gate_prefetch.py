@@ -228,7 +228,8 @@ def test_a_prefetch_failure_cannot_break_a_scan():
     src = _main_source()
     at = src.index("pre = await gate_prefetch(")
     window = src[max(0, at - 300):at + 500]
-    assert "except Exception as e:      # a prefetch problem must never break a scan" in window
+    flat = " ".join(window.split())
+    assert "except Exception as e: # a prefetch problem must never break a scan" in flat
 
 
 def test_the_unknowns_fall_once_the_books_arrive(monkeypatch):

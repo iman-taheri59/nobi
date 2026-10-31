@@ -138,6 +138,11 @@ jobs:
         run: npm run test:review-phase12
       - name: Risk audit page and scope regression
         run: npm run test:review-phase13
+      # The same invariants against the real page scripts evaluated in JSDOM —
+      # the extracted-copy test above cannot catch a page that stopped calling
+      # the function it claims to call.
+      - name: Risk audit real-page integration (jsdom)
+        run: npm run test:review-phase13-integration
       - name: preflight parity — 28 cases × 10 gates
         run: python3 scripts/check_preflight_parity.py
       - name: generated mobile file is current

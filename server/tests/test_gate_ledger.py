@@ -407,7 +407,11 @@ def test_a_ledger_failure_cannot_break_a_scan():
     src = _main_source()
     at = src.index("judged = gate_write(tf)")
     window = src[max(0, at - 200):at + 400]
-    assert "except Exception as e:      # the ledger must never break a scan" in window
+    # Whitespace-insensitive: a reformatter may reflow the comment's padding,
+    # and the invariant being asserted is "this call is wrapped in a guard",
+    # not how many spaces sit between the colon and the comment.
+    flat = " ".join(window.split())
+    assert "except Exception as e: # the ledger must never break a scan" in flat
 
 
 def test_the_evidence_route_only_reads():

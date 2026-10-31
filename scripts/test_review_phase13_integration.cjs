@@ -38,7 +38,6 @@ function extractScripts(html) {
 function globals(w, lang) {
   const d = w.document;
   const targetFa = lang === 'fa';
-  const num = s => String(s).replace(/[0-9]/g, ch => targetFa ? String.fromCharCode(0x6f0 + +ch) : ch);
   w.LANG = lang;
   w.localStorage.setItem('lang', lang);
   w.numLocale = () => targetFa ? 'fa-IR' : 'en-US';
@@ -52,7 +51,7 @@ function globals(w, lang) {
   w.fmtWhen = ts => {
     if (!ts) return '—';
     const date = new Date(ts * 1000);
-    try { return date.toLocaleString(w.numLocale(), { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }); } catch (e) { return `${String(date.getMonth()+1).padStart(2,'0')}/${String(date.getDate()).padStart(2,'0')} ${String(date.getHours()).padStart(2,'0')}:${String(date.getMinutes()).padStart(2,'0')}`; }
+    try { return date.toLocaleString(w.numLocale(), { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }); } catch { return `${String(date.getMonth()+1).padStart(2,'0')}/${String(date.getDate()).padStart(2,'0')} ${String(date.getHours()).padStart(2,'0')}:${String(date.getMinutes()).padStart(2,'0')}`; }
   };
   w.escText = v => String(v == null ? '' : v).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
   w.byId = id => d.getElementById(id);
@@ -81,13 +80,61 @@ function response(payload, status = 200) {
 }
 
 async function runCase({ file, lang }) {
-  const url = file.endsWith('mobile.html') ? 'file:///home/user/nobi/nobitex-mobile.html' : 'https://nobi.local/';
-  const dom = new JSDOM(fs.readFileSync(file, 'utf8'), { url, runScripts: 'dangerously', pretendToBeVisual: true });
+  // An http origin, not file://: a file URL is an opaque origin, where
+  // localStorage throws and the page silently falls back to 'fa' — which would
+  // make the English half of this suite assert against Persian strings.
+  // The server serves the mobile file over http too, and the one genuinely
+  // file-only behaviour (api.standaloneMobile) is driven explicitly below.
+  const url = file.endsWith('mobile.html') ? 'https://nobi-mobile.local/' : 'https://nobi.local/';
+  // `outside-only` keeps JSDOM from executing the page's own inline scripts
+  // while parsing. They run from this loop instead, in a controlled order, so
+  // that (a) localStorage already holds the language when `let LANG` is first
+  // evaluated and (b) NBX.core exists before any top-level statement that reads
+  // it — the inlined mobile app calls initTicket() at top level and would
+  // otherwise throw on NBX.core.engine before the test could intervene.
+  const dom = new JSDOM(fs.readFileSync(file, 'utf8'), {
+    url, runScripts: 'outside-only', pretendToBeVisual: true,
+  });
   const w = dom.window;
   const d = w.document;
   d.documentElement.dataset.canMutate = '1';
   globals(w, lang);
-  for (const script of extractScripts(fs.readFileSync(file, 'utf8'))) w.eval(script);
+  const bodies = extractScripts(fs.readFileSync(file, 'utf8'));
+  // One eval, not one per script: `const`/`let` declared by eval code stay in
+  // that eval's own scope, so splitting the scripts would leave `T`, `t` and
+  // `LANG` invisible to the script that reads them. The core client is pulled
+  // to the front so NBX.core can be built before any top-level statement that
+  // reads it — the inlined mobile app calls initTicket() at top level and would
+  // otherwise throw on NBX.core.engine.
+  const coreAt = bodies.findIndex(b => b.includes('NBX.createCore'));
+  const core = coreAt >= 0 ? bodies.splice(coreAt, 1)[0] : null;
+  const source = [
+    core,
+    // The page boots NBX.core inside start(), which this offline test strips so
+    // no timer or network call is started. Build the core as soon as the client
+    // exists: it only constructs the API client and the market engine, neither
+    // of which touches the network until a method is called.
+    core ? ';window.NBX.core = window.NBX.createCore();' : '',
+    ...bodies,
+    // Re-export what this test reaches from the outside: `t` is a top-level
+    // const, so it never becomes a window property on its own.
+    ';window.__pageT = t;',
+  ].filter(Boolean).join('\n');
+  try {
+    w.eval(source);
+  } catch (e) {
+    w.close();
+    throw e;
+  }
+  // `t` and `T` are top-level `const`s in the page script, so they never become
+  // window properties: the stub installed by globals() would answer every key
+  // with the key itself. Delegate to the page's real translator instead — it
+  // also runs the string through localizeText, which is part of the contract.
+  w.t = k => w.__pageT(k);
+  // Static i18n is applied by the same stripped boot, so the scope note is
+  // still an empty placeholder. Run the real pass — it reads LANG and the page's
+  // own translation table, exactly as a language switch does at runtime.
+  w.applyStaticI18n();
 
   const stopFetch = stubAudit(w, (url) => {
     if (url.includes('/api/audit')) return response(currentAudit);
@@ -111,12 +158,14 @@ async function runCase({ file, lang }) {
     check(tg.dataset.state === 'au.tgOn', `${file} ${lang}: configured is not delivery`);
     check(scope.value === 'control', `${file} ${lang}: default scope control`);
     check(d.documentElement.lang === lang || d.documentElement.lang.startsWith(lang), `${file} ${lang}: document lang`);
-    check(byId('auScopeNote').textContent.includes(lang === 'fa' ? 'دوشناس' : 'known'), `${file} ${lang}: scope note localized`);
+    check(byId('auScopeNote').textContent.includes(lang === 'fa' ? 'شناخته‌شده' : 'known preview types'), `${file} ${lang}: scope note localized`);
 
+    scope.value = 'all';
     currentAudit = { ok: true, scope: 'all', total: 2, events: currentAudit.events };
     await w.loadAudit();
     check(body.innerHTML.includes('afges') && !body.innerHTML.includes('<script>'), `${file} ${lang}: all scope shows event`);
 
+    scope.value = 'preview';
     currentAudit = { ok: true, scope: 'preview', total: 0, events: [] };
     await w.loadAudit();
     check(body.innerHTML.includes(t('au.empty')) && !body.innerHTML.includes('afges'), `${file} ${lang}: preview empty`);
@@ -127,18 +176,28 @@ async function runCase({ file, lang }) {
     check(body.innerHTML.includes(t('au.error')) && !body.innerHTML.includes('afges'), `${file} ${lang}: failure differs from empty`);
     check(tg.dataset.state === 'au.tgUnknown', `${file} ${lang}: notify unknown on failure`);
 
+    scope.value = 'control';
     currentAudit = { ok: true, scope: 'control', total: 0, events: [] };
     currentNotify = { ok: true, configured: false };
     await w.loadAudit();
     check(body.innerHTML.includes(t('au.empty')) && !body.innerHTML.includes('afges'), `${file} ${lang}: successful empty`);
     check(tg.dataset.state === 'au.tgOff', `${file} ${lang}: not configured is off`);
 
+    // Standalone is reached through the client, not through the payload: the
+    // core API collapses any `ok:false` body into `unavailable`, so the only
+    // way `auStandalone` becomes true is `api.standaloneMobile` (file:// mode).
+    // Drive the real flag instead of a payload the client would rewrite.
+    const api0 = w.NBX.core.api;
+    const wasStandalone = api0.standaloneMobile;
+    api0.standaloneMobile = true;
     currentAudit = { ok: false, standalone: true };
     currentNotify = { ok: false, standalone: true };
     await w.loadAudit();
     check(body.innerHTML.includes(t('au.standalone')) && tg.dataset.state === 'au.tgStandalone', `${file} ${lang}: standalone distinct`);
+    api0.standaloneMobile = wasStandalone;
 
     d.documentElement.dataset.canMutate = '1';
+    scope.value = 'control';
     currentAudit = { ok: true, scope: 'control', total: 1, events: [{ ts: 1700000000, action: 'afges', actor: 'op', client: 'c', result: 'ok', detail: 'd' }] };
     await w.loadAudit();
     check(body.innerHTML.includes('op'), `${file} ${lang}: operator data visible`);
@@ -150,6 +209,7 @@ async function runCase({ file, lang }) {
     w.renderAuditServer();
     check(!body.innerHTML.includes('op'), `${file} ${lang}: restoration does not republish stale data`);
 
+    scope.value = 'control';
     const p = new Promise(r => { windowOldResolve = r; });
     currentAudit = p;
     const first = w.loadAudit();
@@ -189,4 +249,4 @@ async function run() {
   console.log(`phase13 integration UI: ${checks} checks passed`);
 }
 
-run().catch(e => { console.error(e); process.exitCode = 1; });
+run().catch(e => { console.error('FAILED:', e && e.stack ? e.stack : e); process.exitCode = 1; });

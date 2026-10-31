@@ -29,7 +29,8 @@
     "test:review-phase10": "node scripts/test_review_phase10.cjs",
     "test:review-phase11": "node scripts/test_review_phase11.cjs",
     "test:review-phase12": "node scripts/test_review_phase12.cjs",
-    "test:review-phase13": "node scripts/test_review_phase13.cjs"
+    "test:review-phase13": "node scripts/test_review_phase13.cjs",
+    "test:review-phase13-integration": "node scripts/test_review_phase13_integration.cjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

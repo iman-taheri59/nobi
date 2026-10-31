@@ -93,7 +93,7 @@ def test_same_second_runs_are_distinct_and_history_reads_writer_directory(monkey
     assert first["report_file"] != second["report_file"]
     assert len(list(tmp_path.glob("*.json"))) == 2
     for r in [first, second]:
-        saved = json.loads((tmp_path / r["report_file"]).read_text())
+        saved = json.loads((tmp_path / r["report_file"]).read_text(encoding="utf-8"))
         assert saved == r
         assert saved["effective_config"]["initial_equity"] == 12345
         assert saved["effective_config"]["max_concurrent"] == 2

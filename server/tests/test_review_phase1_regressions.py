@@ -46,7 +46,7 @@ def test_managed_roundtrip_preserves_literal_path(tmp_path, monkeypatch, suffix)
     values = {"NBX_AUTH_DB": str(tmp_path / suffix / "auth.db"), "NBX_SCAN_LOOP_S": "0"}
     install_api.write_managed(values)
     assert install_api.read_managed() == values
-    assert _env._parse(install_api.MANAGED_ENV.read_text()) == values  # legacy CLI parser contract
+    assert _env._parse(install_api.MANAGED_ENV.read_text(encoding="utf-8")) == values  # legacy CLI parser contract
     if os.name != "nt":
         assert install_api.MANAGED_ENV.stat().st_mode & 0o777 == 0o600
 
@@ -59,7 +59,7 @@ def test_managed_roundtrip_preserves_literal_path(tmp_path, monkeypatch, suffix)
 ])
 def test_managed_loader_rejects_entire_invalid_file_without_partial_env(tmp_path, monkeypatch, content):
     path = tmp_path / "managed.env"
-    path.write_text(content)
+    path.write_text(content, encoding="utf-8")
     monkeypatch.delenv("NBX_SCAN_LOOP_S", raising=False)
     monkeypatch.delenv("NBX_SYNTHETIC_FLAG", raising=False)
     status = _env.load_managed(path)
@@ -70,7 +70,7 @@ def test_managed_loader_rejects_entire_invalid_file_without_partial_env(tmp_path
 
 def test_managed_never_overrides_nonempty_process_env(tmp_path, monkeypatch):
     path = tmp_path / "managed.env"
-    path.write_text("NBX_GATE_PREFETCH=20\n")
+    path.write_text("NBX_GATE_PREFETCH=20\n", encoding="utf-8")
     monkeypatch.setenv("NBX_GATE_PREFETCH", "10")
     status = _env.load_managed(path)
     assert status["loaded"] and status["vars"] == 0
@@ -247,6 +247,12 @@ def test_mode_load_retries_after_failure_and_marks_only_success(monkeypatch):
         return conn
 
     monkeypatch.setattr(main, "_EXEC_LOADED", [False])
+    # The failed load logs a warning, and the error-log handler persists that
+    # warning through the very `journal.connect` this test counts. Silence the
+    # capture so `calls` records only `_exec_mode_load`'s own attempts — once
+    # an earlier test has started the app lifespan the handler is installed and
+    # the count would otherwise grow by one per logged warning.
+    monkeypatch.setattr(main.errorlog, "capture", lambda **kwargs: None)
     monkeypatch.setattr(main.signal_journal, "connect", connect)
     monkeypatch.setattr(main.signal_journal, "get_meta", lambda *a: {"fixture": True})
     loaded = []
@@ -332,10 +338,10 @@ def test_failed_undo_retains_private_mapped_recovery_copies(tmp_path, monkeypatc
         sb.restore_backup(archive, *paths, force=True, offline=True)
     directories = list(tmp_path.glob(".nobi-restore-*"))
     assert len(directories) == 3
-    mapped = {json.loads((d / "recovery.json").read_text())["destination"]: d for d in directories}
+    mapped = {json.loads((d / "recovery.json").read_text(encoding="utf-8"))["destination"]: d for d in directories}
     previous = mapped[str(paths[0])] / "previous.db"
     assert _read(previous) == "current-journal.db"
-    metadata = json.loads((previous.parent / "recovery.json").read_text())
+    metadata = json.loads((previous.parent / "recovery.json").read_text(encoding="utf-8"))
     assert metadata["previous_sha256"] == hashlib.sha256(previous.read_bytes()).hexdigest()
     if os.name != "nt":
         assert previous.stat().st_mode & 0o777 == 0o600
