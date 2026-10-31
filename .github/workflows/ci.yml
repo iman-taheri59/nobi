@@ -223,10 +223,37 @@ jobs:
           node scripts/ui_smoke_test.js
       - name: classifier self-test
         run: python3 scripts/probe_live.py --selftest
-      - name: 45 panels explain themselves
+      # No number in the name: the probe decides how many panels exist, and a
+      # hardcoded count goes stale the moment one is added or removed. The real
+      # number is derived from the probe's own output and published to the run
+      # summary below, so it cannot drift from what was actually verified.
+      - name: every panel explains itself
         run: >-
           python3 scripts/probe_live.py --url http://127.0.0.1:8000
           --username ci-owner --password 'CI-browser-probe-password-2026!'
+          --json probe-panels.json
+      - name: publish the panel count to the run summary
+        if: always()
+        run: |
+          python3 - >> "$GITHUB_STEP_SUMMARY" <<'PY'
+          import json
+          from pathlib import Path
+
+          p = Path("probe-panels.json")
+          if not p.exists():
+              raise SystemExit("the probe wrote no JSON; the panel step never ran")
+          d = json.loads(p.read_text(encoding="utf-8"))
+          bad = [r for r in d["panels"] if not r["ok"]]
+          print("### Panel contract")
+          print()
+          print(f"- panels verified: **{len(d['panels'])}**")
+          print(f"- cross-checked against the API: **{len(d.get('cross_checks', []))}**")
+          print(f"- problems: **{len(bad)}**")
+          if bad:
+              print()
+              for r in bad:
+                  print(f"- `{r['tab']}/{r['panel']}` — {r['detail']}")
+          PY
       - name: stop fixture servers
         if: always()
         run: |
