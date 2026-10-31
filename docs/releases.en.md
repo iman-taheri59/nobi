@@ -2,7 +2,7 @@
 
 [فارسی](releases.md) · **English**
 
-The current version is **2.0.6**; check Releases for actual publication status. Publish it only after CI for that exact commit is green; check Releases for actual publication status.
+The current version is **2.0.7**; check Releases for actual publication status. Publish it only after CI for that exact commit is green; check Releases for actual publication status.
 `VERSION` is the source of truth for the release number; the tag name is exactly `v`
 plus that number.
 
@@ -64,7 +64,7 @@ From the project root:
 ```sh
 npm ci --no-audit --no-fund
 npm run build
-python scripts/release_notes.py --tag v2.0.6
+python scripts/release_notes.py --tag v2.0.7
 python -m pytest -q server/tests
 npm run test:display
 npm run lint
@@ -85,12 +85,12 @@ the branch and annotated tag for the same commit together:
 The separately authorized **2.0.3** release is a staged exception: push only `main` first; after the required CI jobs succeed on that exact commit and branch drift is ruled out, create/push its annotated tag and verify Release. Installation and orders are not authorized. The combined push below is the general rule, not this release sequence.
 
 ```sh
-git tag -a v2.0.6 -m "nobitrader 2.0.6"
-git push origin main v2.0.6
+git tag -a v2.0.7 -m "nobitrader 2.0.7"
+git push origin main v2.0.7
 ```
 
 If a tag already exists, never recreate or move it. Inspect it with
-`git show v2.0.6 --no-patch`. Tag validation must succeed too; branch CI does not
+`git show v2.0.7 --no-patch`. Tag validation must succeed too; branch CI does not
 replace release validation. Publication does not authorize server installation.
 
 The explicitly approved two-stage exception for 2.0.1 (main, green CI, then

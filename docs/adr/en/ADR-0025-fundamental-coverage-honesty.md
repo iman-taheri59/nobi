@@ -83,14 +83,24 @@ reason is measured:
 | Symbols matching more than one coin on CoinGecko | 2,626 of 17,425 (**15%**) |
 | CoinGecko free tier | after three calls in a row → **429** |
 
-A real example: `DOGS` matches four coins (`doggsnout-skeptic`, `dogs-2`, …) and `NOT` matches two
-(`notcoin`, `nothing-3`). Taking the first is a **guess**, and a guess produces a fundamental score
-that gets read. So new mappings are resolved **offline and confirmed by a human**
-(edited by hand in `server/coin_registry.json`, then committed), never during a scan.
-There is no resolver script and there has never been one: the file was curated for the
-coin icons long before this engine read it, so a new mapping is a human adding one line
-and committing it. An earlier draft of this ADR named a resolver script under
-scripts/ that does not exist; the point of the decision — never guess during a scan — is unchanged.
+A real example, measured against the live API while writing this: `DOGS` returns seventeen
+candidates and the **first** is `cat-in-a-dogs-world` — a cat. `dogs-2` is the second row. `NOT`
+matches two (`notcoin`, `nothing-3`). Taking the first is a **guess**, and a guess produces a
+fundamental score that gets read. So new mappings are resolved **offline and confirmed by a
+human**, never during a scan.
+
+`scripts/resolve_fa.py` is that offline half. It asks CoinGecko once per symbol, prints every
+candidate with its id, name, symbol and market-cap rank, and picks none of them — the command it
+tells you to run next is `--add <symbol> <id>`, which a human types after choosing. It never runs
+from the dashboard: `fa_engine` reads the registry, and `KNOWN_CG_IDS` never sees this script.
+
+    python3 scripts/resolve_fa.py --check DOGSIRT          # is it mapped? (no network)
+    python3 scripts/resolve_fa.py --resolve DOGS           # every candidate, none chosen
+    python3 scripts/resolve_fa.py --add DOGS dogs-2        # a human decided
+
+An earlier draft of this ADR named a resolver script that had never been written, and a later
+edit removed the reference on the grounds that none existed. It exists now, and the decision it
+implements is unchanged: **never guess during a scan**.
 
 ### 4. The pair premium: measured in shadow, given no weight
 

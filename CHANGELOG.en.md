@@ -2,6 +2,13 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 2.0.7
+
+- `scripts/resolve_fa.py` is added: the offline half of deciding a symbol mapping. `fa_engine` needs a CoinGecko id for every base asset, and a market with no id is skipped — its score is built from five neutral values of 50 plus one global Fear & Greed reading, honestly reported as `profile: "none"`, but with no measurement in it at all. ADR-0025 refused to close that gap during a scan, because 2,626 of 17,425 symbols (15%) match more than one coin. This script closes it offline: `--check` (no network) says which market is unmapped, `--resolve` prints every candidate with its id, name, symbol and market-cap rank and **chooses none of them**, and `--add` writes only after a human has decided. Measured against the live API while writing this: `DOGS` returns seventeen candidates and the first is `cat-in-a-dogs-world` — a cat; `dogs-2` is the second row. The script never runs from the dashboard: `fa_engine` reads the registry, never this. 36 offline tests (network stubbed) cover the paths, including refusing to overwrite an existing mapping without `--force` and the registry surviving a half-finished write.
+- Three stale figures in the living documents were corrected, and each now has a test so it cannot go stale again: the panel count (45 instead of 44, in both READMEs, the testing guide, the Windows guide and ADR-0016 — 13 places), the CI job count ("three jobs" instead of four, because the advisory Windows job had not been added to the sentence), and the test count (the "591 passed" line, removed because the suite had reached 1460 and any number would go stale again).
+- Two references to scripts that had never existed were removed: `preflight_arvan.sh` in `docs/deploy-arvan.md`, and `scripts/resolve_fa.py` in ADR-0025 — the latter now exists, the former does not and the removal stands.
+- No data, order, setting, account or Live/Auto path changed; this release is one command-line tool and a documentation fix.
+
 ## 2.0.6
 
 - The "no panel stays blank" contract in `probe_live.py` is now actually enforced: a panel with no meaningful content no longer sits behind an em-dash but says why. Two panels that used to come up empty — paper profit factor (`kPf`) and performance statistics (`pHit`) — now state the not-recorded condition, and `rkAtr`, which has no element with that id in the page, was removed from the probe's list. The result: the probe checks **44 panels**, not 45.

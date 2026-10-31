@@ -58,6 +58,17 @@ and are worth running on their own:
 python scripts/probe_live.py --selftest        # the panel classifier, 8 states
 node scripts/js_broker_test.js                 # browser broker == server
 python scripts/check_preflight_parity.py       # 28 cases × 10 gates
+python scripts/resolve_fa.py --check SOLIRT    # symbol mapping, no network
+```
+
+When a Nobitex market has no CoinGecko id, `fa_engine` skips it and reports
+`profile: "none"`. To close that gap, see ADR-0025 and take these three steps —
+the last one is a human decision, not the script's:
+
+```bash
+python scripts/resolve_fa.py --check DOGSIRT   # unmapped? it says why
+python scripts/resolve_fa.py --resolve DOGS    # every CoinGecko candidate
+python scripts/resolve_fa.py --add DOGS dogs-2 # after you chose one yourself
 ```
 
 ---

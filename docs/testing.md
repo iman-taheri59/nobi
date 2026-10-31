@@ -58,6 +58,17 @@ python -m pytest -q server/tests
 python scripts/probe_live.py --selftest        # طبقه‌بند پنل‌ها، ۸ حالت
 node scripts/js_broker_test.js                 # بروکر مرورگر == سرور
 python scripts/check_preflight_parity.py       # ۲۸ حالت × ۱۰ دروازه
+python scripts/resolve_fa.py --check SOLIRT    # نگاشت نماد، بدون شبکه
+```
+
+اگر نماد نوبیتکسی نگاشت نداشت، `fa_engine` آن را رد نمی‌کند و `profile: "none"`
+گزارش می‌شود. برای بستن شکاف، ADR-0025 را ببینید و این سه مرحله را بگیرید —
+آخرین مرحله تصمیم انسان است، نه اسکریپت:
+
+```bash
+python scripts/resolve_fa.py --check DOGSIRT   # نگاشت ندارد؟ دلیلش را می‌گوید
+python scripts/resolve_fa.py --resolve DOGS    # همهٔ نامزدهای CoinGecko
+python scripts/resolve_fa.py --add DOGS dogs-2 # بعد از اینکه خودت انتخاب کردی
 ```
 
 ---
