@@ -42,6 +42,11 @@ def _load_script():
 
 resolve = _load_script()
 
+#: The registry is a live, hand-curated file: DOGS, NOT and WBTC were unmapped when
+#: these tests were written and are mapped now. So the tests that need an unmapped
+#: symbol use one nothing will ever map, and stop depending on the file's contents.
+UNMAPPED_SYMBOL = "ZZZIRT"
+
 
 @pytest.fixture()
 def registry_backup():
@@ -118,9 +123,9 @@ def test_check_reports_every_mapped_symbol(capsys) -> None:
 
 
 def test_check_fails_and_names_the_gap_when_a_symbol_is_unmapped(capsys) -> None:
-    assert resolve.cmd_check(["BTCIRT", "DOGSIRT"]) == 1
+    assert resolve.cmd_check(["BTCIRT", UNMAPPED_SYMBOL]) == 1
     out = capsys.readouterr().out
-    assert "DOGS" in out and "UNMAPPED" in out
+    assert "ZZZ" in out and "UNMAPPED" in out
     assert "resolve it, do not guess it" in out
 
 
@@ -129,7 +134,7 @@ def test_check_touches_no_network(stub_search) -> None:
     def boom(*a, **k):
         raise AssertionError("--check must not call the network")
     stub_search(boom)
-    assert resolve.cmd_check(["DOGSIRT"]) == 1
+    assert resolve.cmd_check([UNMAPPED_SYMBOL]) == 1
 
 
 # --------------------------------------------------------------------------- #
@@ -144,7 +149,7 @@ def test_resolve_shows_every_candidate_and_picks_none(stub_search, capsys) -> No
         {"id": "dogshit-3", "name": "Dogshit", "symbol": "dogshit", "market_cap_rank": 4745},
     ]
     stub_search(candidates)
-    assert resolve.cmd_resolve("DOGSIRT", top=8) == 0
+    assert resolve.cmd_resolve(UNMAPPED_SYMBOL) == 0
     out = capsys.readouterr().out
     # Every candidate, in the order CoinGecko gave them. The first is not
     # promoted — the real search returns a cat coin first, which is the whole
@@ -161,14 +166,58 @@ def test_resolve_refuses_to_re_resolve_a_mapped_symbol(stub_search, capsys) -> N
     def boom(*a, **k):
         raise AssertionError("a mapped symbol needs no lookup")
     stub_search(boom)
-    assert resolve.cmd_resolve("BTCIRT", top=8) == 0
+    assert resolve.cmd_resolve("BTCIRT") == 0
     assert "already mapped" in capsys.readouterr().out
 
 
 def test_resolve_says_so_when_nothing_matches(stub_search, capsys) -> None:
     stub_search([])
-    assert resolve.cmd_resolve("ZZZIRT", top=8) == 1
+    assert resolve.cmd_resolve("ZZZIRT") == 1
     assert "matched nothing" in capsys.readouterr().out
+
+
+def test_resolve_does_not_hide_the_answer_behind_a_row_limit(stub_search, capsys) -> None:
+    """The bug this guards: WBTC's real coin is the 14th of 25 rows.
+
+    Measured against the live API: the search for `WBTC` returns 25 candidates, 24 of
+    them wrapped derivatives (`instadapp-wbtc`, `cWBTC`, `aave-wbtc`, ...), and the
+    coin Nobitex means — `wrapped-bitcoin` — is row 14. An earlier version of
+    `--resolve` printed the first eight and hid the rest, so the correct answer was
+    never on screen and a human would have picked a derivative instead.
+    """
+    before = [
+        {"id": f"wrapped-derivative-{i}", "name": f"WBTC variant {i}", "symbol": "wbtc",
+         "market_cap_rank": None}
+        for i in range(13)
+    ]
+    after = [
+        {"id": f"wrapped-derivative-b{i}", "name": f"WBTC variant b{i}", "symbol": "wbtc",
+         "market_cap_rank": None}
+        for i in range(11)
+    ]
+    real_coin = {"id": "wrapped-bitcoin", "name": "Wrapped Bitcoin", "symbol": "wbtc",
+                 "market_cap_rank": None}
+    stub_search([*before, real_coin, *after])
+    assert resolve.cmd_resolve(UNMAPPED_SYMBOL) == 0
+    out = capsys.readouterr().out
+    assert real_coin["id"] in out, "the 14th row must be on screen"
+    assert "25 candidate(s)" in out
+    assert out.index(real_coin["id"]) > out.index(before[-1]["id"])
+    # nothing was truncated, so there is no "showing N" left to mislead anyone
+    assert "showing" not in out
+
+
+def test_resolve_names_every_candidate_not_just_the_first(stub_search, capsys) -> None:
+    """25 rows is a long list, but a short one is a guess with fewer rows."""
+    candidates = [
+        {"id": f"coin-{i}", "name": f"Coin {i}", "symbol": "x", "market_cap_rank": 100 + i}
+        for i in range(25)
+    ]
+    stub_search(candidates)
+    assert resolve.cmd_resolve("LONGIRT") == 0
+    out = capsys.readouterr().out
+    for c in candidates:
+        assert c["id"] in out
 
 
 class _FakeResponse:
@@ -245,15 +294,15 @@ def test_an_unreachable_provider_is_a_failure_not_an_empty_list(monkeypatch) -> 
 # --------------------------------------------------------------------------- #
 
 def test_add_records_a_human_decision(registry_backup, capsys) -> None:
-    assert resolve.add_mapping("DOGSIRT", "dogs-2", force=False) == 0
+    assert resolve.add_mapping(UNMAPPED_SYMBOL, "dogs-2", force=False) == 0
     written = json.loads(REGISTRY.read_text(encoding="utf-8"))
-    assert written["DOGS"] == "dogs-2"
+    assert written["ZZZ"] == "dogs-2"
     assert "commit it" in capsys.readouterr().out
 
 
 def test_add_sorts_so_the_diff_stays_readable(registry_backup) -> None:
     before = json.loads(REGISTRY.read_text(encoding="utf-8"))
-    resolve.add_mapping("DOGSIRT", "dogs-2", force=False)
+    resolve.add_mapping(UNMAPPED_SYMBOL, "dogs-2", force=False)
     after = json.loads(REGISTRY.read_text(encoding="utf-8"))
     assert list(after) == sorted(after)
     # A new key must not move the ones that were already there.
@@ -298,7 +347,7 @@ def test_a_failed_write_leaves_the_registry_intact(registry_backup, monkeypatch)
     monkeypatch.setattr(resolve, "_atomic_write", boom)
     before = REGISTRY.read_text(encoding="utf-8")
     with pytest.raises(OSError):
-        resolve.add_mapping("DOGSIRT", "dogs-2", force=False)
+        resolve.add_mapping(UNMAPPED_SYMBOL, "dogs-2", force=False)
     assert REGISTRY.read_text(encoding="utf-8") == before
 
 

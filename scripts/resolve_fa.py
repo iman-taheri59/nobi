@@ -206,7 +206,7 @@ def cmd_check(symbols: list[str]) -> int:
     return 0
 
 
-def cmd_resolve(symbol: str, top: int) -> int:
+def cmd_resolve(symbol: str) -> int:
     base = base_of(symbol.upper())
     known = known_ids()
     if base in known:
@@ -218,9 +218,12 @@ def cmd_resolve(symbol: str, top: int) -> int:
         print(f"CoinGecko matched nothing for {base!r}. It may be listed under another "
               "name — search https://www.coingecko.com by hand and add it with --add.")
         return 1
-    shown = coins[:top]
-    print(f"\n{len(coins)} candidate(s), showing {len(shown)}. None is chosen for you:")
-    for c in shown:
+    # Every candidate, always. An earlier version showed the first eight and hid the
+    # rest behind `--top`, which is how the answer for WBTC stayed invisible: the real
+    # coin (`wrapped-bitcoin`) is the 14th of 25 rows, after 24 wrapped derivatives.
+    # A short list is not a courtesy here — it is a guess with fewer rows.
+    print(f"\n{len(coins)} candidate(s). None is chosen for you:")
+    for c in coins:
         print(_line(c))
     print("\npick one by hand, then:")
     print(f"  python3 {Path(__file__).name} --add {symbol} <id-from-the-list-above>")
@@ -265,8 +268,6 @@ def main(argv: list[str] | None = None) -> int:
                    help="print the registry and the engine's built-in map")
     ap.add_argument("--file", type=Path,
                     help="read the symbol list from a file, one per line (with --check)")
-    ap.add_argument("--top", type=int, default=8,
-                    help="how many candidates --resolve shows (default 8)")
     ap.add_argument("--force", action="store_true",
                     help="let --add replace an existing mapping")
     args = ap.parse_args(argv)
@@ -289,7 +290,7 @@ def main(argv: list[str] | None = None) -> int:
                 seen.setdefault(s, None)
             return cmd_check(list(seen))
         if args.resolve:
-            return cmd_resolve(args.resolve, max(1, args.top))
+            return cmd_resolve(args.resolve)
         if args.add:
             return add_mapping(args.add[0], args.add[1], args.force)
         if args.show:

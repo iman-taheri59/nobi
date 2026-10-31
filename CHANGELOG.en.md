@@ -2,6 +2,12 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 2.0.8
+
+- A defect that the measurement itself exposed, now fixed: `--resolve` showed the first eight candidates and hid the rest. When `WBTC` was resolved, the search returned 25 rows — the first 24 are wrapped derivatives (`instadapp-wbtc`, `cWBTC`, `aave-wbtc`, …) and the coin Nobitex means, `wrapped-bitcoin`, is **row 14**. The correct answer was not on screen. Worse: the id a reader expects, `wbtc`, returns **HTTP 404** from `/coins/wbtc`; CoinGecko renamed the coin to `wrapped-bitcoin`, so even the "obvious" id is wrong. The eight-row limit was removed rather than warned about, because a warning can be scrolled past. A new test builds exactly that case: 25 candidates with the right answer at row 14.
+- Three unmapped symbols closed, each one a human decision rather than the script's: `DOGS` → `dogs-2` (the first row was `cat-in-a-dogs-world`, a cat), `NOT` → `notcoin`, `WBTC` → `wrapped-bitcoin`. Mapped base assets 51 → **54**. `--check` returns 0 for all three, and the registry took only those three lines — the rest of the diff is sorting, because the file was not sorted before and the atomic write sorts keys.
+- ADR-0025 now records this failure, as the reason "every candidate" is load-bearing and "never guess" is a contract rather than a slogan.
+
 ## 2.0.7
 
 - `scripts/resolve_fa.py` is added: the offline half of deciding a symbol mapping. `fa_engine` needs a CoinGecko id for every base asset, and a market with no id is skipped — its score is built from five neutral values of 50 plus one global Fear & Greed reading, honestly reported as `profile: "none"`, but with no measurement in it at all. ADR-0025 refused to close that gap during a scan, because 2,626 of 17,425 symbols (15%) match more than one coin. This script closes it offline: `--check` (no network) says which market is unmapped, `--resolve` prints every candidate with its id, name, symbol and market-cap rank and **chooses none of them**, and `--add` writes only after a human has decided. Measured against the live API while writing this: `DOGS` returns seventeen candidates and the first is `cat-in-a-dogs-world` — a cat; `dogs-2` is the second row. The script never runs from the dashboard: `fa_engine` reads the registry, never this. 36 offline tests (network stubbed) cover the paths, including refusing to overwrite an existing mapping without `--force` and the registry surviving a half-finished write.

@@ -89,10 +89,22 @@ matches two (`notcoin`, `nothing-3`). Taking the first is a **guess**, and a gue
 fundamental score that gets read. So new mappings are resolved **offline and confirmed by a
 human**, never during a scan.
 
-`scripts/resolve_fa.py` is that offline half. It asks CoinGecko once per symbol, prints every
+`scripts/resolve_fa.py` is that offline half. It asks CoinGecko once per symbol, prints **every**
 candidate with its id, name, symbol and market-cap rank, and picks none of them — the command it
 tells you to run next is `--add <symbol> <id>`, which a human types after choosing. It never runs
 from the dashboard: `fa_engine` reads the registry, and `KNOWN_CG_IDS` never sees this script.
+
+"Every" is load-bearing, and it is written that way because of a measured failure. The first
+version showed the first eight candidates and hid the rest. Then `WBTC` was resolved: the search
+returns 25 rows, 24 of them wrapped derivatives (`instadapp-wbtc`, `cWBTC`, `aave-wbtc`, …), and
+the coin Nobitex actually means — `wrapped-bitcoin` — is **row 14**. The correct answer was not on
+screen. Worse, the id a reader would expect, `wbtc`, returns **HTTP 404** from `/coins/wbtc`;
+CoinGecko renamed the coin to `wrapped-bitcoin`, so even the "obvious" id is wrong. A truncated
+list is not a convenience here: it is a guess with fewer rows. The limit was removed rather than
+warned about, because a warning can be scrolled past.
+
+The same lesson is why `--add` refuses to overwrite an existing mapping without `--force`, and why
+`--check` prints "resolve it, do not guess it" instead of a best-effort answer.
 
     python3 scripts/resolve_fa.py --check DOGSIRT          # is it mapped? (no network)
     python3 scripts/resolve_fa.py --resolve DOGS           # every candidate, none chosen
