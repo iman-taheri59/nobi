@@ -46,7 +46,8 @@ def test_managed_roundtrip_preserves_literal_path(tmp_path, monkeypatch, suffix)
     values = {"NBX_AUTH_DB": str(tmp_path / suffix / "auth.db"), "NBX_SCAN_LOOP_S": "0"}
     install_api.write_managed(values)
     assert install_api.read_managed() == values
-    assert _env._parse(install_api.MANAGED_ENV.read_text(encoding="utf-8")) == values  # legacy CLI parser contract
+    # legacy CLI parser contract; read as UTF-8 because the locale codec is cp1252 on Windows
+    assert _env._parse(install_api.MANAGED_ENV.read_text(encoding="utf-8")) == values
     if os.name != "nt":
         assert install_api.MANAGED_ENV.stat().st_mode & 0o777 == 0o600
 
@@ -246,13 +247,11 @@ def test_mode_load_retries_after_failure_and_marks_only_success(monkeypatch):
             raise RuntimeError("synthetic first failure")
         return conn
 
+    # `log.warning` also reaches the error log, which opens the journal itself.
+    # Left in place, that write is counted as a retry, so this test passed alone
+    # and failed in the full suite — once another test had installed the handler.
+    monkeypatch.setattr(main.errorlog, "capture", lambda *a, **kw: None)
     monkeypatch.setattr(main, "_EXEC_LOADED", [False])
-    # The failed load logs a warning, and the error-log handler persists that
-    # warning through the very `journal.connect` this test counts. Silence the
-    # capture so `calls` records only `_exec_mode_load`'s own attempts — once
-    # an earlier test has started the app lifespan the handler is installed and
-    # the count would otherwise grow by one per logged warning.
-    monkeypatch.setattr(main.errorlog, "capture", lambda **kwargs: None)
     monkeypatch.setattr(main.signal_journal, "connect", connect)
     monkeypatch.setattr(main.signal_journal, "get_meta", lambda *a: {"fixture": True})
     loaded = []

@@ -18,7 +18,7 @@ that was not read from a file, a socket, or an HTTP response.
 Checks
 ------
   config        .env exists where the service reads it, and parses
-  python        the interpreter is new enough for the code (3.11+)
+  python        the interpreter can install the pins (3.12+; numpy 2.5 needs it)
   packages      runtime dependencies import
   token         NBX_API_TOKEN is set  (mandatory behind a proxy)
   proxy         NBX_TRUSTED_PROXIES describes the reverse proxy in front
@@ -105,13 +105,21 @@ def check_config() -> dict:
     return _row(OK, "config", f"{path}, mode {mode:o}, {len(pairs)} keys")
 
 
-def check_python() -> dict:
-    v = sys.version_info
-    got = f"{v.major}.{v.minor}.{v.micro} ({sys.executable})"
-    if (v.major, v.minor) < (3, 11):
+#: The floor is set by the pins, not by the syntax: `numpy==2.5.4` publishes
+#: `Requires-Python >=3.12`, so on 3.11 `pip install -r server/requirements.txt`
+#: fails before the app is ever started. The previous floor here was 3.11 (the
+#: version `datetime.UTC` needs), which passed a machine that could not install.
+MIN_PYTHON = (3, 12)
+
+
+def check_python(version: tuple[int, int, int] | None = None) -> dict:
+    v = version or (sys.version_info.major, sys.version_info.minor, sys.version_info.micro)
+    got = f"{v[0]}.{v[1]}.{v[2]} ({sys.executable})"
+    if (v[0], v[1]) < MIN_PYTHON:
         return _row(FAIL, "python", got,
-                    "this code uses `datetime.UTC`; use Ubuntu 24.04 (python3.12) "
-                    "or install python3.11+")
+                    f"the pinned requirements need Python {MIN_PYTHON[0]}.{MIN_PYTHON[1]}+ "
+                    "(numpy 2.5 publishes Requires-Python >=3.12); use Ubuntu 24.04 "
+                    f"(python3.12) or install python{MIN_PYTHON[0]}.{MIN_PYTHON[1]}+")
     return _row(OK, "python", got)
 
 

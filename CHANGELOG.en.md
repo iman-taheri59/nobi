@@ -2,6 +2,13 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 2.0.5
+
+- CI red fixes: the two shadow-gate tests (ledger and prefetch) no longer depend on the exact number of spaces before the `except` comment in `server/main.py`; they match the guard's shape, so reformatting the file can no longer turn them red. The portability test now reads and writes the files in two test modules with `encoding="utf-8"` (cp1252 on Windows raised), and the execution-mode load test no longer counts the error log's own journal write as a retry — it failed only in a full-suite run, never alone.
+- In the Performance report, when a read succeeds but no horizon has resolved yet, the hit-rate KPI now says "Performance data not recorded" instead of a bare em-dash: the same "no panel stays blank" contract `probe_live.py` checks. The phase 9 regression test covers that state too, and the standalone mobile build is regenerated from the same source.
+- The Python floor now matches what actually installs: `numpy==2.5.4` publishes `Requires-Python >=3.12`, so the deploy preflight (`check_deploy.py`) and the Windows/cloud docs no longer accept 3.11. A new test keeps the two in step, and the ruff/mypy targets are 3.12 too. Version references in `AGENTS.md`, `SECURITY.md` and the release examples now say 2.0.5. The advisory Windows job also publishes every failing test name as a check annotation, so its red X is no longer anonymous. That is what surfaced this one: the read-only-journal test created a file whose name contained `?`, which Windows does not allow; that case is now skipped there with a reason, while the space and `#` cases still run everywhere. The mobile-header layout test now prints every case with its measured widths, so an intermittent failure there is traceable.
+- No data, order, real setting, account or Live/Auto path changed; this release only fixes tests, one empty UI state, the Python floor and the release number.
+
 ## 2.0.4
 
 - Twelfth reviewed-page fixes: on Overview, the Market State card separates ticker snapshot time from browser receipt time, reports ticker and selected-timeframe signal-mix age/staleness, refuses boolean/non-finite/negative-volume or late responses, and clears stale renders on error or invalid payloads. The capital-allocation donut hides zero-share arcs so 100% cash cannot render a false altcoin dot and refuses USD allocation when a valid USDT/IRT conversion rate is unavailable. The open-positions count badge and read-only paper-book refresh button now state their actual behaviour. Users/My Account and execution/account/server policies are unchanged.

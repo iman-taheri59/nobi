@@ -83,6 +83,13 @@ def main() -> int:
                             page.evaluate(FIXTURE, {"direction": direction, "name": name})
                             data = page.evaluate(PROBE)
                             context = (source, direction, width, name, data)
+                            # Printed as the case runs, not only on failure: a
+                            # red job whose log cannot be fetched (this happens)
+                            # then still shows which layout broke and by how much.
+                            print(f"  {source} {direction} {width}px {name!r}: "
+                                  f"scroll={data['scroll']} width={data['width']} "
+                                  f"header={data['header']}/{data['headerWidth']}",
+                                  flush=True)
                             assert data["scroll"] <= data["width"] + 1, context
                             assert data["header"] <= data["headerWidth"] + 1, context
                             assert abs(data["x"]) <= 1, context

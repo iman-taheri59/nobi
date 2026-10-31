@@ -7,6 +7,7 @@ quietly broken, so most of these tests assert a refusal.
 """
 from __future__ import annotations
 
+import re
 import sqlite3
 from datetime import UTC, datetime
 
@@ -407,11 +408,10 @@ def test_a_ledger_failure_cannot_break_a_scan():
     src = _main_source()
     at = src.index("judged = gate_write(tf)")
     window = src[max(0, at - 200):at + 400]
-    # Whitespace-insensitive: a reformatter may reflow the comment's padding,
-    # and the invariant being asserted is "this call is wrapped in a guard",
-    # not how many spaces sit between the colon and the comment.
-    flat = " ".join(window.split())
-    assert "except Exception as e: # the ledger must never break a scan" in flat
+    # The guard's *shape* is the contract, not its column: nested one level deeper
+    # or reformatted by `ruff format` must not fail this. The exact-spacing version
+    # of this assertion went red after a formatter-only change to main.py.
+    assert re.search(r"except Exception as e:\s+# the ledger must never break a scan", window)
 
 
 def test_the_evidence_route_only_reads():

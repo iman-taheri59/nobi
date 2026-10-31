@@ -41,6 +41,9 @@ for(const file of ['index.html','nobitex-mobile.html'])for(const lang of ['fa','
   api.getJournalSummary=async()=>{reads++;return payload();};api.getJournalStage=async()=>{stages++;return {ok:true,stage:'run',read_only:true,evaluated:false,recorded_at:1700000000};};
   eq(network,2,'two bootstrap GETs were blocked by the guard; nothing was dispatched');network=0;
   w.live={unavailable:true};await w.loadPerf();eq(readState(),'ready');eq(txt('pSig'),'1');eq(stages,1);
+  // A successful read with no resolved horizon is still an empty state: the hit
+  // KPI must say so instead of printing a bare em-dash (the probe's blank-panel bug).
+  eq(txt('pHit'),lang==='fa'?'آمار کارایی ثبت نشده است':'Performance data not recorded');
   ok(txt('hzCards').includes('synthetic: 1'),'H1 provenance remains visible without H2');
   ok(txt('famBody').includes(t('perf.familyEmpty')));ok(txt('perfBody').includes('XUSDT'));eq(d.querySelectorAll('#perfBody td')[5].textContent,'✓');
   ok(txt('msiBadge').includes(t('msi.insufficient')),'historical MSI is not hidden by current exchange outage');

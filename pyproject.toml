@@ -20,9 +20,14 @@
 #     socket, and `errorlog` is where the failure is recorded. Those call sites
 #     carry a `# noqa` only where the reason is local.
 
+# The target is the *floor a machine must install on*, not the oldest syntax this
+# code happens to use: `numpy==2.5.4` publishes `Requires-Python >=3.12`, so a
+# 3.11 interpreter cannot install `server/requirements.txt`. `check_deploy.py`
+# enforces the same floor (MIN_PYTHON) and its test keeps the two in step.
+
 [tool.ruff]
 line-length = 100
-target-version = "py311"
+target-version = "py312"
 src = ["server", "scripts"]
 exclude = [".venv", "node_modules", "assets"]
 
@@ -54,7 +59,7 @@ known-first-party = ["main", "journal", "money", "risk_engine", "paper_trading"]
 quote-style = "double"
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.12"
 files = ["server"]
 ignore_missing_imports = true
 warn_unused_ignores = true

@@ -33,7 +33,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
-          python-version: "3.12"      # server/ pins 3.11+; 3.12 is the CI floor
+          python-version: "3.12"      # the pins need 3.12 (numpy 2.5 Requires-Python); 3.12 is the CI floor
           cache: pip
       - run: pip install -r server/requirements-dev.txt
       # No config path arguments: pyproject.toml decides what is selected.
@@ -68,7 +68,19 @@ jobs:
       - name: mypy
         run: mypy
       - name: pytest
-        run: python -m pytest -q server/tests
+        shell: bash
+        # Advisory means "reported but not blocking", not "unreported": the
+        # runner log is not always retrievable, so a Windows-only failure used
+        # to be a red X with no test name. Every FAILED line is emitted as a
+        # check annotation too, and those the API does return with the run.
+        # GitHub runs `bash -eo pipefail`, so a failing pytest would abort this
+        # script before the annotations were emitted. Record the status, publish
+        # the names, then fail with pytest's own code.
+        run: |
+          status=0
+          python -m pytest -q server/tests --tb=no -rf 2>&1 | tee pytest-windows.log || status=$?
+          grep -E '^(FAILED|ERROR) ' pytest-windows.log | sed 's/^/::error::/' || true
+          exit "$status"
 
   js:
     runs-on: ubuntu-latest

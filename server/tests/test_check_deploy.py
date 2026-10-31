@@ -127,3 +127,17 @@ def test_another_process_on_8000_is_not_called_the_app(monkeypatch: pytest.Monke
     row = check_deploy.check_bind()
     assert row["status"] == "skip"
     assert "hides its pid" in row["detail"] or "not uvicorn" in row["detail"]
+
+
+def test_the_python_floor_is_the_one_the_pins_can_install() -> None:
+    """A preflight that blesses an interpreter `pip install` refuses is a lie.
+
+    `numpy==2.5.4` publishes `Requires-Python >=3.12`, but this check used to
+    accept 3.11 (the version `datetime.UTC` needs) and pass a machine where
+    `pip install -r server/requirements.txt` fails before the app starts.
+    """
+    assert check_deploy.MIN_PYTHON == (3, 12)
+    refused = check_deploy.check_python((3, 11, 9))
+    assert refused["status"] == "fail"
+    assert "3.12" in refused["hint"]
+    assert check_deploy.check_python((3, 12, 3))["status"] == "ok"

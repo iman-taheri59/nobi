@@ -295,7 +295,7 @@
       </button>
     </div>
     <span class="hidden 2xl:inline-flex chip shrink-0"><span class="dot bg-emerald-400"></span> <span data-i18n="hdr.kill"></span></span>
-    <span id="buildChip" class="hidden lg:inline-flex chip num text-violet-300 border-violet-400/30 shrink-0" title="نسخه واقعی از /api/health">v2.0.4 · core</span>
+    <span id="buildChip" class="hidden lg:inline-flex chip num text-violet-300 border-violet-400/30 shrink-0" title="نسخه واقعی از /api/health">v2.0.5 · core</span>
     <div class="ms-auto flex items-center gap-1.5 shrink-0">
       <span class="hidden xl:inline-flex chip num" id="clock">--:--:--</span>
       <span id="apiChip" class="hidden 2xl:inline-flex chip num text-zinc-400 border-white/10" title=""><i data-lucide="wifi-off" class="w-3.5 h-3.5"></i> <span>API: —</span></span>
@@ -3728,7 +3728,9 @@ function renderPerf(){
   if(chip){chip.textContent=ready?(perfMeta.origin || t('perf.allOrigins')):perfStateText();chip.className='chip text-[10px] text-zinc-400';}
   const empty = key => `<tr><td colspan="10" class="text-[11px] text-zinc-500">${escText(ready?t(key):perfStateText())}</td></tr>`;
   const k=perfKpi, pct=v=>pNumber(v)===null?'—':PC(v*100,1,false);
-  byId('pHit').textContent=ready?pct(k.hit):(LANG==='fa'?'آمار کارایی ثبت نشده است':'Performance data not recorded');
+  // A read can succeed while no horizon has resolved yet: `k.hit` is null and a
+  // bare "—" is exactly the blank panel the probe reports as a bug. Say why.
+  byId('pHit').textContent=ready&&pNumber(k.hit)!==null?pct(k.hit):(LANG==='fa'?'آمار کارایی ثبت نشده است':'Performance data not recorded');
   byId('pHit').removeAttribute('title');
   byId('pHitSub').textContent=ready?t('perf.sub1').replace('{n}',pFmt(k.res)):perfStateText();
   byId('pExp').textContent=ready&&pNumber(k.exp)!==null?`${k.exp>=0?'+':''}${pFmt(k.exp,2)}R`:'—';

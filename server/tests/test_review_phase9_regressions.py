@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import sqlite3
 
 import pandas as pd
@@ -76,8 +77,19 @@ def test_absent_or_invalid_stage_is_unknown_not_train(tmp_path, monkeypatch, val
     assert asyncio.run(main.journal_stage())["stage"] is None
 
 
-def test_readonly_connection_rejects_writes_and_skips_migrations(tmp_path):
-    db = tmp_path / "reserved ? # journal.db"
+#: The point of these names is the read-only URI: `as_uri()` has to percent-encode
+#: a space, a `?` (which would otherwise start a URI query) and a `#` (a fragment).
+#: `?` is not a legal character in a Windows filename, so that case cannot even be
+#: created there — the advisory Windows job failed with "unable to open database
+#: file" on this test for exactly that reason, not because the URI was wrong.
+@pytest.mark.parametrize("name", [
+    "plain journal.db",
+    "reserved # journal.db",
+    pytest.param("reserved ? journal.db", marks=pytest.mark.skipif(
+        os.name == "nt", reason="'?' cannot appear in a Windows filename")),
+])
+def test_readonly_connection_rejects_writes_and_skips_migrations(tmp_path, name):
+    db = tmp_path / name
     c = J.connect(db)
     c.close()
     ro = J.connect_readonly(db)
