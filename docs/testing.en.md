@@ -95,7 +95,7 @@ is always a bug.
 
 | Exit | Meaning |
 |---|---|
-| `0` | PASS — all 45 panels explain themselves |
+| `0` | PASS — all 44 panels explain themselves |
 | `1` | At least one panel has a bug; the report names the tab and the panel |
 | `2` | Nobitex was unreachable; only the "error" half was measured |
 

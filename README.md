@@ -88,8 +88,8 @@ css` را نزنی، `build_standalone.py` هشدار می‌دهد که CSS ا�
 |---|---|
 | `python -m pytest server/tests -q` | منطق بک‌اند + قرارداد «هر پنل می‌تواند خودش را توضیح دهد» |
 | `python scripts/probe_live.py --selftest` | خودِ طبقه‌بند پنل‌ها (۸ حالت) |
-| `python scripts/probe_live.py --url http://127.0.0.1:8000` | حالت «داده نیست»: ۴۵ پنل باید خودشان را توضیح بدهند |
-| `python scripts/mock_upstream.py --port 8010` + پروب روی ۸۰۱۰ | حالت «داده هست»: ۴۵ پنل باید عدد واقعی نشان بدهند |
+| `python scripts/probe_live.py --url http://127.0.0.1:8000` | حالت «داده نیست»: ۴۴ پنل باید خودشان را توضیح بدهند |
+| `python scripts/mock_upstream.py --port 8010` + پروب روی ۸۰۱۰ | حالت «داده هست»: ۴۴ پنل باید عدد واقعی نشان بدهند |
 | `python scripts/layout_test.py` | ۳ ویوپورت × ۱۰ تب: سرریز افقی، نمودارهای خالی |
 | `python scripts/ui_smoke_prep.py && node scripts/ui_smoke_test.js` | DOM و MSI بدون خطای JS |
 | `python scripts/check_preflight_parity.py` | ده دروازهٔ ریسک در Python و JS یکی باشند |
@@ -118,7 +118,7 @@ npm run lint:dashboard           # بلوک درون‌خطی index.html
 آن معاف‌اند.
 
 CI سه job دارد: `python` (ruff + mypy + pytest)، `js` (eslint + برابری بروکر و
-preflight + تازگی `nobitex-mobile.html`)، و `ui` (۴۵ پنل روی فیکسچر صرافی +
+preflight + تازگی `nobitex-mobile.html`)، و `ui` (۴۴ پنل روی فیکسچر صرافی +
 اسموک jsdom با ۷ سلول KPI، صداقت کارت MSI و صفر خطای JS).
 
 ---

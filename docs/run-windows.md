@@ -225,14 +225,14 @@ curl http://127.0.0.1:8000/api/health
 `upstream.ok=false` یعنی نوبیتکس از این شبکه در دسترس نیست — صفحه کار می‌کند و
 همین را می‌گوید، عدد جای‌گزین نمی‌گذارد.
 
-سنجش ۴۵ پنل (به Stdlib نیاز دارد، نه مرورگر):
+سنجش ۴۴ پنل (به Stdlib نیاز دارد، نه مرورگر):
 
 ```bat
 cd C:\laragon\www\nobitrader
 python scripts\probe_live.py --url http://127.0.0.1:8000
 ```
 
-خروجی مطلوب: `PASS — 45 panels verified …`.
+خروجی مطلوب: `PASS — 44 panels verified …`.
 
 تست‌های بک‌اند و دروازه‌های ایستا:
 

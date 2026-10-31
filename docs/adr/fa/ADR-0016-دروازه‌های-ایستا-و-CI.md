@@ -102,7 +102,7 @@ pytest server/tests            → 304 passed
 ```
 
 سه job در `.github/workflows/ci.yml`: `python` (ruff/mypy/pytest)، `js` (eslint،
-برابری بروکر، برابری preflight، تازگی فایل تولیدشده)، `ui` (۴۵ پنل روی فیکسچر
+برابری بروکر، برابری preflight، تازگی فایل تولیدشده)، `ui` (۴۴ پنل روی فیکسچر
 صرافی، self-test طبقه‌بند، و اسموک jsdom).
 
 اسموک jsdom (`scripts/ui_smoke_test.js`) پیش از این دستی اجرا می‌شد. دلیل

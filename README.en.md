@@ -90,8 +90,8 @@ The single-file bundle is built from `index.html`; if you change the styles and 
 |---|---|
 | `python -m pytest server/tests -q` | Backend logic + the contract "every panel can explain itself" |
 | `python scripts/probe_live.py --selftest` | The panel classifier itself (8 states) |
-| `python scripts/probe_live.py --url http://127.0.0.1:8000` | The "no data" state: 45 panels must explain themselves |
-| `python scripts/mock_upstream.py --port 8010` + probe against 8010 | The "there is data" state: 45 panels must show a real number |
+| `python scripts/probe_live.py --url http://127.0.0.1:8000` | The "no data" state: 44 panels must explain themselves |
+| `python scripts/mock_upstream.py --port 8010` + probe against 8010 | The "there is data" state: 44 panels must show a real number |
 | `python scripts/layout_test.py` | 3 viewports × 10 tabs: horizontal overflow, empty charts |
 | `python scripts/ui_smoke_prep.py && node scripts/ui_smoke_test.js` | DOM and MSI with no JS errors |
 | `python scripts/check_preflight_parity.py` | The ten risk gates agree in Python and in JS |
@@ -119,7 +119,7 @@ line. What is deliberately **not** enabled, and why, is in ADR-0016 (line length
 directive on their own first line.
 
 CI has three jobs: `python` (ruff + mypy + pytest), `js` (eslint + broker and preflight
-parity + freshness of `nobitex-mobile.html`), and `ui` (45 panels against the exchange
+parity + freshness of `nobitex-mobile.html`), and `ui` (44 panels against the exchange
 fixture + a jsdom smoke test with 7 KPI cells, MSI card honesty and zero JS errors).
 
 ---

@@ -99,7 +99,7 @@ pytest server/tests            → 304 passed
 
 Three jobs in `.github/workflows/ci.yml`: `python` (ruff/mypy/pytest), `js`
 (eslint, broker parity, preflight parity, generated file freshness), `ui`
-(45 panels against the exchange fixture, the classifier self-test, and the jsdom
+(44 panels against the exchange fixture, the classifier self-test, and the jsdom
 smoke test).
 
 The jsdom smoke test (`scripts/ui_smoke_test.js`) used to be run by hand. It was
