@@ -118,9 +118,12 @@ line. What is deliberately **not** enabled, and why, is in ADR-0016 (line length
 `except Exception`). `check_untyped_defs` is on; test bodies are exempted by a
 directive on their own first line.
 
-CI has three jobs: `python` (ruff + mypy + pytest), `js` (eslint + broker and preflight
-parity + freshness of `nobitex-mobile.html`), and `ui` (44 panels against the exchange
-fixture + a jsdom smoke test with 7 KPI cells, MSI card honesty and zero JS errors).
+CI has four jobs: `python` (ruff + mypy + pytest), `js` (eslint + broker and preflight
+parity + freshness of `nobitex-mobile.html`), `ui` (44 panels against the exchange
+fixture + a jsdom smoke test with 7 KPI cells, MSI card honesty and zero JS errors),
+and `windows (advisory)` — the same python gate on its other documented platform
+(`docs/run-windows.md`). It is advisory: a failure there is reported but, because
+`continue-on-error` is set, it does not block the Linux gates.
 
 ---
 

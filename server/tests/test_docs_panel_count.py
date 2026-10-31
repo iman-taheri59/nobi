@@ -1,14 +1,20 @@
-"""The documented panel count is the one the probe actually verifies.
+"""A number written into prose is a number nobody updates.
 
-This number has drifted twice. `rkAtr` was removed from the probe in 0bc4d3d
-because no element with that id exists in the page, which took the real count
-from 45 to 44 — and the step name in ci.yml kept saying "45 panels" until run
-after run was checking a number nobody had updated. The same stale 45 was still
-sitting in the README, the testing guides, the Windows guide and ADR-0016.
+Three counts in this repository have drifted, each for the same reason: the
+truth lived in code and the prose kept a copy of it.
 
-A count written into prose is a count nobody updates, so this test reads the
-count from `probe_live.py` — the only place that can be wrong about how many
-panels exist — and fails if any living document disagrees.
+* `rkAtr` was removed from the probe in 0bc4d3d because no element with that id
+  exists in the page, taking the real count from 45 to 44 — while ci.yml's step
+  name, both READMEs, the testing guides, the Windows guide and ADR-0016 all
+  kept saying 45.
+* The README said "CI has three jobs" while ci.yml has four, because the
+  advisory Windows job was never added to the sentence.
+* docs/testing said "expect 591 passed" while the suite had reached 1460.
+
+These tests read each number from the place that cannot be wrong about it —
+`probe_live.py` for panels, ci.yml for jobs — and fail when a living document
+disagrees. The test-count number was removed from the docs rather than pinned,
+because it grows with every test and any value would go stale again.
 
 Dated review reports under docs/reviews/ and the changelogs are deliberately
 excluded: they record what was true when they were written, and rewriting them
@@ -21,9 +27,11 @@ import re
 from pathlib import Path
 
 import pytest
+import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 PROBE = ROOT / "scripts" / "probe_live.py"
+CI = ROOT / ".github/workflows/ci.yml"
 
 #: Documents that describe the repository as it is now.
 LIVING_DOCS = (
@@ -85,4 +93,42 @@ def test_the_documented_count_matches_the_probe() -> None:
             continue
         assert any(want in text for want in accepted), (
             f"{name} states a panel count but not {accepted[0]} / {accepted[1]}"
+        )
+
+
+# --------------------------------------------------------------------------- #
+# The CI job count.
+# --------------------------------------------------------------------------- #
+
+def _ci_jobs() -> list[str]:
+    workflow = yaml.load(CI.read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
+    return list(workflow["jobs"])
+
+
+def test_the_readmes_name_every_ci_job() -> None:
+    """The README used to say "three jobs" while ci.yml had four."""
+    jobs = _ci_jobs()
+    assert len(jobs) == 4, "ci.yml gained or lost a job — update both READMEs"
+    for name in ("README.md", "README.en.md"):
+        text = (ROOT / name).read_text(encoding="utf-8")
+        for job in jobs:
+            assert f"`{job}" in text or "`windows (advisory)`" in text, (
+                f"{name} does not mention the ci.yml job {job!r}"
+            )
+
+
+def test_the_readme_job_count_matches_ci() -> None:
+    """Whatever the README claims, it has to be the number of jobs in ci.yml."""
+    expected = len(_ci_jobs())
+    # Both languages spell the number as a word here, not a digit.
+    words = {2: {"two", "دو"}, 3: {"three", "سه"}, 4: {"four", "چهار"}, 5: {"five", "پنج"}}
+    for name in ("README.md", "README.en.md"):
+        text = (ROOT / name).read_text(encoding="utf-8")
+        stated = re.findall(r"CI has (\w+) jobs?|CI (\S+) jobs? دارد", text)
+        assert stated, f"{name} no longer states how many CI jobs there are"
+        claimed = {w.lower() for pair in stated for w in pair if w}
+        # Each README spells it in its own language, so a subset is enough —
+        # but every word it does use has to be the right number.
+        assert claimed and claimed <= words[expected], (
+            f"{name} claims {claimed} CI jobs; ci.yml has {expected}"
         )

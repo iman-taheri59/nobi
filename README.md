@@ -117,9 +117,12 @@ npm run lint:dashboard           # بلوک درون‌خطی index.html
 `check_untyped_defs` فعال است؛ بدنهٔ تست‌ها با یک directive در خط اول خودشان از
 آن معاف‌اند.
 
-CI سه job دارد: `python` (ruff + mypy + pytest)، `js` (eslint + برابری بروکر و
-preflight + تازگی `nobitex-mobile.html`)، و `ui` (۴۴ پنل روی فیکسچر صرافی +
-اسموک jsdom با ۷ سلول KPI، صداقت کارت MSI و صفر خطای JS).
+CI چهار job دارد: `python` (ruff + mypy + pytest)، `js` (eslint + برابری بروکر و
+preflight + تازگی `nobitex-mobile.html`)، `ui` (۴۴ پنل روی فیکسچر صرافی +
+اسموک jsdom با ۷ سلول KPI، صداقت کارت MSI و صفر خطای JS)، و
+`windows (advisory)` — همان دروازهٔ پایتون روی پلتفرم مستندشدهٔ دیگر
+(`docs/run-windows.md`). مشورتی است: قرمزیاش گزارش میشود ولی چون
+`continue-on-error` است، دروازه‌های لینوکس را مسدود نمیکند.
 
 ---
 

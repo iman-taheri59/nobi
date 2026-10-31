@@ -49,9 +49,10 @@ npm run lint:dashboard         # 0 error(s), 0 warning(s) in 1 inline block
 python -m pytest -q server/tests
 ```
 
-Expect `591 passed` (this number grows with every new test; what matters is zero
-failed). Three of them need neither a browser nor a server and are worth running on
-their own:
+Expect zero `failed`. The exact count is deliberately not written here: it grows with
+every new test and any number would go stale — this document once said "591 passed"
+while the suite had reached 1460. Three of them need neither a browser nor a server
+and are worth running on their own:
 
 ```bash
 python scripts/probe_live.py --selftest        # the panel classifier, 8 states
