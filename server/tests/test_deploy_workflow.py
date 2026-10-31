@@ -147,7 +147,8 @@ def _index_mode(path: Path) -> str | None:
     try:
         out = subprocess.run(
             ["git", "ls-files", "--stage", "--", path.name],
-            cwd=path.parent, capture_output=True, text=True, check=True,
+            cwd=path.parent, capture_output=True, text=True, encoding="utf-8",
+            check=True,
         ).stdout.split("\t")
         return out[0].split()[0] if out and out[0].strip() else None
     except (OSError, subprocess.CalledProcessError, IndexError):
