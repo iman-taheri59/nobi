@@ -183,9 +183,14 @@ def test_python_javascript_execution_guard_parity():
       console.log(JSON.stringify({min_rr:NBX.Risk.MIN_RR,
         results:cases.map(c=>NBX.Risk.executionPlanError(...c))}));
     """
+    # 30s was measured on the Linux runner at ~1.2s for these 1,064 cases, and the
+    # same test on windows-latest exceeded it — a ~26x outlier that is node.EXE
+    # startup on a cold, freshly-provisioned runner, not the arithmetic. A parity
+    # check has nothing to say about how fast the box is, so the ceiling is set
+    # where a genuinely wedged node is still reported promptly.
     result = subprocess.run([node, "-e", script], input=json.dumps(cases), text=True, encoding="utf-8",
                             capture_output=True, cwd=Path(__file__).resolve().parents[2],
-                            timeout=30, check=True)
+                            timeout=180, check=True)
     data = json.loads(result.stdout)
     assert data["min_rr"] == MIN_RR
     for case, js in zip(cases, data["results"], strict=True):

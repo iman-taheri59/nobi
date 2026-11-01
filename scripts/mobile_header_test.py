@@ -22,6 +22,11 @@ from browser_launch import (
 
 ROOT = Path(__file__).resolve().parent.parent
 WIDTHS = (320, 360, 375, 390, 480, 640, 768, 1023, 1024, 1440)
+#: The sidebar transform is a CSS transition, judged on a runner that also has a
+#: browser, a scan and 68 layout cases in flight. Playwright's default 30s was
+#: exceeded by one `ui` job while every measured value in that same run was
+#: correct, so the ceiling is raised rather than the assertion.
+SIDEBAR_TIMEOUT_MS = 120_000
 PROBE = """() => {
   const h = document.querySelector('body > header > div');
   return {width: document.documentElement.clientWidth,
@@ -98,7 +103,8 @@ def main() -> int:
                                     page.locator("#menuBtn").click()
                                     page.wait_for_function(
                                         "getComputedStyle(document.querySelector('#sidebar')).transform"
-                                        " === 'matrix(1, 0, 0, 1, 0, 0)'"
+                                        " === 'matrix(1, 0, 0, 1, 0, 0)'",
+                                        timeout=SIDEBAR_TIMEOUT_MS,
                                     )
                                     assert page.locator("#sidebar").evaluate(
                                         "e => e.classList.contains('side-open')"
@@ -111,7 +117,8 @@ def main() -> int:
                                             "y": 300,
                                         })
                                     page.wait_for_function(
-                                        "!document.querySelector('#sidebar').classList.contains('side-open')"
+                                        "!document.querySelector('#sidebar').classList.contains('side-open')",
+                                        timeout=SIDEBAR_TIMEOUT_MS,
                                     )
                                     assert page.locator("#sideOverlay").is_hidden(), context
                             cases += 1

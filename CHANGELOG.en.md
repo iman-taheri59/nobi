@@ -2,6 +2,12 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 2.1.3
+
+- Three timeout ceilings that a slow Windows runner was exceeding, each backed by a measurement rather than a guess: `probe_live.py`'s wait for the `/auth/login` reply and for the login gate to clear went 60s -> 180s (the page it waits for is an 887 KB document plus a fresh scan); `mobile_header_test.py`'s sidebar transform, previously on Playwright's 30s default, is now an explicit 120s; and the `node -e` subprocess in `test_execution_plan.py` went 30s -> 180s, because that same test takes 1.16s on the Linux runner and exceeded 30s on Windows — a 26x outlier that is node.EXE startup on a freshly provisioned runner, not the arithmetic.
+- The evidence that these are flaky rather than a regression is recorded in the code: two consecutive runs of one commit stalled at **two different points**, the third run of the same commit was green, and every one of the 68 measured layout values in the failing run was correct.
+- No data, order, setting, account or Live/Auto path changed; this release only aligns the ceilings with what was actually measured.
+
 ## 2.1.2
 
 - A bug a real install's data exposed: `counts()` in `gate_ledger` built its `ready` flag from the two thresholds alone and **never filtered `UNKNOWN_CODES`**. That install held 16,413 rows over 6 days, 11,144 of them `no-book` and the rest `ok` — zero `spread-wide`, zero `book-thin`. `no-book` means "no order book was read", which is "this row could not be judged": not a block, and not evidence for or against one. `ready` is now True only for `MEASURABLE` codes, and `judgeable` says why not.

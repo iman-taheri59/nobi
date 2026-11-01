@@ -166,6 +166,14 @@ def as_number(text: str) -> float | None:
         return None
 
 
+#: How long a login may take on a loaded runner. Measured: the same run that
+#: needed more than 60s answered in well under a second locally, and the page it
+#: waits for is an 887 KB document plus a fresh scan. Two consecutive `ui` jobs
+#: on one commit stalled at two different points, and the third run of the same
+#: commit was green — the runner, not the page, was the variable.
+LOGIN_TIMEOUT_MS = 180_000
+
+
 def http_json(url: str, timeout: float = 30.0) -> dict:
     req = urllib.request.Request(url, headers={"User-Agent": "nobi-probe/1.0"})
     with urllib.request.urlopen(req, timeout=timeout) as r:
@@ -496,7 +504,7 @@ def run_probe(base: str, wait_s: float, json_path: str | None, md_path: str | No
             # reportable now) from "the runner is slow" (worth retrying), which
             # a bare wait_for timeout cannot tell apart.
             with pg.expect_response(lambda r: "/auth/login" in r.url,
-                                    timeout=60_000) as reply:
+                                    timeout=LOGIN_TIMEOUT_MS) as reply:
                 pg.locator("#authLoginBtn").click()
             login = reply.value
             if login.status != 200:
@@ -507,7 +515,7 @@ def run_probe(base: str, wait_s: float, json_path: str | None, md_path: str | No
                 b.close()
                 return 1
             try:
-                pg.locator("#authGate").wait_for(state="hidden", timeout=60_000)
+                pg.locator("#authGate").wait_for(state="hidden", timeout=LOGIN_TIMEOUT_MS)
             except Exception:
                 # Still gated after a minute: say what the page is complaining
                 # about instead of emitting a Playwright timeout with no cause.
