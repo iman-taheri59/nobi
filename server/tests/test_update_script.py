@@ -231,6 +231,30 @@ def test_an_already_current_install_is_a_noop() -> None:
     assert text.find("already up to date") < text.find("merge --ff-only")
 
 
+def test_a_missing_service_says_what_it_did_find() -> None:
+    """The first run on a real host failed with "is this the right host?".
+
+    That is true but useless: the operator cannot act on it. The check now looks
+    in three places (unit files, loaded units, the file in UNIT_DIR) and, when
+    none of them has it, prints the units that *do* look like nobi so the name
+    can be passed with SERVICE= instead of guessed at.
+    """
+    text = _text()
+    assert "list-unit-files" in text
+    assert "list-units" in text
+    assert "no %s.service on this host" in text
+    assert "units that do look like nobi" in text
+    assert "SERVICE=<name>" in text
+
+
+def test_the_service_check_looks_in_three_places_not_one() -> None:
+    """`list-unit-files` alone misses a unit installed as a symlink or loaded at runtime."""
+    text = _text()
+    assert text.count("systemctl list-unit-files") >= 2
+    assert "systemctl list-units --all" in text
+    assert "UNIT_DIR/${SERVICE}.service" in text
+
+
 def test_pip_runs_as_the_service_user_not_as_root() -> None:
     """A root-owned file in the venv breaks the *next* update with EACCES.
 

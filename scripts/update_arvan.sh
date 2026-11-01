@@ -73,8 +73,29 @@ step "checking the machine"
 [ -d "$APP_DIR/.git" ] || die "no git checkout at $APP_DIR — run scripts/deploy_arvan.sh first"
 [ -x "$APP_DIR/.venv/bin/python" ] || die "no venv at $APP_DIR/.venv — run scripts/deploy_arvan.sh first"
 id "$SERVICE_USER" >/dev/null 2>&1 || die "service user $SERVICE_USER does not exist"
-systemctl list-unit-files 2>/dev/null | grep -q "^${SERVICE}\.service" \
-  || die "no ${SERVICE}.service — is this the right host?"
+# The service must exist, but *how* it is found matters: `list-unit-files` only
+# lists unit files, so a unit that was installed as a symlink into an unusual
+# directory, or loaded at runtime, is invisible to it — and a bare "is this the
+# right host?" tells the operator nothing they can act on. Look in three places,
+# and if none of them has it, print what *is* there so the name can be passed
+# with SERVICE= instead of guessed at.
+unit_names() { systemctl list-unit-files --no-legend 2>/dev/null | awk '{print $1}'
+               systemctl list-units --all --no-legend 2>/dev/null | awk '{print $1}'; }
+if ! unit_names | grep -qx "${SERVICE}.service" && [ ! -f "$UNIT_DIR/${SERVICE}.service" ]; then
+  near="$(unit_names | grep -iE 'nobi' | sort -u || true)"
+  printf '\n%s  x  no %s.service on this host.%s\n' "$c_bad" "$SERVICE" "$c_off" >&2
+  if [ -n "$near" ]; then
+    printf '     units that do look like nobi:\n' >&2
+    printf '%s\n' "$near" | sed 's/^/       /' >&2
+    printf '     re-run with: SERVICE=<name> %s\n' "$0" >&2
+  else
+    printf '     nothing matches "nobi" at all. Check that the install is on this\n' >&2
+    printf '     host (APP_DIR=%s) and that the unit is installed:\n' "$APP_DIR" >&2
+    printf '       ls -l %s/ | grep -i nobi\n' "$UNIT_DIR" >&2
+    printf '       systemctl list-unit-files | grep -i nobi\n' >&2
+  fi
+  exit 1
+fi
 have git || die "git is not installed"
 have curl || die "curl is not installed (the health check needs it)"
 

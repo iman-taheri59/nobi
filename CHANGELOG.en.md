@@ -2,6 +2,12 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 2.0.10
+
+- `scripts/update_arvan.sh` no longer answers a missing service with "is this the right host?". The message was true and useless: the operator has three things they can act on — the unit is named something else, it is not installed, or this is the wrong host — and it distinguished none of them. The check now looks in three places: unit files, loaded units, and the file in `UNIT_DIR`, because `list-unit-files` alone misses a unit installed as a symlink or loaded at runtime. When nothing matches, it prints the units that *do* look like nobi so the name can be passed as `SERVICE=<name>` rather than guessed at.
+- Two new tests for it, and both branches measured against fake `systemctl` output: a host whose unit is `nobitrader.service` gets it named and the override suggested, and a host with nothing nobi-like gets the diagnostic pair. The override itself was run end to end.
+- No data, order, setting, account or Live/Auto path changed; this release is a better error message.
+
 ## 2.0.9
 
 - `scripts/update_arvan.sh` is added: the manual update path on the server. The installer leaves three commands in the guide; this script is those three commands plus the things a human forgets. The most important one: **the installed systemd unit does not update with `git pull`** — the running unit is the copy in /etc, not the one in the checkout, so a hardening change to `deploy/nobi.service` never reached a deployed host. The script compares both before the restart and installs if they differ. The other three guards each came from a measured run: a dirty checkout is refused (`pull --ff-only` breaks on one anyway), local commits are counted (`--reset` silently discarded a local commit, because `status --porcelain` only sees uncommitted work), and if the service does not come back the rollback command is printed with the previous SHA. Flags: `--check` (look only), `--yes`, `--reset` (fork/branch), `--backup`, `--verify`, `--public URL`. `/etc/nobi/nobi.env` is never written, the data directory is untouched, and no firewall is opened.
