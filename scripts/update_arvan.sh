@@ -402,14 +402,29 @@ printf '    %s -> %s\n' "${OLD_SHA:0:7}" "${NEW_SHA:0:7}"
 
 if [ "$DO_VERIFY" -eq 1 ]; then
   step "verifying the deployment"
-  # No environment is passed in: `sudo` resets it, and the values that matter live
-  # in the unit's EnvironmentFile. `check_deploy.py` reads that file itself, so
-  # running it as the service user — who can read /etc/nobi/nobi.env at 0640
-  # root:nobi — sees the same configuration the running app does.
-  if [ -n "$PUBLIC_URL" ]; then
-    runas "$APP_DIR/.venv/bin/python" "$APP_DIR/scripts/check_deploy.py" --public "$PUBLIC_URL"
+  # The checker reads the configuration from files, and the values that matter
+  # live in the unit's EnvironmentFile — which is root-owned. `sudo` resets the
+  # environment, so exporting here would not survive the hop; instead read the
+  # file as root and hand the NBX_* pairs to `env`, which sets them for the
+  # checker. `_cfg` puts an exported variable above the files, exactly as the app
+  # does, so this is the same precedence the service resolves.
+  verify_env=()
+  if [ -r "$ENV_FILE" ]; then
+    while IFS= read -r pair || [ -n "$pair" ]; do
+      case "$pair" in ''|\#*) continue ;; NBX_*=*) verify_env+=("$pair") ;; esac
+    done < "$ENV_FILE"
+  fi
+  if [ ${#verify_env[@]} -gt 0 ]; then
+    printf '    with %d NBX_* setting(s) from %s\n' "${#verify_env[@]}" "$ENV_FILE"
   else
-    runas "$APP_DIR/.venv/bin/python" "$APP_DIR/scripts/check_deploy.py"
+    warn "no NBX_* settings readable in $ENV_FILE — the checker will see the defaults"
+  fi
+  if [ -n "$PUBLIC_URL" ]; then
+    runas env "${verify_env[@]}" "$APP_DIR/.venv/bin/python" \
+      "$APP_DIR/scripts/check_deploy.py" --public "$PUBLIC_URL"
+  else
+    runas env "${verify_env[@]}" "$APP_DIR/.venv/bin/python" \
+      "$APP_DIR/scripts/check_deploy.py"
   fi
 else
   cat <<TXT

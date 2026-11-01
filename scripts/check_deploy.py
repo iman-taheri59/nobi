@@ -62,13 +62,27 @@ SERVER = ROOT / "server"
 OK, FAIL, SKIP, ERROR = "ok", "fail", "skip", "error"
 RANK = {OK: 0, SKIP: 1, ERROR: 2, FAIL: 3}
 
+#: Files that could not be read, so the summary can say so instead of silently
+#: checking a smaller configuration than the service actually runs with.
+_unreadable: list[str] = []
+
 
 def _read_env_file(path: Path) -> dict[str, str]:
     out: dict[str, str] = {}
-    if not path.is_file():
+    try:
+        if not path.is_file():
+            return out
+        raw = path.read_text(encoding="utf-8", errors="replace")
+    except OSError as exc:
+        # The unit's file is root-owned, and `deploy_arvan.sh` sets it 0640
+        # root:nobi — but an install that predates that, or one hardened to 0600,
+        # leaves the service user unable to read it. A checker that dies here
+        # reports nothing at all, which is worse than reporting less: the operator
+        # sees a traceback instead of a verdict. Degrade to what is readable.
+        _unreadable.append(f"{path}: {type(exc).__name__}")
         return out
-    for raw in path.read_text(encoding="utf-8", errors="replace").splitlines():
-        line = raw.strip()
+    for line in raw.splitlines():
+        line = line.strip()
         if not line or line.startswith("#") or "=" not in line:
             continue
         key, _, val = line.partition("=")
@@ -479,6 +493,15 @@ def main() -> int:
     counts = {k: sum(1 for r in rows if r["status"] == k) for k in (OK, SKIP, ERROR, FAIL)}
     print(f"\n{counts['ok']} ok · {counts['skip']} skip · {counts['error']} error · "
           f"{counts['fail']} fail   →  {worst.upper()}")
+    if _unreadable:
+        # Named, because a verdict reached with less configuration than the
+        # service runs with is a weaker verdict, and the operator has to know.
+        # Deduplicated: `_cfg` is called once per check, so the same unreadable
+        # file is otherwise reported once per row.
+        for what in dict.fromkeys(_unreadable):
+            print(f"  !  unreadable config file: {what}")
+        print("     the checks above used what was readable — run as root, or pass the"
+              " NBX_* values in the environment, for the full picture")
 
     if a.json_path:
         Path(a.json_path).write_text(json.dumps(

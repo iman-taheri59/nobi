@@ -212,3 +212,30 @@ def test_a_host_without_a_unit_file_still_checks_server_dot_env(tmp_path, monkey
         "NBX_API_TOKEN=abcdefghijklmnopqrstuvwxyz012345\n", encoding="utf-8")
     monkeypatch.setattr(check_deploy, "UNIT_ENV", tmp_path / "does-not-exist.env")
     assert check_deploy._cfg("NBX_API_TOKEN").startswith("abcdef")
+
+
+def test_an_unreadable_unit_file_is_reported_not_fatal(tmp_path, monkeypatch):
+    """A checker that dies on a file it cannot read reports nothing at all.
+
+    The unit's EnvironmentFile is root-owned. `deploy_arvan.sh` sets it 0640
+    root:nobi, but an install that predates that — or one hardened to 0600 — leaves
+    the service user unable to read it, and `--verify` runs the checker as that
+    user. The first version of this fix crashed there with a PermissionError
+    traceback instead of a verdict, which is the worse of the two answers.
+    """
+    monkeypatch.setattr(check_deploy, "SERVER", tmp_path / "server")
+    (tmp_path / "server").mkdir()
+    (tmp_path / "server" / ".env").write_text(
+        "NBX_API_TOKEN=abcdefghijklmnopqrstuvwxyz012345\n", encoding="utf-8")
+    unit_env = tmp_path / "nobi.env"
+    unit_env.write_text("NBX_JOURNAL_DB=/srv/nobi-data/journal.db\n", encoding="utf-8")
+    unit_env.chmod(0o000)
+    monkeypatch.setattr(check_deploy, "UNIT_ENV", unit_env)
+    monkeypatch.delenv("NBX_API_TOKEN", raising=False)
+    monkeypatch.delenv("NBX_JOURNAL_DB", raising=False)
+
+    cfg = check_deploy._env()          # must not raise
+    assert cfg.get("NBX_API_TOKEN", "").startswith("abcdef"), cfg
+    assert "NBX_JOURNAL_DB" not in cfg, cfg
+    assert check_deploy._unreadable, "the unreadable file must be named, not hidden"
+    unit_env.chmod(0o644)

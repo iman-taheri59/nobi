@@ -2,6 +2,13 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 2.1.6
+
+- The previous release's patch crashed on a live host: `--verify` runs the checker as the `nobi` user, but `/etc/nobi/nobi.env` was not readable by that user there, and `_read_env_file` died with `PermissionError` — the operator got a traceback instead of a verdict. `deploy_arvan.sh` writes that file 0640 root:nobi, but an older or hardened install at 0600 breaks that, and my assumption was wrong.
+- Two fixes: reading the file can no longer be fatal (it degrades to "could not read" and **names** it, deduplicated so it is not repeated per check), and `--verify` reads the `NBX_*` values as root and hands them to the checker through `env` — `sudo` resets the environment but `env`'s arguments survive it, and `_cfg` puts an exported variable above the files, which is systemd's own precedence.
+- Both paths were measured: an unreadable file produces no traceback and is named once; passed values turn `token` green with no unreadable line. An earlier attempt used `systemctl show -p Environment`, which could not be verified in an environment with no system bus and was dropped.
+- No data, order, setting, account or Live/Auto path changed.
+
 ## 2.1.5
 
 - `check_deploy.py` read only `server/.env`, but the service is actually configured from `/etc/nobi/nobi.env` — `deploy/nobi.service` says so outright: "systemd's environment outranks server/.env". On a live host that produced two FAILs, both false. One said the journal was "inside the checkout", when `Path.resolve()` does not need the file to exist and that path was only the *default* — the real file was 40 MB on the attached volume. The other said `NBX_API_TOKEN is empty` when the token was set in the unit file. The app was healthy throughout.
