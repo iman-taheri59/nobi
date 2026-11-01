@@ -63,10 +63,8 @@ OK, FAIL, SKIP, ERROR = "ok", "fail", "skip", "error"
 RANK = {OK: 0, SKIP: 1, ERROR: 2, FAIL: 3}
 
 
-def _env() -> dict[str, str]:
-    """Read `server/.env` the way the app does, without importing the app."""
+def _read_env_file(path: Path) -> dict[str, str]:
     out: dict[str, str] = {}
-    path = SERVER / ".env"
     if not path.is_file():
         return out
     for raw in path.read_text(encoding="utf-8", errors="replace").splitlines():
@@ -75,6 +73,28 @@ def _env() -> dict[str, str]:
             continue
         key, _, val = line.partition("=")
         out[key.strip()] = val.strip().strip('"').strip("'")
+    return out
+
+
+#: The file systemd loads. `deploy/nobi.service` says it plainly: "systemd's
+#: environment outranks server/.env ... Keeping the secret here means a checkout
+#: without .env still runs correctly." A checker that reads only `server/.env`
+#: therefore reports the *defaults* of a correctly configured install — which is
+#: how a live host came to be told its journal was "inside the checkout" while
+#: the file was sitting on the attached volume the whole time.
+UNIT_ENV = Path(os.getenv("NBX_UNIT_ENV") or "/etc/nobi/nobi.env")
+
+
+def _env() -> dict[str, str]:
+    """Read the configuration the service actually runs with.
+
+    Both files, in the order systemd resolves them: `server/.env` first, then the
+    unit's EnvironmentFile on top. Reading only the first is what produced two
+    false FAILs on a host whose journal and token were correctly set in the
+    second — and the app was healthy throughout.
+    """
+    out = _read_env_file(SERVER / ".env")
+    out.update(_read_env_file(UNIT_ENV))
     return out
 
 

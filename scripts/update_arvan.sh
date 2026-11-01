@@ -402,6 +402,10 @@ printf '    %s -> %s\n' "${OLD_SHA:0:7}" "${NEW_SHA:0:7}"
 
 if [ "$DO_VERIFY" -eq 1 ]; then
   step "verifying the deployment"
+  # No environment is passed in: `sudo` resets it, and the values that matter live
+  # in the unit's EnvironmentFile. `check_deploy.py` reads that file itself, so
+  # running it as the service user — who can read /etc/nobi/nobi.env at 0640
+  # root:nobi — sees the same configuration the running app does.
   if [ -n "$PUBLIC_URL" ]; then
     runas "$APP_DIR/.venv/bin/python" "$APP_DIR/scripts/check_deploy.py" --public "$PUBLIC_URL"
   else

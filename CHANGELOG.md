@@ -2,6 +2,14 @@
 
 [English](CHANGELOG.en.md) · **فارسی**
 
+## 2.1.5
+
+- `check_deploy.py` فقط `server/.env` را می‌خواند، ولی سرویس واقعاً از `/etc/nobi/nobi.env` تغذیه می‌کند — `deploy/nobi.service` صریح است: «systemd's environment outranks server/.env». نتیجه روی یک میزبان زنده: دو FAIL، هر دو مثبت کاذب. یکی گفت journal «inside the checkout» است، در حالی که `Path.resolve()` فایل لازم ندارد و آن مسیر فقط **پیش‌فرض** بود — فایل واقعی ۴۰MB روی volume بود. دیگری گفت `NBX_API_TOKEN is empty`، در حالی که توکن در فایل unit ست شده. اپ در کل این مدت سالم بود.
+- درمان: هر دو فایل خوانده می‌شوند، به همان ترتیبی که systemd حل می‌کند — `server/.env` اول، فایل unit روی آن. `NBX_UNIT_ENV` مسیر را برای نصب غیراستاندارد قابل override می‌کند.
+- `update_arvan.sh --verify` هم شفاف شد: هیچ env پاس نمی‌دهد، چون `sudo` محیط را reset می‌کند و حالا checker خودش فایل را می‌خواند. یک نسخهٔ اولیه سعی کرد `systemctl show -p Environment` استفاده کند، ولی در محیط تست قابل تأیید نبود (بدون system bus) و نگه داشته نشد.
+- سه تست: فایل unit خوانده می‌شود، بر `server/.env` مقدم است، و نبودنش شکست نیست.
+- هیچ داده، سفارش، تنظیم، حساب یا مسیر Live/Auto تغییر نکرد؛ این نسخه یک preflight دروغگو را درست می‌کند.
+
 ## 2.1.4
 
 - باگ در `scripts/update_arvan.sh` که یک نصب واقعی لو داد: گارد «dirty checkout» خروجی `git status --porcelain` را بدون تفکیک می‌خواند، و `git pull --ff-only` **اصلاً به فایل‌های untracked کاری ندارد** مگر اینکه کامیت ورودی آنها را بازنویسی کند. اندازه‌گیری روی یک clone آزمایشی: checkout دارای `.cache/` و `untracked.txt` به‌راحت fast-forward می‌شود، در حالی که یک فایل trackedِ ویرایش‌شده merge را با «Please commit your changes or stash them» متوقف می‌کند. یعنی گارد، نصب زنده را دقیقاً روی چیزی متوقف می‌کرد که قرار بود از آن محافظت کند: اولین پوشهٔ cache که سرور رشد می‌کند.

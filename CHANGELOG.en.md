@@ -2,6 +2,14 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 2.1.5
+
+- `check_deploy.py` read only `server/.env`, but the service is actually configured from `/etc/nobi/nobi.env` — `deploy/nobi.service` says so outright: "systemd's environment outranks server/.env". On a live host that produced two FAILs, both false. One said the journal was "inside the checkout", when `Path.resolve()` does not need the file to exist and that path was only the *default* — the real file was 40 MB on the attached volume. The other said `NBX_API_TOKEN is empty` when the token was set in the unit file. The app was healthy throughout.
+- The fix reads both files in the order systemd resolves them: `server/.env` first, the unit's file on top. `NBX_UNIT_ENV` overrides the path for a non-standard install.
+- `update_arvan.sh --verify` is now explicit that it passes no environment: `sudo` resets it, and the checker reads the file itself. A first attempt used `systemctl show -p Environment`, but it could not be verified in the test environment (no system bus) and was not kept.
+- Three tests: the unit file is read, it outranks `server/.env`, and its absence is not a failure.
+- No data, order, setting, account or Live/Auto path changed; this release repairs a preflight that lied.
+
 ## 2.1.4
 
 - A bug in `scripts/update_arvan.sh` that a real install exposed: the "dirty checkout" guard read `git status --porcelain` without splitting it, and `git pull --ff-only` **does not care about untracked files at all** unless the incoming commit would overwrite them. Measured on a scratch clone: a checkout holding `.cache/` and `untracked.txt` fast-forwards cleanly, while a *modified tracked* file aborts the merge with "Please commit your changes or stash them". So the guard was blocking a live install over exactly the thing it exists to protect: the first cache directory a server grows.

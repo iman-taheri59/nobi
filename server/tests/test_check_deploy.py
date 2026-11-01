@@ -141,3 +141,74 @@ def test_the_python_floor_is_the_one_the_pins_can_install() -> None:
     assert refused["status"] == "fail"
     assert "3.12" in refused["hint"]
     assert check_deploy.check_python((3, 12, 3))["status"] == "ok"
+
+
+# --------------------------------------------------------------------------- #
+# Where the configuration is read from
+# --------------------------------------------------------------------------- #
+def test_the_unit_environment_file_is_read_not_just_server_dot_env(tmp_path, monkeypatch):
+    """A correctly configured install must not be reported as misconfigured.
+
+    Measured on a live host: `server/.env` held one key, the journal and the API
+    token were set in `/etc/nobi/nobi.env` — the file `deploy/nobi.service`
+    loads — and this checker read only the first. It answered
+
+        [FAIL] storage   journal is inside the checkout (/opt/nobi/server/journal.db)
+        [FAIL] token     NBX_API_TOKEN is empty
+
+    while the journal was a 40 MB file on the attached volume and the app was
+    healthy. `Path.resolve()` does not need the file to exist, so the "inside the
+    checkout" verdict was about a *default path*, not about any file.
+    """
+    # `_cfg` puts an exported variable above the files, exactly as the app does
+    # (`server/_env.py`: "a value exported in the shell outranks the file"), and
+    # the suite's conftest points NBX_JOURNAL_DB at a scratch database. Clear it
+    # so this test is about the files.
+    for key in ("NBX_JOURNAL_DB", "NBX_AUTH_DB", "NBX_PAPER_STATE", "NBX_API_TOKEN"):
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setattr(check_deploy, "SERVER", tmp_path / "server")
+    (tmp_path / "server").mkdir()
+    (tmp_path / "server" / ".env").write_text(
+        "NBX_TRUSTED_PROXIES=127.0.0.1\n", encoding="utf-8")
+    unit_env = tmp_path / "nobi.env"
+    unit_env.write_text(
+        "NBX_JOURNAL_DB=/srv/nobi-data/journal.db\n"
+        "NBX_AUTH_DB=/srv/nobi-data/auth.db\n"
+        "NBX_PAPER_STATE=/srv/nobi-data/paper_state.json\n"
+        "NBX_API_TOKEN=0123456789abcdef0123456789abcdef\n",
+        encoding="utf-8")
+    monkeypatch.setattr(check_deploy, "UNIT_ENV", unit_env)
+
+    cfg = check_deploy._env()
+    assert cfg["NBX_JOURNAL_DB"] == "/srv/nobi-data/journal.db"
+    assert cfg["NBX_API_TOKEN"].startswith("0123")
+    assert check_deploy._cfg("NBX_JOURNAL_DB") == "/srv/nobi-data/journal.db"
+
+
+def test_the_unit_file_wins_over_server_dot_env(tmp_path, monkeypatch):
+    """`deploy/nobi.service` says systemd's environment outranks `server/.env`.
+
+    The same key in both files must resolve the way the running service resolves
+    it, or the checker would bless a configuration the app does not have.
+    """
+    monkeypatch.delenv("NBX_JOURNAL_DB", raising=False)
+    monkeypatch.setattr(check_deploy, "SERVER", tmp_path / "server")
+    (tmp_path / "server").mkdir()
+    (tmp_path / "server" / ".env").write_text(
+        "NBX_JOURNAL_DB=/opt/nobi/server/journal.db\n", encoding="utf-8")
+    unit_env = tmp_path / "nobi.env"
+    unit_env.write_text("NBX_JOURNAL_DB=/srv/nobi-data/journal.db\n", encoding="utf-8")
+    monkeypatch.setattr(check_deploy, "UNIT_ENV", unit_env)
+    assert check_deploy._cfg("NBX_JOURNAL_DB") == "/srv/nobi-data/journal.db"
+
+
+def test_a_host_without_a_unit_file_still_checks_server_dot_env(tmp_path, monkeypatch):
+    """The fallback is the file the app itself reads; a missing unit file is not
+    a reason to report empty configuration."""
+    monkeypatch.delenv("NBX_API_TOKEN", raising=False)
+    monkeypatch.setattr(check_deploy, "SERVER", tmp_path / "server")
+    (tmp_path / "server").mkdir()
+    (tmp_path / "server" / ".env").write_text(
+        "NBX_API_TOKEN=abcdefghijklmnopqrstuvwxyz012345\n", encoding="utf-8")
+    monkeypatch.setattr(check_deploy, "UNIT_ENV", tmp_path / "does-not-exist.env")
+    assert check_deploy._cfg("NBX_API_TOKEN").startswith("abcdef")
