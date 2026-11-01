@@ -73,17 +73,18 @@ step "checking the machine"
 [ -d "$APP_DIR/.git" ] || die "no git checkout at $APP_DIR — run scripts/deploy_arvan.sh first"
 [ -x "$APP_DIR/.venv/bin/python" ] || die "no venv at $APP_DIR/.venv — run scripts/deploy_arvan.sh first"
 id "$SERVICE_USER" >/dev/null 2>&1 || die "service user $SERVICE_USER does not exist"
-# The service must exist, but *how* it is found matters: `list-unit-files` only
-# lists unit files, so a unit that was installed as a symlink into an unusual
-# directory, or loaded at runtime, is invisible to it — and a bare "is this the
-# right host?" tells the operator nothing they can act on. Look in three places,
-# and if none of them has it, print what *is* there so the name can be passed
-# with SERVICE= instead of guessed at.
-unit_names() { systemctl list-unit-files --no-legend 2>/dev/null | awk '{print $1}'
-               systemctl list-units --all --no-legend 2>/dev/null | awk '{print $1}'; }
-if ! unit_names | grep -qx "${SERVICE}.service" && [ ! -f "$UNIT_DIR/${SERVICE}.service" ]; then
-  near="$(unit_names | grep -iE 'nobi' | sort -u || true)"
-  printf '\n%s  x  no %s.service on this host.%s\n' "$c_bad" "$SERVICE" "$c_off" >&2
+# The service must exist, and this is how it is asked. `systemctl show` takes no
+# pipeline, so it cannot be broken by `set -o pipefail` turning an early
+# `grep -q` exit into SIGPIPE (141) — which made a *present* unit look absent.
+# It also returns non-zero when systemd does not know the unit, which is the
+# existence test, and it is the same call the v2.0.3 upgrade tool uses.
+if ! systemctl show "${SERVICE}.service" -p Id --value >/dev/null 2>&1 \
+   && [ ! -f "$UNIT_DIR/${SERVICE}.service" ]; then
+  # Capture first, then filter. A plain `grep` reads all of its input, so there
+  # is no early exit and no SIGPIPE; `grep -q` is what caused the bug.
+  UNIT_LIST="$(systemctl list-unit-files --no-legend 2>/dev/null || true)"
+  near="$(printf '%s\n' "$UNIT_LIST" | awk '{print $1}' | grep -iE 'nobi' | sort -u || true)"
+  printf '\n%s  x  systemd does not know %s.service.%s\n' "$c_bad" "$SERVICE" "$c_off" >&2
   if [ -n "$near" ]; then
     printf '     units that do look like nobi:\n' >&2
     printf '%s\n' "$near" | sed 's/^/       /' >&2
@@ -143,13 +144,30 @@ runas git -C "$APP_DIR" fetch --quiet --tags origin "$BRANCH" \
     then run one fetch by hand. Nothing was changed."
 
 REMOTE_SHA="$(runas git -C "$APP_DIR" rev-parse "origin/$BRANCH")"
+# A checkout at origin/main is not the same as a *service* at that version. On a
+# host that had been reset to a new commit without ever restarting, the process
+# was still serving 2.0.3 while the code on disk said 2.0.10 — and the script
+# answered "already up to date" and exited 0, which is the one answer that is
+# both true and useless. So the early exit is conditional on the service
+# agreeing with the checkout, not just on the ref.
+STALE_SERVICE=0
 if [ "$REMOTE_SHA" = "$OLD_SHA" ]; then
-  step "already up to date"
-  printf '    %s is at origin/%s (%s)\n' "$APP_DIR" "$BRANCH" "${OLD_SHA:0:7}"
-  if [ "$DO_VERIFY" -eq 1 ]; then
-    printf '    --verify was asked for, so the checks still run\n'
+  CHECKOUT_VER="$(runas git -C "$APP_DIR" show "HEAD:VERSION" 2>/dev/null | tr -d '[:space:]' || true)"
+  if [ -n "$CHECKOUT_VER" ] && [ "$RUNNING_VER" != "$CHECKOUT_VER" ] \
+     && [ "$RUNNING_VER" != "(service not answering)" ] && [ "$RUNNING_VER" != "?" ]; then
+    step "the checkout is current, but the service is not"
+    printf '    %s is at origin/%s (%s)\n' "$APP_DIR" "$BRANCH" "${OLD_SHA:0:7}"
+    warn "the running service is on $RUNNING_VER; the code on disk is $CHECKOUT_VER"
+    warn "nothing to pull — what it needs is the restart at the end of this run"
+    STALE_SERVICE=1
   else
-    exit 0
+    step "already up to date"
+    printf '    %s is at origin/%s (%s)\n' "$APP_DIR" "$BRANCH" "${OLD_SHA:0:7}"
+    if [ "$DO_VERIFY" -eq 1 ]; then
+      printf '    --verify was asked for, so the checks still run\n'
+    else
+      exit 0
+    fi
   fi
 else
   printf '    incoming: %s -> %s\n' "${OLD_SHA:0:7}" "${REMOTE_SHA:0:7}"
@@ -208,6 +226,9 @@ fi
 # --------------------------------------------------------------------------- #
 if [ "$ASSUME_YES" -eq 0 ]; then
   step "about to update $APP_DIR and restart $SERVICE"
+  if [ "$STALE_SERVICE" -eq 1 ]; then
+    printf '    no new code to pull; this restarts the service onto the code already here\n'
+  fi
   printf '    a minute of downtime; /etc/nobi/nobi.env is not touched\n'
   printf '    continue? [y/N] '
   read -r reply || reply=""

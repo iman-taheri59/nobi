@@ -2,6 +2,13 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 2.1.0
+
+- A real bug in `scripts/update_arvan.sh`, surfaced by a run against a live host: the service-existence check used `grep -q` inside a pipeline, and under `set -o pipefail` that means exit **141 (SIGPIPE)** — `grep -q` exits the moment it matches, the writer upstream dies, and `pipefail` promotes the 141 to the pipeline's status. The result: **a unit that exists was reported as missing.** It now asks `systemctl show <unit> -p Id --value` — no pipeline, and non-zero when systemd does not know the unit. That is the same call the successful 2.0.3 upgrade tool used; the pattern was learned from it.
+- The second finding, also from the live host: the checkout was at `origin/main` but the service was still serving 2.0.3, having never been restarted — and the script said "already up to date" and exited 0. That answer is true and useless. The early exit is now conditional on the service agreeing with the checkout; when it does not, the update path continues and says what is actually needed.
+- Two regression tests: no executable `grep -q` remains, and the stale-service case no longer reports "up to date". Both were measured against fake `systemctl` output with 3000 units and nobi last, because the bug only appears with large output.
+- No data, order, setting, account or Live/Auto path changed; this release repairs one script.
+
 ## 2.0.10
 
 - `scripts/update_arvan.sh` no longer answers a missing service with "is this the right host?". The message was true and useless: the operator has three things they can act on — the unit is named something else, it is not installed, or this is the wrong host — and it distinguished none of them. The check now looks in three places: unit files, loaded units, and the file in `UNIT_DIR`, because `list-unit-files` alone misses a unit installed as a symlink or loaded at runtime. When nothing matches, it prints the units that *do* look like nobi so the name can be passed as `SERVICE=<name>` rather than guessed at.

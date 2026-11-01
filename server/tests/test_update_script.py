@@ -234,25 +234,69 @@ def test_an_already_current_install_is_a_noop() -> None:
 def test_a_missing_service_says_what_it_did_find() -> None:
     """The first run on a real host failed with "is this the right host?".
 
-    That is true but useless: the operator cannot act on it. The check now looks
-    in three places (unit files, loaded units, the file in UNIT_DIR) and, when
-    none of them has it, prints the units that *do* look like nobi so the name
-    can be passed with SERVICE= instead of guessed at.
+    That is true but useless: the operator cannot act on it. The check now asks
+    systemd directly and, when systemd does not know the unit, prints the units
+    that *do* look like nobi so the name can be passed with SERVICE= instead of
+    guessed at.
     """
     text = _text()
     assert "list-unit-files" in text
-    assert "list-units" in text
-    assert "no %s.service on this host" in text
+    assert "systemd does not know" in text
     assert "units that do look like nobi" in text
     assert "SERVICE=<name>" in text
 
 
-def test_the_service_check_looks_in_three_places_not_one() -> None:
-    """`list-unit-files` alone misses a unit installed as a symlink or loaded at runtime."""
+def test_the_service_check_uses_no_pipeline() -> None:
+    """`set -o pipefail` + `grep -q` = exit 141, and a present unit looks absent.
+
+    Measured: `grep -q` exits the moment it matches, the writer upstream dies of
+    SIGPIPE, and `pipefail` promotes that 141 to the pipeline's status. So the
+    check failed on hosts that *had* the unit — which is exactly the "no
+    nobi.service" a real run produced. `systemctl show` takes no pipeline and
+    returns non-zero when systemd does not know the unit, which is both the
+    existence test and the answer.
+    """
+    text = _code_without_comments()
+    # No executable `grep -q` anywhere: an early exit is the failure mode.
+    for line in text.splitlines():
+        assert "grep -q" not in line, f"an early-exiting grep is back: {line.strip()}"
+    assert 'systemctl show "${SERVICE}.service"' in text
+    # The candidate list is captured before it is filtered, for the same reason.
+    assert 'UNIT_LIST="$(systemctl list-unit-files' in text
+    assert "UNIT_LIST" in text
+
+
+def test_a_stale_service_is_not_reported_as_up_to_date() -> None:
+    """A current checkout is not the same as a current *service*.
+
+    On a host reset to a new commit but never restarted, the process served
+    2.0.3 while the code on disk said 2.0.10 — and the script answered "already
+    up to date" and exited 0. That is the one answer that is both true and
+    useless, so the early exit is conditional on the service agreeing.
+    """
     text = _text()
-    assert text.count("systemctl list-unit-files") >= 2
-    assert "systemctl list-units --all" in text
-    assert "UNIT_DIR/${SERVICE}.service" in text
+    assert "STALE_SERVICE" in text
+    assert "the checkout is current, but the service is not" in text
+    assert "HEAD:VERSION" in text, "the comparison needs the checkout's own VERSION"
+    # the early exit must sit inside the else, not before it
+    code = _code_without_comments()
+    assert code.find('step "already up to date"') > code.find("the checkout is current")
+
+
+def test_the_service_check_asks_systemd_not_a_grep() -> None:
+    """One authoritative call beats three guesses.
+
+    The previous version searched `list-unit-files`, `list-units --all` and the
+    file in UNIT_DIR — three places because `list-unit-files` alone misses a unit
+    installed as a symlink or loaded at runtime. `systemctl show` answers the
+    same question with no pipeline at all, which is also what removes the
+    SIGPIPE failure mode.
+    """
+    text = _text()
+    assert 'systemctl show "${SERVICE}.service"' in text
+    assert "-p Id --value" in text
+    # the file in UNIT_DIR is still a fallback, for a unit not yet loaded
+    assert '[ ! -f "$UNIT_DIR/${SERVICE}.service" ]' in text
 
 
 def test_pip_runs_as_the_service_user_not_as_root() -> None:
