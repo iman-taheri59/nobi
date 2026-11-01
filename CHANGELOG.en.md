@@ -2,6 +2,14 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 2.1.7
+
+- My own Windows test assumed POSIX again: `chmod(0o000)` does not make a file unreadable on Windows, so the assertion failed. This is the **second time** I made that mistake — 2.1.1 believed it was fixed, two runs went green, and I took that as a lesson learned. It is now guarded with the same `skipif` `test_deploy_tls_order.py` uses.
+- 2.1.3's diagnosis of the `ui` job was **wrong**, and it should be said plainly: I called it a slow runner and raised the ceilings 60s->180s and 30s->120s. A later run then timed out *at* 120s — the sidebar opened and never closed. Removing a class in JavaScript is synchronous, so a 120-second wait means the click never reached `closeSide`, not that the box was slow. Raising the number only made the failure four times slower.
+- `mobile_header_test.py` now names every sidebar-close attempt as it runs — source, direction, width, and whether it was the button or the overlay. The log previously could not say which case failed, and raising a ceiling blind is the same mistake again. The ceiling is back to 30s.
+- Three consecutive local runs passed completely (80 layouts, ~100s each) and **did not reproduce the CI failure**. So this release claims no fix — it claims diagnosability.
+- No data, order, setting, account or Live/Auto path changed.
+
 ## 2.1.6
 
 - The previous release's patch crashed on a live host: `--verify` runs the checker as the `nobi` user, but `/etc/nobi/nobi.env` was not readable by that user there, and `_read_env_file` died with `PermissionError` — the operator got a traceback instead of a verdict. `deploy_arvan.sh` writes that file 0640 root:nobi, but an older or hardened install at 0600 breaks that, and my assumption was wrong.

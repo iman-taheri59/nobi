@@ -12,6 +12,7 @@ and the subnet is not reachable from the internet.
 from __future__ import annotations
 
 import importlib.util
+import os
 from pathlib import Path
 
 import pytest
@@ -214,6 +215,11 @@ def test_a_host_without_a_unit_file_still_checks_server_dot_env(tmp_path, monkey
     assert check_deploy._cfg("NBX_API_TOKEN").startswith("abcdef")
 
 
+@pytest.mark.skipif(
+    os.name != "posix",
+    reason="chmod(0o000) does not make a file unreadable on Windows, so the case "
+           "cannot be set up there — the guard itself is platform-independent",
+)
 def test_an_unreadable_unit_file_is_reported_not_fatal(tmp_path, monkeypatch):
     """A checker that dies on a file it cannot read reports nothing at all.
 

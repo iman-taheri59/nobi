@@ -23,10 +23,16 @@ from browser_launch import (
 ROOT = Path(__file__).resolve().parent.parent
 WIDTHS = (320, 360, 375, 390, 480, 640, 768, 1023, 1024, 1440)
 #: The sidebar transform is a CSS transition, judged on a runner that also has a
-#: browser, a scan and 68 layout cases in flight. Playwright's default 30s was
+#: browser, a scan and 80 layout cases in flight. Playwright's default 30s was
 #: exceeded by one `ui` job while every measured value in that same run was
 #: correct, so the ceiling is raised rather than the assertion.
-SIDEBAR_TIMEOUT_MS = 120_000
+#:
+#: Measured since: 2.1.3 raised it to 120s and one `ui` run then timed out *at*
+#: 120s — the sidebar opened and never closed. Removing a class is synchronous,
+#: so a wait that long means the click never reached `closeSide`, not that the
+#: box was slow. Raising the number only made the failure four times slower, so
+#: it is back near the default and the case is named in the log instead.
+SIDEBAR_TIMEOUT_MS = 30_000
 PROBE = """() => {
   const h = document.querySelector('body > header > div');
   return {width: document.documentElement.clientWidth,
@@ -100,6 +106,13 @@ def main() -> int:
                             assert abs(data["x"]) <= 1, context
                             if width < 1024:
                                 for close in ("button", "overlay"):
+                                    # Named as it runs: a `ui` job failed inside
+                                    # this loop with no way to tell which of the
+                                    # two closes, on which source, at which width,
+                                    # and the log was the only witness.
+                                    print(f"  {source} {direction} {width}px "
+                                          f"{name!r}: sidebar close via {close}",
+                                          flush=True)
                                     page.locator("#menuBtn").click()
                                     page.wait_for_function(
                                         "getComputedStyle(document.querySelector('#sidebar')).transform"
