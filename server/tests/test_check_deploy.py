@@ -245,3 +245,30 @@ def test_an_unreadable_unit_file_is_reported_not_fatal(tmp_path, monkeypatch):
     assert "NBX_JOURNAL_DB" not in cfg, cfg
     assert check_deploy._unreadable, "the unreadable file must be named, not hidden"
     unit_env.chmod(0o644)
+
+
+def test_the_unreadable_note_is_suppressed_when_the_values_were_passed(monkeypatch):
+    """`--verify` hands the NBX_* values over in the environment.
+
+    When it does, the unit file being unreadable *to that user* is not a gap —
+    nothing was missing, and saying so is noise on an otherwise green preflight.
+    `NBX_UNIT_ENV` is the path override for that same file, so it must not count
+    as "the values were supplied": it starts with NBX_ and would silence the note
+    on every host.
+    """
+    # the suite's conftest points six NBX_* variables at a scratch database, and
+    # any one of them counts as "supplied" — so clear them all, not a chosen few.
+    for key in [k for k in os.environ if k.startswith("NBX_") and k != "NBX_UNIT_ENV"]:
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setattr(check_deploy, "_unreadable",
+                        ["/etc/nobi/nobi.env: PermissionError"])
+
+    # values handed over by --verify: no note
+    monkeypatch.setenv("NBX_JOURNAL_DB", "/srv/nobi-data/journal.db")
+    assert check_deploy._unreadable_note() == []
+
+    # and without them the note is the honest answer
+    monkeypatch.delenv("NBX_JOURNAL_DB", raising=False)
+    note = check_deploy._unreadable_note()
+    assert note and "unreadable by this user" in note[0]
+    assert any("/etc/nobi/nobi.env" in line for line in note)

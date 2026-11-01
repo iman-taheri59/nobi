@@ -472,6 +472,29 @@ def run(public: str) -> list[dict]:
     return rows
 
 
+def _unreadable_note() -> list[str]:
+    """The lines to print about config files this user could not read.
+
+    Empty when the NBX_* values were handed over in the environment, which is
+    what `update_arvan.sh --verify` does: the file being unreadable *to that
+    user* is then not a gap, and reporting it is noise on a green preflight.
+
+    `NBX_UNIT_ENV` is the path override for that same file, not configuration
+    the service runs with, so it does not count as "supplied" — it starts with
+    NBX_ and would otherwise silence the note on every host.
+    """
+    if not _unreadable:
+        return []
+    supplied = [k for k in os.environ if k.startswith("NBX_") and k != "NBX_UNIT_ENV"]
+    if supplied:
+        return []
+    lines = [f"  !  {len(set(_unreadable))} config file(s) unreadable by this user:"]
+    lines += [f"       {what}" for what in dict.fromkeys(_unreadable)]
+    lines.append("     the checks above used what was readable — run as root, or pass the"
+                 " NBX_* values in the environment, for the full picture")
+    return lines
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -493,15 +516,8 @@ def main() -> int:
     counts = {k: sum(1 for r in rows if r["status"] == k) for k in (OK, SKIP, ERROR, FAIL)}
     print(f"\n{counts['ok']} ok · {counts['skip']} skip · {counts['error']} error · "
           f"{counts['fail']} fail   →  {worst.upper()}")
-    if _unreadable:
-        # Named, because a verdict reached with less configuration than the
-        # service runs with is a weaker verdict, and the operator has to know.
-        # Deduplicated: `_cfg` is called once per check, so the same unreadable
-        # file is otherwise reported once per row.
-        for what in dict.fromkeys(_unreadable):
-            print(f"  !  unreadable config file: {what}")
-        print("     the checks above used what was readable — run as root, or pass the"
-              " NBX_* values in the environment, for the full picture")
+    for line in _unreadable_note():
+        print(line)
 
     if a.json_path:
         Path(a.json_path).write_text(json.dumps(

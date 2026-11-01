@@ -2,6 +2,14 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 2.1.8
+
+- The last piece of noise in the preflight is gone: after `--verify` read the NBX_* values from `/etc/nobi/nobi.env` and passed them along, the checker still opened that file itself and, because the `nobi` user could not, printed "unreadable config file" on an otherwise fully green preflight. When the values arrived through the environment, the note is now suppressed — nothing was missing.
+- `NBX_UNIT_ENV` itself starts with `NBX_`, so it counted as "the values were supplied" and silenced the warning on **every** host. It is the path override for that same file, not configuration, and is now excluded.
+- The logic moved into `_unreadable_note()` so it can be tested, and the test covers both cases. A first version of the test re-implemented the expression instead of exercising the code; it was removed.
+- Measured on a live host: values passed → no warning and no traceback; not passed → the warning is named.
+- No data, order, setting, account or Live/Auto path changed.
+
 ## 2.1.7
 
 - My own Windows test assumed POSIX again: `chmod(0o000)` does not make a file unreadable on Windows, so the assertion failed. This is the **second time** I made that mistake — 2.1.1 believed it was fixed, two runs went green, and I took that as a lesson learned. It is now guarded with the same `skipif` `test_deploy_tls_order.py` uses.
