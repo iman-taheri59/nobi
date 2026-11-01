@@ -2,6 +2,14 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 2.1.4
+
+- A bug in `scripts/update_arvan.sh` that a real install exposed: the "dirty checkout" guard read `git status --porcelain` without splitting it, and `git pull --ff-only` **does not care about untracked files at all** unless the incoming commit would overwrite them. Measured on a scratch clone: a checkout holding `.cache/` and `untracked.txt` fast-forwards cleanly, while a *modified tracked* file aborts the merge with "Please commit your changes or stash them". So the guard was blocking a live install over exactly the thing it exists to protect: the first cache directory a server grows.
+- The fix: tracked changes always block (they are the work that would be lost), and an untracked path blocks only when origin's tree already holds it (`cat-file -e`). Untracked leftovers are reported so an operator is not surprised later, but they do not stop the run.
+- One behavioural test exercises all three cases against a real repository: `.cache/` alone does not block; a modified tracked file blocks and names the file; an untracked path origin would overwrite blocks too. On the previous guard the test fails with a readable reason.
+- The `test_platform_portability` guard proved itself again: it caught `text=True` without `encoding=` in the new test — the same Windows failure seen earlier.
+- No data, order, setting, account or Live/Auto path changed; this release stops the update script from swallowing real work.
+
 ## 2.1.3
 
 - Three timeout ceilings that a slow Windows runner was exceeding, each backed by a measurement rather than a guess: `probe_live.py`'s wait for the `/auth/login` reply and for the login gate to clear went 60s -> 180s (the page it waits for is an 887 KB document plus a fresh scan); `mobile_header_test.py`'s sidebar transform, previously on Playwright's 30s default, is now an explicit 120s; and the `node -e` subprocess in `test_execution_plan.py` went 30s -> 180s, because that same test takes 1.16s on the Linux runner and exceeded 30s on Windows — a 26x outlier that is node.EXE startup on a freshly provisioned runner, not the arithmetic.

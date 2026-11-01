@@ -185,10 +185,33 @@ fi
 # --------------------------------------------------------------------------- #
 # 3. A dirty checkout is the one thing that can lose work
 # --------------------------------------------------------------------------- #
-DIRTY="$(runas git -C "$APP_DIR" status --porcelain 2>/dev/null || true)"
-if [ -n "$DIRTY" ]; then
+# `git status --porcelain` prints untracked files with `??`, and `git pull
+# --ff-only` does not care about those unless the incoming commit would
+# overwrite them. Measured on a scratch clone: a checkout holding `.cache/` and
+# `untracked.txt` fast-forwards cleanly, while a *modified tracked* file aborts
+# the merge with "Please commit your changes or stash them". A working install
+# grows a pip or pytest cache within hours of booting, so refusing to update over
+# one is a guard that blocks the thing it is meant to protect.
+#
+# So: tracked changes always block (they are the work that would be lost), and
+# an untracked path blocks only when origin's tree already contains it.
+STATUS="$(runas git -C "$APP_DIR" status --porcelain 2>/dev/null || true)"
+BLOCKING="$(printf '%s\n' "$STATUS" | grep -v '^?? ' || true)"
+COLLIDE=""
+for path in $(runas git -C "$APP_DIR" ls-files --others --exclude-standard 2>/dev/null || true); do
+  if runas git -C "$APP_DIR" cat-file -e "origin/$BRANCH:$path" 2>/dev/null; then
+    COLLIDE="${COLLIDE}${path}
+"
+  fi
+done
+if [ -n "$BLOCKING" ] || [ -n "$COLLIDE" ]; then
   printf '\n    the checkout has local changes:\n'
-  printf '%s\n' "$DIRTY" | sed 's/^/      /'
+  if [ -n "$BLOCKING" ]; then
+    printf '%s\n' "$BLOCKING" | sed 's/^/      /'
+  fi
+  if [ -n "$COLLIDE" ]; then
+    printf '%s\n' "$COLLIDE" | sed 's/^/      ?? (origin would overwrite) /'
+  fi
   if [ "$DO_RESET" -eq 1 ]; then
     warn "--reset will DESTROY the changes listed above"
   else
@@ -197,6 +220,13 @@ if [ -n "$DIRTY" ]; then
     --reset to discard them deliberately (that is the fork/branch path)."
   fi
   [ "$ALLOW_DIRTY" -eq 1 ] || [ "$ASSUME_YES" -eq 1 ] || die "pass --force to discard them anyway"
+fi
+# Untracked leftovers are not work and not a merge conflict; say they are there
+# so an operator is not surprised by them later, and move on.
+LEFTOVER="$(printf '%s\n' "$STATUS" | grep '^?? ' || true)"
+if [ -n "$LEFTOVER" ]; then
+  printf '    untracked and harmless (not tracked, not in origin):\n'
+  printf '%s\n' "$LEFTOVER" | sed 's/^/      /'
 fi
 
 # Committed local work is invisible to `status --porcelain`, and `--reset` throws

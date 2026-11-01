@@ -166,6 +166,111 @@ def test_a_dirty_checkout_is_refused_not_warned_about() -> None:
     assert text.find("refusing to update a dirty checkout") < text.find("merge --ff-only")
 
 
+def test_untracked_files_are_not_mistaken_for_a_dirty_checkout() -> None:
+    """A pip or pytest cache is not work, and `git pull` does not care about it.
+
+    Measured on a scratch clone: a checkout holding `.cache/` and `untracked.txt`
+    fast-forwards cleanly, while a *modified tracked* file aborts the merge with
+    "Please commit your changes or stash them". `status --porcelain` prints both
+    with the same command, so the guard has to separate them — otherwise the
+    first cache directory an install grows blocks every update after it.
+    """
+    code = _code_without_comments()
+    assert "grep -v '^?? '" in code, "tracked changes must be told from untracked ones"
+    assert "ls-files --others --exclude-standard" in code
+    # The collision test is the one case an untracked path *does* block: when
+    # origin's tree already holds that path, the merge cannot write it.
+    assert "cat-file -e" in code
+    assert "untracked and harmless" in code
+
+
+def test_a_real_install_with_only_a_cache_directory_still_updates(tmp_path):
+    """Behavioural, against a real clone: `.cache/` alone must not stop the run.
+
+    The source assertions above describe the guard; this one runs the guard's
+    **own text**, lifted out of the script, against an actual repository holding
+    an untracked `.cache/` and then a modified tracked file, and checks which of
+    the two it refuses. The script itself demands root, so `runas` is stubbed to
+    a plain exec — which is exact here, because the test already runs as the
+    user it would be asking for.
+    """
+    if os.name != "posix" or shutil.which("bash") is None:
+        pytest.skip("the update script is bash; running it needs a POSIX shell")
+
+    text = _text()
+    marker = 'STATUS="$(runas git -C "$APP_DIR" status --porcelain'
+    assert marker in text, (
+        "the dirty guard must read `git status --porcelain` into its own variable "
+        "and split the `??` lines out of it; without that split an untracked cache "
+        "directory is reported as work"
+    )
+    start = text.index(marker)
+    end_marker = "\nfi\n"
+    leftover = text.index("LEFTOVER=", start)
+    end = text.index(end_marker, leftover) + len(end_marker)
+    guard = text[start:end]
+
+    upstream = tmp_path / "upstream"
+    upstream.mkdir()
+    # the guard asks for `origin/$BRANCH`, so the upstream's default branch has to
+    # actually be `main` — a scratch repo otherwise starts on `master` and the
+    # collision test would silently test nothing.
+    _git(upstream, "-c", "init.defaultBranch=main", "init", "--quiet", ".")
+    (upstream / "VERSION").write_text("2.1.3\n", encoding="utf-8")
+    (upstream / "keep.txt").write_text("original\n", encoding="utf-8")
+    _git(upstream, "add", "-A")
+    _git(upstream, "-c", "user.email=t@e.st", "-c", "user.name=t", "commit", "--quiet", "-m", "one")
+    _git(upstream, "tag", "v2.1.3")
+    _git(upstream, "update-ref", "refs/remotes/origin/main", "HEAD")
+
+    clone = tmp_path / "clone"
+    subprocess.run(["git", "clone", "--quiet", str(upstream), str(clone)],
+                   check=True, capture_output=True)
+
+    def run_guard() -> str:
+        harness = (
+            'runas() { "$@"; }\n'
+            'warn() { printf "WARN %s\\n" "$*"; }\n'
+            'die() { printf "DIE %s\\n" "$*" >&2; exit 1; }\n'
+            f'APP_DIR={str(clone)!r}\nBRANCH=main\nDO_RESET=0\n'
+            "ALLOW_DIRTY=0\nASSUME_YES=1\n" + guard
+        )
+        proc = subprocess.run(["bash", "-c", harness], capture_output=True, text=True,
+                              encoding="utf-8", timeout=120)
+        return proc.stdout + proc.stderr
+
+    # a cache directory, exactly what a live install grows within hours
+    (clone / ".cache").mkdir()
+    (clone / ".cache" / "junk").write_text("x", encoding="utf-8")
+    first = run_guard()
+    assert "DIE" not in first, first
+    assert "untracked and harmless" in first, first
+
+    # the same clone with a *tracked* modification must still be refused
+    _git(clone, "reset", "--hard", "--quiet", "HEAD")
+    (clone / "keep.txt").write_text("edited by hand\n", encoding="utf-8")
+    second = run_guard()
+    assert "refusing to update a dirty checkout" in second, second
+    assert "keep.txt" in second, "the refusal must name the file it is protecting"
+
+    # and an untracked path that origin would overwrite is the third case
+    _git(clone, "reset", "--hard", "--quiet", "HEAD")
+    (upstream / "landing.txt").write_text("from origin\n", encoding="utf-8")
+    _git(upstream, "add", "-A")
+    _git(upstream, "-c", "user.email=t@e.st", "-c", "user.name=t",
+         "commit", "--quiet", "-m", "two")
+    _git(upstream, "update-ref", "refs/remotes/origin/main", "HEAD")
+    _git(clone, "fetch", "--quiet", "origin")
+    (clone / "landing.txt").write_text("mine\n", encoding="utf-8")
+    third = run_guard()
+    assert "refusing to update a dirty checkout" in third, third
+    assert "landing.txt" in third, "a path origin would overwrite must block too"
+
+
+def _git(cwd: Path, *args: str) -> None:
+    subprocess.run(["git", "-C", str(cwd), *args], check=True, capture_output=True)
+
+
 def test_local_commits_are_counted_before_reset_discards_them() -> None:
     """Measured: a diverged checkout with one local commit.
 
