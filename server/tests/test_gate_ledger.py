@@ -134,6 +134,59 @@ def test_an_empty_ledger_says_ready_and_has_limits_rather_than_raising(tmp_path)
     assert out["limits"]["min_verdicts"] == 30 and out["limits"]["min_days"] == 5
 
 
+def test_a_ledger_full_of_no_book_is_not_ready_however_many_days_it_covers(tmp_path):
+    """A real install's ledger, reduced to the shape that broke the card.
+
+    The observed ledger held 16,413 verdicts over 6 distinct UTC dates, but 11,144
+    of them were `no-book` and the rest `ok` — no `spread-wide`, no `book-thin`,
+    nothing the exit rule could measure. `counts()` used to report `ready: True`
+    for `no-book` because it only looked at the two thresholds, and the card sorts
+    by verdict count, so it picked `no-book` and announced "evidence collected"
+    while `/api/gates/evidence` answered `refused` for the same ledger.
+
+    `no-book` means "no order book was read for this symbol" — a fact about the
+    feed, never a claim about a block (`UNKNOWN_CODES` in `gates`).
+    """
+    conn = ledger(tmp_path)
+    base = 1_700_000_000
+    verdicts, ts_of = {}, {}
+    for d in range(6):
+        for i in range(6):
+            sym = f"NB{d}{i}"
+            verdicts[sym] = {"code": "no-book", "codes": ["no-book"]}
+            ts_of[sym] = base + d * DAY + STEP
+        ok = f"OK{d}"
+        verdicts[ok] = {"code": "ok", "codes": []}
+        ts_of[ok] = base + d * DAY + STEP
+    assert write(conn, verdicts, ts_of=ts_of) == 42
+
+    out = gl.counts(conn)
+    nb = out["gates"]["no-book"]
+    assert nb["verdicts"] == 36 and nb["days"] == 6      # both thresholds met
+    assert nb["ready"] is False                          # and still not evidence
+    assert nb["judgeable"] is False
+    assert out["gates"]["ok"]["judgeable"] is False
+    assert out["ready"] == []                            # nothing to promote
+    assert gl.measure(gl.rows(conn), {}, gate="no-book")["verdict"] == "refused"
+
+
+def test_a_ledger_of_ok_rows_is_not_ready_either(tmp_path):
+    """`ok` is the allowed side of the comparison, not a gate that can block."""
+    conn = ledger(tmp_path)
+    base = 1_700_000_000
+    verdicts, ts_of = {}, {}
+    for d in range(5):
+        for i in range(6):
+            sym = f"OK{d}{i}"
+            verdicts[sym] = {"code": "ok", "codes": []}
+            ts_of[sym] = base + d * DAY + STEP
+    write(conn, verdicts, ts_of=ts_of)
+    out = gl.counts(conn)
+    assert out["gates"]["ok"]["verdicts"] == 30 and out["gates"]["ok"]["days"] == 5
+    assert out["gates"]["ok"]["ready"] is False
+    assert out["ready"] == []
+
+
 # --------------------------------------------------------------------------- #
 # Forward returns: close-to-close, and "not yet" is not "zero"
 # --------------------------------------------------------------------------- #

@@ -226,6 +226,10 @@ def counts(conn: sqlite3.Connection, *, gate: str | None = None,
     `days` is the number of distinct UTC dates the verdicts fall on, not the span
     between the first and last one: a burst of 200 verdicts in one afternoon
     covers one day of markets, and the exit rule is about days of markets.
+
+    `ready` is True only for a code that could actually be a block (`MEASURABLE`)
+    with both thresholds met. `no-book`, `no-data` and `ok` are counted, and
+    `judgeable` says so, but they never report ready: see the comment in the loop.
     """
     sql = "SELECT code, ts FROM gate_shadow"
     where: list[str] = []
@@ -250,12 +254,24 @@ def counts(conn: sqlite3.Connection, *, gate: str | None = None,
     out: dict[str, dict[str, Any]] = {}
     for code, slot in per.items():
         days = len(slot["days"])
+        # ADR-0022's exit rule is written against a *block*, and not every code
+        # is a block: `no-data` and `no-book` mean "this row could not be
+        # judged" (`UNKNOWN_CODES` in `gates`), and `ok` is the allowed side
+        # rather than a gate. A ledger that filled up with either is a finding
+        # about the feed, never evidence for a gate — `ready` stays False
+        # however many days they cover. Without this the card sorts by verdict
+        # count, lands on the unjudgeable code, and calls it "evidence
+        # collected" while `/api/gates/evidence` refuses it.
+        judgeable = code in MEASURABLE
         out[code] = {
             "verdicts": slot["verdicts"],
             "days": days,
             "first_ts": slot["first_ts"],
             "last_ts": slot["last_ts"],
-            "ready": slot["verdicts"] >= MIN_VERDICTS and days >= MIN_DAYS,
+            "ready": bool(
+                judgeable and slot["verdicts"] >= MIN_VERDICTS and days >= MIN_DAYS
+            ),
+            "judgeable": judgeable,
             "missing": {"verdicts": max(0, MIN_VERDICTS - slot["verdicts"]),
                         "days": max(0, MIN_DAYS - days)},
         }

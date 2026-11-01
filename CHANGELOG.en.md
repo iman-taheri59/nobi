@@ -2,6 +2,14 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 2.1.2
+
+- A bug a real install's data exposed: `counts()` in `gate_ledger` built its `ready` flag from the two thresholds alone and **never filtered `UNKNOWN_CODES`**. That install held 16,413 rows over 6 days, 11,144 of them `no-book` and the rest `ok` — zero `spread-wide`, zero `book-thin`. `no-book` means "no order book was read", which is "this row could not be judged": not a block, and not evidence for or against one. `ready` is now True only for `MEASURABLE` codes, and `judgeable` says why not.
+- The dashboard was wrong the same way: it displayed whichever code had the most verdicts, which is exactly the unjudgeable one. It now filters on `judgeable` first, and when the ledger holds nothing but unjudgeable rows it says so instead of "evidence collected".
+- Two tests reproduce that real ledger's exact shape. Both go red on the old code (`assert True is False`), so this is a bug, not a hypothesis.
+- `assets/css/tailwind.css` was rebuilt and came out untouched — confirming this change added no new class to the markup.
+- No data, order, setting, account or Live/Auto path changed; this release repairs a lie in a report.
+
 ## 2.1.1
 
 - Five real failures in the advisory Windows job, all from tests I had written that assumed POSIX. `test_the_script_is_executable` checks the exec bit, which git does not carry on Windows; three others run `bash`, which Windows does not have (one of them also died with a `UnicodeDecodeError` in the output reader thread). All five are now guarded with the same `skipif` `test_deploy_tls_order.py` already uses. Measured with `bash` removed from PATH: 57 pass, 4 skip.

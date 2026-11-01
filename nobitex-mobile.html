@@ -766,7 +766,7 @@ table td {
       </button>
     </div>
     <span class="hidden 2xl:inline-flex chip shrink-0"><span class="dot bg-emerald-400"></span> <span data-i18n="hdr.kill"></span></span>
-    <span id="buildChip" class="hidden lg:inline-flex chip num text-violet-300 border-violet-400/30 shrink-0" title="نسخه واقعی از /api/health">v2.1.1 · core</span>
+    <span id="buildChip" class="hidden lg:inline-flex chip num text-violet-300 border-violet-400/30 shrink-0" title="نسخه واقعی از /api/health">v2.1.2 · core</span>
     <div class="ms-auto flex items-center gap-1.5 shrink-0">
       <span class="hidden xl:inline-flex chip num" id="clock">--:--:--</span>
       <span id="apiChip" class="hidden 2xl:inline-flex chip num text-zinc-400 border-white/10" title=""><i data-lucide="wifi-off" class="w-3.5 h-3.5"></i> <span>API: —</span></span>
@@ -2000,7 +2000,7 @@ const T = {
     'sg.noCandles':'کندلی برای این نماد در حافظه نیست', 'sg.close':'بستن',
     'sg.hdr':'رتبه‌بندی دنیای نوبیتکس', 'sg.scanned':'بدون داده', 'sg.cycle':'چرخه: بستن کندل ۱۵د',
     'sg.weights':'TA ۵۵٪ · FA ۲۵٪ · پروکسی گردش ۲۰٪ (در نبود FA: وزن‌ها بازتوزیع می‌شود)', 'sg.faCoverage':'بنیادی زنده: —', 'sg.last':'آخرین چرخه: —', 'sg.dataStale':'داده کهنه', 'sg.dataStaleWhy':'آخرین کندلِ این اسکن {bars} کندل عقب است؛ این رتبه‌بندی آن بازه را توصیف می‌کند، نه امروز را', 'sg.dataStaleNone':'کندلی برای سنجش سن نیست',
-    'sg.gatesEvidence':'شاهد تا امروز: {gate} — {n} حکم در {days} روز (کافی: {need} حکم در {needDays} روز)', 'sg.gatesEvidenceReady':'شاهد جمع شد: {gate} — {n} حکم در {days} روز؛ حکمِ خودِ شاهد را در /api/gates/evidence ببینید',
+    'sg.gatesEvidence':'شاهد تا امروز: {gate} — {n} حکم در {days} روز (کافی: {need} حکم در {needDays} روز)', 'sg.gatesEvidenceReady':'شاهد جمع شد: {gate} — {n} حکم در {days} روز؛ حکمِ خودِ شاهد را در /api/gates/evidence ببینید', 'sg.gatesEvidenceNone':'هنوز شاهد قابل‌سنجش نیست: {n} حکم ثبت شده، ولی همه «کتاب سفارش خوانده نشد» یا «قبول»‌اند — هیچ ردیفی قابل قضاوت دربارهٔ یک بلاک نیست',
     'sg.gatesChip':'دروازه‌ها (سایه): {blocked} از {rows}', 'sg.gatesWhy':'اگر دروازه‌ها عمل می‌کردند، {names}{more} حذف می‌شدند — چیزی حذف نشد', 'sg.gatesClean':'هیچ دروازه‌ای اعتراضی ندارد', 'sg.gatesUnknown':'{n} نماد را نمی‌شود سنجید (دفتری خوانده نشده)',
     'sg.gatesInputs':'ورودی: {books} دفتر از {rows} نماد (کهنه و دورریخته: {stale}) — پیرترین دفتر قابل‌استفاده {age} ثانیه از {ttl} ثانیه', 'sg.gatesPrefetch':'پیش‌واکشی این اسکن: {ok} از {asked} دفتر رسید، {failed} خطا',
     'sg.pairPremium':'پرمیوم تومانی هر سکه (از دو جفت خودش): میانه {bp} بیپ در {n} نماد — فقط اندازه‌گیری',
@@ -2312,7 +2312,7 @@ const T = {
     'sg.noCandles':'no candles for this symbol in memory', 'sg.close':'close',
     'sg.hdr':'Nobitex Universe Ranking', 'sg.scanned':'no data', 'sg.cycle':'Cycle: 15m candle close',
     'sg.weights':'TA 55% · FA 25% · turnover proxy 20% (weights renormalise when FA is missing)', 'sg.faCoverage':'Live FA: —', 'sg.last':'Last cycle: —', 'sg.dataStale':'stale data', 'sg.dataStaleWhy':'the newest candle in this scan is {bars} bars old; this ranking describes that window, not today', 'sg.dataStaleNone':'no candle to measure an age from',
-    'sg.gatesEvidence':'evidence so far: {gate} — {n} verdicts over {days} day(s) (needs {need} over {needDays})', 'sg.gatesEvidenceReady':'evidence collected: {gate} — {n} verdicts over {days} day(s); read its verdict at /api/gates/evidence',
+    'sg.gatesEvidence':'evidence so far: {gate} — {n} verdicts over {days} day(s) (needs {need} over {needDays})', 'sg.gatesEvidenceReady':'evidence collected: {gate} — {n} verdicts over {days} day(s); read its verdict at /api/gates/evidence', 'sg.gatesEvidenceNone':'no judgeable evidence yet: {n} verdict recorded, but all of them are “no book read” or “ok” — no row can be judged for or against a block',
     'sg.gatesChip':'gates (shadow): {blocked} of {rows}', 'sg.gatesWhy':'a gate would have removed {names}{more} — nothing was removed', 'sg.gatesClean':'no gate objects', 'sg.gatesUnknown':'{n} symbol(s) cannot be judged (no book read yet)',
     'sg.gatesInputs':'inputs: {books} book(s) of {rows} symbols ({stale} too old and dropped) — oldest usable book {age}s of {ttl}s', 'sg.gatesPrefetch':'prefetch this scan: {ok} of {asked} books arrived, {failed} failed',
     'sg.pairPremium':'each coin&#39;s own Toman premium (from its two legs): median {bp} bp over {n} symbols — measurement only',
@@ -3858,9 +3858,13 @@ function sgRenderGates(g){
     : '';
   // ADR-0022 stage 2: how much evidence the ledger has collected. A title line, not
   // a second chip — a sample still filling up is not a result, and the card should
-  // not dress it as one. The gate with the most verdicts is the one to report.
+  // not dress it as one. The judgeable gate with the most verdicts is the one to
+  // report: sorting the raw codes lands on whichever the feed failed to produce
+  // (`no-book`), which the exit rule refuses by definition.
   const led = (block.ledger && block.ledger.gates) || {};
-  const best = Object.keys(led).sort((a, b) => (led[b].verdicts || 0) - (led[a].verdicts || 0))[0];
+  const judgeable = Object.keys(led).filter(k => led[k].judgeable !== false);
+  const best = judgeable.sort((a, b) => (led[b].verdicts || 0) - (led[a].verdicts || 0))[0];
+  const unjudgeable = Object.keys(led).filter(k => led[k].judgeable === false);
   const lim = (block.ledger && block.ledger.limits) || {};
   const ev = best
     ? t(led[best].ready ? 'sg.gatesEvidenceReady' : 'sg.gatesEvidence')
@@ -3869,7 +3873,9 @@ function sgRenderGates(g){
         .replace('{days}', fmtNum(led[best].days || 0, 0))
         .replace('{need}', fmtNum(lim.min_verdicts || 30, 0))
         .replace('{needDays}', fmtNum(lim.min_days || 5, 0))
-    : '';
+    : (unjudgeable.length
+        ? t('sg.gatesEvidenceNone').replace('{n}', fmtNum(unjudgeable.reduce((s, k) => s + (led[k].verdicts || 0), 0), 0))
+        : '');
   // The note the server shipped with the block travels in the title, so the
   // "shadow only" sentence is never lost between the API and the screen.
   // ADR-0025 — the pair premium rides in the same title: one page, one artifact.
