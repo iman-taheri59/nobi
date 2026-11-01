@@ -2,6 +2,12 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 2.1.1
+
+- Five real failures in the advisory Windows job, all from tests I had written that assumed POSIX. `test_the_script_is_executable` checks the exec bit, which git does not carry on Windows; three others run `bash`, which Windows does not have (one of them also died with a `UnicodeDecodeError` in the output reader thread). All five are now guarded with the same `skipif` `test_deploy_tls_order.py` already uses. Measured with `bash` removed from PATH: 57 pass, 4 skip.
+- The evidence for the transient `ui` redness is recorded too: two consecutive runs of one commit stalled at **two different points** (`probe_live.py:498` and `mobile_header_test.py:99`), every one of the 68 measured layout values was correct, and the third run of the same commit was green. So it is flaky, not a regression — but the 60s login wait and the 30s sidebar wait no longer have room.
+- No data, order, setting, account or Live/Auto path changed; this release repairs tests.
+
 ## 2.1.0
 
 - A real bug in `scripts/update_arvan.sh`, surfaced by a run against a live host: the service-existence check used `grep -q` inside a pipeline, and under `set -o pipefail` that means exit **141 (SIGPIPE)** — `grep -q` exits the moment it matches, the writer upstream dies, and `pipefail` promotes the 141 to the pipeline's status. The result: **a unit that exists was reported as missing.** It now asks `systemctl show <unit> -p Id --value` — no pipeline, and non-zero when systemd does not know the unit. That is the same call the successful 2.0.3 upgrade tool used; the pattern was learned from it.

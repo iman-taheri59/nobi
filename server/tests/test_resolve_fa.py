@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import email.message
 import json
+import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -355,10 +357,18 @@ def test_a_failed_write_leaves_the_registry_intact(registry_backup, monkeypatch)
 # The CLI surface.
 # --------------------------------------------------------------------------- #
 
+@pytest.mark.skipif(
+    os.name != "posix",
+    reason="git does not carry the exec bit on Windows; the mode is a POSIX idea",
+)
 def test_the_script_is_executable() -> None:
     assert SCRIPT.stat().st_mode & 0o111
 
 
+@pytest.mark.skipif(
+    os.name != "posix" or shutil.which("bash") is None,
+    reason="the resolver is a shell script; running it needs a POSIX shell",
+)
 def test_help_explains_that_the_dashboard_never_calls_it() -> None:
     out = subprocess.run([sys.executable, str(SCRIPT), "--help"],
                          capture_output=True, text=True, encoding="utf-8", check=True).stdout

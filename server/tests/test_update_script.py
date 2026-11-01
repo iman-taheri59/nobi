@@ -53,6 +53,10 @@ def test_the_script_is_valid_bash() -> None:
     assert out.returncode == 0, out.stderr
 
 
+@pytest.mark.skipif(
+    os.name != "posix",
+    reason="git does not carry the exec bit on Windows; the mode is a POSIX idea",
+)
 def test_the_script_is_executable() -> None:
     assert SCRIPT.stat().st_mode & 0o111
 
@@ -73,6 +77,10 @@ def test_it_follows_the_installers_shape() -> None:
     assert _text().find('step "checking the machine"') < _text().find('step "updating the checkout"')
 
 
+@pytest.mark.skipif(
+    os.name != "posix" or shutil.which("bash") is None,
+    reason="the update script is bash; running it needs a POSIX shell",
+)
 def test_help_prints_only_the_header_comment() -> None:
     """The header is 19 comment lines; a 20th would leak `set -euo pipefail`."""
     out = subprocess.run(["bash", str(SCRIPT), "--help"], capture_output=True,
@@ -83,6 +91,10 @@ def test_help_prints_only_the_header_comment() -> None:
     assert "sudo bash scripts/update_arvan.sh" in out.stdout
 
 
+@pytest.mark.skipif(
+    os.name != "posix" or shutil.which("bash") is None,
+    reason="the update script is bash; running it needs a POSIX shell",
+)
 def test_an_unknown_argument_is_refused() -> None:
     out = subprocess.run(["bash", str(SCRIPT), "--bogus"], capture_output=True,
                          text=True, encoding="utf-8")
