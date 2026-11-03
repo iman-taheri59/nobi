@@ -198,7 +198,7 @@ def test_with_the_right_token_the_mutation_is_allowed(monkeypatch: pytest.Monkey
 
 
 # --------------------------------------------------------------------------- #
-# The VPC topology: nginx on one ابرک, the app on another (docs/deploy-arvan.md)
+# The VPC topology: nginx on one cloud VM, the app on another (docs/deploy-arvan.md)
 #
 # Nothing here is loopback any more — the peer is a 10.x address — so these
 # tests exist to prove the rule is about *trust*, not about the address family

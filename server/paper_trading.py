@@ -22,6 +22,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from fees import FEE_PCT  # re-exported: callers import it from here
 from money import NoRate, Rate
@@ -412,6 +413,102 @@ class PaperBroker:
             return 0.0, 0.0
         return cost / filled_qty, filled_qty
 
+    # --------- shared execution quote ----------
+    async def _execution_quote(self, symbol: str, side: str, qty: float,
+                               price: float | None, stop: float | None,
+                               tp1: float | None, tp2: float | None) -> dict[str, Any]:
+        """Price/round one candidate exactly as ``place_limit`` will.
+
+        This is the single source of truth for the market-fill estimate and the
+        unchanged-target geometry gate. It performs no account mutation and
+        writes no order event, so the queue can preview the same decision the
+        broker will enforce at submit time.
+        """
+        mid_at_submit = 0.0
+        execution = "market" if price is None else "limit"
+        if price is None:
+            mid = await self._mid_price(symbol)
+            mid_at_submit = float(mid)
+            px, filled_qty = await self._execution_price(symbol, side, qty)
+            if not px:
+                return {"reason": "no-depth", "fill_price": 0.0, "filled_qty": 0.0,
+                        "mid_at_submit": mid_at_submit, "execution": execution,
+                        "execution_rr": None, "stop": stop, "tp1": tp1, "tp2": tp2}
+            slip = px * SLIP_BPS / 10000
+            fill_price = px + slip if side == "buy" else px - slip
+        else:
+            fill_price = price
+            filled_qty = qty
+
+        filled_qty = truncate_amount(filled_qty, symbol)
+        fill_price = round_price(fill_price, symbol)
+        if filled_qty <= 0 or fill_price <= 0:
+            return {"reason": "precision", "fill_price": fill_price, "filled_qty": filled_qty,
+                    "mid_at_submit": mid_at_submit, "execution": execution,
+                    "execution_rr": None, "stop": stop, "tp1": tp1, "tp2": tp2}
+
+        stop_px = stop if stop is not None else fill_price * (0.96 if side == "buy" else 1.04)
+        tp1_px = tp1 if tp1 is not None else fill_price * (1.04 if side == "buy" else 0.96)
+        tp2_px = tp2 if tp2 is not None else fill_price * (1.06 if side == "buy" else 0.94)
+        reason, execution_rr = _execution_plan_error(side, fill_price, stop_px, tp1_px, tp2_px)
+        return {"reason": reason, "fill_price": fill_price, "filled_qty": filled_qty,
+                "mid_at_submit": mid_at_submit, "execution": execution,
+                "execution_rr": execution_rr, "stop": stop_px, "tp1": tp1_px, "tp2": tp2_px}
+
+    async def execution_preview(self, symbol: str, side: str, qty: float,
+                                stop: float | None = None, tp1: float | None = None,
+                                tp2: float | None = None,
+                                price: float | None = None) -> dict[str, Any]:
+        """Read-only executable preview for the approval queue.
+
+        ``executable`` is a point-in-time statement about depth, precision and
+        TP2 geometry, not a reservation. The broker still re-runs every gate at
+        submit. Missing/invalid inputs fail closed.
+        """
+        as_of = time.time()
+        base = {
+            "symbol": symbol.upper(), "side": side, "as_of": as_of,
+            "plan_entry": None, "execution_entry": None, "execution_rr": None,
+            "min_rr": MIN_RR, "depth_ok": False, "depth_sufficient": False,
+            "requested_qty": float(qty) if math.isfinite(qty) else None,
+            "filled_qty": None, "executable": False, "blocked_by": None,
+            "stop": stop, "tp1": tp1, "tp2": tp2,
+        }
+        if side not in ("buy", "sell") or not math.isfinite(qty) or qty <= 0:
+            return {**base, "blocked_by": "execution-plan-invalid"}
+        if self.halted or getattr(self.risk, "halted", False):
+            return {**base, "blocked_by": "halted"}
+        if len([p for p in self.positions.values() if p.state != "CLOSED"]) >= self.concurrent_limit:
+            return {**base, "blocked_by": "concurrent-cap"}
+        if not self.cash:
+            return {**base, "blocked_by": "no-cash"}
+        if market_closed_hook and market_closed_hook(symbol):
+            return {**base, "blocked_by": "market-closed"}
+        try:
+            quote = await self._execution_quote(symbol, side, qty, price, stop, tp1, tp2)
+        except Exception as exc:  # preview must fail closed, not raise
+            log.warning("execution preview unavailable for %s: %s", symbol, exc)
+            return {**base, "blocked_by": "execution-preview-unavailable"}
+        fill_price = float(quote.get("fill_price") or 0.0)
+        filled_qty = float(quote.get("filled_qty") or 0.0)
+        depth_ok = price is not None or (fill_price > 0 and filled_qty > 0)
+        out = {
+            **base,
+            "plan_entry": price,
+            "execution_entry": fill_price if fill_price > 0 else None,
+            "execution_rr": quote.get("execution_rr"),
+            "depth_ok": depth_ok,
+            "depth_sufficient": price is not None or filled_qty >= qty - 1e-12,
+            "filled_qty": filled_qty if filled_qty > 0 else None,
+            "stop": quote.get("stop"), "tp1": quote.get("tp1"), "tp2": quote.get("tp2"),
+            "execution": quote.get("execution"),
+            "mid_at_submit": quote.get("mid_at_submit") or None,
+        }
+        reason = quote.get("reason")
+        if reason:
+            return {**out, "executable": False, "blocked_by": reason}
+        return {**out, "executable": True, "blocked_by": None}
+
     # --------- order lifecycle ----------
     async def place_limit(self, symbol: str, side: str, qty: float, price: float | None = None,
                           stop: float | None = None, tp1: float | None = None,
@@ -432,39 +529,28 @@ class PaperBroker:
             self.orders.append(OrderEvent(time.time(), "reject", symbol, side, qty, price or 0, {"reason": "no-cash"}))
             return None
 
-        # walk the book to estimate fill price (model slippage via SLIP_BPS)
-        mid_at_submit = 0.0
-        execution = "market" if price is None else "limit"
-        if price is None:
-            mid = await self._mid_price(symbol)
-            mid_at_submit = float(mid)
-            px, filled_qty = await self._execution_price(symbol, side, qty)
-            if not px:
-                self.last_error = "no-depth: orderbook has no liquidity"
-                self.orders.append(OrderEvent(time.time(), "reject", symbol, side, qty, mid, {"reason": "no-depth"}))
-                return None
-            slip = px * SLIP_BPS / 10000
-            fill_price = px + slip if side == "buy" else px - slip
-        else:
-            fill_price = price
-            filled_qty = qty
-
-        # The exchange truncates amounts to the market's amount precision and
-        # rejects prices off the tick; a fill for 0.0000001234 BTC at a price the
-        # book cannot quote is a fill the exchange would never print.
-        filled_qty = truncate_amount(filled_qty, symbol)
-        fill_price = round_price(fill_price, symbol)
-        if filled_qty <= 0 or fill_price <= 0:
+        # One shared quote path for preview and submit: same book walk, slip,
+        # precision, omitted-level defaults and TP2 geometry gate.
+        quote = await self._execution_quote(symbol, side, qty, price, stop, tp1, tp2)
+        mid_at_submit = float(quote.get("mid_at_submit") or 0.0)
+        execution = str(quote.get("execution") or ("market" if price is None else "limit"))
+        fill_price = float(quote.get("fill_price") or 0.0)
+        filled_qty = float(quote.get("filled_qty") or 0.0)
+        reason = quote.get("reason")
+        if reason == "no-depth":
+            self.last_error = "no-depth: orderbook has no liquidity"
+            self.orders.append(OrderEvent(time.time(), "reject", symbol, side, qty,
+                                          mid_at_submit, {"reason": "no-depth"}))
+            return None
+        if reason == "precision":
             self.last_error = f"precision: {symbol} qty rounds to zero at the amount step"
             self.orders.append(OrderEvent(time.time(), "reject", symbol, side, qty, fill_price,
                                           {"reason": "precision"}))
             return None
-        # Resolve only omitted levels. Explicit zero/NaN must not silently
-        # become a default. Never move submitted targets to make a fill pass.
-        stop_px = stop if stop is not None else fill_price * (0.96 if side == "buy" else 1.04)
-        tp1_px = tp1 if tp1 is not None else fill_price * (1.04 if side == "buy" else 0.96)
-        tp2_px = tp2 if tp2 is not None else fill_price * (1.06 if side == "buy" else 0.94)
-        reason, execution_rr = _execution_plan_error(side, fill_price, stop_px, tp1_px, tp2_px)
+        stop_px = float(quote["stop"])
+        tp1_px = float(quote["tp1"])
+        tp2_px = float(quote["tp2"])
+        execution_rr = quote.get("execution_rr")
         if reason:
             detail = (f"{reason}: {side} entry={fill_price}, stop={stop_px}, "
                       f"tp1={tp1_px}, tp2={tp2_px}; TP2 R:R must be >= {MIN_RR}")
@@ -595,35 +681,69 @@ class PaperBroker:
         return pos
 
     async def _close(self, pos_id: str, reason: str):
+        """Exit as much of the open leg as the book actually supports.
+
+        A thin exit book must not turn a partial sale into a full close. The
+        sold fraction releases its proportional cost basis and realizes only
+        its own PnL; any residual stays open, keeps its proportional risk
+        budget, and can be retried by the next evaluation. Only a zero residual
+        writes CLOSED/closed_at/close_reason.
+        """
         pos = self.positions.get(pos_id)
         if not pos or pos.state == "CLOSED":
             return
-        spx, sold_qty = await self._execution_price(pos.symbol, "sell" if pos.side == "buy" else "buy", pos.filled_qty)
+        open_qty = float(pos.filled_qty)
+        if open_qty <= 0:
+            return
+        spx, sold_qty = await self._execution_price(pos.symbol, "sell" if pos.side == "buy" else "buy", open_qty)
         if not spx or sold_qty <= 0:
-            self.orders.append(OrderEvent(time.time(), "reject", pos.symbol, pos.side, pos.filled_qty, 0,
+            self.orders.append(OrderEvent(time.time(), "reject", pos.symbol, pos.side, open_qty, 0,
                                           {"reason": "revert-failed",
                                            "clientOrderId": pos.client_order_id}))
             return
+        sold_qty = min(float(sold_qty), open_qty)
+        fraction = sold_qty / open_qty
         notional_out = spx * sold_qty
         rate = self._pos_rate(pos)
         fee_out = notional_out * FEE_PCT
         fee_out_usd = fee_out / rate
+        cost_basis_quote = pos.size_quote * fraction
+        cost_basis_usd = pos.size_usd * fraction
         if pos.side == "buy":
-            pnl_net = (notional_out - pos.size_quote) / rate - fee_out_usd
-            self.cash += pos.size_usd + pnl_net
+            pnl_net = (notional_out - cost_basis_quote) / rate - fee_out_usd
         else:
-            pnl_net = (pos.entry_price - spx) * sold_qty / rate - fee_out_usd
-            self.cash += pos.size_usd + pnl_net
-        self.risk.open_heat = max(0.0, round(getattr(self.risk, "open_heat", 0.0) - pos.risk_pct, 4))
+            pnl_net = (cost_basis_quote - notional_out) / rate - fee_out_usd
+        self.cash += cost_basis_usd + pnl_net
+
+        pos.filled_qty = max(0.0, open_qty - sold_qty)
+        pos.size_quote = max(0.0, pos.size_quote - cost_basis_quote)
+        pos.size_usd = max(0.0, pos.size_usd - cost_basis_usd)
+        pos.realized_pnl += pnl_net
         pos.last_price = spx
-        pos.realized_pnl = pnl_net
-        pos.closed_at = time.time()
-        pos.state = "CLOSED"
-        pos.close_reason = reason
+
+        # Floating-point dust is not an open position. The relative term keeps
+        # large base-asset quantities from leaving a meaningless residual.
+        residual_is_dust = pos.filled_qty <= max(1e-9, open_qty * 1e-12)
+        if residual_is_dust:
+            pos.filled_qty = 0.0
+            pos.size_quote = 0.0
+            pos.size_usd = 0.0
+            pos.state = "CLOSED"
+            pos.closed_at = time.time()
+            pos.close_reason = reason
+            kind = "close"
+        else:
+            pos.state = "PARTIAL"
+            kind = "partial"
+
+        # _mark_equity_minute recomputes open heat from the remaining fraction;
+        # subtracting the full entry risk here would double-release partial legs.
         self._mark_equity_minute()
-        self.orders.append(OrderEvent(time.time(), "close", pos.symbol, pos.side, sold_qty, spx,
+        self.orders.append(OrderEvent(time.time(), kind, pos.symbol, pos.side, sold_qty, spx,
                                       {"reason": reason, "pnl": pnl_net, "fee": fee_out,
-                                       "risk": pos.risk_usd, "clientOrderId": pos.client_order_id}))
+                                       "risk": pos.risk_usd, "clientOrderId": pos.client_order_id,
+                                       "requested_exit_qty": open_qty,
+                                       "remaining_open": pos.filled_qty}))
         self.save()
 
     async def evaluate_positions(self):
@@ -701,7 +821,7 @@ class PaperBroker:
 
     # --------- metrics ----------
     def metrics(self) -> dict:
-        realized = [e for e in self.orders if e.kind in ("tp1", "close")]
+        realized = [e for e in self.orders if e.kind in ("tp1", "partial", "close")]
         pnl_list = [e.extra.get("pnl", 0) for e in realized]
         # R-multiple = realised PnL / the amount that was at risk on entry.
         r_mult = [p / e.extra.get("risk", 0) for p, e in zip(pnl_list, realized, strict=True) if e.extra.get("risk")]

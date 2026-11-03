@@ -45,8 +45,8 @@ POLL_S = max(1.0, float(os.getenv("NBX_STREAM_POLL_S", "5")))
 #: an opted-in WebSocket could connect and then receive nothing forever.
 WS_CHANNEL_PREFIX = os.getenv("NBX_WS_CHANNEL_PREFIX", "public:orderbook-")
 
-#: One channel carries every market's 24h statistics (docs §websocket, "کانال
-#: وضعیت تمامی بازارها"). Subscribing to it once beats N per-symbol channels and
+#: One channel carries every market's 24h statistics (docs §websocket, the
+#: "all-market status" channel). Subscribing to it once beats N per-symbol channels and
 #: is what keeps the *closed* flag and the last price current between REST polls.
 WS_STATS_CHANNEL = "public:market-stats-all"
 WS_STATS_PREFIX = "public:market-stats-"

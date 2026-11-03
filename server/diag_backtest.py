@@ -1,7 +1,7 @@
 """
-手动诊断 بک‌تست — اجرا کنید:
+Manual backtest diagnostics — run:
     python -m diag_backtest
-خروجی با جزئیات هر متغیری که احتمال می‌رود fail رخ دهد، چاپ می‌کند.
+Prints detailed output for every variable that could plausibly cause a failure.
 """
 import asyncio
 import traceback

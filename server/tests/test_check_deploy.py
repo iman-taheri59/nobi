@@ -5,7 +5,7 @@ standing between a user and a false "ok". It used to say "ok" for any address
 that was not 0.0.0.0, which would have blessed an app listening on a *public*
 IP. These tests pin the table down.
 
-The classification is also the VPC case: nginx on a second ابرک reaches the app
+The classification is also the VPC case: nginx on a second cloud VM reaches the app
 on a 10.x address, and that is legitimate — but only if a proxy is configured
 and the subnet is not reachable from the internet.
 """
@@ -40,7 +40,7 @@ _spec.loader.exec_module(check_deploy)
     ("172.16.4.2", "private"),
     ("172.31.255.1", "private"),
     ("192.168.1.10", "private"),
-    # a public address of this very ابرک
+    # a public address of this very cloud VM
     ("185.143.234.10", "public"),
     ("2a01:5ec0::1", "public"),
     # neither: link-local and garbage must not be called "private"
@@ -100,7 +100,7 @@ def test_loopback_bind_is_ok(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_private_bind_with_proxy_is_ok(monkeypatch: pytest.MonkeyPatch) -> None:
-    """nginx on a second ابرک: the app on 10.x with a trusted proxy is correct."""
+    """nginx on a second cloud VM: the app on 10.x with a trusted proxy is correct."""
     _ss_run(monkeypatch, "10.0.0.5:8000")
     monkeypatch.setenv("NBX_TRUSTED_PROXIES", "10.0.0.4")
     assert check_deploy.check_bind()["status"] == "ok"

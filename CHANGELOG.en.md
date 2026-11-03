@@ -2,6 +2,48 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 2.2.2
+
+- The approval queue no longer hides candidates refused by the execution preview: a separate “Filtered candidates (not approvable)” section shows the symbol, rank/score, plan entry, execution entry, execution `R:TP2`, minimum `R:R`, refusal reason (sanitized code plus translated label), absolute expiry, and remaining TTL. The section contains no buttons, inputs, links, or approve/reject/edit controls, and its ids never enter the approvable queue or the order-submission path.
+- The “no approvable candidate right now” message now points at the filtered section so an empty queue is not mistaken for “no signals were produced”. Missing numbers render as `—` instead of fabricated zeros, and unsafe reason codes fall back to `execution-blocked`.
+- Filtered rows repaint expiry and 20-second preview staleness on the queue tick; expired rows are kept visible as expired rather than pruned. Stale asynchronous responses cannot resurrect the section after a newer scan.
+- Added `scripts/test_queue_filtered.cjs` to `test:queue`, covering both `index.html` and `nobitex-mobile.html` in Persian/English for non-actionability, absence of controls, missing numbers, hostile reason escaping, expiry, staleness, clearing, and response races.
+- This release is diagnostic/UI only: `MIN_RR`, the execution preview, sizing, targets, server behavior, Live/Auto, and real orders are unchanged, and nothing was deployed.
+
+## 2.2.1
+
+- Added a text-only source transfer package under `deploy/transfer-2.2.1/` for operator-controlled server transfer when individual workspace files cannot be downloaded. It carries a base64 source archive, archive checksum, source manifest, and extraction instructions; it contains no live data, env, database, paper state, or private keys.
+- Added `deploy/nginx-capoy.ir.conf`, merged from the operator-provided live `capoy.ir` site file: it preserves the upstream/TLS/ACME/log/timeouts, repeats the full `X-Forwarded-*` set in every proxied location, hides upstream security headers, and adds one edge copy with `always`.
+- `location = /` and `/assets/` now repeat the full security-header and `proxy_hide_header` sets; dashboard `Cache-Control` is a single `no-store` value and assets are a single `public, max-age=604800, immutable` value. HSTS is added only in the HTTPS block.
+- Added structural tests for the capoy.ir-specific config so nginx inheritance, duplicate-header removal, TLS/ACME preservation, and bearer-token non-stripping do not regress. This file is not installed on the server by this release.
+
+## 2.2.0
+
+- A partial exit in the paper broker no longer closes the whole position by mistake: when the order book can only buy/sell part of the open quantity, that fraction settles against its proportional cost basis and fee, and the residual stays open as `PARTIAL`.
+- A new `partial` exit event is retained in order history; `remaining_open`, `retained_exit_qty`, recorded PnL, and open risk budget now agree with the quantity actually exited. A full close is recorded only when the residual is zero (or floating-point dust).
+- Realized PnL accumulates across multi-stage exits instead of the final stage replacing earlier stages. The `/api/paper/orders` projection and paper metrics recognize `partial` as a retained exit event.
+- Regression tests cover thin depth, full depth, sell-side exits, the next evaluation tick, restart, order projection, and metrics.
+- The bump to `2.2.0` is due both to the PATCH ceiling on the `2.1.x` line and to the paper exit-accounting behavior change. This release places no real order, changes no Live/Auto mode, and performs no automatic deployment.
+
+## 2.1.10
+
+- Translated non-English code comments and docstrings across Python/JS/HTML/CSS/shell/systemd into English; UI strings, Persian user-facing messages, i18n tables, and Persian test expectations were left unchanged.
+- Added English versions of the analysis/review reports (`nobi-review`, `capoy-review`, `capoy-auth-review`, `capoy-owner-probe-guide`, `nobi-desk-queue-review`, `capoy-owner-probe-analysis`) as `*.en.md` files, plus English twins for the technical/fundamental analysis catalogues under `docs/analysis/`.
+- Added language switchers and structural parity tests for the translated reports/catalogues, and corrected the stale lint comment that still described code comments as Persian.
+- Added a bilingual controlled-deployment checklist for `2.1.10` (`docs/upgrade-2.1.10*.md`) covering backup, env/nginx installation, restart, read-only verification, and rollback, plus a critical-file checksum manifest (`deploy/upgrade-2.1.10.files`). It authorizes no deployment by itself.
+- This release makes no runtime behavior change, deployment, real order, or Live/Auto change.
+
+## 2.1.9
+
+- Session/CSRF cookies on public HTTPS deployments no longer depend on nginx header inheritance: `NBX_COOKIE_SECURE=always` keeps both cookies Secure even when the app sees plain HTTP on loopback; unknown values fail closed instead of weakening. `auto` remains for local HTTP development.
+- Browser security headers (`X-Content-Type-Options`, `Referrer-Policy`, `X-Frame-Options`, `Content-Security-Policy: frame-ancestors 'none'`, and HSTS on HTTPS) are applied by both app middleware and the nginx edge; nginx hides the upstream copy so headers are not duplicated. API/docs responses default to `private, no-store`.
+- `deploy/nginx.conf` repeats the full `X-Forwarded-*` set in every proxied location, because nginx does not inherit server-level proxy headers into a location that defines its own `proxy_set_header`.
+- Fixed `zip() argument 2 is longer than argument 1` on `/api/v1/signal-intelligence/drift/cohorts?mode=global`; dimensionless global mode also no longer emits a phantom empty cohort.
+- The approval queue now receives a read-only execution preview from the same paper-broker quote path used at submit: execution price, depth, precision and TP2 geometry with the same `MIN_RR`. Queue reward/risk is now `R:TP2` at the execution entry, not `R:TP1` at the stale plan close.
+- Rows whose execution preview is `executable:false` are not offered at scan time and their Approve button is disabled; the execution preview has a 20-second display TTL and the queue tick repaints staleness. Editing levels requests fresh capacity and execution previews with `tp1/tp2`.
+- A definite broker refusal after submit retires that candle instead of inviting an immediate retry, while keeping the reason in audit/Orders; unknown outcomes remain locked and are not automatically retried.
+- Added regression tests for cookies/headers, nginx, global drift, preview/submit parity, and queue behaviour. This release performs no deployment, real order, or Live/Auto change.
+
 ## 2.1.8
 
 - The last piece of noise in the preflight is gone: after `--verify` read the NBX_* values from `/etc/nobi/nobi.env` and passed them along, the checker still opened that file itself and, because the `nobi` user could not, printed "unreadable config file" on an otherwise fully green preflight. When the values arrived through the environment, the note is now suppressed — nothing was missing.

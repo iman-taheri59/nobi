@@ -114,6 +114,11 @@ def test_plan_clock_matches_exact_tf_signal_not_last_scanned_cache(wired):
     assert data.headers["cache-control"] == "private, no-store, max-age=0"
     assert data.json()["entry"] == 100
     assert data.json()["approval"]["expires_at"] == BAR + 1800
+    execution = data.json()["execution"]
+    assert execution["executable"] is True
+    assert execution["plan_entry"] == 100
+    assert execution["execution_entry"] > 100  # book walk + slip, not the stale close
+    assert execution["execution_rr"] >= execution["min_rr"]
     assert (
         TestClient(main.app).get("/api/health").headers["cache-control"]
         == "private, no-store, max-age=0"

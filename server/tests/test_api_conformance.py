@@ -707,7 +707,7 @@ def test_risk_state_reports_the_account_the_gates_use(tmp_path, monkeypatch):
 # Execution mode: auto / semi / manual
 # --------------------------------------------------------------------------- #
 def test_exec_mode_is_server_state_and_survives_a_round_trip(tmp_path, monkeypatch):
-    """The mode used to be a browser string: «خودکار» changed a chip and a toast
+    """The mode used to be a browser string: clicking "auto" changed a chip and a toast
     and nothing read it, while a hard-coded `symMode` table overrode the human's
     per-symbol choice. It now lives on the server, and this test reads it back
     through the same route the page calls."""

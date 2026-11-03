@@ -428,7 +428,7 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(
     title="nobiTrader",
-    version="2.1.8",
+    version="2.2.2",
     lifespan=lifespan,
 )
 
@@ -531,6 +531,30 @@ async def no_cache_queue_clocks(request: Request, call_next):
     response = await call_next(request)
     if request.url.path in {"/api/health", "/api/risk/plan"}:
         response.headers["Cache-Control"] = "private, no-store, max-age=0"
+    return response
+
+
+@app.middleware("http")
+async def response_hardening(request: Request, call_next):
+    """Apply browser security headers on every response, not only nginx locations.
+
+    The app also runs without nginx (local dev, standalone download, tests), so
+    frame/MIME/referrer protection cannot depend on proxy ``add_header``
+    inheritance. HSTS is emitted only when the client transport is HTTPS.
+    Authenticated/API JSON is private and uncacheable by default.
+    """
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("Referrer-Policy", "same-origin")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Content-Security-Policy", "frame-ancestors 'none'")
+    if identity.transport_is_https(request):
+        response.headers.setdefault("Strict-Transport-Security", "max-age=31536000")
+    path = request.url.path
+    if path.startswith("/api/") or path in {"/openapi.json", "/docs", "/redoc"}:
+        cache = response.headers.get("Cache-Control", "")
+        if "no-store" not in cache.lower():
+            response.headers["Cache-Control"] = "private, no-store, max-age=0"
     return response
 
 
@@ -3124,6 +3148,14 @@ async def risk_plan(
         equity_quote=equity_quote,
         preview=True,
     )
+    execution = None
+    if approval and not plan.blocked and plan.size_quote > 0 and s["lastClose"] > 0:
+        broker = get_broker(EQUITY, client, risk)
+        execution = await broker.execution_preview(
+            symbol, side, plan.size_quote / float(s["lastClose"]),
+            stop=plan.stop, tp1=plan.tp1, tp2=plan.tp2,
+        )
+        execution["plan_entry"] = float(s["lastClose"])
     return {
         "symbol": symbol.upper(),
         "side": side,
@@ -3133,7 +3165,7 @@ async def risk_plan(
         "fx": rate.to_dict(),
         "equity_quote": round(equity_quote, 2),
         "healthHeat": risk.open_heat,
-        **({"approval": context} if approval else {}),
+        **({"approval": context, "execution": execution} if approval else {}),
         **provenance(),
     }
 
@@ -3262,6 +3294,15 @@ async def risk_whatif(payload: dict, request: Request):
         market_closed=sym in _cached["closed_markets"],
     )
     out = pf.summary()
+    execution = None
+    if body.get("execution_preview"):
+        execution = await br.execution_preview(
+            sym, side, qty,
+            stop=stop,
+            tp1=float(body["tp1"]) if body.get("tp1") is not None else None,
+            tp2=float(body["tp2"]) if body.get("tp2") is not None else None,
+        )
+        execution["plan_entry"] = entry
     audit(
         "risk.whatif",
         actor="ui",
@@ -3283,6 +3324,7 @@ async def risk_whatif(payload: dict, request: Request):
         "sized_by": sized_by,
         "atr_source": "signal" if atr > 0 else "none",
         "projection": out,
+        **({"execution": execution} if execution is not None else {}),
         **provenance(),
     }
 
@@ -3991,12 +4033,12 @@ def _order_rows(broker, limit: int = 100) -> list[dict]:
             if mid > 0 and ev.price:
                 row["slip_bps"] = round((float(ev.price) - mid) / mid * 10_000, 2)
                 row["adverse_slip_bps"] = row["slip_bps"] * (-1 if ev.side == "sell" else 1)
-        elif ev.kind in ("tp1", "close"):
+        elif ev.kind in ("tp1", "partial", "close"):
             row["retained_exit_qty"] += float(ev.qty or 0)
             row["retained_exit_fees_quote"] += float(ev.extra.get("fee") or 0)
             if ev.extra.get("pnl") is not None:
                 row["pnl_usd"] = float(row["pnl_usd"] or 0) + float(ev.extra["pnl"])
-            row["state"] = "PARTIAL" if ev.kind == "tp1" else "CLOSED"
+            row["state"] = "CLOSED" if ev.kind == "close" else "PARTIAL"
             if ev.kind == "close":
                 row["closed_at"] = ev.ts
                 row["close_reason"] = ev.extra.get("reason")
@@ -4010,6 +4052,10 @@ def _order_rows(broker, limit: int = 100) -> list[dict]:
                     "gate_value",
                     "gate_limit",
                     "stop",
+                    "tp1",
+                    "tp2",
+                    "rr",
+                    "min_rr",
                     "risk_pct",
                     "equity_usd",
                     "quote_rate",

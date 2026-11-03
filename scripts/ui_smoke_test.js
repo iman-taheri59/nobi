@@ -174,7 +174,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   }
 
   // Render a full shaped report through the page's own renderer and read the
-  // gate bar. A broken template used to leak `(LANG==='fa'?'٪':'%')` into the
+  // gate bar. A broken template used to leak the raw locale-percent ternary into the
   // bar as literal text — visible to the user, invisible to every gate.
   let barText = '', barLeak = null;
   if (typeof window.btRender === 'function') {
@@ -360,7 +360,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   if (!/تنظیم‌نشده|not configured/i.test(report.telegramChip)) {
     problems.push(`telegram chip is not honest: "${report.telegramChip}"`);
   }
-  // Persian digits; a live void row makes this "۱" (see the 2026-10-19 run).
+  // Persian digits; a live void row makes this a single digit (see the 2026-10-19 run).
   if (!/^[\u06F0-\u06F9\u0660-\u06690-9٬,]+$/.test(report.pVoid)) problems.push(`#pVoid is not a number: "${report.pVoid}"`);
   if (/^\s*\w+\.\w+\s*$/.test(report.msiBadge)) problems.push(`MSI badge is an untranslated key: ${report.msiBadge}`);
   if (/msi\.(realized|reference|samples)/.test(report.msiMsg)) problems.push('MSI message leaks untranslated i18n keys');

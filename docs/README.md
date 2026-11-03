@@ -2,7 +2,7 @@
 
 **فارسی** · [English](README.en.md)
 
-نسخهٔ کاری: **2.1.8**. راهنمای [نسخه‌بندی و انتشار GitHub](releases.md) ([English](releases.en.md)) و [تاریخچهٔ تغییرات](../CHANGELOG.md) ([English](../CHANGELOG.en.md)).
+نسخهٔ کاری: **2.2.2**. راهنمای [نسخه‌بندی و انتشار GitHub](releases.md) ([English](releases.en.md)) و [تاریخچهٔ تغییرات](../CHANGELOG.md) ([English](../CHANGELOG.en.md)).
 
 ## نقشهٔ مستندات
 
@@ -17,7 +17,7 @@
 | بفهمی چرا معماری این‌طور است | [`adr/`](adr) — ۱۸ ADR، هر کدام فارسی و انگلیسی |
 | ببینی کدام تصمیم واقعاً پیاده شده | [`adr/README.md`](adr/README.md) — جدول وضعیت با شاهد کد |
 | بدانی آخرین بار چه چیزی تأیید شد و چه چیزی نه | [`reviews/`](reviews) |
-| بدانی موتورهای تحلیل امروز چه چیزی را واقعاً محاسبه می‌کنند | [`analysis/`](analysis) — کاتالوگ + جدول «پیاده‌شده / فقط کاتالوگ» |
+| بدانی موتورهای تحلیل امروز چه چیزی را واقعاً محاسبه می‌کنند | [`analysis/`](analysis) — کاتالوگ + جدول «پیاده‌شده / فقط کاتالوگ»: [تکنیکال](analysis/technical-analysis-capabilities.md) ([English](analysis/technical-analysis-capabilities.en.md)) · [فاندامنتال](analysis/fundamental-analysis-capabilities.md) ([English](analysis/fundamental-analysis-capabilities.en.md)) |
 | سرور ارزان برای تست انتخاب کنی | [`ops/`](ops) |
 | پروژه را روی ابر آروان (ابرک اوبونتو) نصب کنی | [`deploy-arvan.md`](deploy-arvan.md) — گام‌به‌گام + `scripts/deploy_arvan.sh` + `scripts/check_deploy.py` |
 | یک راهنمای جامع و بهروز برای استقرار آروان بخواهی | [`deploy-arvan-cloud.md`](deploy-arvan-cloud.md) — معماری، DNS/فایروال، TLS، بکاپ، عیبیابی و چکلیست |
@@ -81,6 +81,7 @@
 | README ریشه | [`../README.md`](../README.md) | [`../README.en.md`](../README.en.md) |
 | نقشهٔ مستندات | همین فایل | [`README.en.md`](README.en.md) |
 | نسخه‌بندی و انتشار | [`releases.md`](releases.md) | [`releases.en.md`](releases.en.md) |
+| چک‌لیست استقرار کنترل‌شده 2.1.10 | [`upgrade-2.1.10.md`](upgrade-2.1.10.md) | [`upgrade-2.1.10.en.md`](upgrade-2.1.10.en.md) |
 | تاریخچهٔ تغییرات | [`../CHANGELOG.md`](../CHANGELOG.md) | [`../CHANGELOG.en.md`](../CHANGELOG.en.md) |
 | ADR-0001 … ADR-0018 | [`adr/fa/`](adr/fa) | [`adr/en/`](adr/en) |
 | سرور رایگان تست | [`ops/fa/`](ops/fa) | [`ops/en/`](ops/en) |
@@ -94,7 +95,8 @@
 | شاهد خارج‌از‌نمونه | [`evidence.md`](evidence.md) | [`evidence.en.md`](evidence.en.md) |
 | تنظیم نردبان سود (`NBX_RR_LEVELS`) | [`rr-ladder-tuning.md`](rr-ladder-tuning.md) | [`rr-ladder-tuning.en.md`](rr-ladder-tuning.en.md) |
 | نقشهٔ قابلیت‌ها | [`roadmap/fa/`](roadmap/fa) | **در انتظار** |
-| کاتالوگ موتورها | [`analysis/`](analysis) | **در انتظار** |
+| کاتالوگ تحلیل تکنیکال | [`analysis/technical-analysis-capabilities.md`](analysis/technical-analysis-capabilities.md) | [`analysis/technical-analysis-capabilities.en.md`](analysis/technical-analysis-capabilities.en.md) |
+| کاتالوگ تحلیل فاندامنتال | [`analysis/fundamental-analysis-capabilities.md`](analysis/fundamental-analysis-capabilities.md) | [`analysis/fundamental-analysis-capabilities.en.md`](analysis/fundamental-analysis-capabilities.en.md) |
 | بازبینی‌ها (تاریخ‌دار) | [`reviews/`](reviews) | فقط عکس لحظه‌ای — عمداً ترجمه نمی‌شود |
 
 «در انتظار» یک وضعیت صادقانه است، نه یک وعده: این سندها امروز فقط فارسی‌اند و ترجمه‌ای

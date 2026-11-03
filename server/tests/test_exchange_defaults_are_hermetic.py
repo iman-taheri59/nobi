@@ -13,7 +13,7 @@ app's lifespan (`with TestClient(main.app)`), the lifespan fetches `/v2/options`
 and `apply_options()` writes the *live* minimums (100,000 Rial / 1 USDT) over the
 documented ones (3,000,000 Rial / 11 USDT) — process-wide, for every test that runs
 afterwards. With 1 USDT as the floor, an order worth $7.30 is perfectly legal, so
-the broker filled it and the tests that断言ed a refusal failed three files away
+the broker filled it and the tests that asserted a refusal failed three files away
 from the change.
 
 The suite is now order-independent (conftest restores the tables after every test)

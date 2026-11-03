@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install the Nobi dashboard on an ArvanCloud ابرک (Ubuntu 24.04).
+# Install the Nobi dashboard on an ArvanCloud cloud VM (Ubuntu 24.04).
 #
 # This script is deliberately boring: it installs packages, creates a user, a
 # venv, a data directory, a systemd unit and an nginx site — then *stops* and

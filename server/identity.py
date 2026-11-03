@@ -21,8 +21,12 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import logging
+import os
 
 import auth
+
+log = logging.getLogger("nbx-identity")
 
 SESSION_COOKIE = "nbx_session"
 CSRF_COOKIE = "nbx_csrf"
@@ -37,15 +41,30 @@ def session_of(request) -> auth.Session | None:
     return auth.session_from_token(token)
 
 
-def is_secure(request) -> bool:
-    """HTTPS as the *client* experienced it, which is what the browser checks.
+def cookie_secure_mode() -> str:
+    """``auto`` detects TLS; ``always`` is the production fail-closed override.
+
+    A public HTTPS deployment behind a proxy must not depend on a forwarded
+    header being inherited by every nginx location. ``NBX_COOKIE_SECURE=always``
+    keeps both cookies Secure even if the app sees plain HTTP on loopback.
+    Unknown values fail closed to ``always`` rather than silently weakening.
+    """
+    raw = os.getenv("NBX_COOKIE_SECURE", "auto").strip().lower()
+    if raw in ("", "auto"):
+        return "auto"
+    if raw == "always":
+        return "always"
+    log.warning("identity: unknown NBX_COOKIE_SECURE=%r; failing closed to 'always'", raw)
+    return "always"
+
+
+def transport_is_https(request) -> bool:
+    """HTTPS as the *client* experienced it, without the cookie policy override.
 
     ``X-Forwarded-Proto`` is only believable from a peer named in
     ``NBX_TRUSTED_PROXIES`` — the same rule ``security.client_host`` applies to
-    ``X-Forwarded-For``. Previously any client could send
-    ``X-Forwarded-Proto: http`` on an HTTPS login and receive a session cookie
-    without the ``Secure`` flag. A forged ``https`` from an untrusted peer can
-    only make the cookie stricter, never weaker.
+    ``X-Forwarded-For``. A forged ``https`` from an untrusted peer can only make
+    the answer stricter, never weaker.
     """
     forwarded = request.headers.get("x-forwarded-proto", "").split(",")[0].strip().lower()
     if forwarded in ("http", "https"):
@@ -54,6 +73,11 @@ def is_secure(request) -> bool:
         if trusted_peer(request):
             return forwarded == "https"
     return request.url.scheme == "https" or forwarded == "https"
+
+
+def is_secure(request) -> bool:
+    """Whether session/CSRF cookies must carry ``Secure``."""
+    return cookie_secure_mode() == "always" or transport_is_https(request)
 
 
 def csrf_ok(request, session: auth.Session) -> bool:
@@ -84,4 +108,5 @@ def clear_session_cookies(response) -> None:
 
 
 __all__ = ["CSRF_COOKIE", "CSRF_HEADER", "SESSION_COOKIE", "clear_session_cookies",
-           "csrf_ok", "is_secure", "session_of", "set_session_cookies"]
+           "cookie_secure_mode", "csrf_ok", "is_secure", "session_of",
+           "set_session_cookies", "transport_is_https"]
