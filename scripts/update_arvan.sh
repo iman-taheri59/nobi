@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Update an existing Nobi install on an ArvanCloud ابرک (Ubuntu 24.04).
+# Update an existing Nobi install on an ArvanCloud cloud VM (Ubuntu 24.04).
 #
 # The installer (scripts/deploy_arvan.sh) leaves the update as three commands in
 # the guide. This is those three commands, plus the four things a human does

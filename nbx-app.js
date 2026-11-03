@@ -1258,7 +1258,7 @@
   }
 
   // 0 = manual only. Reading the preference here (instead of a literal) is what
-  // makes Settings → "دورهٔ اسکن" a real control rather than decoration.
+  // makes Settings -> "Scan interval" a real control rather than decoration.
   const scanInterval = () =>
     typeof window.pref === 'function' ? Number(window.pref('scanSec')) : 120;
 

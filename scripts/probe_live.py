@@ -137,7 +137,7 @@ TABS = list(PANELS)
 
 # Persian / Arabic-Indic digits → ASCII, then strip separators.
 _DIGITS = str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "01234567890123456789")
-# Text that is nothing but a number, a sign and a unit: "۰", "−۱٫۰۰R", "+۱٫۹۰%".
+# Text that is nothing but a number, a sign and a unit (ASCII or Persian digits).
 _NUM_ONLY = re.compile(
     r"^[\s\u2212+\-]*[0-9\u06F0-\u06F9][0-9\u06F0-\u06F9\u066B\u066C.,٫%٪ـ ]*$"
 )
@@ -153,7 +153,7 @@ _ERROR_WORDS = re.compile(r"در دسترس نیست|امکان‌پذیر نی�
 
 
 def as_number(text: str) -> float | None:
-    """Parse a UI number that may use Persian digits and ٬ separators."""
+    """Parse a UI number that may use Persian digits and Arabic thousands separators."""
     if not text:
         return None
     s = text.translate(_DIGITS).replace("٬", "").replace(",", "").replace("−", "-")
@@ -261,7 +261,7 @@ def classify(rec: dict, kind: str = "market") -> tuple[str, str]:
     # an empty chart still has axes drawn, and those pixels are not data.
     if rec.get("drawn"):
         return "DATA", "chart canvas has pixels"
-    # A tile whose entire content is a number is showing a number — "۰" in an
+    # A tile whose entire content is a number is showing a number — a zero in an
     # error counter is data, not an empty state. The two-digit rule above needs
     # at least two digits to be safe against stray digits in prose; this does
     # not, because there is no prose.

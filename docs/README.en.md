@@ -2,7 +2,7 @@
 
 [فارسی](README.md) · **English**
 
-Working version: **2.1.8**. See [versioning and GitHub releases](releases.en.md) and the
+Working version: **2.2.2**. See [versioning and GitHub releases](releases.en.md) and the
 [changelog](../CHANGELOG.en.md).
 
 ## Documentation map
@@ -17,7 +17,7 @@ This file is only a way to find things; the content lives in the folders beside 
 | Understand why the architecture is this way | [`adr/`](adr) — 18 ADRs, each in Persian and English |
 | See which decision is actually implemented | [`adr/README.md`](adr/README.md) — status table with code evidence (Persian) |
 | Know what was last verified, and what was not | [`reviews/`](reviews) (Persian) |
-| Know what the analysis engines actually compute today | [`analysis/`](analysis) — catalogue plus an "implemented / catalogue only" table (Persian) |
+| Know what the analysis engines actually compute today | [`analysis/`](analysis) — catalogue plus an "implemented / catalogue only" table: [technical](analysis/technical-analysis-capabilities.en.md) · [fundamental](analysis/fundamental-analysis-capabilities.en.md) |
 | Run the tests against a live exchange | [`testing.en.md`](testing.en.md) |
 | Pick a cheap server for testing | [`ops/`](ops) — [English](ops/en/free-server-options-for-testing-and-development.md) · [Persian](ops/fa/free-server-options-for-testing-and-development.md) |
 | Install the project on ArvanCloud (Ubuntu cloud server) | [`deploy-arvan.md`](deploy-arvan.md) — step by step + `scripts/deploy_arvan.sh` + `scripts/check_deploy.py` (Persian) |
@@ -87,6 +87,7 @@ What is written twice, what is written once, and what is pending. The gate in
 | Documentation map | [`README.md`](README.md) | [`README.en.md`](README.en.md) |
 | Versioning and releases | [`releases.md`](releases.md) | [`releases.en.md`](releases.en.md) |
 | 2.0.1 code/state upgrade plan | [`upgrade-2.0.1.md`](upgrade-2.0.1.md) | [`upgrade-2.0.1.en.md`](upgrade-2.0.1.en.md) |
+| 2.1.10 controlled deployment checklist | [`upgrade-2.1.10.md`](upgrade-2.1.10.md) | [`upgrade-2.1.10.en.md`](upgrade-2.1.10.en.md) |
 | Changelog | [`CHANGELOG.md`](../CHANGELOG.md) | [`CHANGELOG.en.md`](../CHANGELOG.en.md) |
 | Live handoff | [`HANDOFF.md`](HANDOFF.md) | [`HANDOFF.en.md`](HANDOFF.en.md) |
 | ADR-0001 … ADR-0027 | [`adr/fa/`](adr/fa) | [`adr/en/`](adr/en) |
@@ -102,7 +103,8 @@ What is written twice, what is written once, and what is pending. The gate in
 | Out-of-sample evidence | [`evidence.md`](evidence.md) | [`evidence.en.md`](evidence.en.md) |
 | Tuning the take-profit ladder (`NBX_RR_LEVELS`) | [`rr-ladder-tuning.md`](rr-ladder-tuning.md) | [`rr-ladder-tuning.en.md`](rr-ladder-tuning.en.md) |
 | Roadmap | [`roadmap/fa/`](roadmap/fa) | **pending** |
-| Analysis catalogues | [`analysis/`](analysis) | **pending** |
+| Technical-analysis catalogue | [`analysis/technical-analysis-capabilities.md`](analysis/technical-analysis-capabilities.md) | [`analysis/technical-analysis-capabilities.en.md`](analysis/technical-analysis-capabilities.en.md) |
+| Fundamental-analysis catalogue | [`analysis/fundamental-analysis-capabilities.md`](analysis/fundamental-analysis-capabilities.md) | [`analysis/fundamental-analysis-capabilities.en.md`](analysis/fundamental-analysis-capabilities.en.md) |
 | Dependency security notes | [`SECURITY-NOTES.md`](SECURITY-NOTES.md) | **pending** |
 | Reviews (date-stamped) | [`reviews/`](reviews) | snapshot only — not translated by design |
 

@@ -642,11 +642,14 @@ def cohort_inventory(
         normalized = [f"coalesce(nullif({column},''),'unknown')" for column in dimensions]
         select = " || '|' || ".join(normalized) + " AS cohort_key"
         group = " GROUP BY " + ",".join(normalized)
+    # A bare aggregate over an empty table still returns one NULL row. Global
+    # mode has no GROUP BY, so suppress that phantom cohort explicitly.
+    having = "" if dimensions else " HAVING COUNT(*) > 0"
     query = (
         f"SELECT {select},"
         " sum(CASE WHEN ts>=? THEN 1 ELSE 0 END) current_n,"
         " sum(CASE WHEN ts<? THEN 1 ELSE 0 END) baseline_n"
-        " FROM signal_evidence WHERE ts>=? AND ts<?" + group
+        " FROM signal_evidence WHERE ts>=? AND ts<?" + group + having
         + " ORDER BY (current_n+baseline_n) DESC,cohort_key LIMIT ?"
     )
     with journal.connect() as conn:
@@ -658,7 +661,8 @@ def cohort_inventory(
         item = dict(row)
         minimum = THRESHOLDS["performance_min"]
         item["mode"] = mode
-        item["dimensions"] = dict(zip(dimensions, str(item["cohort_key"]).split("|"), strict=True))
+        parts = str(item["cohort_key"]).split("|") if dimensions else []
+        item["dimensions"] = dict(zip(dimensions, parts, strict=True))
         item["status"] = (
             "missing-in-current" if not item["current_n"]
             else "new-in-current" if not item["baseline_n"]

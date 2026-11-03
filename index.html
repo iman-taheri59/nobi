@@ -121,7 +121,7 @@
   .navbtn.active { background: linear-gradient(160deg, rgba(52,211,153,.16), rgba(52,211,153,.05)); border-color: rgba(52,211,153,.3); color:#a7f3d0; }
   @media (hover:hover) { .navbtn:not(.active):hover { background: rgba(255,255,255,.05); } }
   .tab-page { animation: pageIn .45s cubic-bezier(.22,1,.36,1) both; }
-  /* Set from Settings → "کاهش انیمیشن". Real effect: every transition and
+  /* Set from Settings -> "Reduce motion". Real effect: every transition and
      animation on the page stops, including the tab fade and the bar fills. */
   html.reduce-motion *, html.reduce-motion *::before, html.reduce-motion *::after{
     animation-duration:.001ms !important; animation-iteration-count:1 !important;
@@ -295,7 +295,7 @@
       </button>
     </div>
     <span class="hidden 2xl:inline-flex chip shrink-0"><span class="dot bg-emerald-400"></span> <span data-i18n="hdr.kill"></span></span>
-    <span id="buildChip" class="hidden lg:inline-flex chip num text-violet-300 border-violet-400/30 shrink-0" title="نسخه واقعی از /api/health">v2.1.8 · core</span>
+    <span id="buildChip" class="hidden lg:inline-flex chip num text-violet-300 border-violet-400/30 shrink-0" title="نسخه واقعی از /api/health">v2.2.2 · core</span>
     <div class="ms-auto flex items-center gap-1.5 shrink-0">
       <span class="hidden xl:inline-flex chip num" id="clock">--:--:--</span>
       <span id="apiChip" class="hidden 2xl:inline-flex chip num text-zinc-400 border-white/10" title=""><i data-lucide="wifi-off" class="w-3.5 h-3.5"></i> <span>API: —</span></span>
@@ -812,6 +812,14 @@
           <div id="queueTimeframe" class="text-[11px] text-zinc-400 mb-2"></div>
           <div id="queueDiagnostics" class="text-[11px] leading-5 text-zinc-500 mb-3" style="overflow-wrap:anywhere" aria-live="polite"></div>
           <div id="queueList" class="space-y-3"></div>
+          <div id="queueFilteredSection" class="hidden mt-4 border-t border-white/10 pt-4" aria-live="polite">
+            <div class="flex flex-wrap items-center gap-2 mb-2">
+              <span class="font-bold text-[12px] sm:text-[13px] text-red-200/90" data-i18n="dk.filteredTitle"></span>
+              <span id="queueFilteredCount" class="chip num text-red-300 border-red-300/30">0</span>
+            </div>
+            <p class="text-[10px] sm:text-[11px] leading-5 text-zinc-500 mb-3" data-i18n="dk.filteredNote"></p>
+            <div id="queueFilteredList" class="space-y-3"></div>
+          </div>
         </div>
 
         <!-- Manual ticket -->
@@ -1761,7 +1769,7 @@ const T = {
     'dk.semiD':'ربات پلن می‌سازد، اجرا فقط با تأیید شما در صف پایین انجام می‌شود.',
     'dk.manualD':'هیچ سفارشی خودکار صادر نمی‌شود؛ فقط سفارش‌های دستی فرم پایین.',
     'dk.blockedD':'نمادهای دارای وتو یا مسدودسازی، در هیچ حالتی اجرا نمی‌شوند.',
-    'dk.queue':'صف تأیید','dk.queueSub':'پیشنهادها پس از پایان مهلت خودکار باطل می‌شوند','ob.unavailable':'دفتر سفارش در دسترس نیست','dk.price':'قیمت ورود','dk.amount':'حجم','dk.notional':'ارزش معامله','dk.riskAmt':'مبلغ ریسک','dk.riskPct':'ریسک/سرمایه','dk.audit':'ردپای حسابرسی','dk.actor':'عامل','dk.action':'اقدام','dk.detail':'جزئیات',
+    'dk.queue':'صف تأیید','dk.queueSub':'پیشنهادها پس از پایان مهلت خودکار باطل می‌شوند','dk.filteredTitle':'کاندیداهای فیلترشده (غیرقابل‌تأیید)','dk.filteredState':'فیلترشده','dk.filteredNote':'این‌ها سیگنال LONG بودند، اما پیش‌نمایش اجرای سرور آن‌ها را قابل‌اجرا ندانست. هیچ سفارشی ارسال نشده است؛ این بخش فقط تشخیص است و دکمهٔ تأیید/ارسال ندارد.','dk.filteredPlanEntry':'قیمت پلن','dk.filteredExecEntry':'قیمت اجرا','dk.filteredRR':'R:TP2 اجرا','dk.filteredMinRR':'حداقل R:R','dk.filteredReason':'علت','dk.filteredExpiry':'انقضا','dk.filteredTTL':'مهلت باقی‌مانده','dk.filteredExpired':'منقضی','dk.filteredStale':'پیش‌نمایش کهنه؛ اسکن بعدی دوباره می‌خواند','ob.unavailable':'دفتر سفارش در دسترس نیست','dk.price':'قیمت ورود','dk.amount':'حجم','dk.notional':'ارزش معامله','dk.riskAmt':'مبلغ ریسک','dk.riskPct':'ریسک/سرمایه','dk.audit':'ردپای حسابرسی','dk.actor':'عامل','dk.action':'اقدام','dk.detail':'جزئیات',
     'dk.approve':'تأیید و ارسال','dk.reject':'رد','dk.expired':'منقضی',
     'dk.ok':'حد مجاز — انطباق با سقف‌های ریسک','dk.warn1':'ریسک هر معامله از سقف {p}٪ بیشتر است','dk.warn2':'نامینال این سفارش از سقف {p}٪ عبور می‌کند (سقف تک‌سفارش؛ نه تجمع نماد)','dk.warn3':'نسبت R:TP کمتر از {r} است — سودآوری مشکوک','dk.needInput':'قیمت، حجم و حد ضرر را پر کنید','dk.limitsUnknown':'سقف‌های ریسک از سرور نرسیده — این عددها بررسی نشده‌اند',
     'dk.stop':'قیمت استاپ',
@@ -1770,11 +1778,12 @@ const T = {
     'dk.whatif':'اگر این معامله را بگذارم','dk.heat':'حرارت','dk.worstCase':'بدترین حالت (استاپ)','dk.slots':'جای خالی پوزیشن',
     'dk.whatifServer':'از سرور','dk.whatifNoServer':'سرور در دسترس نیست — پیش‌نمایش سبد محاسبه نشد',
     'dk.whatifBlocked':'مسدود می‌شود: ','dk.whatifOk':'کنترل ظرفیت ریسک عبور کرد؛ نه تأیید هندسه، عمق یا رزرو سفارش',
-    // نام دروازه‌ها همان شناسه‌هایی است که preflight برمی‌گرداند؛ نمایش شناسهٔ
-    // انگلیسی در رابط فارسی یعنی کاربر نمی‌داند چه چیزی او را متوقف کرده.
+    // Gate names are the identifiers preflight returns; showing the English
+    // identifier in the Persian UI would leave users unsure what stopped them.
     'gate.halted':'کلید توقف','gate.market-closed':'بازار بسته است','gate.concurrent-cap':'سقف پوزیشن‌های هم‌زمان',
     'gate.cash-present':'موجودی نقد','gate.single-asset-cap':'سقف نامینال هر سفارش (نه تجمع نماد)','gate.min-notional':'حداقل ارزش سفارش صرافی',
     'gate.risk-cap':'سقف ریسک هر معامله','gate.heat-cap':'سقف حرارت سبد','gate.min-cash':'کف نقدینگی','gate.funds':'موجودی کافی',
+    'gate.execution-rr-too-low':'نسبت سود/زیان TP2 در قیمت اجرا کمتر از حداقل است','gate.execution-plan-invalid':'هندسهٔ پلن در قیمت اجرا معتبر نیست','gate.no-depth':'دفتر سفارش عمق کافی ندارد','gate.precision':'مقدار/قیمت پس از گردکردن معتبر نیست','gate.execution-preview-unavailable':'پیش‌نمایش اجرایی در دسترس نیست','gate.no-cash':'حساب کاغذی نقدینگی ندارد','gate.no-fx-rate':'نرخ USDT/IRT در دسترس نیست',
     'mk.hdr':'وضعیت بازار','mk.up':'بالا','mk.down':'پایین','mk.flat':'بی‌تغییر','mk.breadth':'گستردگی (۲۴س)',
     'mk.sub':'سهم نمادهای مثبت، تغییر میانگین با وزن گردش دلاری، پراکندگی، و تمرکز گردش. «شاخص» نیست: میانگین وزنی تغییرِ نمادهای پوشش‌داده‌شده است.',
     'mk.median':'میانهٔ تغییر','mk.weighted':'میانگین وزنی گردش','mk.disp':'پراکندگی','mk.conc':'سهم ۳ نماد اول','mk.turnover':'گردش ۲۴س (دلار)',
@@ -2074,7 +2083,7 @@ const T = {
     'dk.semiD':'The bot builds the plan; execution happens only after your approval in the queue below.',
     'dk.manualD':'No orders are placed automatically; only manual orders from the form below.',
     'dk.blockedD':'Symbols with a veto or block are never executed in any mode.',
-    'dk.queue':'Approval queue','dk.queueSub':'Proposals auto-expire when their TTL elapses','ob.unavailable':'Order book unavailable','dk.price':'Entry price','dk.amount':'Size','dk.notional':'Notional','dk.riskAmt':'Risk amount','dk.riskPct':'Risk/equity','dk.audit':'Audit trail','dk.actor':'Actor','dk.action':'Action','dk.detail':'Details',
+    'dk.queue':'Approval queue','dk.queueSub':'Proposals auto-expire when their TTL elapses','dk.filteredTitle':'Filtered candidates (not approvable)','dk.filteredState':'Filtered','dk.filteredNote':'These were LONG signals, but the server execution preview found them not executable. No order was submitted; this section is diagnostic only and has no approve/send button.','dk.filteredPlanEntry':'Plan entry','dk.filteredExecEntry':'Execution entry','dk.filteredRR':'Execution R:TP2','dk.filteredMinRR':'Minimum R:R','dk.filteredReason':'Reason','dk.filteredExpiry':'Expires','dk.filteredTTL':'Time left','dk.filteredExpired':'Expired','dk.filteredStale':'Preview stale; the next scan reads it again','ob.unavailable':'Order book unavailable','dk.price':'Entry price','dk.amount':'Size','dk.notional':'Notional','dk.riskAmt':'Risk amount','dk.riskPct':'Risk/equity','dk.audit':'Audit trail','dk.actor':'Actor','dk.action':'Action','dk.detail':'Details',
     'dk.approve':'Approve & send','dk.reject':'Reject','dk.expired':'Expired',
     'dk.ok':'Within limits — risk caps satisfied','dk.warn1':'Per-trade risk exceeds the {p}% cap','dk.warn2':'This order nominal exceeds the {p}% cap; not cumulative symbol exposure','dk.warn3':'R:TP ratio below {r} — questionable payoff','dk.needInput':'Enter a price, a size and a stop','dk.limitsUnknown':'Risk caps have not arrived from the server — these numbers are unchecked',
     'dk.whatif':'If I take this trade','dk.heat':'Heat','dk.worstCase':'Worst case (stop)','dk.slots':'Position slots left',
@@ -2083,6 +2092,7 @@ const T = {
     'gate.halted':'Kill switch','gate.market-closed':'Market closed','gate.concurrent-cap':'Concurrent position cap',
     'gate.cash-present':'Cash available','gate.single-asset-cap':'Per-order nominal cap (not cumulative symbol)','gate.min-notional':'Exchange minimum order',
     'gate.risk-cap':'Per-trade risk cap','gate.heat-cap':'Portfolio heat cap','gate.min-cash':'Cash floor','gate.funds':'Funds',
+    'gate.execution-rr-too-low':'TP2 reward/risk at the execution price is below the minimum','gate.execution-plan-invalid':'Plan geometry is invalid at the execution price','gate.no-depth':'Order book lacks depth','gate.precision':'Quantity/price is invalid after rounding','gate.execution-preview-unavailable':'Execution preview unavailable','gate.no-cash':'Paper account has no cash','gate.no-fx-rate':'USDT/IRT rate unavailable',
     'mk.hdr':'Market state','mk.up':'up','mk.down':'down','mk.flat':'flat','mk.breadth':'Breadth (24h)',
     'mk.sub':'Share of symbols up, turnover-weighted average change, dispersion, and turnover concentration. Not an index: it is the weighted average move of the tracked symbols.',
     'mk.median':'Median change','mk.weighted':'Turnover-weighted','mk.disp':'Dispersion','mk.conc':'Top-3 share','mk.turnover':'24h turnover (USD)',
@@ -5299,6 +5309,8 @@ function modeOf(sym){ return symMode[sym] || execMode; }
  * `queueState.asked` separates "not fetched yet" from "fetched, none" and
  * "the backend did not answer" — three different sentences (ADR-0014). */
 let queue = [];
+// Diagnostic-only execution refusals. They are never approval rows and carry no controls.
+let queueFiltered = [];
 let queueState = { asked: false, error: null, skipped: 0, tf: '15m', reasons: [] };
 let queueRefreshSeq = 0;
 // Decisions follow the backend's candle-level order identity. Drafts additionally
@@ -5317,6 +5329,32 @@ function invalidateQueuePreview(q){
   if(!q.edit) return;
   clearTimeout(q.edit.timer); q.edit.timer=null; ++q.edit.seq;
   q.edit.risk=null; q.edit.blocked=false; q.edit.gate=null;
+  q.edit.execution=null; q.edit.execPerf=null;
+}
+const EXECUTION_PREVIEW_TTL_MS = 20000;
+function queueExecution(q){
+  const e=q.edit && q.edit.on ? q.edit : null;
+  const data=e ? e.execution : q.execution;
+  const perf=e ? e.execPerf : q.execPerf;
+  const fresh=Number.isFinite(perf) && performance.now()-perf < EXECUTION_PREVIEW_TTL_MS;
+  return {data, fresh};
+}
+function queueExecutionBlocked(q){
+  const {data}=queueExecution(q);
+  return !!data && data.executable===false;
+}
+function queueExecutionText(q){
+  const {data,fresh}=queueExecution(q);
+  if(!data) return LANG==='fa'?'پیش‌نمایش اجرایی در دسترس نیست؛ تأیید به کنترل نهایی سرور موکول شد.':'Execution preview unavailable; approval defers to the final server check.';
+  if(data.executable===false){
+    const key='gate.'+(data.blocked_by||'');
+    const label=t(key); const reason=label===key?(data.blocked_by||'unknown'):label;
+    return (LANG==='fa'?'غیرقابل‌اجرا: ':'Not executable: ')+reason;
+  }
+  if(!fresh) return LANG==='fa'?'پیش‌نمایش اجرایی کهنه است؛ هنگام تأیید دوباره بررسی می‌شود.':'Execution preview is stale; it will be rechecked on approval.';
+  const rr=Number.isFinite(data.execution_rr)?fmtNum(data.execution_rr,2):'—';
+  const min=Number.isFinite(data.min_rr)?fmtNum(data.min_rr,2):'—';
+  return (LANG==='fa'?'قابل‌اجرا در پیش‌نمایش · R:TP2 ':'Executable in preview · R:TP2 ')+rr+(LANG==='fa'?' · حداقل ': ' · min ')+min;
 }
 let audit = [
 ];
@@ -5453,10 +5491,11 @@ async function refreshQueue(){
       if(old.edit && old.edit.on && next.some(q=>q.sym===old.sym)) state.reasons.push(old.sym+': '+(LANG==='fa'?'پیش‌نویس به پیشنهاد جدید یا دوباره‌معتبرشده منتقل نشد':'draft not transferred to new or revalidated proposal'));
       invalidateQueuePreview(old);
     }
-    queueState=state; queue=next; renderQueue();
+    queueState=state; queue=next; queueFiltered=filtered; renderQueue();
     for(const q of queue) if(q.edit && q.edit.on && !queueBusy(q) && !queueUncertain.has(queueDecisionKey(q))) scheduleRowWhatIf(q);
   };
   const out = [];
+  const filtered = [];
   if (!api || !api.getBackendRiskPlan) {
     state.error = 'no-backend'; commit(); return;
   }
@@ -5502,6 +5541,27 @@ async function refreshQueue(){
     }
     const timing = {approval, clockPerf, clockWall};
     const ttl = queueRemaining(timing);
+    if(plan.execution && plan.execution.executable===false){
+      const code = queueSafeCode(plan.execution.blocked_by) || 'execution-blocked';
+      state.skipped++;
+      state.reasons.push(s.symbol + ': ' + code);
+      // Keep the refusal visible for diagnosis, but never put it in `queue`.
+      // Missing numbers stay null; the renderer prints an em dash, not zero.
+      filtered.push({
+        id: [s.symbol, tf, lastT, approval.signal_key].join(':'),
+        ...timing,
+        tf, sym: s.symbol, score: approval.score, rank: rows.indexOf(s) + 1,
+        planEntry: queuePositiveNumber(plan.execution.plan_entry) ?? queuePositiveNumber(plan.entry),
+        executionEntry: queuePositiveNumber(plan.execution.execution_entry),
+        executionRR: queueFiniteNumber(plan.execution.execution_rr),
+        minRR: queuePositiveNumber(plan.execution.min_rr),
+        reason: code,
+        execPerf: performance.now(),
+        ttl,
+        state: ttl > 0 ? 'filtered' : 'expired',
+      });
+      continue;
+    }
     out.push({
       id: [s.symbol, tf, lastT, approval.signal_key].join(':'),
       ...timing,
@@ -5515,6 +5575,8 @@ async function refreshQueue(){
       // Missing risk is unknown, not a fabricated green zero.
       risk: typeof plan.risk_pct==='number' && Number.isFinite(plan.risk_pct) && plan.risk_pct>=0 ? plan.risk_pct : null,
       sizeQ: +plan.size_quote,
+      execution: plan.execution || null,
+      execPerf: plan.execution ? performance.now() : null,
       ttl,
       state: ttl > 0 ? 'pending' : 'expired',
     });
@@ -5522,6 +5584,79 @@ async function refreshQueue(){
   commit();
 }
 
+function queueSafeCode(value){
+  return typeof value === 'string' && /^[a-zA-Z0-9_.:-]{1,64}$/.test(value) ? value : null;
+}
+function queueFiniteNumber(value){
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+function queuePositiveNumber(value){
+  const n = queueFiniteNumber(value);
+  return n !== null && n > 0 ? n : null;
+}
+function queueGateLabel(code){
+  const key = 'gate.' + code;
+  const label = t(key);
+  return label === key ? code : label;
+}
+function queueFilteredExpiryText(f){
+  return new Date(f.approval.expires_at * 1000).toLocaleTimeString(dateLocale(),
+    { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+function queueFilteredTTLText(f){
+  return f.ttl <= 0 ? t('dk.filteredExpired')
+    : t('dk.filteredTTL') + ': ' + fmtNum(Math.max(0, f.ttl)) + (LANG === 'fa' ? 'ث' : 's');
+}
+function queueFilteredStaleText(f){
+  const stale = !Number.isFinite(f.execPerf) || performance.now() - f.execPerf >= EXECUTION_PREVIEW_TTL_MS;
+  return stale ? t('dk.filteredStale') : '';
+}
+function renderQueueFiltered(){
+  const section = byId('queueFilteredSection'), list = byId('queueFilteredList'), count = byId('queueFilteredCount');
+  if(!section || !list) return;
+  const rows = queueFiltered || [];
+  section.classList.toggle('hidden', rows.length === 0);
+  if(count) count.textContent = fmtNum(rows.length);
+  list.innerHTML = rows.map(f => {
+    const expired = f.ttl <= 0;
+    const metric = (label, value) => `<div class="rounded-lg bg-white/[.02] border border-white/5 p-2">
+      <div class="text-zinc-500 text-[10px]">${label}</div>
+      <div class="num font-bold text-zinc-300">${value}</div>
+    </div>`;
+    return `<div class="qFilteredRow rounded-xl border border-red-400/20 bg-red-400/[.04] p-3.5" data-qfiltered="${escText(f.id)}" data-qflang="${LANG}">
+      <div class="flex flex-wrap items-center gap-2 mb-2">
+        <span class="font-bold text-[12px] sm:text-[13px]">${escText(f.sym)}</span>
+        <span data-qfstate class="chip ${expired ? 'text-zinc-400 border-zinc-400/30' : 'text-red-300 border-red-300/30'}">${expired ? t('dk.filteredExpired') : t('dk.filteredState')}</span>
+        <span class="text-[10px] text-zinc-500 num">${t('perf.rank')} ${fmtNum(f.rank)} · ${fmtNum(f.score)}</span>
+        <span class="ms-auto text-[10px] text-zinc-500 num">${t('dk.filteredExpiry')}: ${escText(queueFilteredExpiryText(f))}</span>
+      </div>
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] mb-2">
+        ${metric(t('dk.filteredPlanEntry'), f.planEntry === null ? '—' : fmtMarketPrice(f.planEntry, f.sym))}
+        ${metric(t('dk.filteredExecEntry'), f.executionEntry === null ? '—' : fmtMarketPrice(f.executionEntry, f.sym))}
+        ${metric(t('dk.filteredRR'), f.executionRR === null ? '—' : fmtNum(f.executionRR, 2))}
+        ${metric(t('dk.filteredMinRR'), f.minRR === null ? '—' : fmtNum(f.minRR, 2))}
+      </div>
+      <div class="text-[11px] leading-5 text-red-200/90"><span class="text-zinc-500">${t('dk.filteredReason')}:</span> <span data-qfreason>${escText(queueGateLabel(f.reason))}</span> <code class="num text-zinc-500">${escText(f.reason)}</code></div>
+      <div data-qfttl class="mt-1 text-[10px] text-zinc-500 num">${escText(queueFilteredTTLText(f))}</div>
+      <div data-qfstale class="mt-1 text-[10px] text-amber-300/80">${escText(queueFilteredStaleText(f))}</div>
+    </div>`;
+  }).join('');
+}
+function paintQueueFilteredRow(f){
+  const row = Array.from(document.querySelectorAll('[data-qfiltered]')).find(n => n.dataset.qfiltered === f.id);
+  if(!row) return;
+  f.ttl = queueRemaining(f);
+  if(f.ttl <= 0) f.state = 'expired';
+  const state = row.querySelector('[data-qfstate]');
+  if(state){
+    state.textContent = f.ttl <= 0 ? t('dk.filteredExpired') : t('dk.filteredState');
+    state.className = `chip ${f.ttl <= 0 ? 'text-zinc-400 border-zinc-400/30' : 'text-red-300 border-red-300/30'}`;
+  }
+  const ttl = row.querySelector('[data-qfttl]');
+  if(ttl) ttl.textContent = queueFilteredTTLText(f);
+  const stale = row.querySelector('[data-qfstale]');
+  if(stale) stale.textContent = queueFilteredStaleText(f);
+}
 function renderQueueHeader(){
   const tfEl = byId('queueTimeframe'), diagEl = byId('queueDiagnostics');
   if(tfEl) tfEl.textContent = (LANG==='fa'?'تایم‌فریم صف (از صفحهٔ سیگنال‌ها): ':'Queue timeframe (from Signals): ') + (queueState.tf || '15m');
@@ -5542,6 +5677,7 @@ function renderQueueHeader(){
 }
 function renderQueue(){
   const pend=renderQueueHeader();
+  renderQueueFiltered();
   if (!queueState.asked) {
     byId('queueList').innerHTML = `<div class="text-center py-8 text-xs text-zinc-500">${
       LANG==='fa'?'در حال خواندن سیگنال‌ها…':'reading signals…'}</div>`;
@@ -5562,15 +5698,16 @@ function renderQueue(){
   }
   if (!pend.length) {
     byId('queueList').innerHTML = `<div data-empty-note="1" class="text-center py-8 text-xs text-zinc-500">${
-      LANG==='fa'?`هیچ کاندیدایی نیست${queueState.skipped?` (${fmtNum(queueState.skipped)} نماد پلن قابل‌اجرا نداشت)`:''}.`
-                 :`no candidate right now${queueState.skipped?` (${queueState.skipped} symbol(s) had no placeable plan)`:''}.`}</div>`;
+      LANG==='fa'?`هیچ کاندیدای قابل‌تأییدی نیست${queueFiltered.length?`؛ ${fmtNum(queueFiltered.length)} کاندیدا در بخش فیلترشده نمایش داده شده است`:''}.`
+                 :`no approvable candidate right now${queueFiltered.length?`; ${queueFiltered.length} candidate(s) are shown in the filtered section`:''}.`}</div>`;
     return;
   }
   const autoSyms = Object.entries(symMode).filter(([,m])=>m==='auto').map(([s])=>s);
   const autoNote = (autoSyms.length || execMode==='auto') ? `<div class="text-[10px] leading-5 text-emerald-300/80 mb-2">
       ${t('dk.queueAutoNote')}${autoSyms.length?` (${autoSyms.join('، ')})`:''}</div>` : '';
   const markup = autoNote + pend.map(q=>{
-    const rr = Math.abs((q.tp1-q.entry)/(q.entry-q.stop));
+    const ex=q.execution && Number.isFinite(q.execution.execution_entry) ? q.execution.execution_entry : q.entry;
+    const rr = Math.abs((q.tp2-ex)/(ex-q.stop));
     const col = rr>=2?'emerald':rr>=1.5?'amber':'red';
     return `<div class="qRow rounded-xl bg-white/[.03] border border-white/5 p-3.5" data-row="${q.id}" data-qlang="${LANG}">
       <div class="flex flex-wrap items-center gap-2.5 mb-3">
@@ -5608,8 +5745,9 @@ function renderQueue(){
         </div>
         <div data-qgate="${q.id}" class="mt-1 text-[10px] leading-5 ${q.edit&&q.edit.blocked?'text-red-300':'text-zinc-500'}">${escText(q.edit&&q.edit.gate?q.edit.gate:t('dk.editHint'))}</div>
       </div>
+      <div data-qexec="${q.id}" class="mb-2 text-[10px] leading-5 ${queueExecutionBlocked(q)?'text-red-300':'text-zinc-500'}">${escText(queueExecutionText(q))}</div>
       <div class="flex flex-wrap items-center gap-2">
-        <span class="text-[10px] text-zinc-500 num">${t('dk.amount')}: <span data-qvalue="sizeQ">${fmtMarketPrice(q.sizeQ, q.sym)}</span> · R:TP1 <span data-qrr class="text-${col}-300 font-bold">${fmtNum(rr,2)}</span></span>
+        <span class="text-[10px] text-zinc-500 num">${t('dk.amount')}: <span data-qvalue="sizeQ">${fmtMarketPrice(q.sizeQ, q.sym)}</span> · R:TP2 <span data-qrr class="text-${col}-300 font-bold">${fmtNum(rr,2)}</span></span>
         <div class="flex gap-2 ms-auto w-full sm:w-auto">
           <button data-edit="${q.id}" class="qEditBtn flex-1 sm:flex-none px-3 py-2 rounded-xl text-[11px] font-bold bg-white/5 border border-white/10 text-amber-200/90">${t('dk.edit')}</button>
           <button data-reject="${q.id}" class="qRej flex-1 sm:flex-none px-3.5 py-2 rounded-xl text-[11px] font-bold bg-white/5 border border-white/10 text-zinc-300">${t('dk.reject')}</button>
@@ -5666,13 +5804,16 @@ function paintQueueRow(q){
   const rank=row.querySelector('[data-qrank]'); if(rank) rank.textContent=`${t('perf.rank')} ${fmtNum(q.rank)} · ${q.ts}`;
   const mode=row.querySelector('.qMode'); if(mode) mode.value=modeOf(q.sym);
   const pending=queueBusy(q), unknown=queueUncertain.has(queueDecisionKey(q));
+  const execBlocked=queueExecutionBlocked(q);
   row.querySelectorAll('button,input,select').forEach(n=>{ n.disabled=pending; });
-  const app=row.querySelector('.qApp'); if(app) app.disabled=pending || unknown || queueRemaining(q)<=0;
+  const app=row.querySelector('.qApp'); if(app) app.disabled=pending || unknown || queueRemaining(q)<=0 || execBlocked || !!(e && e.blocked);
   const risk=row.querySelector('[data-qrisk]'), gate=row.querySelector('[data-qgate]');
   const r=e ? e.risk : q.risk;
   if(risk){ risk.textContent=r==null?'—':PC(r,2,false); risk.className=`num font-bold ${e && e.blocked?'text-red-300':'text-zinc-400'}`; }
   if(gate){ gate.textContent=unknown ? (LANG==='fa'?'نتیجهٔ ارسال نامشخص است؛ تکرار در این صفحه قفل است. سفارش‌ها را بررسی کنید.':'Submission outcome unknown; retry locked on this page. Inspect Orders.') : e && e.gate || t('dk.editHint'); }
   if(gate) gate.className=`mt-1 text-[10px] leading-5 ${e && e.blocked?'text-red-300':'text-zinc-500'}`;
+  const exec=row.querySelector('[data-qexec]');
+  if(exec){ exec.textContent=queueExecutionText(q); exec.className=`mt-1 text-[10px] leading-5 ${execBlocked?'text-red-300':'text-zinc-500'}`; }
   // Unknown outcome must remain visible even with the editor closed.
   let note=row.querySelector('[data-qunknown]');
   if(unknown && !note){ note=document.createElement('div'); note.dataset.qunknown='1'; note.className='mt-2 text-[10px] text-amber-300'; row.appendChild(note); }
@@ -5682,8 +5823,10 @@ function paintQueueRow(q){
     if(n) n.textContent=Number.isFinite(v)?fmtMarketPrice(v,q.sym):'—';
   }
   const rr=row.querySelector('[data-qrr]'), values=e||q;
-  const ratio=Number.isFinite(values.tp1) && Number.isFinite(values.stop) && q.entry!==values.stop ? Math.abs((values.tp1-q.entry)/(q.entry-values.stop)) : null;
-  if(rr){ rr.textContent=ratio==null?'—':fmtNum(ratio,2); rr.className='font-bold text-zinc-400'; }
+  const {data:execData}=queueExecution(q);
+  const entry=execData && Number.isFinite(execData.execution_entry) ? execData.execution_entry : q.entry;
+  const ratio=Number.isFinite(values.tp2) && Number.isFinite(values.stop) && entry!==values.stop ? Math.abs((values.tp2-entry)/(entry-values.stop)) : null;
+  if(rr){ rr.textContent=ratio==null?'—':fmtNum(ratio,2); rr.className=`font-bold ${execBlocked?'text-red-300':'text-zinc-400'}`; }
 }
 /* --- Editing a queued proposal -------------------------------------------
  * whatif is a capacity preview, not the broker's final market/geometry gates.
@@ -5691,7 +5834,8 @@ function paintQueueRow(q){
  */
 function rowEdit(q){
   if(!q.edit) q.edit={on:false, sizeQ:q.sizeQ, stop:q.stop, tp1:q.tp1, tp2:q.tp2,
-    raw:{}, risk:null, gate:null, blocked:false, seq:0, timer:null};
+    raw:{}, risk:null, gate:null, blocked:false, seq:0, timer:null,
+    execution:null, execPerf:null};
   return q.edit;
 }
 function resetQueueDraft(q){
@@ -5724,7 +5868,7 @@ async function askRowWhatIf(q){
     e.gate=t('dk.needInputs'); paintQueueRow(q); return;
   }
   let r;
-  try{ r=api && api.postWhatIf ? await api.postWhatIf({symbol:q.sym, side:'buy', tf:q.tf, entry:q.entry, stop:e.stop, size_quote:e.sizeQ}) : null; }
+  try{ r=api && api.postWhatIf ? await api.postWhatIf({symbol:q.sym, side:'buy', tf:q.tf, entry:q.entry, stop:e.stop, tp1:e.tp1, tp2:e.tp2, size_quote:e.sizeQ, execution_preview:true}) : null; }
   catch(err){ r=null; }
   if(seq!==e.seq || !e.on || !queue.includes(q) || queueRemaining(q)<=0 || queueBusy(q)) return;
   const p=r && r.projection;
@@ -5733,6 +5877,13 @@ async function askRowWhatIf(q){
   }else{
     e.risk=p.loss_at_stop_pct_of_equity; e.blocked=p.blocked;
     e.gate=p.blocked ? `${t('dk.rowBlocked')}: ${t('gate.'+(p.blocked_by||''))}` : t('dk.editServer');
+  }
+  const ex=r && r.execution;
+  if(ex && typeof ex.executable==='boolean'){
+    e.execution=ex; e.execPerf=performance.now();
+    if(ex.executable===false) e.gate=queueExecutionText(q);
+  }else{
+    e.execution=null; e.execPerf=null;
   }
   paintQueueRow(q);
 }
@@ -5789,16 +5940,24 @@ function resolveQ(id, approve){
     if (!r || r.ok!==true || r.outcome_unknown || r.network_error) {
       // The server names the gate — print that, not a generic failure.
       const unknown=!r || r.ok!==false || !!r.outcome_unknown || !!r.network_error;
+      const reason=unknown?(LANG==='fa'?'نتیجهٔ ارسال نامشخص است؛ خودکار تکرار نکنید و سفارش‌ها را بررسی کنید.':'Submission outcome unknown; do not automatically retry; inspect Orders.'):
+        String(r.error||r.message||'server-declined');
       if(unknown){
         queueUncertain.set(key,q);
         audit.unshift({t:new Date().toLocaleTimeString(dateLocale()),a:'human',act:{fa:'نتیجه ارسال نامشخص',en:'Submission outcome unknown'},sym:q.sym,d:{fa:'تکرار محلی قفل شد؛ سفارش‌ها باید بررسی شوند.',en:'Local retry locked; inspect Orders.'}});
         renderAudit();
+        for(const row of queue) if(queueDecisionKey(row)===key) paintQueueRow(row);
+      }else{
+        // A definite broker refusal is a decision on this candle: remove the
+        // actionable row instead of inviting an immediate retry that will fail
+        // the same geometry/depth gate. The durable rejection stays in Orders.
+        queueDismissed.set(key,q); invalidateQueuePreview(q);
+        queue=queue.filter(x=>queueDecisionKey(x)!==key);
+        audit.unshift({t:new Date().toLocaleTimeString(dateLocale()),a:'human',act:{fa:'رد قطعی سرور',en:'Definitive server refusal'},sym:q.sym,d:{fa:reason,en:reason}});
+        renderQueue(); renderAudit();
       }
-      for(const row of queue) if(queueDecisionKey(row)===key) paintQueueRow(row);
-      const reason=unknown?(LANG==='fa'?'نتیجهٔ ارسال نامشخص است؛ خودکار تکرار نکنید و سفارش‌ها را بررسی کنید.':'Submission outcome unknown; do not automatically retry; inspect Orders.'):
-        String(r.error||r.message||'server-declined');
-      toast(unknown?(LANG==='fa'?'نتیجه نامشخص':'Outcome unknown'):(LANG==='fa'?'سرور عدم موفقیت گزارش کرد':'Server reported failure'),escText(reason),unknown?'warn':'err');
-      if(unknown)loadOrders();
+      toast(unknown?(LANG==='fa'?'نتیجه نامشخص':'Outcome unknown'):(LANG==='fa'?'سرور رد کرد':'Server declined'),escText(reason),unknown?'warn':'err');
+      loadOrders();
       return;
     }
     queueDismissed.set(key,q); invalidateQueuePreview(q);
@@ -7193,8 +7352,12 @@ function queueTick(){
       const clock=document.querySelector(`[data-qclock="${q.id}"]`);
       if(ttl) ttl.textContent=fmtNum(q.ttl)+(LANG==='fa'?'ث':'s');
       if(clock) clock.className=`ms-auto chip num ${q.ttl<60?'text-red-300':'text-zinc-400'}`;
+      // Repaint execution freshness too: a 20s-old executable preview must not
+      // keep looking current just because the candle TTL is longer.
+      paintQueueRow(q);
     }
   }
+  for(const f of queueFiltered) paintQueueFilteredRow(f);
   pruneQueueDecisions();
   const pend=renderQueueHeader();
   if(expired){

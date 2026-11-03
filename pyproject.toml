@@ -43,7 +43,7 @@ select = [
     "RUF",              # ruff's own: unused noqa, mutable class defaults
 ]
 ignore = [
-    "RUF001", "RUF002", "RUF003",   # ambiguous unicode: the comments are Persian
+    "RUF001", "RUF002", "RUF003",   # ambiguous unicode: Persian UI strings remain intentional
     "RUF012",                       # mutable class attributes, see per-file note
 ]
 

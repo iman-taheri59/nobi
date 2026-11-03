@@ -115,8 +115,9 @@ for(const file of ['index.html','nobitex-mobile.html']) for(const lang of ['fa',
    await fresh();api.postPaperOrder=async()=>{orderCalls++;return reply;};const attempts=orderCalls;
    w.resolveQ(get().id,true);await turn();eq(w.eval('queueUncertain.size'),1);ok(d.querySelector('.qApp').disabled);w.resolveQ(get().id,true);await turn();eq(orderCalls,attempts+1);
   }
-  // Explicit server-declined is distinguishable from unknown; no candle dismissal.
-  await fresh();api.postPaperOrder=async()=>{orderCalls++;return {ok:false,error:'execution-rr-too-low'};};w.resolveQ(get().id,true);await turn();eq(w.eval('queueUncertain.size'),0);eq(w.eval('queueDismissed.size'),0);eq(d.querySelector('.qApp').disabled,false);
+  // Explicit server-declined is distinguishable from unknown and retires the candle.
+  await fresh();api.postPaperOrder=async()=>{orderCalls++;return {ok:false,error:'execution-rr-too-low'};};w.resolveQ(get().id,true);await turn();eq(w.eval('queueUncertain.size'),0);eq(w.eval('queueDismissed.size'),1);eq(w.eval('queue.length'),0);
+  await w.refreshQueue();eq(w.eval('queue.length'),0,'definitive refusal is not an immediate retry invitation');
   // Unrelated row expiry must not destroy the surviving active editor.
   await fresh();w.live.ranked.push({symbol:'ETHIRT',direction:'LONG',composite:75});await w.refreshQueue();open();await turn();
   const survivor=input('sizeQ','1222.');survivor.focus();survivor.setSelectionRange(3,3);

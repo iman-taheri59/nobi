@@ -5,7 +5,7 @@ Two rules shape this file:
 1. **Nothing here trusts the client.** The role of a new account comes from the
    invite row, never from the request body. A viewer cannot promote themselves.
 2. **Failures are specific enough to act on, and vague enough not to help an
-   attacker.** "نام کاربری یا رمز عبور درست نیست" for both halves; a distinct
+   attacker.** The same Persian "invalid username or password" message for both halves; a distinct
    message only for an invite that is used/expired (that code is already in the
    caller's hand).
 

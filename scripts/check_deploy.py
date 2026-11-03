@@ -315,7 +315,7 @@ def classify_bind(addr: str) -> str:
 
     loopback  reachable only from this machine — the only correct answer
     private   reachable from this VPC/subnet but not the internet: legitimate
-              when nginx runs on a second ابرک (see docs/deploy-arvan.md §VPC),
+              when nginx runs on a second cloud VM (see docs/deploy-arvan.md §VPC),
               and then the firewall/security group is the perimeter instead
     wildcard  0.0.0.0 / :: — every interface, including the public one
     public    a specific public address

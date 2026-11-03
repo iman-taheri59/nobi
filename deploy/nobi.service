@@ -1,6 +1,6 @@
 # /etc/systemd/system/nobi.service
 #
-# systemd unit for the nobiTrader dashboard on an ArvanCloud ابرک (Ubuntu 24.04).
+# systemd unit for the nobiTrader dashboard on an ArvanCloud cloud VM (Ubuntu 24.04).
 #
 # Two settings here are security, not convenience:
 #

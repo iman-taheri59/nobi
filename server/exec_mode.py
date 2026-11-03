@@ -12,14 +12,14 @@ Three modes, one meaning each:
     `broker.place_limit` and its ten gates, and records the result in the
     journal audit. The order is a **paper** order: this repository holds no
     exchange key and has no ``POST /market/orders`` path, so nothing is sent to
-    Nobitex. The UI says "کاغذی" for that reason.
+    Nobitex. The UI labels it "paper" for that reason.
 
 ``manual``
     The queue stays empty for that symbol; the ticket is the only way in.
 
 Where the state lives
 ---------------------
-It used to live in the browser: clicking «خودکار» set a string, printed a chip
+It used to live in the browser: clicking "auto" set a string, printed a chip
 and a toast, and nothing read the value. A hard-coded `symMode` table then
 overrode the human's choice per symbol, so the "per-symbol mode" the hint
 promised could not be changed at all. State now lives here, on the server,
