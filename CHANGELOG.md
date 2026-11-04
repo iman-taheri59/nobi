@@ -4,6 +4,9 @@
 
 ## Unreleased
 
+- `/api/health` اکنون بلوک `price_alerts` دارد (الگوی ADR-0024 مانند `scan_loop`): فاصلهٔ tick، سقف تازگی، شمار اجرا، نتیجه/خطای آخرین tick و تفکیک پایدار `sent/failed/pending` با زمان قدیمی‌ترین pending. شکست tick و تحویل تأییدنشده با منبع `task.price-alerts` در تب خطاها ثبت می‌شود (دقیقاً یک بار، بدون body تلگرام).
+- `scripts/live_evidence_snapshot.py` (ADR-0034) در برابر سرور واقعی کار نمی‌کرد: مسیرهای live session اپراتور می‌خواهند و ابزار فقط توکن می‌فرستاد. اکنون با `NBX_SNAPSHOT_USERNAME/PASSWORD` ورود واقعی می‌کند، پس از خواندن خارج می‌شود و ستون‌های scheduler/هشدار را به CSV افزوده است؛ تست جدید علیه قرارداد واقعی session (بدون اعتبارنامه، Viewer، Operator) است.
+
 - مسیر `/nbx-alerts.js` در FastAPI سرو نمی‌شد و در حالت canonical با `NBX_SERVE_INLINE=0` خطای 404 می‌داد؛ route اضافه و regression «هر ماژول خارجی dashboard سرو می‌شود» (200 و تطابق بایت) به `test_single_page.py` افزوده شد. `ui_smoke_prep.py` نیز ماژول سوم را inline می‌کند.
 - E2E واقعی هشدار قیمت (`scripts/price_alerts_e2e_test.py`, ۴۰ بررسی) با FastAPI موقت، SQLite موقت، صرافی و تلگرام کنترل‌شده و Chromium: ورود واقعی سه نقش، 401/403، CRUD فقط از bell با CSRF، `baseline → armed → crossing → یک event`، replay، `sent/failed/pending` با crash فرستنده پس از commit، stale/baseline مجدد، restart با پاک‌سازی cache و خواندن history از SQLite، صفر mutation معاملاتی و صفر egress سرور. به CI افزوده شد.
 

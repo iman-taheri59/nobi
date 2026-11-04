@@ -333,11 +333,17 @@ async def evaluate_price_alerts(*, now: int | None = None) -> dict[str, Any]:
             log.warning("price alert sender escaped its guard: %s", type(exc).__name__)
             delivery = {"sent": False, "transport": "unknown", "reason": "sender-error"}
         await asyncio.to_thread(_record_alert_delivery, int(event["id"]), delivery)
-        deliveries.append({
-            "event_id": int(event["id"]),
-            "sent": delivery.get("sent") is True,
-            "reason": str(delivery.get("reason") or ("sent" if delivery.get("sent") else "unknown"))[:80],
-        })
+        sent = delivery.get("sent") is True
+        reason = str(delivery.get("reason") or ("sent" if sent else "unknown"))[:80]
+        if not sent:
+            # The event row already holds this fact; the errors tab is where an
+            # operator looks without opening the bell. Reason only, never the
+            # transport's response body.
+            errorlog.capture(
+                level="warning", source="task.price-alerts",
+                message=f"alert delivery not confirmed ({reason}) for event {int(event['id'])}",
+            )
+        deliveries.append({"event_id": int(event["id"]), "sent": sent, "reason": reason})
     return {
         "observations": len(observations),
         "triggered": len(events),
@@ -345,21 +351,64 @@ async def evaluate_price_alerts(*, now: int | None = None) -> dict[str, Any]:
     }
 
 
+def _price_alert_health(**update: Any) -> None:
+    """Keep the scheduler's state readable from `/api/health` (ADR-0024).
+
+    Like `scan_loop`, this is how a five-day soak notices a dead or failing
+    alert tick without anyone opening the bell. Durable counts come from
+    SQLite; the per-tick facts are process-local and reset on restart.
+    """
+    prev = _cached.get("price_alerts") or {}
+    _cached["price_alerts"] = {
+        "interval_s": ALERT_TICK_S,
+        "max_age_s": ALERT_MAX_AGE_S,
+        "runs": int(prev.get("runs") or 0),
+        "last_at": prev.get("last_at"),
+        "last_ok": prev.get("last_ok"),
+        "last_error": prev.get("last_error"),
+        "last_triggered": prev.get("last_triggered"),
+        "enabled_rules": prev.get("enabled_rules"),
+        "deliveries": prev.get("deliveries"),
+        "oldest_pending_at": prev.get("oldest_pending_at"),
+        **update,
+    }
+
+
 async def _price_alert_loop() -> None:
+    _price_alert_health()
     while True:
+        started = time.time()
         try:
-            enabled = await asyncio.to_thread(price_alerts.has_enabled_rules)
-            if enabled:
+            summary = await asyncio.to_thread(price_alerts.health_summary)
+            triggered = 0
+            if summary["enabled_rules"]:
                 # Reuse the canonical loader and lock. No alert-only exchange
                 # client, credential, order route, or parallel market cache.
                 await load_universe()
                 result = await evaluate_price_alerts()
-                if result["triggered"]:
-                    log.info("price alerts: %d new trigger(s)", result["triggered"])
+                triggered = int(result["triggered"])
+                if triggered:
+                    log.info("price alerts: %d new trigger(s)", triggered)
+                    summary = await asyncio.to_thread(price_alerts.health_summary)
+            _price_alert_health(
+                **summary, runs=int((_cached.get("price_alerts") or {}).get("runs") or 0) + 1,
+                last_at=started, last_ok=True, last_error=None, last_triggered=triggered,
+            )
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # one bad tick must not kill the supervisor
-            log.warning("price alert tick failed: %s", type(exc).__name__)
+            # Only the exception type is kept: upstream messages can carry URLs
+            # with credentials, and the errors tab is readable by every role.
+            log.warning("price alert tick failed: %s", type(exc).__name__,
+                        extra={"nbx_captured": True})
+            errorlog.capture(
+                level="warning", source="task.price-alerts",
+                message=f"price alert tick failed: {type(exc).__name__}",
+            )
+            _price_alert_health(
+                runs=int((_cached.get("price_alerts") or {}).get("runs") or 0) + 1,
+                last_at=started, last_ok=False, last_error=type(exc).__name__,
+            )
         await asyncio.sleep(ALERT_TICK_S)
 
 
@@ -1175,6 +1224,9 @@ async def health():
         # ADR-0024: whether the evidence window is being filled by the process or
         # by a browser tab. "off" here plus a rising `days` means a tab is doing it.
         "scan_loop": _cached.get("scan_loop"),
+        # ADR-0049 scheduler: enabled rules, last tick outcome and the durable
+        # sent/failed/pending split, so a stuck delivery is visible to a monitor.
+        "price_alerts": _cached.get("price_alerts"),
         "stats": {
             "total": client.stats.total,
             "ok": client.stats.ok,

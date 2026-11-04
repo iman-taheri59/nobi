@@ -1,9 +1,17 @@
 #!/usr/bin/env python3
-"""Append one secret-free live-execution evidence snapshot to CSV."""
+"""Append one secret-free live-execution evidence snapshot to CSV.
+
+`/api/live/status` and `/api/live/evidence` are operator-session routes: a
+bare `NBX_API_TOKEN` is not accepted there. For an unattended daily run set
+`NBX_SNAPSHOT_USERNAME` / `NBX_SNAPSHOT_PASSWORD` (an Operator or Owner
+account) in the timer's environment; the tool logs in once, reads with that
+session, logs out, and writes none of it to the CSV.
+"""
 from __future__ import annotations
 
 import argparse
 import csv
+import http.cookiejar
 import json
 import os
 import sys
@@ -17,19 +25,70 @@ COLUMNS = (
     "ts", "version", "mode", "configured", "samples", "days", "ambiguous",
     "ready", "applied", "dry_run", "unknown", "cancel_unknown", "rejected",
     "reasons",
+    # ADR-0024/0049: scheduler liveness and alert delivery split. Blank when the
+    # server predates the field, so a mixed-version soak CSV stays readable.
+    "scan_runs", "alert_rules", "alert_runs", "alert_last_ok",
+    "alert_sent", "alert_failed", "alert_pending", "alert_oldest_pending_at",
 )
 
 
+def _opt(block: Any, key: str) -> Any:
+    if not isinstance(block, dict) or block.get(key) is None:
+        return ""
+    return block.get(key)
+
+
+_OPENER = urllib.request.build_opener(
+    urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar())
+)
+_HEADERS = {"Accept": "application/json", "User-Agent": "nobi-evidence-snapshot/1.0"}
+
+
+def _describe(exc: BaseException) -> str:
+    # HTTP status helps an operator tell "needs a session" from "server down";
+    # the response body is never echoed, it could carry anything.
+    if isinstance(exc, urllib.error.HTTPError):
+        return f"HTTPError {exc.code}"
+    return type(exc).__name__
+
+
+def login(base_url: str, username: str, password: str, timeout: float = 30.0) -> None:
+    """Open a real session (the same contract the browser uses)."""
+    payload = json.dumps({"username": username, "password": password}).encode("utf-8")
+    request = urllib.request.Request(
+        base_url.rstrip("/") + "/api/auth/login", data=payload,
+        headers={**_HEADERS, "Content-Type": "application/json"},
+    )
+    try:
+        with _OPENER.open(request, timeout=timeout) as response:
+            response.read()
+    except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        raise RuntimeError(f"snapshot login failed: {_describe(exc)}") from exc
+
+
+def logout(base_url: str, timeout: float = 10.0) -> None:
+    """Best effort: a daily timer must not leave a session per day behind."""
+    request = urllib.request.Request(
+        base_url.rstrip("/") + "/api/auth/logout", data=b"{}",
+        headers={**_HEADERS, "Content-Type": "application/json"},
+    )
+    try:
+        with _OPENER.open(request, timeout=timeout) as response:
+            response.read()
+    except (urllib.error.URLError, TimeoutError, OSError):
+        pass
+
+
 def get_json(url: str, token: str = "", timeout: float = 20.0) -> dict[str, Any]:
-    headers = {"Accept": "application/json"}
+    headers = dict(_HEADERS)
     if token:
         headers["X-API-Token"] = token
     request = urllib.request.Request(url, headers=headers)
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
+        with _OPENER.open(request, timeout=timeout) as response:
             value = json.loads(response.read().decode("utf-8"))
     except (urllib.error.URLError, TimeoutError, ValueError, OSError) as exc:
-        raise RuntimeError(f"snapshot request failed: {type(exc).__name__}") from exc
+        raise RuntimeError(f"snapshot request failed: {_describe(exc)}") from exc
     if not isinstance(value, dict):
         raise RuntimeError("snapshot response is not an object")
     return value
@@ -44,6 +103,8 @@ def collect(base_url: str, token: str = "") -> dict[str, Any]:
         raise RuntimeError("live evidence response is incomplete")
     states = evidence.get("states") if isinstance(evidence.get("states"), dict) else {}
     reasons = evidence.get("reasons") if isinstance(evidence.get("reasons"), list) else []
+    alerts = health.get("price_alerts")
+    deliveries = alerts.get("deliveries") if isinstance(alerts, dict) else None
     return {
         "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "version": health.get("version", ""),
@@ -59,6 +120,14 @@ def collect(base_url: str, token: str = "") -> dict[str, Any]:
         "cancel_unknown": int(states.get("cancel-unknown", 0)),
         "rejected": int(states.get("rejected", 0)),
         "reasons": ";".join(str(reason) for reason in reasons),
+        "scan_runs": _opt(health.get("scan_loop"), "runs"),
+        "alert_rules": _opt(alerts, "enabled_rules"),
+        "alert_runs": _opt(alerts, "runs"),
+        "alert_last_ok": _opt(alerts, "last_ok"),
+        "alert_sent": _opt(deliveries, "sent"),
+        "alert_failed": _opt(deliveries, "failed"),
+        "alert_pending": _opt(deliveries, "pending"),
+        "alert_oldest_pending_at": _opt(alerts, "oldest_pending_at"),
     }
 
 
@@ -77,10 +146,23 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--url", default="http://127.0.0.1:8000")
     parser.add_argument("--csv", type=Path, default=Path("live-evidence.csv"))
     args = parser.parse_args(argv)
+    username = os.getenv("NBX_SNAPSHOT_USERNAME", "")
+    password = os.getenv("NBX_SNAPSHOT_PASSWORD", "")
+    session = bool(username and password)
     try:
-        row = collect(args.url, os.getenv("NBX_API_TOKEN", ""))
+        if session:
+            login(args.url, username, password)
+        try:
+            row = collect(args.url, os.getenv("NBX_API_TOKEN", ""))
+        finally:
+            if session:
+                logout(args.url)
     except RuntimeError as exc:
-        print(str(exc), file=sys.stderr)
+        message = str(exc)
+        if "HTTPError 401" in message and not session:
+            message += (" — live routes need an Operator/Owner session; set "
+                        "NBX_SNAPSHOT_USERNAME and NBX_SNAPSHOT_PASSWORD")
+        print(message, file=sys.stderr)
         return 1
     append_row(args.csv, row)
     print(f"snapshot appended: samples={row['samples']} days={row['days']} ready={row['ready']}")

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 
 import pytest
 from fastapi.testclient import TestClient
@@ -290,3 +291,113 @@ def test_alert_loop_without_rules_makes_no_exchange_request(monkeypatch, tmp_pat
     with pytest.raises(asyncio.CancelledError):
         asyncio.run(main._price_alert_loop())
     assert called == []
+
+
+def _run_one_loop_tick(monkeypatch):
+    async def stop_after_tick(_seconds):
+        raise asyncio.CancelledError
+
+    monkeypatch.setattr(main.asyncio, "sleep", stop_after_tick)
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(main._price_alert_loop())
+
+
+def test_health_reports_alert_loop_without_an_open_tab(monkeypatch, tmp_path):
+    """ADR-0024 for alerts: the scheduler's state must be visible in health."""
+    monkeypatch.setattr(journal, "DB_PATH", tmp_path / "alerts.db")
+    monkeypatch.setattr(auth, "AUTH_DB", tmp_path / "auth.db")
+    main._cached.pop("price_alerts", None)
+    conn = alerts.connect()
+    try:
+        _create(conn)
+        # Two historical events: one confirmed, one still pending after a crash.
+        conn.execute(
+            """INSERT INTO price_alert_events
+               (rule_id, symbol, metric, operator, threshold, value, observed_at,
+                source, created_at, delivery_transport, delivery_sent, delivery_reason)
+               VALUES (1,'BTCIRT','last','above',100,110,900,'rest',900,'telegram',1,'sent'),
+                      (1,'BTCIRT','last','above',100,111,950,'rest',950,NULL,NULL,'pending')""",
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    rows = [{"symbol": "BTCIRT", "last": 90, "closed": False}]
+
+    async def fake_load():
+        main._cached.update({
+            "alert_universe": rows, "universe": rows, "universe_ts": 990,
+            "premium_pct": None,
+        })
+
+    monkeypatch.setattr(main, "load_universe", fake_load)
+    _run_one_loop_tick(monkeypatch)
+
+    # Read the endpoint directly: a lifespan TestClient would start the real
+    # loop and add a second tick to the one driven above.
+    block = asyncio.run(main.health())["price_alerts"]
+    assert block["enabled_rules"] == 1
+    assert block["interval_s"] == main.ALERT_TICK_S
+    assert block["max_age_s"] == main.ALERT_MAX_AGE_S
+    assert block["runs"] == 1 and block["last_ok"] is True
+    assert block["last_at"] is not None and block["last_triggered"] == 0
+    assert block["last_error"] is None
+    assert block["deliveries"] == {"sent": 1, "failed": 0, "pending": 1}
+    assert block["oldest_pending_at"] == 950
+
+
+def test_alert_loop_failure_is_captured_not_only_logged(monkeypatch, tmp_path):
+    monkeypatch.setattr(journal, "DB_PATH", tmp_path / "alerts.db")
+    main._cached.pop("price_alerts", None)
+    conn = alerts.connect()
+    try:
+        _create(conn)
+    finally:
+        conn.close()
+
+    async def broken_load():
+        raise RuntimeError("exchange token=SECRET-SHOULD-NOT-LEAK")
+
+    monkeypatch.setattr(main, "load_universe", broken_load)
+    handler = main.errorlog.install()  # the real log bridge, so a double entry shows
+    try:
+        before = len(main.errorlog.recent(limit=500, q="price alert tick failed"))
+        _run_one_loop_tick(monkeypatch)
+    finally:
+        logging.getLogger().removeHandler(handler)
+
+    block = main._cached["price_alerts"]
+    assert block["runs"] == 1 and block["last_ok"] is False
+    assert block["last_error"] == "RuntimeError"
+    assert "SECRET" not in str(block)
+    rows = main.errorlog.recent(limit=500, q="price alert tick failed")
+    assert len(rows) - before == 1, "one failure must land exactly once in the errors tab"
+    assert rows[0]["source"] == "task.price-alerts" and "SECRET" not in str(rows[0])
+
+
+def test_failed_delivery_is_visible_in_error_log(monkeypatch, tmp_path):
+    monkeypatch.setattr(journal, "DB_PATH", tmp_path / "alerts.db")
+    conn = alerts.connect()
+    try:
+        _create(conn)
+    finally:
+        conn.close()
+
+    async def failing_send(text):
+        return {"sent": False, "transport": "telegram", "reason": "http-400",
+                "error": "body with chat id 12345 must not be captured"}
+
+    monkeypatch.setattr(main.notify, "send", failing_send)
+    before = len(main.errorlog.recent(limit=500, q="alert delivery not confirmed"))
+    rows = [{"symbol": "BTCIRT", "last": 90, "closed": False}]
+    monkeypatch.setattr(main, "_cached", {
+        "alert_universe": rows, "universe": rows, "universe_ts": 990, "premium_pct": None,
+    })
+    asyncio.run(main.evaluate_price_alerts(now=1000))
+    rows[0]["last"] = 110
+    main._cached["universe_ts"] = 991
+    result = asyncio.run(main.evaluate_price_alerts(now=1000))
+    assert result["triggered"] == 1
+    entries = main.errorlog.recent(limit=500, q="alert delivery not confirmed")
+    assert len(entries) - before == 1
+    assert entries[0]["source"] == "task.price-alerts" and entries[0]["level"] == "warning"
+    assert "http-400" in entries[0]["message"] and "12345" not in str(entries[0])

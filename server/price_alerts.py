@@ -184,6 +184,35 @@ def delete_rule(conn: sqlite3.Connection, rule_id: int) -> bool:
     return cur.rowcount == 1
 
 
+def health_summary(path: str | Path | None = None) -> dict[str, Any]:
+    """Aggregate, secret-free counts for `/api/health` (ADR-0024 for alerts).
+
+    `pending` is the honest count of events whose delivery outcome was never
+    recorded (sender crash or restart between trigger and delivery); it is not
+    retried automatically (ADR-0049), so a monitor must be able to see it.
+    """
+    conn = connect(path)
+    try:
+        enabled = conn.execute(
+            "SELECT COUNT(*) FROM price_alert_rules WHERE enabled=1",
+        ).fetchone()[0]
+        sent, failed, pending, oldest_pending = conn.execute(
+            """SELECT
+                 COALESCE(SUM(delivery_sent=1), 0),
+                 COALESCE(SUM(delivery_sent=0), 0),
+                 COALESCE(SUM(delivery_sent IS NULL), 0),
+                 MIN(CASE WHEN delivery_sent IS NULL THEN created_at END)
+               FROM price_alert_events""",
+        ).fetchone()
+    finally:
+        conn.close()
+    return {
+        "enabled_rules": int(enabled),
+        "deliveries": {"sent": int(sent), "failed": int(failed), "pending": int(pending)},
+        "oldest_pending_at": int(oldest_pending) if oldest_pending is not None else None,
+    }
+
+
 def has_enabled_rules(path: str | Path | None = None) -> bool:
     conn = connect(path)
     try:
