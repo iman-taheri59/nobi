@@ -816,6 +816,8 @@ def _auto_fixture(tmp_path, monkeypatch, *, halted=False):
     monkeypatch.setattr(main, "_cached", {**main._cached,
                                           "signals": {"BTCUSDT": snap},
                                           "signals_by_tf": {"15m": {"BTCUSDT": snap}},
+                                          "signals_ts": {"15m": time.time()},
+                                          "signals_bars": {"15m": {"BTCUSDT": time.time()}},
                                           "universe": []})
     monkeypatch.setattr(main, "get_broker", lambda *a, **k: b)
     monkeypatch.setattr(main, "_AUTO_LAST", {})
@@ -894,6 +896,42 @@ def test_auto_default_covers_the_scanned_symbols_only(tmp_path, monkeypatch):
     assert res["considered"] == 1 and res["placed"] == 1
     assert set(b.positions) and all(p.symbol == "BTCUSDT" for p in b.positions.values())
     main.EXEC_MODE.default = "semi"
+
+
+def test_auto_never_borrows_the_last_scanned_timeframe(tmp_path, monkeypatch):
+    """A 15m signal is not evidence for a 1h automatic order."""
+    main, b = _auto_fixture(tmp_path, monkeypatch)
+    main.EXEC_MODE.symbols = {"BTCUSDT": "auto"}
+
+    res = asyncio.run(main.auto_tick("1h"))
+
+    assert res["placed"] == 0
+    assert not b.positions
+    assert [r["reason"] for r in res["rejected"]] == ["timeframe-unavailable"]
+
+
+def test_auto_refuses_a_stale_signal_snapshot(tmp_path, monkeypatch):
+    main, b = _auto_fixture(tmp_path, monkeypatch)
+    main.EXEC_MODE.symbols = {"BTCUSDT": "auto"}
+    main._cached["signals_ts"]["15m"] = time.time() - main.SIGNALS_TTL_S - 1
+
+    res = asyncio.run(main.auto_tick("15m"))
+
+    assert res["placed"] == 0
+    assert not b.positions
+    assert [r["reason"] for r in res["rejected"]] == ["stale-signals"]
+
+
+def test_auto_refuses_stale_candles_even_when_the_scan_timestamp_is_fresh(tmp_path, monkeypatch):
+    main, b = _auto_fixture(tmp_path, monkeypatch)
+    main.EXEC_MODE.symbols = {"BTCUSDT": "auto"}
+    main._cached["signals_bars"]["15m"]["BTCUSDT"] = time.time() - 4 * 3600
+
+    res = asyncio.run(main.auto_tick("15m"))
+
+    assert res["placed"] == 0
+    assert not b.positions
+    assert [r["reason"] for r in res["rejected"]] == ["stale-candles:behind"]
 
 
 def test_positions_are_marked_from_the_socket_not_a_poll(tmp_path, monkeypatch):

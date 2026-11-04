@@ -2001,16 +2001,15 @@ def _tf_or(value: object, default: str) -> str:
 
 
 def _signal_lookup(symbol: str, tf: str | None = None):
-    """Find a scored symbol, preferring the requested timeframe's cache.
+    """Find a scored symbol without borrowing another timeframe's analysis.
 
-    `_cached["signals"]` is whichever timeframe was scanned last; using it for
-    a caller-specified `tf` could size a trade on another timeframe's ATR.
+    `_cached["signals"]` is whichever timeframe was scanned last. It is a valid
+    answer only when the caller did not name a timeframe; otherwise absence is
+    safer than sizing a trade with another horizon's price and ATR.
     """
     sym = symbol.upper()
     if tf:
-        by_tf = _cached.get("signals_by_tf", {}).get(tf) or {}
-        if sym in by_tf:
-            return by_tf[sym]
+        return (_cached.get("signals_by_tf", {}).get(tf) or {}).get(sym)
     return _cached["signals"].get(sym)
 
 
@@ -4572,6 +4571,30 @@ _AUTO_STATE: dict[str, Any] = {
 }
 
 
+def _auto_signal_refusal(symbol: str, tf: str, now: float) -> str | None:
+    """Why an automatic order must not use this cached signal, if any.
+
+    A current scan timestamp alone does not make an old candle actionable, and
+    a current candle does not make a long-abandoned score current. Both pieces
+    of provenance therefore belong to the automatic execution boundary.
+    """
+    raw_scanned_at = (_cached.get("signals_ts", {}) or {}).get(tf)
+    if raw_scanned_at is None:
+        return "stale-signals"
+    try:
+        scanned_at = float(raw_scanned_at)
+    except (TypeError, ValueError):
+        return "stale-signals"
+    scan_age = now - scanned_at
+    if not math.isfinite(scan_age) or scan_age < 0 or scan_age > SIGNALS_TTL_S:
+        return "stale-signals"
+    bar_at = (_cached.get("signals_bars", {}).get(tf) or {}).get(symbol)
+    assessment = freshness_block_at(bar_at, tf)
+    if assessment.get("stale"):
+        return f"stale-candles:{assessment.get('reason') or 'unknown'}"
+    return None
+
+
 async def auto_tick(tf: str = "15m") -> dict:
     """One pass of `auto`: size, gate and place one paper order per symbol.
 
@@ -4586,7 +4609,9 @@ async def auto_tick(tf: str = "15m") -> dict:
     now = time.time()
     trigger_state = broker.refresh_risk_triggers(now)
     if EXEC_MODE.is_auto_default():
-        pool = _cached.get("signals_by_tf", {}).get(tf) or _cached.get("signals") or {}
+        # Automatic execution may only consider the requested horizon. The
+        # latest-scan alias can belong to another timeframe entirely.
+        pool = _cached.get("signals_by_tf", {}).get(tf) or {}
         targets = list(pool.keys())
     else:
         targets = EXEC_MODE.auto_symbols()
@@ -4596,9 +4621,28 @@ async def auto_tick(tf: str = "15m") -> dict:
     }
     for sym in sorted(set(targets)):
         snap = _signal_lookup(sym, tf)
-        if not snap:
-            continue
         out["considered"] += 1
+        if not snap:
+            out["skipped"] += 1
+            out["rejected"].append({"symbol": sym, "reason": "timeframe-unavailable"})
+            audit(
+                "paper.order.auto",
+                actor="auto",
+                result="blocked",
+                detail={"symbol": sym, "tf": tf, "reason": "timeframe-unavailable"},
+            )
+            continue
+        refusal = _auto_signal_refusal(sym, tf, now)
+        if refusal:
+            out["skipped"] += 1
+            out["rejected"].append({"symbol": sym, "reason": refusal})
+            audit(
+                "paper.order.auto",
+                actor="auto",
+                result="blocked",
+                detail={"symbol": sym, "tf": tf, "reason": refusal},
+            )
+            continue
         if (snap.get("direction") or "").upper() != "LONG":
             out["skipped"] += 1
             continue

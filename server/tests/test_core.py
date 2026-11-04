@@ -752,21 +752,23 @@ def test_risk_preview_does_not_reserve_heat():
     assert r.open_heat == pytest.approx(before + real.risk_pct)
 
 
-def test_signal_lookup_prefers_requested_timeframe():
+def test_signal_lookup_never_borrows_another_timeframe():
     import main
 
     main._cached["signals"] = {"BTCUSDT": {"lastClose": 1.0, "tag": "15m"}}
     main._cached["signals_by_tf"] = {"1h": {"BTCUSDT": {"lastClose": 2.0, "tag": "1h"}}}
     assert main._signal_lookup("btcusdt", "1h")["tag"] == "1h"
-    assert main._signal_lookup("BTCUSDT", "4h")["tag"] == "15m"   # fallback
+    assert main._signal_lookup("BTCUSDT", "4h") is None
     assert main._signal_lookup("NOPE", "1h") is None
 
 
 def test_paper_order_accepts_size_quote_alone(monkeypatch, tmp_path):
     import main
 
-    monkeypatch.setattr(main, "_cached", {"signals": {"BTCUSDT": {"lastClose": 73_040.0}},
-                                          "signals_by_tf": {}, "universe": []})
+    snap = {"lastClose": 73_040.0}
+    monkeypatch.setattr(main, "_cached", {"signals": {"BTCUSDT": snap},
+                                          "signals_by_tf": {"15m": {"BTCUSDT": snap}},
+                                          "universe": []})
     broker, _ = make_broker(tmp_path, monkeypatch, price=73_040.0)
     monkeypatch.setattr(main, "get_broker", lambda *a, **k: broker)
 

@@ -82,6 +82,24 @@ class OrderIntent:
         return json.dumps(body, sort_keys=True, separators=(",", ":")).encode("utf-8")
 
 
+def _order_response_state(response: dict[str, Any], accepted_state: str) -> tuple[str, str | None]:
+    """Classify the order, not merely the transport envelope.
+
+    Nobitex can answer `status: ok` for the request while the embedded order is
+    `Rejected`. Treating that envelope as acceptance would both misstate the
+    execution ledger and let a rejected order qualify as promotion evidence.
+    An active order with zero matched amount is still a valid accepted order.
+    """
+    if response.get("status") != "ok":
+        return "rejected", None
+    order_value = response.get("order")
+    order: dict[str, Any] = order_value if isinstance(order_value, dict) else {}
+    order_status = str(order.get("status") or "").strip().casefold()
+    if order_status == "rejected":
+        return "rejected", "order-rejected"
+    return accepted_state, None
+
+
 class ExecutionLedger:
     def __init__(self, path: Path):
         self.path = path
@@ -251,12 +269,12 @@ class LiveExecutionClient:
             return self.ledger.transition(
                 client_id, "unknown", error_code=type(exc).__name__, increment_attempt=True
             )
-        ok = response.get("status") == "ok"
         order_value = response.get("order")
         order: dict[str, Any] = order_value if isinstance(order_value, dict) else {}
         exchange_id = str(order.get("id")) if order.get("id") is not None else None
+        state, error_code = _order_response_state(response, "accepted")
         return self.ledger.transition(
-            client_id, "accepted" if ok else "rejected", response=response,
+            client_id, state, response=response, error_code=error_code,
             exchange_order_id=exchange_id, increment_attempt=True,
         )
 
@@ -322,9 +340,10 @@ class LiveExecutionClient:
         order_value = response.get("order")
         order: dict[str, Any] = order_value if isinstance(order_value, dict) else {}
         exchange_id = str(order.get("id")) if order.get("id") is not None else None
-        state = "reconciled" if response.get("status") == "ok" else "rejected"
+        state, error_code = _order_response_state(response, "reconciled")
         return self.ledger.transition(
-            client_order_id, state, response=response, exchange_order_id=exchange_id
+            client_order_id, state, response=response, error_code=error_code,
+            exchange_order_id=exchange_id,
         )
 
 

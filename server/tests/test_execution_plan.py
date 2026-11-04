@@ -94,7 +94,72 @@ def test_valid_levels_are_preserved_without_reanchoring(broker, side, stop, tp1,
     pos = asyncio.run(broker.place_limit("TESTUSDT", side, 1, 100, stop, tp1, tp2))
     assert pos is not None, broker.last_error
     assert (pos.stop, pos.tp1, pos.tp2) == (stop, tp1, tp2)
-    assert broker.cash < 100_000
+    entry_fee = pos.size_usd * paper_trading.FEE_PCT
+    expected_cash = (
+        100_000 - pos.size_usd - entry_fee if side == "buy"
+        else 100_000 + pos.size_usd - entry_fee
+    )
+    assert broker.cash == pytest.approx(expected_cash)
+    assert broker.equity == pytest.approx(100_000 - entry_fee)
+
+
+def test_short_mark_and_full_close_conserve_cash_and_equity(broker, monkeypatch):
+    pos = asyncio.run(broker.place_limit("TESTUSDT", "sell", 1, 100, 104, 96, 94))
+    assert pos is not None, broker.last_error
+    entry_notional = pos.size_usd
+    entry_fee = entry_notional * paper_trading.FEE_PCT
+    entry_equity = 100_000 - entry_fee
+    assert broker.cash == pytest.approx(100_000 + entry_notional - entry_fee)
+    assert broker.equity == pytest.approx(entry_equity)
+
+    pos.last_price = 110.0
+    broker._mark_equity_minute()
+    assert broker.equity == pytest.approx(entry_equity - 10.0)
+
+    async def executable(_symbol, _side, qty):
+        return 110.0, qty
+
+    monkeypatch.setattr(broker, "_execution_price", executable)
+    asyncio.run(broker._close(pos.id, "test-exit"))
+    exit_fee = 110.0 * paper_trading.FEE_PCT
+    expected_cash = 100_000 + 100.0 - 110.0 - entry_fee - exit_fee
+    assert pos.state == "CLOSED"
+    assert broker.cash == pytest.approx(expected_cash)
+    assert broker.equity == pytest.approx(expected_cash)
+    assert pos.realized_pnl == pytest.approx(-10.0 - exit_fee)
+
+
+def test_short_tp1_and_tp2_use_buyback_cash_flow(broker, monkeypatch):
+    pos = asyncio.run(broker.place_limit("TESTUSDT", "sell", 1, 100, 104, 96, 94))
+    assert pos is not None, broker.last_error
+    entry_notional = pos.size_usd
+    entry_fee = entry_notional * paper_trading.FEE_PCT
+    price = [95.0]
+
+    async def mid(_symbol):
+        return price[0]
+
+    async def executable(_symbol, _side, qty):
+        return price[0], qty
+
+    monkeypatch.setattr(broker, "_mid_price", mid)
+    monkeypatch.setattr(broker, "_execution_price", executable)
+    asyncio.run(broker.evaluate_positions())
+
+    first_fee = 95.0 * 0.5 * paper_trading.FEE_PCT
+    cash_after_tp1 = 100_000 + entry_notional - entry_fee - 95.0 * 0.5 - first_fee
+    assert pos.state == "PARTIAL" and pos.filled_qty == pytest.approx(0.5)
+    assert broker.cash == pytest.approx(cash_after_tp1)
+    assert broker.equity == pytest.approx(cash_after_tp1 - 95.0 * 0.5)
+
+    price[0] = 94.0
+    asyncio.run(broker.evaluate_positions())
+    second_fee = 94.0 * 0.5 * paper_trading.FEE_PCT
+    expected_cash = cash_after_tp1 - 94.0 * 0.5 - second_fee
+    assert pos.state == "CLOSED" and pos.close_reason == "tp2-hit"
+    assert broker.cash == pytest.approx(expected_cash)
+    assert broker.equity == pytest.approx(expected_cash)
+    assert pos.realized_pnl == pytest.approx(5.5 - first_fee - second_fee)
 
 
 def test_historical_default_levels_still_work_at_min_rr(broker):

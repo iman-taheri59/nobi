@@ -622,7 +622,10 @@ class PaperBroker:
             return None
         notional_usd = notional / rate
         fee_usd = fee / rate
-        total_cost = notional_usd + fee_usd if side == "buy" else notional_usd - fee_usd
+        # A long spends cash; a short sale credits proceeds and creates a base
+        # asset liability. The liability is marked separately below, so this
+        # cash credit must not be treated as profit.
+        cash_delta = -(notional_usd + fee_usd) if side == "buy" else notional_usd - fee_usd
 
         # Hard cap: no single position may exceed 25% of equity (ADR-0008).
         cap = 0.25 * max(self.equity, 1e-9)
@@ -714,7 +717,7 @@ class PaperBroker:
         )
         self.positions[pid] = pos
         self.risk.open_heat = round(getattr(self.risk, "open_heat", 0.0) + risk_pct, 4)
-        self.cash -= total_cost
+        self.cash += cash_delta
         self.orders.append(OrderEvent(time.time(), "submit", symbol, side, filled_qty, fill_price,
                                       {"source": source, "clientOrderId": coid,
                                        "execution": execution, "mid": mid_at_submit,
@@ -756,9 +759,13 @@ class PaperBroker:
         cost_basis_usd = pos.size_usd * fraction
         if pos.side == "buy":
             pnl_net = (notional_out - cost_basis_quote) / rate - fee_out_usd
+            self.cash += notional_out / rate - fee_out_usd
         else:
             pnl_net = (cost_basis_quote - notional_out) / rate - fee_out_usd
-        self.cash += cost_basis_usd + pnl_net
+            # Closing a short buys the base asset back. It consumes the exit
+            # notional plus the exit fee; it must not release the entry basis a
+            # second time (the sale proceeds were already credited at entry).
+            self.cash -= notional_out / rate + fee_out_usd
 
         pos.filled_qty = max(0.0, open_qty - sold_qty)
         pos.size_quote = max(0.0, pos.size_quote - cost_basis_quote)
@@ -823,9 +830,10 @@ class PaperBroker:
                 cost_basis_tp1 = pos.size_usd * 0.5
                 if pos.side == "buy":
                     pnl_tp1 = (notional_tp1 - pos.size_quote * 0.5) / rate - fee_tp1 / rate
+                    self.cash += notional_tp1 / rate - fee_tp1 / rate
                 else:
                     pnl_tp1 = (pos.size_quote * 0.5 - notional_tp1) / rate - fee_tp1 / rate
-                self.cash += cost_basis_tp1 + pnl_tp1
+                    self.cash -= notional_tp1 / rate + fee_tp1 / rate
                 pos.filled_qty -= exit_qty
                 pos.size_quote -= pos.size_quote * 0.5
                 pos.size_usd -= cost_basis_tp1
@@ -869,7 +877,8 @@ class PaperBroker:
     def _mark_equity_minute(self):
         # Mark open legs to the last observed price (not to their entry cost).
         open_val = sum(
-            p.filled_qty * (p.last_price or p.entry_price)
+            (1.0 if p.side == "buy" else -1.0)
+            * p.filled_qty * (p.last_price or p.entry_price)
             / self._pos_rate(p)
             for p in self.positions.values()
             if p.state != "CLOSED"

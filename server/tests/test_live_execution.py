@@ -106,6 +106,56 @@ def test_timeout_becomes_unknown_and_repeat_does_not_send(tmp_path):
     assert calls == 1
 
 
+def test_order_level_rejection_is_not_accepted_or_promotion_evidence(tmp_path):
+    calls = 0
+
+    def rejected(*_args):
+        nonlocal calls
+        calls += 1
+        return {"status": "ok", "order": {
+            "id": 7, "status": "Rejected", "matchedAmount": "0"}}
+
+    client = _live(tmp_path, rejected)
+    first = client.place(_intent())
+    second = client.place(_intent())
+
+    assert first["state"] == second["state"] == "rejected"
+    assert first["error_code"] == "order-rejected"
+    assert calls == 1
+    evidence = client.ledger.promotion_evidence()
+    assert evidence["samples"] == evidence["days"] == 0
+    assert evidence["real_attempts"] == 1
+    assert evidence["rejected"] == 1
+    assert evidence["ready"] is False
+
+
+def test_reconciliation_does_not_promote_an_order_level_rejection(tmp_path):
+    def sender(_method, path, _body, _headers):
+        if path.endswith("/add"):
+            raise TimeoutError
+        return {"status": "ok", "order": {
+            "id": 42, "status": "Rejected", "matchedAmount": "0"}}
+
+    client = _live(tmp_path, sender)
+    unknown = client.place(_intent())
+    resolved = client.reconcile(unknown["client_order_id"])
+
+    assert unknown["state"] == "unknown"
+    assert resolved["state"] == "rejected"
+    assert resolved["error_code"] == "order-rejected"
+    assert client.ledger.promotion_evidence()["samples"] == 0
+
+
+def test_unmatched_active_order_is_accepted_not_rejected(tmp_path):
+    client = _live(tmp_path, lambda *_: {"status": "ok", "order": {
+        "id": 7, "status": "Active", "matchedAmount": "0"}})
+
+    placed = client.place(_intent())
+
+    assert placed["state"] == "accepted"
+    assert placed["error_code"] is None
+
+
 def test_reconciliation_resolves_unknown_by_client_order_id(tmp_path):
     calls = []
 

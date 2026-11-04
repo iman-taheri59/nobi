@@ -75,7 +75,9 @@ def make(tmp_path, monkeypatch):
         # The what-if route needs a price and an ATR before it ever looks at
         # the rate; without a snapshot it answers "no price", which is a
         # different refusal and would hide the one under test.
-        monkeypatch.setitem(main._cached, "signals", {"BTCIRT": snapshot or {}})
+        snap = snapshot or {}
+        monkeypatch.setitem(main._cached, "signals", {"BTCIRT": snap})
+        monkeypatch.setitem(main._cached, "signals_by_tf", {"15m": {"BTCIRT": snap}})
         # The other rate source: a stale exchange also means no fresh universe,
         # so the fallback must not hand the route a price either.
         monkeypatch.setitem(main._cached, "universe", [])
