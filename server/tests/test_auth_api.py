@@ -199,6 +199,23 @@ def test_a_viewer_can_read_everything_and_change_nothing(client: TestClient) -> 
     assert "viewer" in r.json()["detail"]
 
 
+def test_viewer_reads_risk_metrics_journal_and_signal_evidence(client: TestClient) -> None:
+    """The production read-only role still reaches the new evidence surfaces."""
+    _owner()
+    _viewer()
+    _login(client, "viewer1")
+    for path in (
+        "/api/paper/positions",
+        "/api/paper/metrics",
+        "/api/risk/state",
+        "/api/journal/summary",
+        "/api/v1/signal-intelligence/evidence",
+    ):
+        response = client.get(path)
+        assert response.status_code == 200, (path, response.text[:300])
+    assert client.get("/api/settings").status_code == 403
+
+
 def test_the_viewer_keeps_reading_after_being_refused(client: TestClient) -> None:
     """A refusal must not be a logout — that would look like a random bounce."""
     _owner()

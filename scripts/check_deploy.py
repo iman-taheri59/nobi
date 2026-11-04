@@ -124,19 +124,38 @@ def _row(status: str, name: str, detail: str, hint: str = "") -> dict:
 # Static configuration
 # --------------------------------------------------------------------------- #
 def check_config() -> dict:
-    path = SERVER / ".env"
-    if not path.is_file():
-        return _row(FAIL, "config", f"{path} does not exist",
-                    "cp deploy/nobi.env.example server/.env and fill it in")
-    mode = path.stat().st_mode & 0o777
+    """Validate the files systemd actually reads, not only the optional override.
+
+    `deploy/nobi.service` always loads `/etc/nobi/nobi.env`; `server/.env` is an
+    optional local override. Requiring the latter produced a false FAIL on a
+    healthy host and encouraged an empty placeholder file. Both files still get
+    permission checks: the unit may be group-readable by root:nobi (0640), but
+    neither may be readable by other users.
+    """
+    server_env = SERVER / ".env"
+    existing = [path for path in (server_env, UNIT_ENV) if path.is_file()]
+    if not existing:
+        return _row(FAIL, "config", f"neither {server_env} nor {UNIT_ENV} exists",
+                    "configure /etc/nobi/nobi.env for systemd, or copy "
+                    "deploy/nobi.env.example to server/.env for local development")
     pairs = _env()
     if not pairs:
-        return _row(FAIL, "config", f"{path} has no KEY=VALUE lines",
+        return _row(FAIL, "config", "configuration files have no KEY=VALUE lines",
                     "an empty file is not a configuration")
-    if mode & 0o077:
-        return _row(FAIL, "config", f"{path} is mode {mode:o} — group/other can read the secrets",
-                    f"chmod 600 {path}")
-    return _row(OK, "config", f"{path}, mode {mode:o}, {len(pairs)} keys")
+    if server_env.is_file():
+        mode = server_env.stat().st_mode & 0o777
+        if mode & 0o077:
+            return _row(FAIL, "config",
+                        f"{server_env} is mode {mode:o} — group/other can read the secrets",
+                        f"chmod 600 {server_env}")
+    if UNIT_ENV.is_file():
+        mode = UNIT_ENV.stat().st_mode & 0o777
+        if mode & 0o007:
+            return _row(FAIL, "config",
+                        f"{UNIT_ENV} is mode {mode:o} — other users can read the secrets",
+                        f"chmod 640 {UNIT_ENV} (or 600)")
+    sources = ", ".join(str(path) for path in existing)
+    return _row(OK, "config", f"{sources}; {len(pairs)} keys")
 
 
 #: The floor is set by the pins, not by the syntax: `numpy==2.5.4` publishes
@@ -415,34 +434,71 @@ def check_readonly(public: str) -> dict:
                 "expected 401/403; check the proxy is forwarding to the app")
 
 
-def check_reads(public: str) -> dict:
-    """Say out loud what is *not* protected.
+def _anonymous_get(url: str) -> tuple[int, bytes]:
+    """One unauthenticated GET; HTTP refusals are results, not transport errors."""
+    req = urllib.request.Request(url, headers={"User-Agent": "nobi-deploy-check/1"})
+    try:
+        with urllib.request.urlopen(req, timeout=15) as response:
+            # Health includes freshness for the whole symbol universe and is
+            # larger than a small error-body buffer. Bound the read without
+            # truncating a normal production payload into invalid JSON.
+            return response.status, response.read(1024 * 1024)
+    except urllib.error.HTTPError as exc:
+        return exc.code, exc.read(512)
 
-    `require_client` guards state-changing endpoints only. GET /api/positions
-    answers anyone who knows the URL, in every auth mode — so reporting "ok"
-    here would be the tool lying about the one thing it exists to report.
+
+def check_reads(public: str) -> dict:
+    """Probe anonymous reads instead of inferring access from the auth mode.
+
+    Once an account exists, `require_login_for_api` closes every non-public API
+    GET. The old checker never called those routes and therefore warned on a
+    correctly closed deployment. Health remains public for monitors; account,
+    position, and equity data must refuse anonymous callers.
     """
     if not public:
         return _row(SKIP, "reads", "no --public URL given", "")
+    base = public.rstrip("/")
     try:
-        with urllib.request.urlopen(public.rstrip("/") + "/api/health", timeout=15) as r:
-            body = json.loads(r.read().decode("utf-8"))
-    except urllib.error.HTTPError as e:
-        if e.code in (401, 403):
-            return _row(OK, "reads", f"the site answers {e.code} before reaching the app",
-                        "an extra auth layer (nginx basic auth) is in front — good, "
-                        "reads are protected too")
-        return _row(FAIL, "reads", f"/api/health -> {e.code}", "")
-    except (urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError) as e:
-        return _row(FAIL, "reads", f"/api/health failed: {type(e).__name__}", "")
-    if not body.get("ok"):
-        return _row(FAIL, "reads", f"/api/health says ok={body.get('ok')!r}", "")
-    mode = body.get("auth", {}).get("mode")
-    return _row(SKIP, "reads",
-                f"ok, auth mode={mode}; GET endpoints need no token, so positions and "
-                "equity are readable by anyone with the URL",
-                "put the site behind nginx basic auth (docs/deploy-arvan.md §۷) "
-                "or accept it")
+        health_code, health_raw = _anonymous_get(base + "/api/health")
+    except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        return _row(FAIL, "reads", f"/api/health failed: {type(exc).__name__}", "")
+    if health_code in (401, 403):
+        return _row(OK, "reads", f"the site answers {health_code} before reaching the app",
+                    "an extra auth layer (nginx basic auth) is in front — reads are protected")
+    if health_code != 200:
+        return _row(FAIL, "reads", f"/api/health -> {health_code}",
+                    "health must stay public while sensitive API reads require login")
+    try:
+        health = json.loads(health_raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return _row(FAIL, "reads", "/api/health returned invalid JSON", "")
+    if not health.get("ok"):
+        return _row(FAIL, "reads", f"/api/health says ok={health.get('ok')!r}", "")
+
+    accounts = health.get("auth", {}).get("accounts")
+    paths = ("/api/paper/positions", "/api/paper/metrics", "/api/risk/state")
+    outcomes: list[str] = []
+    for path in paths:
+        try:
+            code, _ = _anonymous_get(base + path)
+        except (urllib.error.URLError, TimeoutError, OSError) as exc:
+            return _row(ERROR, "reads", f"anonymous GET {path}: {type(exc).__name__}",
+                        "could not establish whether account data is protected")
+        outcomes.append(f"{path}={code}")
+        if code == 200 and accounts is False:
+            return _row(SKIP, "reads",
+                        f"anonymous GET {path} -> 200 because no account has been claimed",
+                        "create the owner account before exposing the dashboard, or put "
+                        "nginx authentication in front of it")
+        if code == 200:
+            return _row(FAIL, "reads",
+                        f"anonymous GET {path} -> 200: account data is exposed",
+                        "the login middleware is not protecting reads; do not accept this "
+                        "as a cosmetic warning")
+        if code not in (401, 403):
+            return _row(FAIL, "reads", f"anonymous GET {path} -> {code}",
+                        "expected 401/403 for sensitive data; check proxy and app versions")
+    return _row(OK, "reads", "; ".join(outcomes) + "; /api/health=200 (public)")
 
 
 def check_tls(public: str) -> dict:

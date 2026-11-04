@@ -2,6 +2,12 @@
 
 [English](CHANGELOG.en.md) · **فارسی**
 
+## 2.3.1
+
+- `check_deploy.py` حالا همان منابع config را بررسی می‌کند که سرویس systemd واقعاً می‌خواند: `/etc/nobi/nobi.env` بدون وجود `server/.env` معتبر است، override اختیاری همچنان پشتیبانی می‌شود و دسترسی group/other به secretها کنترل می‌شود. دیگر برای سبزشدن preflight لازم نیست فایل `.env` خالی ساخته شود.
+- هشدار دسترسی خواندنی به‌جای حدس از auth mode، با GET ناشناس واقعی به positions/metrics/risk سنجیده می‌شود. `/api/health` برای monitoring عمومی می‌ماند؛ پاسخ 401/403 مسیرهای حساس نتیجهٔ OK است و 200 دادهٔ حساس FAIL. health بزرگِ شامل freshness همهٔ نمادها نیز بدون truncation خوانده می‌شود.
+- regression نقش Viewer روی positions، metrics، risk، Journal و Signal Evidence گسترش یافت. نسخه با 1786 تست Python، mypy، Ruff/ESLint، JS parity و suiteهای DOM روی Node 24 بررسی شد؛ رفتار runtime احراز هویت، ریسک یا معامله تغییری نکرده و این انتشار Live/Auto یا سفارش واقعی را فعال نمی‌کند.
+
 ## 2.3.0
 
 - قرارداد TA در Python و JavaScript یکسان شد: RMA/RSI/TR/Bollinger/DI/ADX، warmup، امتیاز مؤلفه‌ها، direction، regime و risk اکنون parity عددی و regression مستقل دارند. FA نیز cache حساس به depth/premium، provenance و freshness ارائه‌دهنده، بازتوزین وزن مؤلفه‌های موجود و mapping صریح TVL می‌گیرد؛ دادهٔ ناموجود دیگر evidence خنثی ساختگی نیست.

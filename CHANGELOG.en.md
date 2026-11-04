@@ -2,6 +2,12 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 2.3.1
+
+- `check_deploy.py` now checks the configuration sources systemd actually reads: `/etc/nobi/nobi.env` is valid without `server/.env`, the optional override remains supported, and group/other access to secrets is checked. A placeholder empty `.env` is no longer needed to make preflight green.
+- The read-access check now probes real anonymous GETs against positions/metrics/risk instead of guessing from the auth mode. `/api/health` remains public for monitoring; 401/403 on sensitive paths is OK and 200 for account data is FAIL. Large health payloads containing the whole symbol-freshness map are read without truncation.
+- Expanded Viewer regressions across positions, metrics, risk, Journal, and Signal Evidence. Verified with 1786 Python tests, mypy, Ruff/ESLint, JS parity, and the DOM suites on Node 24; runtime authentication, risk, and trading behavior are unchanged, and this release enables neither Live/Auto nor real orders.
+
 ## 2.3.0
 
 - Aligned the Python and JavaScript TA contracts: RMA/RSI/TR/Bollinger/DI/ADX, warm-up, component scores, direction, regime, and risk now have numerical parity and independent regressions. FA gains depth/premium-sensitive caching, provider provenance/freshness, reweighting of available components, and explicit TVL mappings; missing data is no longer fabricated neutral evidence.
