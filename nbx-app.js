@@ -1392,14 +1392,12 @@
         out.classList.remove('hidden');
         out.title = inFa('auth.logout');
       }
-      if (!state.can_mutate) {
-        // Say it once, in the banner the app already uses for "something is
-        // different about this session" — silently ignoring a click is worse.
-        const banner = $('upBanner'), msg = $('upBannerMsg');
-        if (banner && msg) {
-          banner.classList.remove('hidden');
-          msg.textContent = inFa('auth.readonly');
-        }
+      // Upstream health has its own alert and repaint cycle. Keep role state
+      // independent so a healthy scan cannot hide the Viewer's read-only notice.
+      const roleBanner = $('roleBanner'), roleMessage = $('roleBannerMsg');
+      if (roleBanner && roleMessage) {
+        roleBanner.classList.toggle('hidden', !!state.can_mutate);
+        if (!state.can_mutate) roleMessage.textContent = inFa('auth.readonly');
       }
     } else if (state.token) {
       document.documentElement.dataset.canMutate = '0';

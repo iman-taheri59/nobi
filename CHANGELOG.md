@@ -2,6 +2,11 @@
 
 [English](CHANGELOG.en.md) · **فارسی**
 
+## 2.3.3
+
+- پیام «نقش شما فقط‌خواندنی است» دیگر با banner وضعیت upstream مخلوط نمی‌شود. پیش از این `upShow(false)` بعد از یک scan سالم آن را مخفی می‌کرد و خطای upstream متن نقش را بازنویسی می‌کرد. `roleBanner` مستقل اکنون در هر دو حالت سالم/خطا پایدار می‌ماند و Owner تغییری نمی‌بیند.
+- regression جدید functionهای واقعی `paintUser` و `upShow` را روی Viewer و Owner و در هر دو وضعیت upstream اجرا می‌کند. integration محلی با Viewer واقعی نیز 21/21 بررسی API و 19/19 بررسی real-page UI را بدون mutation یا خطای JavaScript پاس کرد. نسخه با 1788 تست Python و تمام suiteهای JS/DOM روی Node 24 بررسی شد؛ این انتشار فقط نمایش نقش را اصلاح می‌کند و runtime احراز هویت، ریسک، معامله، Live/Auto یا سفارش واقعی تغییری ندارد.
+
 ## 2.3.2
 
 - traceback مرحلهٔ `--verify` در `check_config` رفع شد: روی میزبانی که `/etc/nobi/nobi.env` برای کاربر سرویس root-only است، خودِ `stat` نیز PermissionError می‌دهد. checker حالا mode ناشناخته را بدون crash نگه می‌دارد و مقادیر `NBX_*` را که `update_arvan.sh --verify` صریحاً پاس می‌کند مصرف می‌کند؛ بدون آن مقادیر، نتیجهٔ شفاف SKIP است نه traceback یا گزارش config خالی.

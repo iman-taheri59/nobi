@@ -2,6 +2,11 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 2.3.3
+
+- The “your role is read-only” notice is no longer conflated with the upstream-health banner. Previously `upShow(false)` hid it after a healthy scan and an upstream error overwrote its text. An independent `roleBanner` now survives both healthy and failed upstream states, while the Owner view is unchanged.
+- A new regression executes the production `paintUser` and `upShow` functions for Viewer and Owner in both upstream states. A local authenticated Viewer integration also passed all 21 API/role checks and all 19 real-page UI checks without mutations or JavaScript errors. Verified with 1788 Python tests and every JS/DOM suite on Node 24. This release changes only role presentation; runtime authentication, risk, trading, Live/Auto, and real-order behavior are unchanged.
+
 ## 2.3.2
 
 - Fixed the `--verify` traceback in `check_config`: on hosts where `/etc/nobi/nobi.env` is root-only to the service user, even `stat` raises PermissionError. The checker now retains an unknown mode without crashing and consumes the `NBX_*` values explicitly passed by `update_arvan.sh --verify`; without those values it returns a clear SKIP instead of a traceback or a false empty-config report.

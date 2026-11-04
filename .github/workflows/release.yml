@@ -50,6 +50,8 @@ jobs:
         run: node scripts/test_tick_parity.js
       - run: npm run test:icons
       - run: npm run test:escaping
+      - name: Viewer notice is independent of upstream health
+        run: npm run test:readonly-banner
       - run: npm run test:signal-detail
       - run: npm run test:queue
       - run: npm run test:lock

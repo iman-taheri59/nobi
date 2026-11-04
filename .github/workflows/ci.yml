@@ -118,6 +118,8 @@ jobs:
         run: npm run test:icons
       - name: DOM escaping and retry binding
         run: npm run test:escaping
+      - name: Viewer notice is independent of upstream health
+        run: npm run test:readonly-banner
       - name: signal detail expand and collapse
         run: npm run test:signal-detail
       - name: approval queue updates and rejection reasons
