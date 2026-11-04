@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+## 2.5.0
+
 - `/api/health` اکنون بلوک `price_alerts` دارد (الگوی ADR-0024 مانند `scan_loop`): فاصلهٔ tick، سقف تازگی، شمار اجرا، نتیجه/خطای آخرین tick و تفکیک پایدار `sent/failed/pending` با زمان قدیمی‌ترین pending. شکست tick و تحویل تأییدنشده با منبع `task.price-alerts` در تب خطاها ثبت می‌شود (دقیقاً یک بار، بدون body تلگرام).
 - `scripts/live_evidence_snapshot.py` (ADR-0034) در برابر سرور واقعی کار نمی‌کرد: مسیرهای live session اپراتور می‌خواهند و ابزار فقط توکن می‌فرستاد. اکنون با `NBX_SNAPSHOT_USERNAME/PASSWORD` ورود واقعی می‌کند، پس از خواندن خارج می‌شود و ستون‌های scheduler/هشدار را به CSV افزوده است؛ تست جدید علیه قرارداد واقعی session (بدون اعتبارنامه، Viewer، Operator) است.
 

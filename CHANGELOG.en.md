@@ -4,6 +4,12 @@
 
 ## Unreleased
 
+## 2.5.0
+
+- `/api/health` now carries a `price_alerts` block (the ADR-0024 pattern used by `scan_loop`): tick interval, freshness cap, run count, last tick outcome/error, and the durable `sent/failed/pending` split with the oldest pending timestamp. Failed ticks and unconfirmed deliveries are recorded once in the errors tab under `task.price-alerts`, without the Telegram body.
+- `scripts/live_evidence_snapshot.py` (ADR-0034) could not work against a real server: the live routes require an operator session and the tool only sent a token. It now logs in with `NBX_SNAPSHOT_USERNAME/PASSWORD`, logs out after reading, and adds scheduler/alert columns to the CSV; the new test runs the real session contract (no credentials, Viewer, Operator).
+- FastAPI did not serve `/nbx-alerts.js`, so canonical mode with `NBX_SERVE_INLINE=0` returned 404; the route was added with a regression asserting every external dashboard module is served byte-exact. `ui_smoke_prep.py` inlines the third module too.
+- Real price-alert end-to-end (`scripts/price_alerts_e2e_test.py`, 40 checks) with a scratch FastAPI, scratch SQLite, controlled exchange/Telegram and Chromium: three real role logins, 401/403, bell-only CRUD with CSRF, `baseline → armed → crossing → one event`, replay, `sent/failed/pending` with a sender crash after commit, stale/re-baseline, cache-clearing restart reading history from SQLite, zero trading mutations and zero server egress. Added to CI.
 - Connected a bilingual A5 bell panel to the existing price/premium API: rule creation, enable/disable, two-step deletion, event history, and manual refresh are available in canonical and standalone builds. Only Owner/Operator opening or refreshing the panel issues GETs; Viewer/anonymous sessions make no alert request, and mutations consume the existing session/CSRF contract.
 - Made arming/freshness, observed value/time, crossing, and `sent/failed/pending` delivery explicit. The badge counts enabled rules after a successful read rather than inventing unread state; identity changes invalidate cached data, late replies are discarded, and deleting a rule retains history.
 - Added independent DOM and Chromium regressions for access, CSRF, escaping, races, mobile/desktop layout, and standalone parity. The final gate passed 1808 Python tests, 25 JS/DOM suites, Ruff/mypy, and `80 + 56 + 16` layouts. This change creates no Paper/Live order, risk change, or execution-mode change; no deployment or real activation occurred.
