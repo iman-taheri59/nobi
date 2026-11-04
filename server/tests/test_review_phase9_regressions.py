@@ -212,12 +212,14 @@ def test_exit_label_matches_actual_walked_candle_not_requested_horizon(stop_bar,
 
 def test_partial_tp_then_stop_labels_second_bar():
     bars = [{"t":1700000000+i*900,"o":100,"h":100.5,"l":99.5,"c":100,"v":1} for i in range(12)]
-    bars[1]["h"], bars[2]["l"] = 103, 95
+    bars[1]["h"], bars[1]["l"], bars[2]["l"] = 103, 100.5, 95
     out = J.simulate_long(candles_to_df(bars), 0, 100, 1, 8)
     assert out["hit_tp1"] and out["hit_sl"] and out["bars_used"] == 2
     assert out["exit_ts"] == bars[2]["t"]
-    assert out["exit_price"] == pytest.approx(100*(1+J.TRAIL_R))
-    assert out["r_multiple"] == pytest.approx(round(0.5*J.TP1_R + 0.5*(100*J.TRAIL_R)/2,4))
+    # Bar 2 opens at 100, below the 100.2 trail: adverse gap fill, not the old stop.
+    assert out["exit_price"] == pytest.approx(100.0)
+    expected = 0.5 * J.TP1_R + 0.5 * (100.0 - 100.0) / (J.RISK_K * 1.0)
+    assert out["r_multiple"] == pytest.approx(round(expected, 4))
 
 
 def test_resolver_does_not_rewrite_old_exit_labels(tmp_path):

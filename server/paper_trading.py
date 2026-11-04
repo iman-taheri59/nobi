@@ -20,7 +20,7 @@ import time
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -195,6 +195,50 @@ class PaperBroker:
             total += max(0.0, pct) * fraction
         self.risk.open_heat = round(total, 6)
         return self.risk.open_heat
+
+    def refresh_risk_triggers(self, now_ts: float | None = None) -> dict[str, Any]:
+        """Apply daily/weekly/consecutive-stop gates to the next new order.
+
+        Realised PnL comes from exit events (including TP1 and partial exits),
+        while the stop streak comes from fully closed positions. Amounts are USD
+        and are divided by current equity to produce the percentages consumed by
+        ``RiskEngine.triggers``. This function never closes or opens a position.
+        """
+        now = datetime.fromtimestamp(time.time() if now_ts is None else now_ts, UTC)
+        day_start = datetime(now.year, now.month, now.day, tzinfo=UTC)
+        week_start = day_start - timedelta(days=day_start.weekday())
+        realized_kinds = {"tp1", "partial", "close"}
+        equity = max(float(self.equity), 1e-9)
+        daily_usd = 0.0
+        weekly_usd = 0.0
+        for event in self.orders:
+            if event.kind not in realized_kinds:
+                continue
+            stamp = datetime.fromtimestamp(float(event.ts), UTC)
+            pnl = float(event.extra.get("pnl", 0.0) or 0.0)
+            if stamp >= day_start:
+                daily_usd += pnl
+            if stamp >= week_start:
+                weekly_usd += pnl
+        closed = sorted(
+            (p for p in self.positions.values() if p.state == "CLOSED" and p.closed_at),
+            key=lambda p: float(p.closed_at or 0.0),
+        )
+        streak = 0
+        for pos in closed:
+            streak = streak + 1 if pos.close_reason == "sl-hit" else 0
+        daily_pct = daily_usd / equity * 100
+        weekly_pct = weekly_usd / equity * 100
+        reasons = self.risk.triggers(daily_pct, weekly_pct, streak)
+        return {
+            "daily_pnl_pct": daily_pct,
+            "weekly_pnl_pct": weekly_pct,
+            "consecutive_sl": streak,
+            "reasons": reasons,
+            "latched_reasons": list(getattr(self.risk, "trigger_reasons", [])),
+            "basis": "retained-realized-exit-events",
+            "complete_account_history": False,
+        }
 
     # --------- persistence ----------
     def _apply_state(self, raw: dict) -> None:
@@ -516,6 +560,7 @@ class PaperBroker:
                           approval_guard: Callable[[], str | None] | None = None,
                           client_order_id: str | None = None) -> Position | None:
         self.last_error = None
+        self.refresh_risk_triggers()
         if self.halted or getattr(self.risk, "halted", False):
             self.last_error = "halted: kill switch is armed"
             self.orders.append(OrderEvent(time.time(), "reject", symbol, side, qty, price or 0, {"reason": "halted"}))
@@ -776,7 +821,10 @@ class PaperBroker:
                 rate = self._pos_rate(pos)
                 fee_tp1 = notional_tp1 * FEE_PCT
                 cost_basis_tp1 = pos.size_usd * 0.5
-                pnl_tp1 = (notional_tp1 - pos.size_quote * 0.5) / rate - fee_tp1 / rate
+                if pos.side == "buy":
+                    pnl_tp1 = (notional_tp1 - pos.size_quote * 0.5) / rate - fee_tp1 / rate
+                else:
+                    pnl_tp1 = (pos.size_quote * 0.5 - notional_tp1) / rate - fee_tp1 / rate
                 self.cash += cost_basis_tp1 + pnl_tp1
                 pos.filled_qty -= exit_qty
                 pos.size_quote -= pos.size_quote * 0.5
@@ -795,10 +843,22 @@ class PaperBroker:
                 else:
                     pos.stop = min(pos.stop, pos.entry_price * 0.998)
                 changed = changed or pos.stop != old_stop
-            if hit_sl or (pos.tp1_filled and pos.filled_qty > 0 and ((pos.side == "buy" and mid <= pos.stop) or (pos.side == "sell" and mid >= pos.stop))):
+            stop_now = hit_sl or (
+                pos.tp1_filled and pos.filled_qty > 0
+                and ((pos.side == "buy" and mid <= pos.stop)
+                     or (pos.side == "sell" and mid >= pos.stop))
+            )
+            hit_tp2 = pos.tp1_filled and pos.filled_qty > 0 and (
+                (pos.side == "buy" and mid >= pos.tp2)
+                or (pos.side == "sell" and mid <= pos.tp2)
+            )
+            if stop_now:
+                # Conservative ordering if one tick spans TP2 and the stop.
                 to_close.append((pid, "sl-hit" if not pos.tp1_filled else "trail"))
-            # time stop flag (reasonable default: 48h with < 1% move)
-            if time.time() - pos.opened_at > 48 * 3600 and abs(diff) < 1:
+            elif hit_tp2:
+                to_close.append((pid, "tp2-hit"))
+            elif time.time() - pos.opened_at > 48 * 3600 and abs(diff) < 1:
+                # Time stop is only an alternative reason, never a second close.
                 to_close.append((pid, "time-stop"))
         for pid, reason in to_close:
             await self._close(pid, reason)

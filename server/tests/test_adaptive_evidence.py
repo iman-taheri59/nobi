@@ -69,6 +69,12 @@ def test_both_arms_are_walked_forward_on_the_same_windows() -> None:
     assert r["windows"]["count"] >= ev.MIN_WINDOWS
 
 
+def test_evidence_uses_the_same_anchored_transform_as_the_recommendation() -> None:
+    r = ev.compare(ROWS, "15m", "BTCUSDT", factor=1.2, source="nobitex")
+    assert r["thresholds"]["scaled_long"] == pytest.approx(73.6)
+    assert r["thresholds"]["scaled_neutral"] == pytest.approx(58.0)
+
+
 def test_raising_the_bar_can_only_remove_trades() -> None:
     r = ev.compare(ROWS, "15m", "BTCUSDT", factor=1.25, source="nobitex")
     assert r["ok"] is True

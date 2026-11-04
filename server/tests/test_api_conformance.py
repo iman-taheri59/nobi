@@ -200,6 +200,49 @@ def test_candle_requests_ask_for_countback_not_a_guessed_from():
     assert "from" not in seen["params"]
 
 
+def test_long_candle_requests_are_paginated_deduplicated_and_trimmed():
+    client = NobitexClient()
+    seen = []
+
+    def payload(start, size=500):
+        stamps = list(range(start, start + size))
+        return {"s": "ok", "t": stamps, "o": stamps, "h": stamps,
+                "l": stamps, "c": stamps, "v": stamps}
+
+    async def fake_get(_path, params=None, attempts=1):
+        params = dict(params or {})
+        seen.append(params)
+        return payload({1: 1000, 2: 500, 3: 0}[params["page"]])
+
+    client.get = fake_get
+    out = run(client.get_udf_history("BTCUSDT", "15", 0, 1_700_000_000, count=1200))
+    assert [p["page"] for p in seen] == [1, 2, 3]
+    assert all(p["countback"] == 500 for p in seen)
+    assert len(out["t"]) == 1200
+    assert out["t"][0] == 300 and out["t"][-1] == 1499
+    assert out["t"] == sorted(set(out["t"]))
+
+
+def test_candle_pagination_stops_on_the_retention_boundary():
+    client = NobitexClient()
+    seen = []
+
+    def payload(start, size):
+        stamps = list(range(start, start + size))
+        return {"s": "ok", "t": stamps, "o": stamps, "h": stamps,
+                "l": stamps, "c": stamps, "v": stamps}
+
+    async def fake_get(_path, params=None, attempts=1):
+        params = dict(params or {})
+        seen.append(params["page"])
+        return payload(500, 500) if params["page"] == 1 else payload(328, 172)
+
+    client.get = fake_get
+    out = run(client.get_udf_history("BTCUSDT", "15", 0, 1_700_000_000, count=1200))
+    assert seen == [1, 2]
+    assert len(out["t"]) == 672
+
+
 def test_no_data_is_reported_as_no_data_not_as_an_outage():
     client = NobitexClient()
 
@@ -261,6 +304,32 @@ def test_universe_loads_the_documented_stats_keys(monkeypatch, tmp_path):
     assert next(r for r in rows if r["symbol"] == "USDTIRT")["last"] == pytest.approx(100_805)
     # volumeDst is the documented field; the old code read `valueDst` first.
     assert next(r for r in rows if r["symbol"] == "BTCIRT")["vol24"] == pytest.approx(900)
+    assert next(r for r in rows if r["symbol"] == "BTCIRT")["vol24_usd"] == pytest.approx(900 / 100805)
+
+
+def test_universe_ranking_compares_turnover_in_one_currency(monkeypatch):
+    import main
+
+    class C:
+        async def get_market_stats(self):
+            return {"stats": {
+                "btc-rls": {"latest": "9000000000", "volumeDst": "1000000000000"},
+                "eth-usdt": {"latest": "3000", "volumeDst": "20000000"},
+                "xrp-btc": {"latest": "0.00002", "volumeDst": "999999999999999999"},
+                "usdt-rls": {"latest": "100000", "volumeDst": "1000"},
+            }}
+
+    monkeypatch.setattr(main, "client", C())
+    monkeypatch.setattr(main, "_cached", {"universe": [], "universe_ts": 0.0,
+                                          "closed_markets": [], "premium": None,
+                                          "premium_pct": None})
+    rows = run(main._load_universe_locked())
+    assert [r["symbol"] for r in rows[:2]] == ["ETHUSDT", "BTCIRT"]
+    assert rows[0]["vol24_usd"] == 20_000_000
+    assert rows[1]["vol24_usd"] == 10_000_000
+    assert rows[1]["vol24"] == 1_000_000_000_000  # native quote amount is preserved
+    assert next(r for r in rows if r["symbol"] == "XRPBTC")["vol24_usd"] is None
+    assert main._quote_turnover_usd({"symbol": "BTCIRT", "vol24": 1e9}) is None
 
 
 # --------------------------------------------------------------------------- #

@@ -44,6 +44,7 @@ from typing import Any
 
 import pandas as pd
 
+from risk_engine import DEFAULT_RR_LEVELS, parse_rr_levels
 from units import IRT_PRICE_CONTRACT, price_contract
 
 
@@ -69,8 +70,14 @@ HORIZONS = {"H1": 3_600, "H2": 86_400, "H3": 7 * 86_400}
 
 #: Same risk geometry as ``risk_engine`` / ``paper_trading``.
 RISK_K = 2.0          # stop distance = 2 * ATR
-TP1_R = 1.2           # first target at 1.2R
-TP2_R = 2.0
+try:
+    _RR_LEVELS = parse_rr_levels(os.getenv("NBX_RR_LEVELS"))
+except ValueError:
+    # Match main.risk_config_from_env(): a bad optional override falls back to
+    # the declared policy rather than preventing the research journal opening.
+    _RR_LEVELS = DEFAULT_RR_LEVELS
+TP1_R = _RR_LEVELS[0]
+TP2_R = _RR_LEVELS[-1]
 TRAIL_R = 0.002       # stop moves to entry * 1.002 after TP1 (long)
 
 #: ``ta_engine`` thresholds, duplicated here so the journal does not need to
@@ -79,10 +86,41 @@ LONG_MIN = 68.0
 
 
 #: ADR-0012 asks every row to carry the config it was scored under, so a later
-#: parameter change cannot silently rewrite history.
-CONFIG_HASH = hashlib.sha1(
-    f"risk_k={RISK_K}|tp1={TP1_R}|tp2={TP2_R}|trail={TRAIL_R}|long_min={LONG_MIN}".encode()
-).hexdigest()[:10]
+#: parameter change cannot silently rewrite history. Hash the implementation as
+#: well as the named knobs: weights, regime rules, TVL matching and provider
+#: mappings live in these modules, not in the five old string fields.
+def _engine_config_identity() -> dict[str, Any]:
+    root = Path(__file__).resolve().parent
+    names = ("main.py", "ta_engine.py", "fa_engine.py", "liquidity.py",
+             "risk_engine.py", "units.py", "journal.py")
+    sources = {}
+    digest = hashlib.sha256()
+    for name in names:
+        fp = root / name
+        raw = fp.read_bytes() if fp.is_file() else b""
+        sources[name] = hashlib.sha256(raw).hexdigest()
+        digest.update(name.encode())
+        digest.update(raw)
+    parameters = {
+        "risk_k": RISK_K, "rr_levels": list(_RR_LEVELS), "trail_r": TRAIL_R,
+        "long_min": LONG_MIN,
+        "environment": {k: os.environ[k] for k in sorted(os.environ) if k.startswith("NBX_")
+                        and not any(secret in k for secret in ("TOKEN", "KEY", "SECRET", "PASSWORD"))},
+    }
+    digest.update(json.dumps(parameters, sort_keys=True, default=str).encode())
+    return {
+        "hash": digest.hexdigest()[:16],
+        "algorithm": "sha256-source-and-effective-parameters",
+        "parameters": parameters,
+        "source_sha256": sources,
+        "dataset_identity": "stored separately per resolved outcome",
+        "complete_replay": False,
+        "replay_note": "Hashes identify inputs; the original candle/provider payloads must still be archived.",
+    }
+
+
+CONFIG_IDENTITY = _engine_config_identity()
+CONFIG_HASH = CONFIG_IDENTITY["hash"]
 
 
 def price_contract_status(conn: sqlite3.Connection) -> dict[str, Any]:
@@ -97,6 +135,19 @@ def price_contract_status(conn: sqlite3.Connection) -> dict[str, Any]:
 def bars_for(tf: str, seconds: int) -> int:
     step = TF_SECONDS.get(tf, 900)
     return max(1, round(seconds / step))
+
+
+def horizon_supported(tf: str, horizon_key: str) -> bool:
+    """Whether the timeframe represents the named wall-clock horizon exactly.
+
+    Six hours cannot be measured with daily candles. Rounding it to one day made
+    H1 and H2 the same observation; unsupported horizons must stay absent rather
+    than becoming duplicate evidence. H2 (one day) and H3 (seven days) remain
+    valid on D.
+    """
+    seconds = HORIZONS.get(horizon_key)
+    step = TF_SECONDS.get(tf)
+    return bool(seconds and step and seconds >= step and seconds % step == 0)
 
 
 def connect(path: str | Path | None = None) -> sqlite3.Connection:
@@ -176,6 +227,13 @@ CREATE TABLE IF NOT EXISTS signal_outcomes (
     r_multiple REAL,
     return_pct REAL,
     bars_used INTEGER,
+    ambiguous INTEGER NOT NULL DEFAULT 0,
+    hit_tp2 INTEGER NOT NULL DEFAULT 0,
+    exit_reason TEXT,
+    dataset_hash TEXT,
+    dataset_rows INTEGER,
+    dataset_start INTEGER,
+    dataset_end INTEGER,
     PRIMARY KEY (signal_id, horizon_key),
     FOREIGN KEY (signal_id) REFERENCES signal_log(id) ON DELETE CASCADE
 );
@@ -202,6 +260,15 @@ MIGRATIONS = {
         ("voided_at", "INTEGER"),
         ("void_reason", "TEXT"),
         ("price_contract", "TEXT"),
+    ],
+    "signal_outcomes": [
+        ("ambiguous", "INTEGER NOT NULL DEFAULT 0"),
+        ("hit_tp2", "INTEGER NOT NULL DEFAULT 0"),
+        ("exit_reason", "TEXT"),
+        ("dataset_hash", "TEXT"),
+        ("dataset_rows", "INTEGER"),
+        ("dataset_start", "INTEGER"),
+        ("dataset_end", "INTEGER"),
     ],
 }
 
@@ -424,28 +491,53 @@ class Outcome:
     r_multiple: float
     return_pct: float
     bars_used: int
+    ambiguous: bool = False
+
+
+def candles_identity(df: pd.DataFrame) -> dict[str, Any]:
+    """Stable identity for the exact ordered OHLCV slice used by the resolver."""
+    digest = hashlib.sha256()
+    times = epoch_seconds(df["t"])
+    columns = ("o", "h", "l", "c", "v")
+    for i, ts in enumerate(times):
+        values: list[Any] = [int(ts)]
+        for col in columns:
+            value = float(df[col].iloc[i])
+            values.append(format(value, ".17g") if math.isfinite(value) else None)
+        digest.update(json.dumps(values, separators=(",", ":")).encode())
+        digest.update(b"\n")
+    return {
+        "hash": digest.hexdigest(),
+        "rows": len(df),
+        "start": int(times[0]) if times else None,
+        "end": int(times[-1]) if times else None,
+    }
 
 
 def simulate_long(df: pd.DataFrame, i: int, entry: float, atr: float,
                   bars: int) -> dict[str, Any] | None:
     """Walk forward from bar ``i`` for ``bars`` bars and score the trade.
 
-    Mirrors ``paper_trading.PaperBroker.evaluate_positions``: half off at TP1,
-    stop to breakeven, remainder exits on the trailed stop or at the horizon
-    close. Returns ``None`` when there is not a single future bar yet.
+    Mirrors the Paper trade geometry: half off at TP1, stop to breakeven,
+    remainder exits at TP2, on the trailed stop, or at the horizon close.
+    ``r_multiple`` and ``return_pct`` both include both realised legs. Returns
+    ``None`` when there is not a single future bar yet.
     """
     stop_dist = RISK_K * atr
     if stop_dist <= 0 or entry <= 0:
         return None
     stop = entry - stop_dist
     tp1 = entry + stop_dist * TP1_R
+    tp2 = entry + stop_dist * TP2_R
     trail = entry * (1 + TRAIL_R)
 
     end = min(i + bars, len(df) - 1)
     if end <= i:
         return None
 
-    high, low, close = df["h"].values, df["l"].values, df["c"].values
+    open_, high, low, close = (
+        df["o"].values, df["h"].values, df["l"].values, df["c"].values
+    )
     # `candles_to_df` parses "t" into datetime64[ns]; `int()` on one of those
     # yields NANOSECONDS, not seconds. Every exit_ts written before this fix
     # was ~1e18 instead of ~1.7e9, which silently broke any consumer that
@@ -454,40 +546,73 @@ def simulate_long(df: pd.DataFrame, i: int, entry: float, atr: float,
 
     half_done = False
     realised = 0.0
+    realised_return_pct = 0.0
     mfe = 0.0
     mae = 0.0
     leg = 1.0            # remaining fraction of the position
     bars_used = 0
     hit_tp1 = False
+    hit_tp2 = False
     hit_sl = False
     exit_price = float(close[end])
+    exit_reason = "timeout"
+    ambiguous = False
 
     for k in range(i + 1, end + 1):
         bars_used = k - i
-        hi, lo = float(high[k]), float(low[k])
+        op, hi, lo = float(open_[k]), float(high[k]), float(low[k])
         mfe = max(mfe, (hi / entry - 1) * 100)
         mae = min(mae, (lo / entry - 1) * 100)
+        reaches_tp1 = not half_done and hi >= tp1
+        reaches_tp2 = hi >= tp2
 
         # Stop first: a bar touching both levels is resolved conservatively.
+        # If the bar opens through the stop, the old stop is not a valid fill.
         if lo <= stop:
             hit_sl = True
-            realised += leg * ((stop / entry) - 1) * 100 / (stop_dist / entry * 100)
-            exit_price = stop
+            ambiguous = ambiguous or reaches_tp1 or (half_done and reaches_tp2)
+            exit_price = min(op, stop)
+            exit_reason = "ambiguous-stop" if ambiguous else ("trail" if half_done else "stop")
+            realised += leg * (exit_price - entry) / stop_dist
+            realised_return_pct += leg * (exit_price / entry - 1) * 100
             leg = 0.0
             break
 
-        if not half_done and hi >= tp1:
+        if reaches_tp1:
             half_done = True
             hit_tp1 = True
             realised += 0.5 * TP1_R
+            realised_return_pct += 0.5 * (tp1 / entry - 1) * 100
             leg = 0.5
             stop = trail          # moved to breakeven after TP1
+            if lo <= stop:
+                # TP1 and the new stop are both inside this candle. Choosing
+                # the low-before-TP1 path would be favourable and unverifiable.
+                ambiguous = True
+                hit_sl = True
+                exit_price = stop
+                exit_reason = "ambiguous-trail"
+                realised += leg * (stop - entry) / stop_dist
+                realised_return_pct += leg * (stop / entry - 1) * 100
+                leg = 0.0
+                break
+
+        if half_done and reaches_tp2:
+            hit_tp2 = True
+            exit_price = tp2
+            exit_reason = "tp2"
+            realised += leg * (tp2 - entry) / stop_dist
+            realised_return_pct += leg * (tp2 / entry - 1) * 100
+            leg = 0.0
+            break
 
     if leg > 0:
         # Horizon reached with an open remainder: mark it to the last close.
         px = float(close[end])
         realised += leg * (px - entry) / stop_dist
+        realised_return_pct += leg * (px / entry - 1) * 100
         exit_price = px
+        exit_reason = "timeout"
 
     return {
         # Candle label of the modeled exit, not an exchange fill timestamp.
@@ -497,11 +622,14 @@ def simulate_long(df: pd.DataFrame, i: int, entry: float, atr: float,
         "mfe_pct": round(mfe, 3),
         "mae_pct": round(mae, 3),
         "hit_tp1": hit_tp1,
+        "hit_tp2": hit_tp2,
         "hit_sl": hit_sl,
-        "timeout": not hit_sl,
+        "timeout": not (hit_sl or hit_tp2),
         "r_multiple": round(realised, 4),
-        "return_pct": round((exit_price / entry - 1) * 100, 3),
+        "return_pct": round(realised_return_pct, 3),
         "bars_used": bars_used,
+        "ambiguous": ambiguous,
+        "exit_reason": exit_reason,
     }
 
 
@@ -518,6 +646,7 @@ def resolve_symbol(conn: sqlite3.Connection, symbol: str, tf: str,
     if df is None or df.empty:
         return 0
     step = TF_SECONDS.get(tf, 900)
+    dataset = candles_identity(df)
     ts_index = {
         int(t) + step: i
         for i, t in enumerate(epoch_seconds(df["t"]))
@@ -539,6 +668,8 @@ def resolve_symbol(conn: sqlite3.Connection, symbol: str, tf: str,
         if i is None:
             continue
         for key, seconds in HORIZONS.items():
+            if not horizon_supported(tf, key):
+                continue
             bars = bars_for(tf, seconds)
             if i + bars > len(df) - 1:
                 continue            # not enough future bars yet
@@ -554,12 +685,15 @@ def resolve_symbol(conn: sqlite3.Connection, symbol: str, tf: str,
                 """INSERT OR REPLACE INTO signal_outcomes
                    (signal_id, horizon_key, resolved_at, exit_ts, exit_price,
                     mfe_pct, mae_pct, hit_tp1, hit_sl, timeout, r_multiple,
-                    return_pct, bars_used)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    return_pct, bars_used, ambiguous, hit_tp2, exit_reason,
+                    dataset_hash, dataset_rows, dataset_start, dataset_end)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (row["id"], key, int(time.time()), out["exit_ts"], out["exit_price"],
                  out["mfe_pct"], out["mae_pct"], int(out["hit_tp1"]),
                  int(out["hit_sl"]), int(out["timeout"]), out["r_multiple"],
-                 out["return_pct"], out["bars_used"]),
+                 out["return_pct"], out["bars_used"], int(out["ambiguous"]),
+                 int(out["hit_tp2"]), out["exit_reason"], dataset["hash"],
+                 dataset["rows"], dataset["start"], dataset["end"]),
             )
             filled += 1
     conn.commit()

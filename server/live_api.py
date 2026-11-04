@@ -70,13 +70,23 @@ router = APIRouter(prefix="/api/live", tags=["live-control"])
 Preflight = Callable[[dict[str, Any], Request], Awaitable[dict[str, Any]]]
 Audit = Callable[..., Any]
 _PREFLIGHT: Preflight | None = None
+_LIVE_PREFLIGHT: Preflight | None = None
 _AUDIT: Audit | None = None
 PLACE_CONFIRMATION = "PLACE-REAL-ORDER"
 
 
-def configure(*, preflight: Preflight, audit: Audit) -> None:
-    global _PREFLIGHT, _AUDIT
-    _PREFLIGHT, _AUDIT = preflight, audit
+def configure(*, preflight: Preflight, audit: Audit,
+              live_preflight: Preflight | None = None) -> None:
+    """Configure separate Paper dry-run and real-account live preflights.
+
+    There is deliberately no fallback from the real path to the Paper one.
+    Until an exchange-account provider is configured, real placement stays
+    fail-closed even when credentials and the execution mode are present.
+    """
+    global _PREFLIGHT, _LIVE_PREFLIGHT, _AUDIT
+    _PREFLIGHT = preflight
+    _LIVE_PREFLIGHT = live_preflight
+    _AUDIT = audit
 
 
 def _public_record(record: dict[str, Any]) -> dict[str, Any]:
@@ -111,14 +121,19 @@ def _intent(result: dict[str, Any], key: str) -> tuple[OrderIntent, str]:
 
 
 async def _checked_intent(
-    body: dict[str, Any], request: Request,
+    body: dict[str, Any], request: Request, *, real_account: bool = False,
 ) -> tuple[OrderIntent, str, dict[str, Any], float]:
-    if _PREFLIGHT is None:
-        raise HTTPException(status_code=503, detail="server preflight is not configured")
+    preflight = _LIVE_PREFLIGHT if real_account else _PREFLIGHT
+    if preflight is None:
+        detail = (
+            "live account preflight is not configured; Paper balances are never a substitute"
+            if real_account else "server preflight is not configured"
+        )
+        raise HTTPException(status_code=503, detail=detail)
     key = str(body.get("idempotency_key") or "")
     if not key:
         raise HTTPException(status_code=422, detail="idempotency_key is required")
-    result = await _PREFLIGHT(body, request)
+    result = await preflight(body, request)
     projection_value = result.get("projection")
     projection: dict[str, Any] = projection_value if isinstance(projection_value, dict) else {}
     if not result.get("ok") or projection.get("blocked"):
@@ -137,8 +152,13 @@ def status():
         "mode": CLIENT.mode.value,
         "configured": CLIENT.mode is ExecutionMode.LIVE and CONFIG_PROBLEM is None,
         "configuration_problem": CONFIG_PROBLEM,
+        "account_preflight_configured": _LIVE_PREFLIGHT is not None,
         "placement_exposed": True,
-        "placement_enabled": CLIENT.mode is ExecutionMode.LIVE and CONFIG_PROBLEM is None,
+        "placement_enabled": (
+            CLIENT.mode is ExecutionMode.LIVE
+            and CONFIG_PROBLEM is None
+            and _LIVE_PREFLIGHT is not None
+        ),
     }
 
 
@@ -175,7 +195,9 @@ async def place(payload: dict, request: Request):
             "error": "promotion-gate-blocked", "reasons": evidence["reasons"],
             "required": evidence["required"],
         })
-    intent, symbol, projection, notional_usdt = await _checked_intent(body, request)
+    intent, symbol, projection, notional_usdt = await _checked_intent(
+        body, request, real_account=True
+    )
     if notional_usdt <= 0:
         raise HTTPException(status_code=422, detail="preflight did not produce USD notional")
     try:

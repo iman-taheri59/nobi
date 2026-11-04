@@ -106,8 +106,10 @@ def test_an_ambiguous_heavy_run_cannot_pass():
         w = 0.10 if i % 9 == 0 else 0.004
         rows.append({"t": 1_700_000_000 + i * 3600, "o": o, "h": max(o, px) * (1 + w),
                      "l": min(o, px) * (1 - w), "c": px, "v": 10.0})
-    rep = run_and_save("TUSDT", "1h", rows, {"initial_equity": 50_000},
-                       mode="wf", auto_window=True)
+    rep = run_and_save("TUSDT", "1h", rows, {
+        "initial_equity": 50_000, "tp1_r": 1.5, "tp2_r": 2.5,
+        "risk_triggers": False,  # isolate the ambiguity gate from the separate halt policy
+    }, mode="wf", auto_window=True)
     agg, gate = rep["aggregate"], rep["gate"]
     assert agg["trades"] >= 30, "fixture stopped producing trades"
     assert agg["ambiguous_share"] > 10.0, "fixture is no longer ambiguity-heavy"

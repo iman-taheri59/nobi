@@ -6,11 +6,12 @@ into four files, each with its own comment, and nothing noticed when they
 drifted — a backtest that assumes 0.2 % while the broker charges something else
 produces a profit factor nobody can reproduce in paper trading.
 
-Deliberately **one** rate for maker and taker. The exchange's current schedule is
-not verified anywhere in this repository, and inventing a maker/taker split would
-be exactly the kind of fabricated number ADR-0014 forbids. A single conservative
-rate, applied to both legs and both sides, is wrong in a direction that cannot
-flatter a strategy: it never understates the cost of the trades it models.
+Deliberately **one** default rate for maker and taker. The account's actual tier
+and the maker/taker status of a limit fill are not verified anywhere in this
+repository, so 0.2 % is a modelling assumption, not a claim about the exchange
+bill. Backtests accept an explicit `fee_pct` scenario and publish its source;
+the default is labelled `default-assumption-unverified-account-tier`. A zero-fee
+run cannot pass the promotion gate.
 
 Change the number here and every Python consumer follows. The browser bundle
 cannot import this file, so `server/tests/test_single_source_constants.py`
@@ -21,6 +22,8 @@ from __future__ import annotations
 #: Per-leg fee, as a fraction of notional. Both legs (entry and exit) are
 #: charged, and both maker and taker pay it — see the module docstring.
 FEE_PCT: float = 0.002
+FEE_SOURCE: str = "default-assumption-unverified-account-tier"
+FEE_ACCOUNT_TIER_VERIFIED: bool = False
 
 #: The paper account's starting equity in USD when `NBX_EQUITY_USD` is unset.
 #: Every install example ships the same default; the deployer decides the real

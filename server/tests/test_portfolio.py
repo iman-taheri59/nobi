@@ -30,6 +30,8 @@ from portfolio import (
     corr_pair,
     erc_weights,
     log_returns,
+    pairwise_corr_matrix,
+    symbol_returns,
 )
 
 
@@ -105,6 +107,34 @@ def test_alignment_keeps_only_shared_timestamps():
     assert stamps == [2, 3, 4]
     assert closes["A"] == [11.0, 12.0, 13.0]
     assert closes["B"] == [20.0, 22.0, 24.0]
+
+
+def test_corr_pair_uses_the_latest_overlap_for_unequal_lengths():
+    assert corr_pair([1000.0, *list(range(1, 31))], list(range(1, 31))) == pytest.approx(1.0)
+
+
+def test_pairwise_alignment_keeps_valid_pairs_when_another_asset_has_gaps():
+    a = list(range(1, 42))
+    series = {
+        "A": _rows([100 + i for i in a]),
+        "B": _rows([200 + 2 * i for i in a]),
+        # Only two timestamps join the global intersection, although C itself
+        # has a long, valid history and A/B have 41 shared closes.
+        "C": [(1_700_000_000 + i * 900, 300 + i) for i in range(2)]
+             + [(1_700_100_000 + i * 900, 302 + i) for i in range(39)],
+    }
+    own = symbol_returns(series)
+    assert len(own["A"]) == len(own["B"]) == len(own["C"]) == 40
+    syms, matrix, missing, samples = pairwise_corr_matrix(series, shrinkage=0)
+    ai, bi = syms.index("A"), syms.index("B")
+    assert matrix[ai][bi] == pytest.approx(1.0)
+    assert samples["A|B"] == 40
+    assert ("A", "C") in missing and ("B", "C") in missing
+
+    candidates = [_cand("A"), _cand("B"), _cand("C")]
+    result = allocate(candidates, own, _limits(), pairwise=(syms, matrix, missing, samples))
+    assert result["returned_symbols"] == ["A", "B", "C"]
+    assert result["correlation"]["basis"] == "pairwise-shared-close-timestamps"
 
 
 def test_log_returns_rejects_a_non_positive_close():

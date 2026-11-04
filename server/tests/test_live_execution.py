@@ -186,8 +186,8 @@ def test_cancel_final_response_is_durable(tmp_path):
 
 
 def test_promotion_evidence_requires_samples_days_and_no_unknown(tmp_path):
-    ledger = ExecutionLedger(tmp_path / "evidence.db")
-    client = LiveExecutionClient(mode=ExecutionMode.DRY_RUN, ledger=ledger)
+    client = _live(tmp_path, lambda *_: {"status": "ok", "order": {"id": 7}})
+    ledger = client.ledger
     for day in range(5):
         for item in range(6):
             record = client.place(_intent(key=f"day-{day}-item-{item}"))
@@ -206,6 +206,26 @@ def test_promotion_evidence_requires_samples_days_and_no_unknown(tmp_path):
     assert evidence["ready"] is False
     assert "ambiguous-outcomes" in evidence["reasons"]
     assert evidence["applied"] is False
+
+
+def test_dry_runs_are_reported_but_never_qualify_promotion(tmp_path):
+    ledger = ExecutionLedger(tmp_path / "dry-evidence.db")
+    client = LiveExecutionClient(mode=ExecutionMode.DRY_RUN, ledger=ledger)
+    for day in range(5):
+        for item in range(6):
+            record = client.place(_intent(key=f"dry-{day}-{item}"))
+            with ledger._connect() as conn:
+                conn.execute(
+                    "UPDATE live_execution SET created_at=? WHERE client_order_id=?",
+                    (f"2026-10-{20 + day:02d} 12:00:00", record["client_order_id"]),
+                )
+    evidence = ledger.promotion_evidence()
+    assert evidence["ready"] is False
+    assert evidence["samples"] == evidence["days"] == 0
+    assert evidence["real_attempts"] == 0
+    assert evidence["dry_run_excluded"] == 30
+    assert evidence["evidence_basis"] == "qualified-real-orders"
+    assert evidence["reasons"] == ["insufficient-samples", "insufficient-days"]
 
 
 def test_empty_promotion_evidence_is_an_explicit_refusal(tmp_path):

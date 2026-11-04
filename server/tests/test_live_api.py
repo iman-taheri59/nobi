@@ -50,6 +50,7 @@ def test_status_is_secret_free_and_placement_is_not_exposed(monkeypatch, tmp_pat
         "mode": "disabled",
         "configured": False,
         "configuration_problem": None,
+        "account_preflight_configured": False,
         "placement_exposed": True,
         "placement_enabled": False,
     }
@@ -134,7 +135,7 @@ def test_live_place_requires_owner_csrf_and_promotion_evidence(monkeypatch, tmp_
         return {"ok": True, "symbol": "BTCUSDT", "side": "buy", "entry": 70000,
                 "qty": 0.001, "notional_usdt": 70.0, "projection": {"blocked": False}}
 
-    monkeypatch.setattr(live_api, "_PREFLIGHT", preflight)
+    monkeypatch.setattr(live_api, "_LIVE_PREFLIGHT", preflight)
     client, csrf = _owner_client(monkeypatch, tmp_path)
     payload = {"idempotency_key": "real-owner-action-1",
                "confirmation": live_api.PLACE_CONFIRMATION}
@@ -183,7 +184,7 @@ def test_selected_operator_can_place_within_policy(monkeypatch, tmp_path):
         return {"ok": True, "symbol": "BTCUSDT", "side": "buy", "entry": 10000,
                 "qty": 0.001, "notional_usdt": 10.0, "projection": {"blocked": False}}
 
-    monkeypatch.setattr(live_api, "_PREFLIGHT", preflight)
+    monkeypatch.setattr(live_api, "_LIVE_PREFLIGHT", preflight)
     with TestClient(main.app) as client:
         client.cookies.set("nbx_session", token)
         client.cookies.set("nbx_csrf", csrf)
@@ -194,6 +195,39 @@ def test_selected_operator_can_place_within_policy(monkeypatch, tmp_path):
     assert response.status_code == 200
     assert response.json()["authorization"]["role"] == "operator"
     assert sent == ["/market/orders/add"]
+
+
+def test_live_place_never_falls_back_to_the_paper_preflight(monkeypatch, tmp_path):
+    calls = []
+    ledger = ExecutionLedger(tmp_path / "live-no-account.db")
+    def sender(*args):
+        calls.append(args)
+        return {"status": "ok"}
+    monkeypatch.setattr(live_api, "CLIENT", LiveExecutionClient(
+        mode=ExecutionMode.LIVE, ledger=ledger,
+        sender=sender,
+        public_key="public", private_key_b64=_secret(),
+        confirmation=LIVE_CONFIRMATION))
+    monkeypatch.setattr(live_api, "CONFIG_PROBLEM", None)
+    monkeypatch.setattr(ledger, "promotion_evidence", lambda: {
+        "ready": True, "samples": 30, "days": 5, "ambiguous": 0,
+        "states": {"accepted": 30}, "required": {}, "reasons": [], "applied": False,
+    })
+
+    async def paper_preflight(_payload, _request):
+        raise AssertionError("Paper preflight must not be called for a real order")
+
+    monkeypatch.setattr(live_api, "_PREFLIGHT", paper_preflight)
+    monkeypatch.setattr(live_api, "_LIVE_PREFLIGHT", None)
+    client, csrf = _owner_client(monkeypatch, tmp_path)
+    with client:
+        response = client.post("/api/live/place", json={
+            "idempotency_key": "must-not-send",
+            "confirmation": live_api.PLACE_CONFIRMATION,
+        }, headers={"X-CSRF-Token": csrf})
+    assert response.status_code == 503
+    assert "Paper balances" in response.json()["detail"]
+    assert calls == []
 
 
 def test_live_place_rejects_missing_explicit_confirmation(monkeypatch, tmp_path):

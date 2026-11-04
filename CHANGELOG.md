@@ -2,6 +2,18 @@
 
 [English](CHANGELOG.en.md) · **فارسی**
 
+## 2.3.0
+
+- قرارداد TA در Python و JavaScript یکسان شد: RMA/RSI/TR/Bollinger/DI/ADX، warmup، امتیاز مؤلفه‌ها، direction، regime و risk اکنون parity عددی و regression مستقل دارند. FA نیز cache حساس به depth/premium، provenance و freshness ارائه‌دهنده، بازتوزین وزن مؤلفه‌های موجود و mapping صریح TVL می‌گیرد؛ دادهٔ ناموجود دیگر evidence خنثی ساختگی نیست.
+- ranking و امتیاز نقدشوندگی بر مبنای USD turnover است؛ IRT بدون FX معتبر و quote ناشناس مقدار دلاری ساختگی نمی‌گیرد. OHLC بالای 500 کندل صفحه‌بندی، dedup/sort و trim می‌شود و H1 روزانه دیگر با H2 یکی نمی‌شود.
+- مدل خروج در Paper، Journal و Backtest اصلاح شد: gap از stop با open، ثبت محافظه‌کارانهٔ ambiguity پس از TP1، اجرای TP2 برای باقی‌مانده در هر دو side و اصلاح PnL خروج TP1 سمت sell. `return_pct` و R ژورنال proceeds هر دو leg را شامل می‌شوند و `hit_tp2`/`exit_reason` در evidence ثبت می‌شوند.
+- تریگرهای daily/weekly realized loss و consecutive stop به Paper، preflight سفارش، `/api/risk/state`، Backtest Python و JS متصل شدند. Halt فقط ورود جدید را مسدود می‌کند و مدیریت موقعیت باز ادامه دارد؛ سومین stop ورود چهارم معتبر را در regression متوقف می‌کند.
+- مسیر سفارش واقعی فقط preflight با account snapshot واقعی، تازه و timestampدار را قبول می‌کند و بدون provider با 503 fail-closed است. dry-run و execution نامشخص promotion evidence کامل نمی‌کنند. GETهای Paper دیگر state را mutate نمی‌کنند و health آخرین probe را با age/staleness گزارش می‌کند.
+- Backtest اهداف پیش‌فرض 1.2R/2R را با Live/Paper/Journal مشترک کرد، `fee_pct` را قابل تنظیم و در hash/report ثبت کرد و gate را برای fee صفر fail کرد. انتخاب بهترین grid فقط از IS است؛ dataset/engine identity و execution assumptions نیز در report می‌آیند.
+- Portfolio برای هر جفت فقط timestampهای مشترک همان جفت و جدیدترین مشاهده‌ها را مصرف می‌کند؛ نوسان هر asset از سری خودش است و gap یک asset بقیهٔ جفت‌ها را حذف نمی‌کند. Benchmark همان intersection قراردادی قبلی را حفظ می‌کند.
+- Journal و Backtest dataset hash/range و engine/config identity دقیق‌تری دارند؛ migration ستون‌های outcome جدید idempotent است. این identity جای archive دادهٔ اصلی یا اثبات سودآوری را نمی‌گیرد و replay کامل/آمادگی Live ادعا نمی‌شود.
+- مجموعهٔ remediation با 1776 تست Python، mypy، Ruff، ESLint، JS broker/intrabar و تمام suiteهای DOM روی Node 22 بررسی شد و `nobitex-mobile.html` بازسازی شد. افزایش MINOR به‌خاطر تغییر رفتار ریسک و نتیجهٔ معامله است؛ این انتشار به‌خودی‌خود Live/Auto را فعال یا سفارش واقعی ارسال نمی‌کند.
+
 ## 2.2.2
 
 - صف تأیید دیگر کاندیداهای ردشده در پیش‌نمایش اجرایی را پنهان نمی‌کند: یک بخش جداگانهٔ «کاندیداهای فیلترشده (غیرقابل‌تأیید)» نماد، رتبه/امتیاز، ورود پلن، ورود اجرایی، `R:TP2` اجرایی، حداقل `R:R`، دلیل رد (کد ایمن‌شده و برچسب ترجمه‌شده)، زمان انقضا و مهلت باقی‌مانده را نشان می‌دهد. این بخش هیچ دکمه، ورودی، لینک یا کنترل تأیید/رد/ویرایش ندارد و شناسهٔ آن هرگز وارد صف قابل‌تأیید یا مسیر ارسال سفارش نمی‌شود.

@@ -34,10 +34,10 @@ class RiskPlan:
 MIN_RR = 1.5
 
 #: Take-profit levels as multiples of the stop distance: (tp1, tp2). The last one
-#: is the plan's reward-to-risk ratio. This is the **live plan's** default and it
-#: is deliberately not the backtester's (`tp1_r=1.5, tp2_r=2.5`): the backtest
-#: searches that space, the live engine applies one policy until an operator
-#: chooses another. `NBX_RR_LEVELS` is how they choose — see ADR-0008 §6.
+#: is the plan's reward-to-risk ratio. This is the shared default for live,
+#: Paper, Journal and the backtester. Walk-forward may explicitly search other
+#: values on train data; `NBX_RR_LEVELS` changes the deployed policy — see
+#: ADR-0008 §6.
 DEFAULT_RR_LEVELS: tuple[float, ...] = (1.2, 2.0)
 
 
@@ -240,6 +240,9 @@ class RiskEngine:
         self.cluster_exposure: dict = {}
         self.asset_exposure: dict = {}
         self.daily_pnl: float = 0.0
+        self.weekly_pnl: float = 0.0
+        self.consecutive_sl: int = 0
+        self.trigger_reasons: list[str] = []
         self.halted = False
 
     def _tp(self, entry: float, stop: float, side: str,
@@ -265,7 +268,8 @@ class RiskEngine:
         """
         warnings: list[str] = []
         if self.halted:
-            return RiskPlan(symbol, "blocked", entry, entry, entry, entry, 0.0, 0.0, 0.0, ["kill-switch-armed"], True)
+            warnings = ["kill-switch-armed", *self.trigger_reasons]
+            return RiskPlan(symbol, "blocked", entry, entry, entry, entry, 0.0, 0.0, 0.0, warnings, True)
 
         equity = float(equity_quote) if equity_quote and equity_quote > 0 else self.cfg.equity
         # volatility-based size: risk / (2*ATR)
@@ -288,9 +292,13 @@ class RiskEngine:
             rp = self.cfg.max_risk_pct
             if risk_amt > 0 and self.cfg.risk_pct:
                 size_quote *= rp / self.cfg.risk_pct
-        # trading day check
+        # A warning alone lets the next order through. Keep direct RiskEngine
+        # callers fail-closed even when they do not use PaperBroker's refresh.
         if self.daily_pnl <= -3.0:
-            warnings.append("daily-loss-halt")
+            self.halted = True
+            self.trigger_reasons = sorted(set(self.trigger_reasons) | {"daily-loss-halt"})
+            return RiskPlan(symbol, "blocked", entry, entry, entry, entry, 0.0, 0.0, 0.0,
+                            ["daily-loss-halt"], True)
         if self.open_heat + rp > self.cfg.max_heat_pct:
             warnings.append("heat-cap-exceeded")
             previous_rp = rp
@@ -347,14 +355,31 @@ class RiskEngine:
     def close_trade(self, risk_pct: float, pnl_pct: float):
         self.open_heat = max(0, self.open_heat - risk_pct)
         self.daily_pnl += pnl_pct
+        self.weekly_pnl += pnl_pct
+        self.consecutive_sl = self.consecutive_sl + 1 if pnl_pct < 0 else 0
+        self.triggers(self.daily_pnl, self.weekly_pnl, self.consecutive_sl)
 
-    def triggers(self, portfolio_pnl_today: float, weekly: float, consecutive_sl: int):
+    def triggers(self, portfolio_pnl_today: float, weekly: float, consecutive_sl: int) -> list[str]:
+        """Latch the documented kill switch and retain the evidence for it.
+
+        Resetting a latched halt is deliberately an operator action, not a date
+        rollover hidden in a scan. Exits remain possible; new orders read the
+        same ``halted`` flag in the shared preflight.
+        """
+        self.daily_pnl = float(portfolio_pnl_today)
+        self.weekly_pnl = float(weekly)
+        self.consecutive_sl = int(consecutive_sl)
+        reasons = []
         if portfolio_pnl_today <= -3:
-            self.halted = True
+            reasons.append("daily-loss-halt")
         if weekly <= -6:
-            self.halted = True
+            reasons.append("weekly-loss-halt")
         if consecutive_sl >= 3:
+            reasons.append("consecutive-stop-halt")
+        if reasons:
             self.halted = True
+            self.trigger_reasons = sorted(set(self.trigger_reasons) | set(reasons))
+        return reasons
 
 
 __all__ = ["RiskConfig", "RiskEngine", "RiskPlan"]

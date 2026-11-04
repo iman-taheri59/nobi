@@ -29,7 +29,9 @@ from uuid import uuid4
 
 import pandas as pd
 
-from fees import FEE_PCT
+from fees import FEE_ACCOUNT_TIER_VERIFIED, FEE_PCT, FEE_SOURCE
+from journal import candles_identity
+from risk_engine import DEFAULT_RR_LEVELS
 from storage import writable_dir
 from ta_engine import candles_to_df, ta_score_series
 
@@ -93,7 +95,7 @@ MIN_WARMUP = 60
 DEFAULT_PARAM_GRID: list[dict[str, float]] = [
     {"atr_stop_k": k, "tp1_r": a, "tp2_r": b}
     for k in (1.5, 2.0, 2.5)
-    for (a, b) in ((1.0, 2.0), (1.5, 2.5), (2.0, 3.5))
+    for (a, b) in ((1.2, 2.0), (1.5, 2.5), (2.0, 3.5))
 ]
 
 WF_MIN_WINDOWS = 3
@@ -147,6 +149,7 @@ class BTResult:
     initial_equity: float = 0.0
     final_equity: float = 0.0
     ambiguous_exits: int = 0
+    risk_triggers: dict = field(default_factory=dict)
     # [[ms, equity], …] — lists, not tuples: this value goes straight to JSON
     equity_curve: list[list[float]] = field(default_factory=list)
     sample_trades: list = field(default_factory=list)
@@ -156,11 +159,21 @@ class BTResult:
 def _cfg_hash(cfg: dict) -> str:
     payload = {
         "atr_stop_k": cfg.get("atr_stop_k", 2.0),
-        "tp1_r": cfg.get("tp1_r", 1.5),
-        "tp2_r": cfg.get("tp2_r", 2.5),
-        "fee": FEE_PCT,
+        "tp1_r": cfg.get("tp1_r", DEFAULT_RR_LEVELS[0]),
+        "tp2_r": cfg.get("tp2_r", DEFAULT_RR_LEVELS[-1]),
+        "initial_equity": cfg.get("initial_equity", 100_000),
+        "risk_pct": cfg.get("risk_pct", 0.75),
+        "min_score": cfg.get("min_score", 0.0),
+        "max_concurrent": cfg.get("max_concurrent", 5),
+        "long_min": cfg.get("long_min"),
+        "neutral_min": cfg.get("neutral_min"),
+        "fee": cfg.get("fee_pct", FEE_PCT),
         "slippage_bps": cfg.get("slippage_bps", SLIP_BPS),
         "max_single_asset_pct": cfg.get("max_single_asset_pct", 25.0),
+        "risk_triggers": cfg.get("risk_triggers", True),
+        "daily_loss_halt_pct": cfg.get("daily_loss_halt_pct", 3.0),
+        "weekly_loss_halt_pct": cfg.get("weekly_loss_halt_pct", 6.0),
+        "consecutive_sl_halt": cfg.get("consecutive_sl_halt", 3),
         "basis": list(BACKTEST_COMPONENTS),
     }
     return hashlib.md5(json.dumps(payload, sort_keys=True).encode()).hexdigest()[:8]
@@ -169,6 +182,18 @@ def _cfg_hash(cfg: dict) -> str:
 def _rows_to_frames(rows: list[dict]):
     """Reusable canonical frame builder so every caller sees same dtypes."""
     return candles_to_df(rows)
+
+
+def gap_stop_fill(side: str, open_price: float, stop: float) -> float:
+    """First adverse executable stop price when a candle opens through it.
+
+    A long stopped below its level cannot fill at the higher, historical stop;
+    a short has the symmetric rule. Target fills deliberately do not use this
+    helper, because awarding a favourable gap would add the opposite bias.
+    """
+    if side == "buy":
+        return min(float(open_price), float(stop))
+    return max(float(open_price), float(stop))
 
 
 class EventBacktester:
@@ -186,11 +211,31 @@ class EventBacktester:
         self.max_open = int(cfg.get("max_concurrent", 5))
         self.risk_pct = float(cfg.get("risk_pct", 0.75))
         self.stop_k = float(cfg.get("atr_stop_k", 2.0))
-        self.tp1_r = float(cfg.get("tp1_r", 1.5))
-        self.tp2_r = float(cfg.get("tp2_r", 2.5))
+        self.tp1_r = float(cfg.get("tp1_r", DEFAULT_RR_LEVELS[0]))
+        self.tp2_r = float(cfg.get("tp2_r", DEFAULT_RR_LEVELS[-1]))
+        if (not math.isfinite(self.tp1_r) or not math.isfinite(self.tp2_r)
+                or self.tp1_r <= 0 or self.tp2_r <= self.tp1_r):
+            raise ValueError("require finite 0 < tp1_r < tp2_r")
         self.min_score = float(cfg.get("min_score", 0.0))
         self.max_single_asset_pct = float(cfg.get("max_single_asset_pct", 25.0))
         self.slippage = float(cfg.get("slippage_bps", SLIP_BPS)) / 10_000.0
+        self.fee_pct = float(cfg.get("fee_pct", FEE_PCT))
+        if not math.isfinite(self.fee_pct) or not 0 <= self.fee_pct < 0.10:
+            raise ValueError("fee_pct must be finite and in [0, 0.10)")
+        self.risk_triggers_enabled = bool(cfg.get("risk_triggers", True))
+        self.daily_loss_halt_pct = abs(float(cfg.get("daily_loss_halt_pct", 3.0)))
+        self.weekly_loss_halt_pct = abs(float(cfg.get("weekly_loss_halt_pct", 6.0)))
+        self.consecutive_sl_halt = max(1, int(cfg.get("consecutive_sl_halt", 3)))
+        self._reset_risk_triggers()
+
+    def _reset_risk_triggers(self) -> None:
+        self.trigger_halted = False
+        self.trigger_reasons: set[str] = set()
+        self.trigger_day: str | None = None
+        self.trigger_week: tuple[int, int] | None = None
+        self.trigger_daily_pnl = 0.0
+        self.trigger_weekly_pnl = 0.0
+        self.trigger_consecutive_sl = 0
 
     # ---------------- helpers ----------------
     def _ts_ms(self, v) -> float:
@@ -198,15 +243,43 @@ class EventBacktester:
             return float(v.timestamp()) * 1000
         return float(v) * 1000
 
+    def _note_closed(self, tr: BTTrade) -> None:
+        """Update the same loss/stop-streak gates used by the paper broker."""
+        if not self.risk_triggers_enabled:
+            return
+        stamp = datetime.fromtimestamp(self._ts_ms(tr.exit_t) / 1000, UTC)
+        day = stamp.date().isoformat()
+        iso = stamp.isocalendar()
+        week = (iso.year, iso.week)
+        if day != self.trigger_day:
+            self.trigger_day = day
+            self.trigger_daily_pnl = 0.0
+        if week != self.trigger_week:
+            self.trigger_week = week
+            self.trigger_weekly_pnl = 0.0
+        pnl_pct = tr.realized_pnl / max(self.equity, 1e-9) * 100
+        self.trigger_daily_pnl += pnl_pct
+        self.trigger_weekly_pnl += pnl_pct
+        initial_stop = tr.reason in {"sl", "sl-ambiguous"}
+        self.trigger_consecutive_sl = self.trigger_consecutive_sl + 1 if initial_stop else 0
+        if self.trigger_daily_pnl <= -self.daily_loss_halt_pct:
+            self.trigger_reasons.add("daily-loss-halt")
+        if self.trigger_weekly_pnl <= -self.weekly_loss_halt_pct:
+            self.trigger_reasons.add("weekly-loss-halt")
+        if self.trigger_consecutive_sl >= self.consecutive_sl_halt:
+            self.trigger_reasons.add("consecutive-stop-halt")
+        if self.trigger_reasons:
+            self.trigger_halted = True
+
     def _close_part(self, tr: BTTrade, ts: Any, px: float, frac: float, reason: str):
         qty = tr.qty * frac if frac < 1 else tr.qty
         if qty <= 0:
             return
         fill = px * (1 - self.slippage) if tr.side == "buy" else px * (1 + self.slippage)
         notional_out = fill * qty
-        fee_out = notional_out * FEE_PCT
+        fee_out = notional_out * self.fee_pct
         cost_basis = tr.entry * qty
-        pnl = notional_out - fee_out - cost_basis * (1 + FEE_PCT)
+        pnl = notional_out - fee_out - cost_basis * (1 + self.fee_pct)
         tr.realized_pnl += pnl
         tr.qty -= qty
         self.cash += notional_out - fee_out
@@ -217,6 +290,7 @@ class EventBacktester:
             self.positions = [p for p in self.positions if p is not tr]
             tr.r_multiple = (tr.realized_pnl / tr.risk_amount) if tr.risk_amount > 0 else None
             self.closed.append(tr)
+            self._note_closed(tr)
 
     # ---------------- core loop ----------------
     def run_symbol(
@@ -239,8 +313,10 @@ class EventBacktester:
         self.equity_curve = []
         self.equity = self.initial_equity
         self.cash = self.initial_equity
+        self._reset_risk_triggers()
 
         closes = df["c"].reset_index(drop=True)
+        opens = df["o"].reset_index(drop=True)
         highs = df["h"].reset_index(drop=True)
         lows = df["l"].reset_index(drop=True)
         ts_col = df["t"].reset_index(drop=True)
@@ -249,6 +325,7 @@ class EventBacktester:
 
         for i in range(start, end):
             row_ts = ts_col.iloc[i]
+            op = float(opens.iat[i])
             hi, lo, cl = float(highs.iat[i]), float(lows.iat[i]), float(closes.iat[i])
 
             # ---- 1) manage open positions on this candle (conservative) ----
@@ -256,30 +333,52 @@ class EventBacktester:
                 if not tr.tp1_done:
                     hit_tp1 = hi >= tr.tp1
                     hit_sl = lo <= tr.stop
-                    if hit_sl and hit_tp1:
-                        # Unknown intrabar path -> assume the adverse one.
-                        tr.ambiguous = True
-                        self._close_part(tr, row_ts, tr.stop, 1.0, "sl-ambiguous")
-                        continue
                     if hit_sl:
-                        self._close_part(tr, row_ts, tr.stop, 1.0, "sl")
+                        # Unknown intrabar path -> assume the adverse one. If
+                        # the bar opened through the stop, that stop price is
+                        # no longer an available fill.
+                        if hit_tp1:
+                            tr.ambiguous = True
+                        reason = "sl-ambiguous" if hit_tp1 else "sl"
+                        self._close_part(
+                            tr, row_ts, gap_stop_fill(tr.side, op, tr.stop), 1.0, reason
+                        )
                         continue
                     if hit_tp1:
                         self._close_part(tr, row_ts, tr.tp1, 0.5, "tp1")
                         tr.tp1_done = True
                         tr.stop = tr.entry  # break-even after TP1
+                        post_tp1_stop = lo <= tr.stop
+                        if post_tp1_stop:
+                            # TP1 and the new stop both lie inside this bar.
+                            # Assuming the low preceded TP1 is the favourable
+                            # path; use the adverse path and record the ambiguity.
+                            tr.ambiguous = True
+                            self._close_part(
+                                tr, row_ts, tr.stop, 1.0, "sl-tp1-ambiguous"
+                            )
+                        elif hi >= tr.tp2:
+                            self._close_part(tr, row_ts, tr.tp2, 1.0, "tp2")
                         continue
                 else:
-                    if lo <= tr.stop:
-                        self._close_part(tr, row_ts, tr.stop, 1.0, "stop-after-tp1")
+                    hit_sl = lo <= tr.stop
+                    hit_tp2 = hi >= tr.tp2
+                    if hit_sl:
+                        if hit_tp2:
+                            tr.ambiguous = True
+                        reason = "sl-ambiguous" if hit_tp2 else "stop-after-tp1"
+                        self._close_part(
+                            tr, row_ts, gap_stop_fill(tr.side, op, tr.stop), 1.0, reason
+                        )
                         continue
-                    if hi >= tr.tp2:
+                    if hit_tp2:
                         self._close_part(tr, row_ts, tr.tp2, 1.0, "tp2")
 
             # ---- 2) entries on the close of the signal candle ----
             sig = signals[i] if signals and i < len(signals) else None
             if (sig and sig.get("direction") == "LONG" and sig.get("score", 0) >= self.min_score
-                    and len(self.positions) < self.max_open):
+                    and not self.trigger_halted
+                    and not self.positions and len(self.positions) < self.max_open):
                     entry = cl
                     atr_v = float(sig["risk"]["atr"])
                     stop = entry - self.stop_k * atr_v
@@ -294,7 +393,7 @@ class EventBacktester:
                         tp1 = entry + self.tp1_r * rr
                         tp2 = entry + self.tp2_r * rr
                         fill = entry * (1 + self.slippage)
-                        cost = qty * fill * (1 + FEE_PCT)
+                        cost = qty * fill * (1 + self.fee_pct)
                         if qty > 0 and cost < self.cash:
                             self.cash -= float(cost)
                             self.positions.append(
@@ -374,6 +473,20 @@ class EventBacktester:
             initial_equity=round(self.initial_equity, 2),
             final_equity=round(self.initial_equity + sum(t.realized_pnl for t in self.closed), 2),
             ambiguous_exits=sum(1 for t in self.closed if t.ambiguous),
+            risk_triggers={
+                "enabled": self.risk_triggers_enabled,
+                "halted": self.trigger_halted,
+                "reasons": sorted(self.trigger_reasons),
+                "daily_pnl_pct": round(self.trigger_daily_pnl, 6),
+                "weekly_pnl_pct": round(self.trigger_weekly_pnl, 6),
+                "consecutive_sl": self.trigger_consecutive_sl,
+                "limits": {
+                    "daily_loss_pct": self.daily_loss_halt_pct,
+                    "weekly_loss_pct": self.weekly_loss_halt_pct,
+                    "consecutive_sl": self.consecutive_sl_halt,
+                },
+                "basis": "realized-pnl-over-last-marked-equity",
+            },
             equity_curve=[list(x) for x in self.equity_curve],
             sample_trades=[
                 {
@@ -494,6 +607,7 @@ class WalkForwardRunner:
                     "equity_curve": oos.equity_curve,
                     "sample_trades": oos.sample_trades,
                     "ambiguous_exits": oos.ambiguous_exits,
+                    "risk_triggers": oos.risk_triggers,
                     "params_used": chosen,
                     "params_optimised": len(grid) > 1,
                     "min_score": min_score,
@@ -516,6 +630,7 @@ def _summary(res: BTResult) -> dict:
         "max_drawdown": res.max_drawdown,
         "final_equity": res.final_equity,
         "ambiguous_exits": res.ambiguous_exits,
+        "risk_triggers": res.risk_triggers,
     }
 
 
@@ -577,6 +692,7 @@ def _gate(
     eb: int,
     source: str = "live",
     slippage_bps: float = SLIP_BPS,
+    fee_pct: float = FEE_PCT,
 ) -> dict:
     """ADR-0009 promotion gate.
 
@@ -639,8 +755,9 @@ def _gate(
         # would not survive the first real order, so it may not certify anything.
         "costs_modeled": {
             "value": slippage_bps,
-            "pass": slippage_bps > 0,
-            "required": "> 0 bps",
+            "fee_pct": fee_pct,
+            "pass": slippage_bps > 0 and fee_pct > 0,
+            "required": "> 0 bps slippage and > 0 fee",
         },
     }
 
@@ -749,12 +866,17 @@ def run_and_save(
         "initial_equity": float(cfg.get("initial_equity", cfg.get("equity", 50_000))),
         "risk_pct": float(cfg.get("risk_pct", 0.75)),
         "atr_stop_k": float(cfg.get("atr_stop_k", 2.0)),
-        "tp1_r": float(cfg.get("tp1_r", 1.5)),
-        "tp2_r": float(cfg.get("tp2_r", 2.5)),
+        "tp1_r": float(cfg.get("tp1_r", DEFAULT_RR_LEVELS[0])),
+        "tp2_r": float(cfg.get("tp2_r", DEFAULT_RR_LEVELS[-1])),
         "max_concurrent": int(cfg.get("max_concurrent", 5)),
         "min_score": float(cfg.get("min_score", 0.0)),
         "max_single_asset_pct": float(cfg.get("max_single_asset_pct", 25.0)),
         "slippage_bps": float(cfg.get("slippage_bps", SLIP_BPS)),
+        "fee_pct": float(cfg.get("fee_pct", FEE_PCT)),
+        "risk_triggers": bool(cfg.get("risk_triggers", True)),
+        "daily_loss_halt_pct": float(cfg.get("daily_loss_halt_pct", 3.0)),
+        "weekly_loss_halt_pct": float(cfg.get("weekly_loss_halt_pct", 6.0)),
+        "consecutive_sl_halt": int(cfg.get("consecutive_sl_halt", 3)),
     }
 
     signals = ta_score_series(df)
@@ -777,7 +899,7 @@ def run_and_save(
                     "trades", "wins", "hit_rate", "profit_factor", "expectancy_r",
                     "max_drawdown", "gross_profit", "gross_loss", "initial_equity",
                     "final_equity", "window_start", "window_end", "equity_curve",
-                    "sample_trades", "ambiguous_exits",
+                    "sample_trades", "ambiguous_exits", "risk_triggers",
                 )},
                 "params_used": res.params,
                 "params_optimised": False,
@@ -822,7 +944,7 @@ def run_and_save(
     )
     # gross figures for the in-sample pool are approximated from PF & wins
     gate = _gate(agg, windows, tb, eb, source=source,
-                slippage_bps=base_cfg["slippage_bps"])
+                slippage_bps=base_cfg["slippage_bps"], fee_pct=base_cfg["fee_pct"])
     stability = _param_stability(windows)
 
     run_id = uuid4().hex
@@ -832,8 +954,24 @@ def run_and_save(
                              "parameter_selection": "train-selected; see details.params_used" if any(w.get("params_optimised") for w in windows) else "fixed",
                              "mode": mode, "window_mode": window_mode,
                              "train_bars": tb, "eval_bars": eb, "source": source},
-        "config_hash_scope": "legacy parameter hash; not a unique run or dataset identity",
+        "config_hash_scope": "effective parameter hash; not a unique run identity; dataset and engine identities are separate",
         "config_hash": _cfg_hash({**base_cfg, **windows[0]["params"]}),
+        "dataset": {
+            **candles_identity(df), "source": source, "raw_payload_archived": False,
+        },
+        "engine": {
+            "version": (Path(__file__).resolve().parent.parent / "VERSION").read_text(encoding="utf-8").strip(),
+            "backtest_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+            "ta_sha256": hashlib.sha256((Path(__file__).parent / "ta_engine.py").read_bytes()).hexdigest(),
+        },
+        "execution_assumptions": {
+            "entry": "signal-close",
+            "latency_bars": 0,
+            "order_book_depth": False,
+            "partial_fills": False,
+            "intrabar_policy": "stop-first; TP1 and post-TP1 stop in one bar is ambiguous and conservative",
+            "targets": "half-at-tp1-remainder-at-tp2-or-stop-or-horizon",
+        },
         "symbol": symbol,
         "tf": tf,
         "mode": mode,
@@ -849,8 +987,12 @@ def run_and_save(
         "decision_basis": decision_basis(),
         "costs": {
             "slippage_bps": base_cfg["slippage_bps"],
-            "fee_pct": FEE_PCT,
-            "modeled": base_cfg["slippage_bps"] > 0,
+            "fee_pct": base_cfg["fee_pct"],
+            "fee_source": ("caller-configured-scenario" if "fee_pct" in cfg
+                           else FEE_SOURCE),
+            "account_tier_verified": FEE_ACCOUNT_TIER_VERIFIED,
+            "maker_taker_split": False,
+            "modeled": base_cfg["slippage_bps"] > 0 and base_cfg["fee_pct"] > 0,
         },
         "aggregate": agg,
         "aggregate_is": agg_is,
@@ -894,7 +1036,7 @@ def grid_search(
 
     keys = sorted(grid.keys())
     combos = list(itertools.product(*(grid[k] for k in keys)))
-    results = []
+    results: list[dict[str, Any]] = []
     for combo in combos:
         params = dict(zip(keys, combo, strict=True))
         cfg = {
@@ -909,15 +1051,28 @@ def grid_search(
         runner = WalkForwardRunner(train_bars=tb, eval_bars=eb)
         windows = runner.run(df, symbol, tf, cfg, grid=[{}])
         agg = _aggregate_windows(windows, 50_000)
-        results.append({"params": params, "aggregate": agg})
+        is_trades = sum(w["is"]["trades"] for w in windows)
+        is_exp = (
+            sum(w["is"]["expectancy_r"] * w["is"]["trades"] for w in windows) / is_trades
+            if is_trades else 0.0
+        )
+        is_pf = _pooled_pf([w["is"] for w in windows])
+        is_hit = (
+            sum(w["is"]["wins"] for w in windows) / is_trades * 100 if is_trades else 0.0
+        )
+        is_mdd = max((w["is"]["max_drawdown"] for w in windows), default=0.0)
+        # Selecting the maximum OOS score and then calling that same OOS
+        # "untouched" is multiple-testing bias. Select on train evidence only.
+        selection_score = (
+            is_pf * 0.5 + is_exp + (is_hit / 100) * 0.2 - (is_mdd / 100) * 0.5
+        ) if is_trades else -5.0
+        results.append({"params": params, "aggregate": agg, "_score": selection_score})
 
-    best = None
+    best: dict[str, Any] | None = None
     for r in results:
-        a = r["aggregate"]
-        score = a["profit_factor"] * 0.5 + a["expectancy_r"] + (a["hit_rate"] / 100) * 0.2 - (a["max_drawdown"] / 100) * 0.5
-        if best is None or score > best["_score"]:
-            best = {**r, "_score": score}
-    best = best or {"params": {}, "aggregate": {}, "_score": 0}
+        if best is None or r["_score"] > best["_score"]:
+            best = r
+    chosen: dict[str, Any] = best or {"params": {}, "aggregate": {}, "_score": 0}
 
     return {
         "symbol": symbol,
@@ -928,10 +1083,16 @@ def grid_search(
         "window_bars": {"train": tb, "eval": eb},
         "elapsed_s": round(_time.time() - t0, 2),
         "out_of_sample": True,
+        "selection": {
+            "basis": "in-sample-only",
+            "score": round(chosen.get("_score", 0), 3),
+            "oos_used_for_selection": False,
+            "heatmap_is_exploratory": True,
+        },
         "best": {
-            "params": best.get("params", {}),
-            "aggregate": best.get("aggregate", {}),
-            "score": round(best.get("_score", 0), 3),
+            "params": chosen.get("params", {}),
+            "aggregate": chosen.get("aggregate", {}),
+            "score": round(chosen.get("_score", 0), 3),
         },
         "heatmap": _grid_heatmap(paths=results, grid=grid),
     }

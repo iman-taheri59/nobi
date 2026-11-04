@@ -766,7 +766,7 @@ table td {
       </button>
     </div>
     <span class="hidden 2xl:inline-flex chip shrink-0"><span class="dot bg-emerald-400"></span> <span data-i18n="hdr.kill"></span></span>
-    <span id="buildChip" class="hidden lg:inline-flex chip num text-violet-300 border-violet-400/30 shrink-0" title="نسخه واقعی از /api/health">v2.2.2 · core</span>
+    <span id="buildChip" class="hidden lg:inline-flex chip num text-violet-300 border-violet-400/30 shrink-0" title="نسخه واقعی از /api/health">v2.3.0 · core</span>
     <div class="ms-auto flex items-center gap-1.5 shrink-0">
       <span class="hidden xl:inline-flex chip num" id="clock">--:--:--</span>
       <span id="apiChip" class="hidden 2xl:inline-flex chip num text-zinc-400 border-white/10" title=""><i data-lucide="wifi-off" class="w-3.5 h-3.5"></i> <span>API: —</span></span>
@@ -7957,6 +7957,20 @@ window.addEventListener('resize', resizeCharts);
   }
 
   const clamp = (v, a, b) => Math.min(Math.max(v, a), b);
+  // Python's round() is ties-to-even; Number.toFixed() is not. Score direction
+  // is based on the rounded value on the server, so mirror both details here.
+  const _roundPy = (value, digits = 0) => {
+    // toFixed already follows the exact binary value for non-ties (50.15 is
+    // stored just below the decimal tie). Only an exactly representable tie,
+    // such as 23.25, needs Python's even-digit adjustment.
+    const fixed = Number(value.toFixed(digits));
+    const factor = 10 ** digits;
+    const scaled = value * factor;
+    const floor = Math.floor(scaled);
+    if (Math.abs(scaled - floor - 0.5) >= 1e-10) return fixed;
+    if (!/0{6,}$/.test(value.toPrecision(17))) return fixed;
+    return (floor % 2 === 0 ? floor : floor + 1) / factor;
+  };
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const nowMs = () => Date.now();
   const normSymbol = (s) => (s || '').toUpperCase().replace(/\s+/g, '');
@@ -8021,11 +8035,17 @@ window.addEventListener('resize', resizeCharts);
     }
     return out;
   };
+  // Exact causal equivalent of pandas ewm(alpha=1/len, adjust=False), not the
+  // common "seed with an SMA after len bars" variant. The old warm-up made ATR,
+  // RSI and ADX diverge from the server for the entire life of the series.
   const _rma = (arr, len) => {
-    let s = 0;
-    const out = new Array(arr.length);
+    const alpha = 1 / len;
+    let s = null;
+    const out = new Array(arr.length).fill(null);
     for (let i = 0; i < arr.length; i++) {
-      s = i < len ? (i === 0 ? arr[0] : (s * (i - 1) + arr[i]) / i) : (s * (len - 1) + arr[i]) / len;
+      const x = arr[i];
+      if (x === null || x === undefined || !isFinite(x)) continue;
+      s = s === null ? x : alpha * x + (1 - alpha) * s;
       out[i] = s;
     }
     return out;
@@ -8043,7 +8063,8 @@ window.addEventListener('resize', resizeCharts);
     return out;
   };
   TA.rsi = (closes, len) => {
-    const gains = [0], losses = [0];
+    // diff()[0] is NaN in pandas and is not part of the EWM seed.
+    const gains = [null], losses = [null];
     for (let i = 1; i < closes.length; i++) {
       const d = closes[i] - closes[i - 1];
       gains.push(d > 0 ? d : 0);
@@ -8051,8 +8072,8 @@ window.addEventListener('resize', resizeCharts);
     }
     const gE = _rma(gains, len), lE = _rma(losses, len);
     return closes.map((_, i) => {
-      if (i < len) return null;
-      const rs = lE[i] === 0 ? 100 : gE[i] / lE[i];
+      if (gE[i] === null || lE[i] === null || lE[i] === 0) return null;
+      const rs = gE[i] / lE[i];
       return 100 - 100 / (1 + rs);
     });
   };
@@ -8064,7 +8085,7 @@ window.addEventListener('resize', resizeCharts);
     return { macd, signal, hist };
   };
   TA.tr = (candles) => {
-    const out = [0];
+    const out = candles.length ? [candles[0].h - candles[0].l] : [];
     for (let i = 1; i < candles.length; i++) {
       const c = candles[i], pc = candles[i - 1].c;
       out.push(Math.max(c.h - c.l, Math.abs(c.h - pc), Math.abs(c.l - pc)));
@@ -8078,12 +8099,13 @@ window.addEventListener('resize', resizeCharts);
       if (i < len - 1 || mid[i] === null) return null;
       let s = 0;
       for (let j = i - len + 1; j <= i; j++) s += (closes[j] - mid[i]) ** 2;
-      return Math.sqrt(s / len);
+      return Math.sqrt(s / (len - 1)); // pandas rolling.std(): sample variance
     });
     return closes.map((_, i) => {
       if (mid[i] === null || sd[i] === null) return { mid: null, up: null, low: null, pctB: null };
       const up = mid[i] + mult * sd[i], low = mid[i] - mult * sd[i];
-      return { mid: mid[i], up, low, pctB: (closes[i] - low) / (up - low || 1) };
+      const width = up - low;
+      return { mid: mid[i], up, low, pctB: width ? (closes[i] - low) / width : null };
     });
   };
   TA.di_adx = (candles, len = 14) => {
@@ -8096,11 +8118,12 @@ window.addEventListener('resize', resizeCharts);
       nDM.push(dn > up && dn > 0 ? dn : 0);
     }
     const trS = _rma(tr, len), pS = _rma(pDM, len), nS = _rma(nDM, len);
-    const pdi = candles.map((_, i) => (trS[i] ? (pS[i] / trS[i]) * 100 : 0));
-    const ndi = candles.map((_, i) => (trS[i] ? (nS[i] / trS[i]) * 100 : 0));
+    const pdi = candles.map((_, i) => (trS[i] ? (pS[i] / trS[i]) * 100 : null));
+    const ndi = candles.map((_, i) => (trS[i] ? (nS[i] / trS[i]) * 100 : null));
     const dx = candles.map((_, i) => {
+      if (pdi[i] === null || ndi[i] === null) return null;
       const sum = pdi[i] + ndi[i];
-      return sum ? (Math.abs(pdi[i] - ndi[i]) / sum) * 100 : 0;
+      return sum ? (Math.abs(pdi[i] - ndi[i]) / sum) * 100 : null;
     });
     const adx = _rma(dx, len);
     return { pdi, ndi, adx };
@@ -8113,33 +8136,33 @@ window.addEventListener('resize', resizeCharts);
   const LONG_SCORE_MIN = 68;
   const NEUTRAL_SCORE_MIN = 55;
 
-  TA.signalScore = function (candles, opts) {
-    const longMin = opts && opts.longMin != null ? opts.longMin : LONG_SCORE_MIN;
-    const neutralMin = opts && opts.neutralMin != null ? opts.neutralMin : NEUTRAL_SCORE_MIN;
-    if (!(neutralMin < longMin)) {
-      throw new Error(`neutralMin (${neutralMin}) must be below longMin (${longMin})`);
-    }
-    if (!candles || candles.length < 60) {
-      return { score: 0, direction: 'NEUTRAL', regime: 'UNKNOWN', components: {}, reason: 'insufficient data' };
-    }
+  const _taIndicators = (candles) => {
     const closes = candles.map((x) => x.c);
     const vols = candles.map((x) => x.v || 0);
-    const n = closes.length;
-    const [e9, e21, e50, e200] = [TA.ema(closes, 9), TA.ema(closes, 21), TA.ema(closes, 50), TA.ema(closes, 200)];
-    const rsi = TA.rsi(closes, 14);
-    const macd = TA.macd(closes);
-    const atr = TA.atr(candles, 14);
-    const bb = TA.bollinger(closes, 20, 2);
-    const di = TA.di_adx(candles, 14);
-    const i = n - 1;
+    return {
+      closes,
+      vols,
+      e9: TA.ema(closes, 9),
+      e21: TA.ema(closes, 21),
+      e50: TA.ema(closes, 50),
+      e200: TA.ema(closes, 200),
+      rsi: TA.rsi(closes, 14),
+      macd: TA.macd(closes),
+      atr: TA.atr(candles, 14),
+      bb: TA.bollinger(closes, 20, 2),
+      di: TA.di_adx(candles, 14),
+    };
+  };
 
+  const _taScoreAt = (candles, ind, i, longMin, neutralMin) => {
+    const { closes, vols, e9, e21, e50, e200, rsi, macd, atr, bb, di } = ind;
     const comp = {};
     let trend = 0;
     if (closes[i] > e21[i]) trend += 20;
     if (e9[i] > e21[i]) trend += 20;
     if (e21[i] > e50[i]) trend += 25;
-    if (closes[i] > (e200[i] || closes[i])) trend += 15;
-    if (di.adx[i] && di.adx[i] > 22 && di.pdi[i] > di.ndi[i]) trend += 20;
+    if (e200[i] !== null && closes[i] > e200[i]) trend += 15;
+    if (di.adx[i] !== null && di.adx[i] > 22 && di.pdi[i] > di.ndi[i]) trend += 20;
     comp.trend = clamp(trend, 0, 100);
 
     let mom = 50;
@@ -8154,7 +8177,8 @@ window.addEventListener('resize', resizeCharts);
     comp.momentum = clamp(mom, 0, 100);
 
     let vol = 50;
-    const vSlice = vols.slice(-30, -1);
+    const enoughHistory = i + 1 >= 31;
+    const vSlice = vols.slice(enoughHistory ? Math.max(0, i - 29) : 0, enoughHistory ? i : i + 1);
     const vAvg = vSlice.reduce((a, b) => a + b, 0) / Math.max(vSlice.length, 1);
     const vNow = vols[i];
     if (vNow > vAvg * 1.4) vol += 30;
@@ -8168,31 +8192,34 @@ window.addEventListener('resize', resizeCharts);
       if (bbNow.pctB > 0.7) strc += 25;
       else if (bbNow.pctB < 0.25) strc -= 15;
     }
-    if (closes[i] > Math.max(...closes.slice(-20, -1))) strc += 10;
+    const recent = closes.slice(i + 1 >= 21 ? Math.max(0, i - 19) : 0, i + 1 >= 21 ? i : i + 1);
+    if (closes[i] > Math.max(...recent)) strc += 10;
     comp.structure = clamp(strc, 0, 100);
 
-    const regime = di.adx[i] > 25 ? 'TREND' : 'RANGE';
+    const regime = di.adx[i] !== null && di.adx[i] > 25 ? 'TREND' : 'RANGE';
     const gating = regime === 'TREND' ? 1 : 0.85;
     const raw = 0.4 * comp.trend + 0.25 * comp.momentum + 0.15 * comp.volume + 0.2 * comp.structure;
     const score = clamp(raw * gating, 0, 100);
 
-    const direction = score >= longMin ? 'LONG' : score >= neutralMin ? 'NEUTRAL' : 'EXIT';
+    const roundedScore = _roundPy(score, 1);
+    const direction = roundedScore >= longMin ? 'LONG' : roundedScore >= neutralMin ? 'NEUTRAL' : 'EXIT';
     const stopDist = atr[i] * 2;
     return {
-      score: +score.toFixed(1),
+      score: roundedScore,
       direction,
       regime,
       components: comp,
       risk: {
         atr: atr[i],
         stopDistance: stopDist,
-        stopPct: +((stopDist / closes[i]) * 100).toFixed(2),
+        stopPct: _roundPy((stopDist / closes[i]) * 100, 2),
       },
       diagnostics: {
-        rsi: r !== null ? +r.toFixed(1) : null,
-        adx: di.adx[i] !== null ? +di.adx[i].toFixed(1) : null,
-        pctB: bbNow.pctB !== null ? +bbNow.pctB.toFixed(3) : null,
-        macdHist: +h[i].toFixed(5),
+        rsi: r !== null ? _roundPy(r, 1) : null,
+        adx: di.adx[i] !== null ? _roundPy(di.adx[i], 1) : null,
+        pctB: bbNow.pctB !== null ? _roundPy(bbNow.pctB, 3) : null,
+        hist: _roundPy(h[i], 5),
+        macdHist: _roundPy(h[i], 5), // backwards-compatible browser alias
         e9: e9[i],
         e21: e21[i],
         e50: e50[i],
@@ -8200,6 +8227,39 @@ window.addEventListener('resize', resizeCharts);
       lastClose: closes[i],
     };
   };
+
+  const _taBars = (opts) => {
+    const longMin = opts && opts.longMin != null ? opts.longMin : LONG_SCORE_MIN;
+    const neutralMin = opts && opts.neutralMin != null ? opts.neutralMin : NEUTRAL_SCORE_MIN;
+    if (!(neutralMin < longMin)) {
+      throw new Error(`neutralMin (${neutralMin}) must be below longMin (${longMin})`);
+    }
+    return { longMin, neutralMin };
+  };
+
+  TA.signalScore = function (candles, opts) {
+    const { longMin, neutralMin } = _taBars(opts);
+    if (!candles || candles.length < 60) {
+      return { score: 0, direction: 'NEUTRAL', regime: 'UNKNOWN', components: {}, reason: 'insufficient_data' };
+    }
+    const ind = _taIndicators(candles);
+    return _taScoreAt(candles, ind, candles.length - 1, longMin, neutralMin);
+  };
+
+  // Same growing-window result as signalScore(candles.slice(0, i + 1)), but the
+  // causal indicators are computed once. `start` mirrors ta_score_series: the
+  // default first scored row is index 60, while entries before it are null.
+  TA.scoreSeries = function (candles, opts) {
+    const { longMin, neutralMin } = _taBars(opts);
+    const rows = candles || [];
+    const out = new Array(rows.length).fill(null);
+    if (!rows.length) return out;
+    const start = Math.max(1, Math.floor(opts && opts.start != null ? opts.start : 60));
+    const ind = _taIndicators(rows);
+    for (let i = start; i < rows.length; i++) out[i] = _taScoreAt(rows, ind, i, longMin, neutralMin);
+    return out;
+  };
+
   NBX.TA = TA;
 
   /* ----------------------------------------------------------
@@ -8794,62 +8854,122 @@ window.addEventListener('resize', resizeCharts);
       const riskPct = +(cfg.risk_pct || 0.75);
       const stopK = +(cfg.atr_stop_k || 2.0);
       const maxOpen = +(cfg.max_concurrent || 5);
-      const feePct = PAPER_FEE_PCT;
+      const maxSingleAssetPct = +(cfg.max_single_asset_pct == null ? 25 : cfg.max_single_asset_pct);
+      const feePct = cfg.fee_pct == null ? PAPER_FEE_PCT : +cfg.fee_pct;
+      if (!isFinite(feePct) || feePct < 0 || feePct >= 0.10) throw new Error('fee_pct must be finite and in [0, 0.10)');
       // Same cost model as the server: an offline backtest that fills at the
       // exact price is not a cheaper backtest, it is a different one. 0 is
       // accepted, and then `costs_modeled` below refuses to certify the run.
       const slipBps = cfg.slippage_bps == null ? 6 : Math.max(0, +cfg.slippage_bps);
       const slip = slipBps / 10000;
-      const tp1R = +(cfg.tp1_r || 1.5);
-      const tp2R = +(cfg.tp2_r || 2.5);
+      const tp1R = +(cfg.tp1_r == null ? 1.2 : cfg.tp1_r);
+      const tp2R = +(cfg.tp2_r == null ? 2.0 : cfg.tp2_r);
+      if (!isFinite(tp1R) || !isFinite(tp2R) || tp1R <= 0 || tp2R <= tp1R) {
+        throw new Error('require finite 0 < tp1_r < tp2_r');
+      }
       const openPos = [];
       const closed = [];
       const equityCurve = [];
+      const signalSeries = cfg._signals || TA.scoreSeries(candles, cfg);
       let ambiguous = 0;
+      const riskTriggersEnabled = cfg.risk_triggers !== false;
+      const dailyLossLimit = Math.abs(+(cfg.daily_loss_halt_pct == null ? 3 : cfg.daily_loss_halt_pct));
+      const weeklyLossLimit = Math.abs(+(cfg.weekly_loss_halt_pct == null ? 6 : cfg.weekly_loss_halt_pct));
+      const consecutiveLimit = Math.max(1, Math.floor(+(cfg.consecutive_sl_halt == null ? 3 : cfg.consecutive_sl_halt)));
+      let triggerHalted = false;
+      const triggerReasons = new Set();
+      let triggerDay = null, triggerWeek = null;
+      let triggerDaily = 0, triggerWeekly = 0, triggerConsecutive = 0;
+
+      const noteClosed = (tr, candle) => {
+        if (!riskTriggersEnabled) return;
+        const stamp = new Date(candle.t * 1000);
+        const day = stamp.toISOString().slice(0, 10);
+        const week = Date.UTC(stamp.getUTCFullYear(), stamp.getUTCMonth(), stamp.getUTCDate())
+          - ((stamp.getUTCDay() + 6) % 7) * 86400000;
+        if (day !== triggerDay) { triggerDay = day; triggerDaily = 0; }
+        if (week !== triggerWeek) { triggerWeek = week; triggerWeekly = 0; }
+        const pnlPct = tr.realized_pnl / Math.max(equity, 1e-9) * 100;
+        triggerDaily += pnlPct;
+        triggerWeekly += pnlPct;
+        triggerConsecutive = tr.reason === 'sl' || tr.reason === 'sl-ambiguous' ? triggerConsecutive + 1 : 0;
+        if (triggerDaily <= -dailyLossLimit) triggerReasons.add('daily-loss-halt');
+        if (triggerWeekly <= -weeklyLossLimit) triggerReasons.add('weekly-loss-halt');
+        if (triggerConsecutive >= consecutiveLimit) triggerReasons.add('consecutive-stop-halt');
+        if (triggerReasons.size) triggerHalted = true;
+      };
+
+      const closePart = (tr, candle, rawPrice, fraction, reason, markAmbiguous = false) => {
+        const qty = fraction < 1 ? tr.qty * fraction : tr.qty;
+        if (!(qty > 0)) return;
+        const fill = rawPrice * (1 - slip);
+        const notionalIn = tr.entry * qty;
+        const notionalOut = fill * qty;
+        const pnl = notionalOut - notionalIn - (notionalIn + notionalOut) * feePct;
+        tr.realized_pnl = (tr.realized_pnl || 0) + pnl;
+        tr.qty -= qty;
+        tr.exit = fill;
+        tr.exit_t = candle.t;
+        tr.reason = reason;
+        tr.ambiguous = tr.ambiguous || markAmbiguous;
+        cash += notionalOut * (1 - feePct);
+        if (tr.qty <= 1e-12) {
+          tr.qty = 0;
+          tr.r_multiple = tr.risk_amount > 0 ? tr.realized_pnl / tr.risk_amount : 0;
+          const index = openPos.indexOf(tr);
+          if (index >= 0) openPos.splice(index, 1);
+          closed.push(tr);
+          noteClosed(tr, candle);
+          if (tr.ambiguous) ambiguous += 1;
+        }
+      };
 
       for (let i = 60; i < candles.length; i++) {
         const c = candles[i];
-        const slice = candles.slice(0, i + 1);
         // Same hook the Python engine has (`signals=`): a caller may hand in a
         // signal series to isolate the execution rules from the scoring ones.
-        const sig = (cfg._signals && cfg._signals[i]) || TA.signalScore(slice);
+        const sig = signalSeries[i];
 
         for (let pIdx = openPos.length - 1; pIdx >= 0; pIdx--) {
           const tr = openPos[pIdx];
-          let exitPx = null, reason = null;
-          const hitTp = tr.tp1 && c.h >= tr.tp1;
-          const hitSl = c.l <= tr.stop;
-          if (hitTp && hitSl) {
-            // Same candle reached both levels: the intrabar path is unknowable,
-            // so take the adverse one and record it. Taking the target here (as
-            // this engine used to) is the one bias a backtest must not have.
-            ambiguous += 1;
-            exitPx = tr.stop * (1 - slip);
-            reason = 'sl-ambiguous';
-          } else if (hitSl) {
-            exitPx = tr.stop * (1 - slip);
-            reason = 'sl';
-          } else if (hitTp) {
-            exitPx = tr.tp1 * (1 - slip);
-            reason = 'tp1';
-          }
-          if (exitPx !== null) {
-            const notionalIn = tr.entry * tr.qty;
-            const notionalOut = exitPx * tr.qty;
-            const pnl = notionalOut - notionalIn - (notionalIn + notionalOut) * feePct;
-            const riskUnit = tr.risk_amount;
-            tr.exit = exitPx;
-            tr.exit_t = c.t;
-            tr.reason = reason;
-            tr.realized_pnl = pnl;
-            tr.r_multiple = riskUnit > 0 ? pnl / riskUnit : 0;
-            cash = Math.max(0, cash + notionalOut * (1 - feePct));
-            openPos.splice(pIdx, 1);
-            closed.push(tr);
+          if (!tr.tp1_done) {
+            const hitTp = c.h >= tr.tp1;
+            const hitSl = c.l <= tr.stop;
+            if (hitSl) {
+              // Stop-first, and a gap through the stop cannot fill at the old
+              // level. This is the same adverse rule as the Python engine.
+              closePart(tr, c, Math.min(c.o, tr.stop), 1,
+                hitTp ? 'sl-ambiguous' : 'sl', hitTp);
+              continue;
+            }
+            if (hitTp) {
+              closePart(tr, c, tr.tp1, 0.5, 'tp1');
+              tr.tp1_done = true;
+              tr.stop = tr.entry;
+              if (c.l <= tr.stop) {
+                // TP1 and the new stop are both inside this candle. Assuming
+                // the low came first is favourable and unknowable.
+                closePart(tr, c, tr.stop, 1, 'sl-tp1-ambiguous', true);
+              } else if (c.h >= tr.tp2) {
+                closePart(tr, c, tr.tp2, 1, 'tp2');
+              }
+              continue;
+            }
+          } else {
+            const hitSl = c.l <= tr.stop;
+            const hitTp2 = c.h >= tr.tp2;
+            if (hitSl) {
+              closePart(tr, c, Math.min(c.o, tr.stop), 1,
+                hitTp2 ? 'sl-ambiguous' : 'stop-after-tp1', hitTp2);
+              continue;
+            }
+            if (hitTp2) closePart(tr, c, tr.tp2, 1, 'tp2');
           }
         }
 
-        if (sig.direction === 'LONG' && openPos.length < maxOpen) {
+        // This engine evaluates one symbol per run. Repeated LONG labels must
+        // not open independent positions in that same symbol.
+        if (sig && sig.direction === 'LONG' && !triggerHalted && openPos.length === 0 && openPos.length < maxOpen) {
           const entry = c.c;
           const atrV = sig.risk.atr || entry * 0.015;
           const stop = entry - stopK * atrV;
@@ -8857,11 +8977,17 @@ window.addEventListener('resize', resizeCharts);
           const tp1 = entry + tp1R * stopDist;
           const tp2 = entry + tp2R * stopDist;
           const riskAmt = (equity * riskPct) / 100;
-          const qty = stopDist > 0 ? riskAmt / stopDist : 0;
+          const riskQty = stopDist > 0 ? riskAmt / stopDist : 0;
+          const capQty = stopDist > 0 ? (equity * maxSingleAssetPct / 100) / entry : 0;
+          const qty = Math.min(riskQty, capQty);
           const cost = qty * entry * (1 + slip) * (1 + feePct);
           if (qty > 0 && cost < cash) {
             cash -= cost;
-            openPos.push({ side: 'buy', entry_t: c.t, entry: entry * (1 + slip), stop, tp1, tp2, qty, risk_amount: stopDist * qty });
+            openPos.push({
+              side: 'buy', entry_t: c.t, entry: entry * (1 + slip), stop, tp1, tp2,
+              qty, initial_qty: qty, risk_amount: stopDist * qty,
+              realized_pnl: 0, tp1_done: false, ambiguous: false,
+            });
           }
         }
 
@@ -8872,20 +8998,7 @@ window.addEventListener('resize', resizeCharts);
 
       if (candles.length) {
         const lastC = candles[candles.length - 1];
-        while (openPos.length) {
-          const tr = openPos.pop();
-          const notionalIn = tr.entry * tr.qty;
-          const notionalOut = lastC.c * (1 - slip) * tr.qty;
-          const pnl = notionalOut - notionalIn - (notionalIn + notionalOut) * feePct;
-          const riskUnit = tr.risk_amount;
-          tr.exit = lastC.c * (1 - slip);
-          tr.exit_t = lastC.t;
-          tr.reason = 'eod';
-          cash += notionalOut * (1 - feePct);
-          tr.realized_pnl = pnl;
-          tr.r_multiple = riskUnit > 0 ? pnl / riskUnit : 0;
-          closed.push(tr);
-        }
+        while (openPos.length) closePart(openPos[openPos.length - 1], lastC, lastC.c, 1, 'eod');
       }
 
       // Keep every intrawindow point for chained MDD; truncate only the final
@@ -8897,7 +9010,7 @@ window.addEventListener('resize', resizeCharts);
       const hitRate = total ? (wins.length / total) * 100 : 0;
       const sumWin = wins.reduce((a, b) => a + b.realized_pnl, 0);
       const sumLoss = Math.abs(losses.reduce((a, b) => a + b.realized_pnl, 0));
-      const pf = total && losses.length ? Math.min(99.99, sumWin / Math.max(sumLoss, 1e-9)) : wins.length ? 2.4 : 0;
+      const pf = total && losses.length ? Math.min(99.99, sumWin / Math.max(sumLoss, 1e-9)) : wins.length ? 99.99 : 0;
       const expR = total ? closed.reduce((a, b) => a + (b.r_multiple || 0), 0) / total : 0;
 
       let peak = initEq, mdd = 0;
@@ -8925,6 +9038,20 @@ window.addEventListener('resize', resizeCharts);
         initial_equity: initEq,
         final_equity: equityCurve.length ? equityCurve[equityCurve.length - 1][1] : initEq,
         ambiguous_exits: ambiguous,
+        risk_triggers: {
+          enabled: riskTriggersEnabled,
+          halted: triggerHalted,
+          reasons: Array.from(triggerReasons).sort(),
+          daily_pnl_pct: +triggerDaily.toFixed(6),
+          weekly_pnl_pct: +triggerWeekly.toFixed(6),
+          consecutive_sl: triggerConsecutive,
+          limits: {
+            daily_loss_pct: dailyLossLimit,
+            weekly_loss_pct: weeklyLossLimit,
+            consecutive_sl: consecutiveLimit,
+          },
+          basis: 'realized-pnl-over-last-marked-equity',
+        },
         equity_curve: equityCurve,
         sample_trades: closed.slice(-8).map((t) => ({
           entry_t: fmtIso(t.entry_t),
@@ -8934,6 +9061,7 @@ window.addEventListener('resize', resizeCharts);
           reason: t.reason,
           pnl: +t.realized_pnl.toFixed(2),
           r: +(t.r_multiple || 0).toFixed(2),
+          ambiguous: !!t.ambiguous,
         })),
       };
     },
@@ -8945,6 +9073,8 @@ window.addEventListener('resize', resizeCharts);
       let tb = +(cfg.train_bars || 200);
       let eb = +(cfg.eval_bars || 120);
       const slipBps = cfg.slippage_bps == null ? 6 : Math.max(0, +cfg.slippage_bps);
+      const feePct = cfg.fee_pct == null ? PAPER_FEE_PCT : +cfg.fee_pct;
+      if (!isFinite(feePct) || feePct < 0 || feePct >= 0.10) throw new Error('fee_pct must be finite and in [0, 0.10)');
       let windowMode = 'manual';
       const fits = (t, e) => e > 0 && Math.floor((candles.length - t) / e);
       if (fits(tb, eb) < 2) {
@@ -8961,8 +9091,8 @@ window.addEventListener('resize', resizeCharts);
         const w = this.runWindow(evalSlice, symbol, tf, cfg);
         const params = {
           atr_stop_k: +(cfg.atr_stop_k || 2),
-          tp1_r: +(cfg.tp1_r || 1.5),
-          tp2_r: +(cfg.tp2_r || 2.5),
+          tp1_r: +(cfg.tp1_r == null ? 1.2 : cfg.tp1_r),
+          tp2_r: +(cfg.tp2_r == null ? 2.0 : cfg.tp2_r),
         };
         const evalStart = candles[start + tb] ? new Date(candles[start + tb].t * 1000).toISOString() : '';
         const evalEnd = candles[Math.min(start + tb + eb - 1, candles.length - 1)]
@@ -8998,8 +9128,20 @@ window.addEventListener('resize', resizeCharts);
         windows.push({
           ...w,
           index: 1,
-          params: { atr_stop_k: +(cfg.atr_stop_k || 2), tp1_r: +(cfg.tp1_r || 1.5), tp2_r: +(cfg.tp2_r || 2.5) },
-          params_used: { atr_stop_k: +(cfg.atr_stop_k || 2), tp1_r: 1.5, tp2_r: 2.5 },
+          params: {
+            atr_stop_k: +(cfg.atr_stop_k || 2),
+            tp1_r: +(cfg.tp1_r == null ? 1.2 : cfg.tp1_r),
+            tp2_r: +(cfg.tp2_r == null ? 2.0 : cfg.tp2_r),
+          },
+          params_used: {
+            atr_stop_k: +(cfg.atr_stop_k || 2),
+            tp1_r: +(cfg.tp1_r == null ? 1.2 : cfg.tp1_r),
+            tp2_r: +(cfg.tp2_r == null ? 2.0 : cfg.tp2_r),
+            risk_triggers: cfg.risk_triggers !== false,
+            daily_loss_halt_pct: Math.abs(+(cfg.daily_loss_halt_pct == null ? 3 : cfg.daily_loss_halt_pct)),
+            weekly_loss_halt_pct: Math.abs(+(cfg.weekly_loss_halt_pct == null ? 6 : cfg.weekly_loss_halt_pct)),
+            consecutive_sl_halt: Math.max(1, Math.floor(+(cfg.consecutive_sl_halt == null ? 3 : cfg.consecutive_sl_halt))),
+          },
           params_optimised: false,
           is: { trades: 0, expectancy_r: 0, profit_factor: 0, hit_rate: 0, max_drawdown: 0 },
           oos: { trades: w.trades, hit_rate: w.hit_rate, profit_factor: w.profit_factor, expectancy_r: w.expectancy_r, max_drawdown: w.max_drawdown },
@@ -9044,7 +9186,11 @@ window.addEventListener('resize', resizeCharts);
         expectancy_r_positive: { value: +expR.toFixed(3), pass: expR > 0, required: 0 },
         profitable_windows_ge_50: { value: +consistency.toFixed(1), pass: consistency >= 50, required: 50 },
         ambiguous_share_le_10: { value: ambiguousShare, pass: ambiguousShare <= 10, required: '<= 10 %' },
-        costs_modeled: { value: slipBps, pass: slipBps > 0, required: '> 0 bps' },
+        costs_modeled: {
+          value: slipBps, fee_pct: feePct,
+          pass: slipBps > 0 && feePct > 0,
+          required: '> 0 bps slippage and > 0 fee',
+        },
       };
       const dataShort = windows.length < 3 || totalTrades < 30;
       const wouldBe = dataShort ? 'INSUFFICIENT_DATA' : (Object.values(checks).every((c) => c.pass) ? 'PASS' : 'FAIL');
@@ -9065,7 +9211,14 @@ window.addEventListener('resize', resizeCharts);
         param_grid_size: 1,
         initial_equity: initialEquity,
         slippage_bps: slipBps,
-        costs: { slippage_bps: slipBps, fee_pct: PAPER_FEE_PCT, modeled: slipBps > 0 },
+        costs: {
+          slippage_bps: slipBps,
+          fee_pct: feePct,
+          fee_source: cfg.fee_pct == null ? 'default-assumption-unverified-account-tier' : 'caller-configured-scenario',
+          account_tier_verified: false,
+          maker_taker_split: false,
+          modeled: slipBps > 0 && feePct > 0,
+        },
         // Same disclosure as the server: this engine replays the TA rules only,
         // while the live decision also weights liquidity/fundamentals and can be
         // capped by vetoes. Saying nothing would make the report look complete.

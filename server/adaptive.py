@@ -79,6 +79,19 @@ class AdaptiveError(Exception):
         self.meta = meta or {}
 
 
+def scale_threshold(base: float, factor: float) -> float:
+    """Scale a score's distance from the neutral anchor, never the raw score.
+
+    Recommendation and evidence must call this same function. Multiplying the
+    raw threshold in one path and anchoring in the other tests a different
+    strategy: at factor 1.2, for example, LONG=68 becomes 73.6 here, not 81.6.
+    The unrounded result is returned so each caller can choose its display
+    precision without changing the underlying transform.
+    """
+    shifted = ANCHOR + (float(base) - ANCHOR) * float(factor)
+    return min(99.0, max(ANCHOR + 0.5, shifted))
+
+
 def tf_minutes(tf: str) -> int:
     key = (tf or "").strip()
     if key not in TF_MINUTES:
@@ -320,8 +333,7 @@ def report(rows: list[dict], tf: str) -> dict[str, Any]:
     # anchoring at the line itself would freeze the number it is scaling. 40 is
     # the composite's neutral reading, below which the four components cancel.
     def move(base: float) -> float:
-        shifted = ANCHOR + (base - ANCHOR) * entry_factor
-        return round(min(99.0, max(ANCHOR + 0.5, shifted)), 1)
+        return round(scale_threshold(base, entry_factor), 1)
 
     recommended = {"long": move(LONG_SCORE_MIN), "neutral": move(NEUTRAL_SCORE_MIN)}
     if recommended["neutral"] >= recommended["long"] - 0.5:

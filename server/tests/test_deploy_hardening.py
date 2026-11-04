@@ -323,6 +323,26 @@ def test_a_stale_page_is_served_complete(state, monkeypatch):
 # --------------------------------------------------------------------------- #
 # 5. What the operator sees
 # --------------------------------------------------------------------------- #
+def test_paper_get_routes_never_evaluate_or_mutate_positions(state, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    import main
+
+    broker = _broker()
+
+    async def forbidden_evaluation():
+        raise AssertionError("a read-only GET evaluated positions")
+
+    monkeypatch.setattr(broker, "evaluate_positions", forbidden_evaluation)
+    monkeypatch.setattr(main, "get_broker", lambda *a, **k: broker)
+    with TestClient(main.app) as client:
+        positions = client.get("/api/paper/positions")
+        metrics = client.get("/api/paper/metrics")
+    assert positions.status_code == metrics.status_code == 200
+    assert positions.json()["positions"] == []
+    assert metrics.json()["metrics"]["openPositions"] == 0
+
+
 def test_the_recovery_is_published_to_the_dashboard(state, monkeypatch):
     """A recovered account is a fact on the wire, not a line in a logfile."""
     from fastapi.testclient import TestClient

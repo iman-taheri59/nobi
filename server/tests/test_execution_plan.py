@@ -199,6 +199,32 @@ def test_python_javascript_execution_guard_parity():
         assert js["rr"] == (pytest.approx(rr) if rr is not None else None), case
 
 
+@pytest.mark.parametrize("side,stop,tp1,tp2,mid_price", [
+    ("buy", 95, 106, 110, 111),
+    ("sell", 104, 96, 92, 91),
+])
+def test_tp2_closes_the_remainder_on_the_same_tick_as_tp1(
+        broker, monkeypatch, side, stop, tp1, tp2, mid_price):
+    pos = asyncio.run(broker.place_limit("TESTUSDT", side, 1, 100, stop, tp1, tp2))
+    assert pos is not None
+
+    async def mid(_symbol):
+        return mid_price
+
+    async def executable(_symbol, _side, qty):
+        return mid_price, qty
+
+    monkeypatch.setattr(broker, "_mid_price", mid)
+    monkeypatch.setattr(broker, "_execution_price", executable)
+    asyncio.run(broker.evaluate_positions())
+    assert pos.tp1_filled is True
+    assert pos.state == "CLOSED" and pos.close_reason == "tp2-hit"
+    assert pos.filled_qty == 0
+    assert pos.realized_pnl > 0
+    assert [e.kind for e in broker.orders] == ["submit", "fill", "tp1", "close"]
+    assert broker.orders[-1].extra["reason"] == "tp2-hit"
+
+
 def test_accepted_plan_still_supports_persisted_partial_and_natural_stop(broker, monkeypatch):
     pos = asyncio.run(broker.place_limit("TESTUSDT", "buy", 1, 100, 95, 106, 110))
     assert pos is not None

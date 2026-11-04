@@ -2,6 +2,18 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 2.3.0
+
+- Aligned the Python and JavaScript TA contracts: RMA/RSI/TR/Bollinger/DI/ADX, warm-up, component scores, direction, regime, and risk now have numerical parity and independent regressions. FA gains depth/premium-sensitive caching, provider provenance/freshness, reweighting of available components, and explicit TVL mappings; missing data is no longer fabricated neutral evidence.
+- Universe ranking and liquidity scoring now use USD turnover; IRT without valid FX and unknown quote currencies receive no invented USD value. OHLC history above 500 candles is paginated, deduplicated, sorted, and trimmed, and daily H1 no longer collapses into H2.
+- Corrected exits across Paper, Journal, and Backtest: gap-through-stop fills at the open, post-TP1 ambiguity is conservative and recorded, TP2 closes the remainder on both sides, and sell-side TP1 PnL is fixed. Journal return/R includes proceeds from both legs, with `hit_tp2` and `exit_reason` retained in evidence.
+- Wired daily/weekly realized-loss and consecutive-stop triggers into Paper, order preflight, `/api/risk/state`, Python Backtest, and JS. A halt blocks only new entries while open-position management continues; a regression proves the third stop blocks a fourth otherwise-valid entry.
+- The real-order route accepts only preflight backed by a real, fresh, timestamped account snapshot and fails closed with 503 without a provider. Dry runs and ambiguous executions no longer complete promotion evidence. Paper GETs no longer mutate state, and health reports the last probe with age/staleness semantics.
+- Backtest now shares the 1.2R/2R default targets with Live/Paper/Journal, makes `fee_pct` configurable and recorded in the hash/report, and fails the gate for zero fees. Best-grid selection uses IS evidence only; reports also carry dataset/engine identity and execution assumptions.
+- Portfolio correlates each pair only on that pair's shared timestamps and latest observations; asset volatility uses its own series, so one gapped asset no longer erases every other pair. Benchmark intentionally retains its previous intersection contract.
+- Journal and Backtest carry more precise dataset hash/range and engine/config identity; the new outcome-column migration is idempotent. This identity does not replace original-data archival or prove profitability, complete replay, or Live readiness.
+- Verified the remediation with 1776 Python tests, mypy, Ruff, ESLint, JS broker/intrabar, and every DOM suite on Node 22; regenerated `nobitex-mobile.html`. The MINOR bump reflects changed risk and trade-outcome behavior. This release does not itself enable Live/Auto or submit real orders.
+
 ## 2.2.2
 
 - The approval queue no longer hides candidates refused by the execution preview: a separate “Filtered candidates (not approvable)” section shows the symbol, rank/score, plan entry, execution entry, execution `R:TP2`, minimum `R:R`, refusal reason (sanitized code plus translated label), absolute expiry, and remaining TTL. The section contains no buttons, inputs, links, or approve/reject/edit controls, and its ids never enter the approvable queue or the order-submission path.

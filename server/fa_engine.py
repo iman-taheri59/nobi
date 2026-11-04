@@ -71,9 +71,10 @@ VETO_CACHE: dict[str, tuple[float, list[str]]] = {}
 # Shared upstream payloads: DefiLlama /protocols is ~1MB and Fear&Greed is a
 # single global value, so fetching them once per symbol is wasteful (and got
 # us rate-limited by CoinGecko in testing).
-_LLAMA_CACHE: dict[str, Any] = {"ts": 0.0, "data": []}
-_FNG_CACHE: dict[str, Any] = {"ts": 0.0, "data": {"fg_value": 50}}
+_LLAMA_CACHE: dict[str, Any] = {"ts": 0.0, "data": None, "degraded": False}
+_FNG_CACHE: dict[str, Any] = {"ts": 0.0, "data": None, "degraded": False}
 SHARED_TTL_S = 60
+SHARED_STALE_TTL_S = 60 * 10  # stale data may degrade, never become timeless
 FA_CACHE: dict[str, tuple[float, FAResult]] = {}
 CACHE_TTL_S = 60 * 10  # 10 minutes per symbol for FA lookup
 
@@ -156,45 +157,69 @@ class FAEngine:
         return r.json()
 
     async def _llama_protocols(self) -> list:
-        if _LLAMA_CACHE["data"] and (time.time() - _LLAMA_CACHE["ts"]) < SHARED_TTL_S:
+        if _LLAMA_CACHE["data"] is not None and (time.time() - _LLAMA_CACHE["ts"]) < SHARED_TTL_S:
             return _LLAMA_CACHE["data"]
         if self._is_circuit_open():
             raise RuntimeError("FA circuit open")
         c = await self._ensure()
         r = await c.get(f"{LLAMA_BASE}/protocols")
         if not r.is_success:
-            return _LLAMA_CACHE["data"] or []
+            if (_LLAMA_CACHE["data"] is not None
+                    and time.time() - _LLAMA_CACHE["ts"] < SHARED_STALE_TTL_S):
+                _LLAMA_CACHE["degraded"] = True
+                return _LLAMA_CACHE["data"]
+            raise RuntimeError(f"DefiLlama HTTP {r.status_code}; no fresh cache")
         _LLAMA_CACHE["data"] = r.json() or []
         _LLAMA_CACHE["ts"] = time.time()
+        _LLAMA_CACHE["degraded"] = False
         return _LLAMA_CACHE["data"]
 
-    async def _listen_prices(self) -> dict:
-        """Fear & Greed + market headlines (best-effort, shared cache)."""
-        if _FNG_CACHE["data"] and (time.time() - _FNG_CACHE["ts"]) < SHARED_TTL_S:
+    async def _listen_prices(self) -> dict | None:
+        """Fear & Greed, with no fabricated neutral reading on an outage."""
+        if _FNG_CACHE["data"] is not None and (time.time() - _FNG_CACHE["ts"]) < SHARED_TTL_S:
             return _FNG_CACHE["data"]
         if self._is_circuit_open():
-            return _FNG_CACHE["data"] or {"fg_value": 50}
+            return (_FNG_CACHE["data"]
+                    if _FNG_CACHE["data"] is not None
+                    and time.time() - _FNG_CACHE["ts"] < SHARED_STALE_TTL_S else None)
         try:
             c = await self._ensure()
             r = await c.get("https://api.alternative.me/fng/", params={"limit": 1})
+            r.raise_for_status()
             dat = (r.json() or {}).get("data", [{}])[0]
-            _FNG_CACHE["data"] = {"fg_value": int(dat.get("value", 50))}
+            value = int(dat["value"])
+            if not 0 <= value <= 100:
+                raise ValueError("Fear & Greed value outside 0..100")
+            _FNG_CACHE["data"] = {"fg_value": value}
             _FNG_CACHE["ts"] = time.time()
+            _FNG_CACHE["degraded"] = False
             return _FNG_CACHE["data"]
         except Exception:
             self._trip_circuit()
-            return _FNG_CACHE["data"] or {"fg_value": 50}
+            if (_FNG_CACHE["data"] is not None
+                    and time.time() - _FNG_CACHE["ts"] < SHARED_STALE_TTL_S):
+                _FNG_CACHE["degraded"] = True
+                return _FNG_CACHE["data"]
+            return None
 
     # ---------- scorers ----------
-    async def score(self, symbol: str, usdt_premium_dev: float = 0, nobil_depth_score: int = 50) -> FAResult:
+    async def score(self, symbol: str, usdt_premium_dev: float | None = 0, nobil_depth_score: int = 50) -> FAResult:
         base = norm_base(symbol)
         # The premium veto fires on a threshold crossing, so the cache key has to
         # carry which side of it we are on. Without this a cached "clean" score
         # would survive a premium spike for ten minutes.
-        prem_bucket = 1 if usdt_premium_dev > 0.04 else (-1 if usdt_premium_dev < -0.04 else 0)
-        cache_key = f"{symbol.upper()}|p{prem_bucket}"
+        prem_bucket = "missing" if usdt_premium_dev is None else (
+            1 if usdt_premium_dev > 0.04 else (-1 if usdt_premium_dev < -0.04 else 0)
+        )
+        cache_key = f"{symbol.upper()}|p{prem_bucket}|d{int(nobil_depth_score)}"
         if cache_key in FA_CACHE and (time.time() - FA_CACHE[cache_key][0]) < CACHE_TTL_S:
-            _, cached_res = FA_CACHE[cache_key]
+            cached_at, cached_res = FA_CACHE[cache_key]
+            evidence = dict(cached_res.evidence)
+            evidence["cache"] = {
+                "cached": True,
+                "age_s": round(max(0.0, time.time() - cached_at), 1),
+                "stored_at": datetime.fromtimestamp(cached_at, UTC).isoformat(),
+            }
             return FAResult(
                 score=cached_res.score,
                 market=cached_res.market,
@@ -203,14 +228,16 @@ class FAEngine:
                 sentiment=cached_res.sentiment,
                 macro=cached_res.macro,
                 vetoes=list(cached_res.vetoes),
-                evidence=dict(cached_res.evidence),
+                evidence=evidence,
                 fresh=False,
                 cached=True,
             )
 
-        ev: dict[str, Any] = {}
+        ev: dict[str, Any] = {"providers": {}, "fetched_at": datetime.now(UTC).isoformat()}
         mkt, tok, onc, sen, mac = 50.0, 50.0, 50.0, 50.0, 50.0
         vetoes: list[str] = []
+        available: set[str] = set()
+        cg_live = False
 
         cg = KNOWN_CG_IDS.get(base)
         days_since_genesis = None
@@ -256,12 +283,21 @@ class FAEngine:
                     except Exception:
                         pass
                 ev.update({"mcap": mcap, "fdv": fdv, "vmc": round(vmc, 3), "mcap_tfv_ratio": round(mcap / fdv, 2) if fdv else None, "days": days_since_genesis})
+                cg_live = mcap > 0
+                if cg_live:
+                    available.add("market")
+                    if fdv:
+                        available.add("tokenomics")
+                ev["providers"]["coingecko"] = {
+                    "status": "live" if cg_live else "empty", "id": cg,
+                }
             elif base in FALLBACK_FA_PROFILES:
                 used_fallback = True
         except Exception as e:
             self._last_err = str(e)
             self._trip_circuit()
             used_fallback = True
+            ev["providers"]["coingecko"] = {"status": "failed", "error": str(e)[:180]}
 
         if used_fallback and base in FALLBACK_FA_PROFILES:
             prof = FALLBACK_FA_PROFILES[base]
@@ -291,66 +327,102 @@ class FAEngine:
                 onc += 12
                 ev["pow_bonus"] = True
             ev.update({"mcap": mcap, "fdv": fdv, "vmc": round(vmc, 3), "mcap_tfv_ratio": round(mcap / fdv, 2) if fdv else None, "days": days_since_genesis})
+            available.update({"market", "tokenomics", "onchain"})
+            ev["providers"]["static_profile"] = {"status": "fallback", "as_of": "unversioned-legacy-profile"}
         else:
             try:
                 if cg and not self._is_circuit_open():
                     chains = await self._llama_protocols()
-                    match = next((p for p in chains if p.get("name", "").lower() == KNOWN_CG_IDS[base].replace("-", " ").lower() or p.get("symbol", "").upper() == base), None)
+                    expected_name = KNOWN_CG_IDS[base].replace("-", " ").casefold()
+                    # Symbol-only matching can attach an unrelated protocol's TVL
+                    # to a coin. Exact provider-name matching may miss data, but a
+                    # missing component is safer than fabricated on-chain evidence.
+                    match = next(
+                        (p for p in chains if str(p.get("name") or "").strip().casefold() == expected_name),
+                        None,
+                    )
                     tvl = float((match or {}).get("tvl") or 0)
-                    if tvl > 0:
-                        # TVL only makes sense for assets that actually have a
-                        # DeFi/L1 TVL figure; a zero/missing value must not
-                        # become a "thin-tvl" veto (it used to fire for BTC).
+                    if match and tvl > 0:
                         onc = 40 + min(60, math.log10(tvl + 1) * 18)
                         ev["tvl"] = tvl
+                        ev["tvl_protocol"] = match.get("name")
                         if tvl <= 1e7:
                             vetoes.append("thin-tvl")
                     else:
                         onc = 55
                         ev["tvl"] = None
+                    available.add("onchain")
+                    age = max(0.0, time.time() - float(_LLAMA_CACHE["ts"] or 0))
+                    ev["providers"]["defillama"] = {
+                        "status": "stale-cache" if _LLAMA_CACHE.get("degraded") else "live",
+                        "age_s": round(age, 1),
+                    }
                     if base in {"BTC", "LTC", "DOGE"}:
                         onc += 12
                         ev["pow_bonus"] = True
             except Exception as e:
                 log.warning("defillama failed for %s: %s", symbol, e)
+                ev["providers"]["defillama"] = {"status": "unavailable", "error": str(e)[:180]}
                 self._trip_circuit()
 
         try:
             fg = await self._listen_prices()
-            fgi = fg["fg_value"]
-            sen = 40 + (fgi / 100) * 40
-            if fgi <= 15:
-                vetoes.append("extreme-fear")
-            elif fgi >= 85:
-                sen -= 10
-            ev["fear_greed"] = fgi
-        except Exception:
-            pass
+            if not fg:
+                ev["fear_greed"] = None
+                ev["providers"]["fear_greed"] = {"status": "unavailable"}
+            else:
+                fgi = int(fg["fg_value"])
+                sen = 40 + (fgi / 100) * 40
+                if fgi <= 15:
+                    vetoes.append("extreme-fear")
+                elif fgi >= 85:
+                    sen -= 10
+                available.add("sentiment")
+                ev["fear_greed"] = fgi
+                ev["providers"]["fear_greed"] = {
+                    "status": "stale-cache" if _FNG_CACHE.get("degraded") else "live",
+                    "age_s": round(max(0.0, time.time() - float(_FNG_CACHE["ts"] or 0)), 1),
+                }
+        except Exception as e:
+            ev["fear_greed"] = None
+            ev["providers"]["fear_greed"] = {"status": "unavailable", "error": str(e)[:180]}
 
-        # macro fit vs premium & IRT context
-        if usdt_premium_dev > 0.04:
-            mac = 40
-            vetoes.append("premium-stretched")
-        elif usdt_premium_dev < -0.04:
-            mac = 62
-            ev["cheap_irt"] = True
+        # macro fit vs premium & IRT context; missing is not the same as 0 %.
+        if usdt_premium_dev is None:
+            ev["premium_dev"] = None
         else:
-            mac = 55
+            available.add("macro")
+            ev["premium_dev"] = usdt_premium_dev
+            if usdt_premium_dev > 0.04:
+                mac = 40
+                vetoes.append("premium-stretched")
+            elif usdt_premium_dev < -0.04:
+                mac = 62
+                ev["cheap_irt"] = True
+            else:
+                mac = 55
 
         # unlocks / vesting — placeholder for calendar integration
         if base in {"XYZ"}:  # demo chain
             vetoes.append("unlock-7d>5%")
 
-        score = (
-            self.WEIGHTS["market"] * mkt
-            + self.WEIGHTS["tokenomics"] * tok
-            + self.WEIGHTS["onchain"] * onc
-            + self.WEIGHTS["sentiment"] * sen
-            + self.WEIGHTS["macro"] * mac
-        )
-        # adjust for cream volume proxy of nobitex pair
-        score = min(score, score + (nobil_depth_score - 50) * 0.2)
+        components = {"market": mkt, "tokenomics": tok, "onchain": onc,
+                      "sentiment": sen, "macro": mac}
+        weight_total = sum(self.WEIGHTS[name] for name in available)
+        if weight_total > 0:
+            # Unknown is not neutral evidence. Reweight only measured components
+            # and publish exactly which ones survived.
+            score = sum(self.WEIGHTS[name] * components[name] for name in available) / weight_total
+            score = min(score, score + (nobil_depth_score - 50) * 0.2)
+        else:
+            score = 50.0
         score = max(0, min(100, round(score, 1)))
+        ev["score_basis"] = {
+            "available_components": sorted(available),
+            "weight_total": round(weight_total, 4),
+            "renormalized": weight_total < 1.0,
+            "nobitex_depth_score": nobil_depth_score,
+        }
 
         # ADR-0025: three states, not two. A symbol no provider is mapped for used
         # to leave here as `profile: "live"` and `fresh: True`, so a score built
@@ -360,14 +432,16 @@ class FAEngine:
         # `cg` is the mapped provider id for this base asset; empty means no
         # provider is mapped at all, which is what `none` now says out loud.
         mapped = bool(cg)
-        if used_fallback:
+        if used_fallback and base in FALLBACK_FA_PROFILES:
             ev["profile"] = "fallback"
         elif not mapped:
             ev["profile"] = "none"
-        else:
+        elif cg_live:
             ev["profile"] = "live"
+        else:
+            ev["profile"] = "unavailable"
         res = FAResult(score=score, market=mkt, tokenomics=tok, onchain=onc, sentiment=sen, macro=mac,
-                       vetoes=vetoes, evidence=ev, fresh=ev["profile"] == "live")
+                       vetoes=vetoes, evidence=ev, fresh=cg_live)
         VETO_CACHE[cache_key] = (time.time(), list(vetoes))
         FA_CACHE[cache_key] = (time.time(), res)
         return res

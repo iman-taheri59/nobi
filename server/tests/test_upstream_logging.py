@@ -114,7 +114,8 @@ def test_scan_still_skips_missing_data_and_keeps_healthy_symbols(monkeypatch, ca
 
     monkeypatch.setattr(main, 'CANDLE_WARNINGS', RefusalLogLimiter())
     monkeypatch.setitem(main._cached, 'universe', [
-        {'symbol': sym, 'last': 1.0, 'vol24': 1e9, 'change24': 0.0, 'closed': False}
+        {'symbol': sym, 'last': 1.0, 'vol24': 1e9, 'vol24_usd': 10_000.0,
+         'change24': 0.0, 'closed': False}
         for sym in ('BTCIRT', 'DAIIRT')])
     for key in ('signals', 'signals_by_tf', 'signals_ts', 'signals_bars'):
         monkeypatch.setitem(main._cached, key, {})

@@ -9,9 +9,9 @@ windows, the same cost model, the same optimisation budget, one variable.
 Design
 ------
 * **One variable.** Both runs share the window boundaries, the parameter grid and
-  the cost model. Only `min_score` differs: ``LONG_SCORE_MIN`` (68) versus
-  ``round(68 * factor)``. A comparison that changes two things at once measures
-  neither.
+  the cost model. Only `min_score` differs: ``LONG_SCORE_MIN`` (68) versus the
+  same anchored transform returned by the recommendation. A comparison that
+  changes two things at once measures neither.
 * **Only evaluation numbers.** The train slice selects parameters; only the eval
   slice is aggregated. That is what ADR-0009 already means by out-of-sample.
 * **Nothing is applied.** ``applied`` is ``False`` on every path, including a
@@ -53,7 +53,7 @@ from typing import Any
 
 import pandas as pd
 
-from adaptive import AdaptiveError
+from adaptive import AdaptiveError, scale_threshold
 from adaptive import report as adaptive_report
 from backtest import DEFAULT_PARAM_GRID, MIN_WARMUP, WalkForwardRunner, _auto_windows
 from ta_engine import LONG_SCORE_MIN, NEUTRAL_SCORE_MIN, ta_score_series
@@ -177,8 +177,8 @@ def compare(
     base_pair = (measurement.get("thresholds") or {}).get("base") or {}
     base_long = float(base_pair.get("long") or LONG_SCORE_MIN)
     base_neutral = float(base_pair.get("neutral") or NEUTRAL_SCORE_MIN)
-    scaled_long = round(base_long * used, 2)
-    scaled_neutral = round(base_neutral * used, 2)
+    scaled_long = round(scale_threshold(base_long, used), 2)
+    scaled_neutral = round(scale_threshold(base_neutral, used), 2)
 
     out: dict[str, Any] = {
         "symbol": symbol,

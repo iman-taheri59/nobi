@@ -80,7 +80,14 @@ from money import Rate, toman, usd
 from nobitex_client import ClientError, NobitexClient, UpstreamUnavailable
 from paper_trading import FEE_PCT as PAPER_FEE_PCT
 from paper_trading import get_broker
-from portfolio import Candidate, Limits, aligned_closes, log_returns
+from portfolio import (
+    Candidate,
+    Limits,
+    aligned_closes,
+    log_returns,
+    pairwise_corr_matrix,
+    symbol_returns,
+)
 from portfolio import allocate as allocate_portfolio
 from risk_engine import (
     DEFAULT_RR_LEVELS,
@@ -428,7 +435,7 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(
     title="nobiTrader",
-    version="2.2.2",
+    version="2.3.0",
     lifespan=lifespan,
 )
 
@@ -905,6 +912,46 @@ def _premium_pct(rows: list[dict]) -> float | None:
         return None
 
 
+def _quote_turnover_usd(row: dict[str, Any], fx_irt: float | None = None) -> float | None:
+    """Return comparable 24h turnover without adding tomans to dollars.
+
+    ``vol24`` remains the exchange's native quote amount because the market
+    overview divides it by ``fx_usd``. ``vol24_usd`` is the only field used for
+    universe ranking and the scan's liquidity score. Unknown quotes and IRT rows
+    without a valid USDT/IRT rate have no invented dollar value.
+    """
+    explicit = row.get("vol24_usd")
+    if explicit is not None:
+        try:
+            value = float(explicit)
+            if math.isfinite(value) and value >= 0:
+                return value
+        except (TypeError, ValueError):
+            pass
+    raw_value = row.get("vol24")
+    if raw_value is None:
+        return None
+    try:
+        raw = float(raw_value)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(raw) or raw < 0:
+        return None
+    symbol = str(row.get("symbol") or "").upper()
+    if symbol.endswith("USDT"):
+        rate = 1.0
+    elif symbol.endswith("IRT"):
+        try:
+            rate = float(row.get("fx_usd") or fx_irt or 0)
+        except (TypeError, ValueError):
+            return None
+    else:
+        return None
+    if not math.isfinite(rate) or rate <= 0:
+        return None
+    return raw / rate
+
+
 async def _fx(symbol: str = "BTCIRT") -> Rate | None:
     """The rate every money conversion on this request must use.
 
@@ -988,12 +1035,24 @@ def _spawn(coro) -> asyncio.Task:
 
 def _upstream_snapshot() -> dict:
     age = time.time() - _upstream["ts"] if _upstream["ts"] else None
-    if _upstream["ok"] is None or age is None or age > UPSTREAM_TTL_S:
+    stale = _upstream["ok"] is None or age is None or age > UPSTREAM_TTL_S
+    refresh_scheduled = False
+    if stale:
         _spawn(_probe_upstream())
+        refresh_scheduled = True
+    checked_at = (
+        datetime.fromtimestamp(_upstream["ts"], UTC).isoformat()
+        if _upstream["ts"] else None
+    )
     return {
+        # This is the last completed probe, not a synchronous reachability
+        # guarantee. Consumers must read `stale` and `age_s` alongside `ok`.
         "ok": _upstream["ok"],
         "latency_ms": _upstream["latency_ms"],
         "age_s": None if age is None else round(age, 1),
+        "checked_at": checked_at,
+        "stale": stale,
+        "refresh_scheduled": refresh_scheduled,
         "error": _upstream["error"],
         "degraded": client.degraded_mode,
     }
@@ -1102,7 +1161,20 @@ async def _load_universe_locked():
                         "closed": bool(d.get("isClosed")),
                     }
                 )
-        rows.sort(key=lambda x: x["vol24"], reverse=True)
+        usdtirt = next((r for r in rows if r["symbol"] == "USDTIRT"), None)
+        fx_irt = float(usdtirt["last"]) if usdtirt and usdtirt["last"] > 0 else None
+        for row in rows:
+            symbol = row["symbol"]
+            row["fx_usd"] = fx_irt if symbol.endswith("IRT") else (
+                1.0 if symbol.endswith("USDT") else None
+            )
+            row["vol24_usd"] = _quote_turnover_usd(row, fx_irt)
+        # Native IRT turnover is routinely 100,000 times its USDT equivalent.
+        # Ranking on it directly starved every dollar-quoted market.
+        def turnover_rank(item: dict[str, Any]) -> float:
+            value = _quote_turnover_usd(item, fx_irt)
+            return value if value is not None else -1.0
+        rows.sort(key=turnover_rank, reverse=True)
         _cached["universe"] = rows[:60]
         closed = sorted(r["symbol"] for r in rows if r.get("closed"))
         _cached["closed_markets"] = closed
@@ -1199,6 +1271,12 @@ async def rescan(tf: str = "15m", top: int = 40):
             # Not a failure: this market is deliberately outside the scan, so
             # it is not counted as "had no candles" in the empty-scan message.
             return
+        vol = _quote_turnover_usd(u, _cached.get("premium"))
+        if vol is None:
+            # No cross-unit ranking by pretending native IRT is USD. This is a
+            # missing conversion input, not a failed candle request.
+            skipped.append(u["symbol"])
+            return
         try:
             async with sem:
                 rows, src = await client.get_candles_ex(u["symbol"], tf, 260)
@@ -1215,15 +1293,13 @@ async def rescan(tf: str = "15m", top: int = 40):
                 bars_seen[u["symbol"]] = max(float(r["t"]) for r in rows if r.get("t") is not None)
             df = candles_to_df(rows)
             sig = ta_score(df)
-            vol = u["vol24"]
-            import math
-
             liq = round(min(100, max(0, 50 + math.log10(vol + 1) * 4)), 0)
             composite, basis = _composite(sig["score"], liq, None)
             out[u["symbol"]] = {
                 **u,
                 **sig,
                 "liquidity_score": liq,
+                "liquidity_unit": "USD_24H_TURNOVER",
                 "fa_score": None,
                 "fa": None,
                 "composite": composite,
@@ -1255,7 +1331,8 @@ async def rescan(tf: str = "15m", top: int = 40):
             try:
                 # The premium is measured once per universe load; passing a
                 # constant 0 here made the documented premium veto unreachable.
-                prem_dev = (_cached.get("premium_pct") or 0.0) / 100.0
+                prem_raw = _cached.get("premium_pct")
+                prem_dev = prem_raw / 100.0 if prem_raw is not None else None
                 fa: FAResult = await FA_ENGINE.score(
                     sym, usdt_premium_dev=prem_dev, nobil_depth_score=snap["liquidity_score"]
                 )
@@ -1279,7 +1356,9 @@ async def rescan(tf: str = "15m", top: int = 40):
                 snap["direction"] = new_dir
                 snap.update(veto_meta)
                 scored.append(sym)
-                if fa.fresh:
+                if (fa.evidence or {}).get("profile") == "live":
+                    # A cached read of live provider data is still live-origin;
+                    # `fresh` separately says whether this call fetched it.
                     live.append(sym)
             except Exception as e:  # one symbol must not kill the scan
                 failed.append(sym)
@@ -1290,13 +1369,15 @@ async def rescan(tf: str = "15m", top: int = 40):
     # ADR-0025: three states, not two. `unmapped` is symbols no provider knows;
     # counting them as `fallback` (let alone `live`) is how "39 symbols scored
     # fundamentally" got assembled out of neutral defaults.
-    unmapped = sum(
-        1 for snap in out.values() if (((snap.get("fa") or {}).get("profile")) == "none")
-    )
+    profiles = [((snap.get("fa") or {}).get("profile")) for snap in out.values()]
+    unmapped = profiles.count("none")
+    unavailable = profiles.count("unavailable")
+    fallback = profiles.count("fallback")
     _cached["fa_coverage"] = {
         "scored": len(scored),
         "live": len(live),
-        "fallback": len(scored) - len(live) - unmapped,
+        "fallback": fallback,
+        "unavailable": unavailable,
         "unmapped": unmapped,
         "failed": len(failed),
         "total": len(out),
@@ -1978,7 +2059,11 @@ async def journal_msi_baseline(
     """
     if not _cached["universe"]:
         await load_universe()
-    universe = sorted(_cached["universe"], key=lambda r: r.get("vol24") or 0, reverse=True)
+    universe = sorted(
+        _cached["universe"],
+        key=lambda r: _quote_turnover_usd(r, _cached.get("premium")) or 0,
+        reverse=True,
+    )
     frames = []
     sources: dict[str, int] = {}
     for u in universe[:symbols]:
@@ -2962,7 +3047,11 @@ async def journal_backfill(
     """
     if not _cached["universe"]:
         await load_universe()
-    universe = sorted(_cached["universe"], key=lambda r: r.get("vol24") or 0, reverse=True)
+    universe = sorted(
+        _cached["universe"],
+        key=lambda r: _quote_turnover_usd(r, _cached.get("premium")) or 0,
+        reverse=True,
+    )
     picked = [u["symbol"] for u in universe[:symbols]]
     conn = signal_journal.connect()
     written = resolved = 0
@@ -3035,7 +3124,8 @@ async def fa(symbol: str):
     """
     s = _cached["signals"].get(symbol.upper())
     liq = s["liquidity_score"] if s else 50
-    prem_dev = (_cached.get("premium_pct") or 0.0) / 100.0
+    prem_raw = _cached.get("premium_pct")
+    prem_dev = prem_raw / 100.0 if prem_raw is not None else None
     res = await FA_ENGINE.score(symbol.upper(), usdt_premium_dev=prem_dev, nobil_depth_score=liq)
     # Three states, not two: fetched now, served from the cache, or built from a
     # hard-coded profile. `fresh` alone cannot tell cache from fallback.
@@ -3046,6 +3136,8 @@ async def fa(symbol: str):
         source = "no-provider"
     elif profile == "fallback":
         source = "fallback"
+    elif profile == "unavailable":
+        source = "unavailable"
     elif res.cached:
         source = "cached"
     else:
@@ -3334,7 +3426,9 @@ async def _live_preflight(payload: dict[str, Any], request: Request) -> dict[str
     return await risk_whatif(payload, request)
 
 
-live_api.configure(preflight=_live_preflight, audit=audit)
+# Dry-run may deliberately project onto Paper. Real placement needs a distinct
+# exchange-account provider; leaving it unconfigured keeps live fail-closed.
+live_api.configure(preflight=_live_preflight, live_preflight=None, audit=audit)
 
 
 @app.post("/api/portfolio/allocate")
@@ -3436,13 +3530,7 @@ async def portfolio_allocate(payload: dict, request: Request):
             **provenance(),
         }
 
-    _stamps, closes = aligned_closes(series)
-    returns: dict[str, list[float]] = {}
-    for sym, cl in closes.items():
-        try:
-            returns[sym] = log_returns(cl)
-        except ValueError:
-            notes.append({"symbol": sym, "reason": "non-positive close in the series"})
+    returns = symbol_returns(series)
 
     lim = Limits(
         equity=br.equity,
@@ -3458,7 +3546,8 @@ async def portfolio_allocate(payload: dict, request: Request):
         halted=bool(br.halted or risk.halted),
         shrinkage=(float(body["shrinkage"]) if body.get("shrinkage") is not None else 0.30),
     )
-    res = allocate_portfolio(candidates, returns, lim)
+    pairwise = pairwise_corr_matrix(series, lim.shrinkage)
+    res = allocate_portfolio(candidates, returns, lim, pairwise=pairwise)
     res["dropped"] = notes + list(res.get("dropped") or [])
 
     # USD notional → the pair's own quote currency. A quantity printed in USD
@@ -3783,6 +3872,8 @@ def _live_equity() -> tuple[float, float]:
 async def risk_state():
     eq, start = _live_equity()
     rate = await _fx("BTCIRT")
+    broker = get_broker(EQUITY, client, risk)
+    trigger_state = broker.refresh_risk_triggers()
     return {
         # The same number the preflight compares against, not the constant it
         # started from.
@@ -3798,7 +3889,11 @@ async def risk_state():
         "openHeat": risk.open_heat,
         "heat_basis": "reserved-entry-risk-of-remaining-legs",
         "dailyPnl": risk.daily_pnl,
+        "weeklyPnl": risk.weekly_pnl,
+        "consecutiveSL": risk.consecutive_sl,
         "halted": risk.halted,
+        "triggerReasons": list(risk.trigger_reasons),
+        "triggerBasis": trigger_state,
         "caps": {
             "riskPct": risk.cfg.risk_pct,
             "maxConcurrent": risk.cfg.max_concurrent,
@@ -4133,8 +4228,8 @@ async def paper_orders(limit: int = Query(100, ge=1, le=500)):
 @app.get("/api/paper/positions")
 async def paper_positions():
     broker = get_broker(EQUITY, client, risk)
-    await streams_start(broker, client)
-    await broker.evaluate_positions()
+    # Reads must not trade. The background position loop evaluates stops and
+    # targets; a Viewer GET only observes the latest persisted state.
     return {
         "positions": [_position_payload(p) for p in broker.positions.values()],
         "metrics": broker.metrics(),
@@ -4180,7 +4275,7 @@ async def ws_status():
 @app.get("/api/paper/metrics")
 async def paper_metrics():
     broker = get_broker(EQUITY, client, risk)
-    await broker.evaluate_positions()
+    # Pure read: evaluation belongs to tick_once(), not to a read-only role.
     return {
         "metrics": broker.metrics(),
         "curve": [list(x) for x in broker.equity_curve[-200:]],
@@ -4307,12 +4402,16 @@ async def auto_tick(tf: str = "15m") -> dict:
     _exec_mode_load()
     broker = get_broker(EQUITY, client, risk)
     now = time.time()
+    trigger_state = broker.refresh_risk_triggers(now)
     if EXEC_MODE.is_auto_default():
         pool = _cached.get("signals_by_tf", {}).get(tf) or _cached.get("signals") or {}
         targets = list(pool.keys())
     else:
         targets = EXEC_MODE.auto_symbols()
-    out: dict[str, Any] = {"considered": 0, "placed": 0, "skipped": 0, "rejected": []}
+    out: dict[str, Any] = {
+        "considered": 0, "placed": 0, "skipped": 0, "rejected": [],
+        "risk_triggers": trigger_state,
+    }
     for sym in sorted(set(targets)):
         snap = _signal_lookup(sym, tf)
         if not snap:

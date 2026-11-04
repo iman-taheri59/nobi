@@ -65,13 +65,27 @@ def test_entry_is_the_signal_bar_close_not_the_next_bar(conn):
     J.insert_rows(conn, [_row(close_ts(df, 9))])
     J.resolve_symbol(conn, "BTCUSDT", "15m", df)
     h1 = conn.execute("SELECT * FROM signal_outcomes WHERE horizon_key='H1'").fetchone()
-    # Entry is the signal bar's close (100); the +20 % return proves it (using
-    # the next bar's 120 as entry would book 0 %). The frame gaps straight over
-    # TP1, so half is booked at 1.2R and the rest runs to the horizon:
-    # 0.6R + 0.5 * 10R = 5.6R.
-    assert h1["return_pct"] == pytest.approx(20.0, abs=0.5)
-    assert h1["hit_tp1"] == 1
-    assert h1["r_multiple"] == pytest.approx(5.6, abs=0.1)
+    # Entry is the signal bar's close (100). The frame crosses both targets:
+    # half at 1.2R and half at 2R gives 1.6R and a weighted 3.2 % return.
+    # The remaining leg's 120 close must not masquerade as a 20 % trade return.
+    assert h1["return_pct"] == pytest.approx(3.2)
+    assert h1["hit_tp1"] == h1["hit_tp2"] == 1
+    assert h1["timeout"] == 0
+    assert h1["exit_reason"] == "tp2"
+    assert h1["r_multiple"] == pytest.approx(1.6)
+    assert len(h1["dataset_hash"]) == 64
+    assert h1["dataset_rows"] == len(df)
+    assert h1["dataset_start"] == int(df["t"].iloc[0].timestamp())
+    assert h1["dataset_end"] == int(df["t"].iloc[-1].timestamp())
+
+
+def test_config_identity_covers_decision_sources_but_not_fake_replay_claims():
+    assert J.CONFIG_IDENTITY["algorithm"] == "sha256-source-and-effective-parameters"
+    assert {"main.py", "ta_engine.py", "fa_engine.py", "journal.py"} <= set(
+        J.CONFIG_IDENTITY["source_sha256"]
+    )
+    assert J.CONFIG_IDENTITY["complete_replay"] is False
+    assert J.CONFIG_IDENTITY["hash"] == J.CONFIG_HASH
 
 
 def test_stop_wins_when_one_bar_touches_both_levels(conn):
@@ -84,6 +98,47 @@ def test_stop_wins_when_one_bar_touches_both_levels(conn):
     assert h1["hit_sl"] == 1
     assert h1["hit_tp1"] == 0
     assert h1["r_multiple"] == pytest.approx(-1.0)
+
+
+def test_gap_through_stop_uses_the_open_and_can_exceed_minus_one_r(conn):
+    df = frame([100.0] * 20)
+    df.loc[10, "o"] = 80.0
+    df.loc[10, "h"] = 81.0
+    df.loc[10, "l"] = 79.0
+    df.loc[10, "c"] = 80.0
+    J.insert_rows(conn, [_row(close_ts(df, 9))])
+    J.resolve_symbol(conn, "BTCUSDT", "15m", df)
+    h1 = conn.execute("SELECT * FROM signal_outcomes WHERE horizon_key='H1'").fetchone()
+    assert h1["exit_price"] == pytest.approx(80.0)
+    assert h1["r_multiple"] == pytest.approx(-10.0)
+    assert h1["ambiguous"] == 0
+
+
+def test_post_tp1_stop_in_the_same_bar_is_conservative_and_recorded(conn):
+    df = frame([100.0] * 20)
+    df.loc[10, "h"] = 104.0
+    df.loc[10, "l"] = 99.5  # above original 98, below the new 100.2 trail
+    df.loc[10, "c"] = 103.5
+    J.insert_rows(conn, [_row(close_ts(df, 9))])
+    J.resolve_symbol(conn, "BTCUSDT", "15m", df)
+    h1 = conn.execute("SELECT * FROM signal_outcomes WHERE horizon_key='H1'").fetchone()
+    assert h1["hit_tp1"] == h1["hit_sl"] == h1["ambiguous"] == 1
+    assert h1["exit_price"] == pytest.approx(100.2)
+    assert h1["r_multiple"] == pytest.approx(0.65)
+
+
+def test_daily_h1_is_not_silently_duplicated_into_h2(conn):
+    df = frame([100.0] * 12, step=86400)
+    row = _row(close_ts(df, 2, step=86400))
+    row.timeframe = "D"
+    J.insert_rows(conn, [row])
+    J.resolve_symbol(conn, "BTCUSDT", "D", df)
+    horizons = {r["horizon_key"] for r in conn.execute(
+        "SELECT horizon_key FROM signal_outcomes"
+    )}
+    assert horizons == {"H2", "H3"}
+    assert J.horizon_supported("D", "H1") is False
+    assert J.horizon_supported("D", "H2") is True
 
 
 def test_tp1_books_half_and_trails_to_breakeven(conn):

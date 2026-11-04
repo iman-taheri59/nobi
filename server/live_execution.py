@@ -158,17 +158,38 @@ class ExecutionLedger:
             return dict(row) if row else None
 
     def promotion_evidence(self, *, min_samples: int = 30, min_days: int = 5) -> dict[str, Any]:
+        """Measure qualified real executions; dry-runs are operational tests only.
+
+        A rejected exchange request proves transport, not successful placement,
+        so it cannot qualify the gate. Accepted/reconciled orders and records
+        whose later cancel state proves prior acceptance do qualify. Unknown
+        outcomes remain a hard refusal. `real_attempts` is retained separately
+        for diagnostics without allowing it to inflate the qualified sample.
+        """
+        qualified = ("accepted", "reconciled", "canceled", "cancel-rejected")
+        attempted = (*qualified, "rejected", "unknown", "cancel-unknown")
+        q_marks = ",".join("?" for _ in qualified)
+        a_marks = ",".join("?" for _ in attempted)
         with self._connect() as conn:
-            total = int(conn.execute("SELECT count(*) FROM live_execution").fetchone()[0])
+            samples = int(conn.execute(
+                f"SELECT count(*) FROM live_execution WHERE state IN ({q_marks})",
+                qualified,
+            ).fetchone()[0])
             days = int(conn.execute(
-                "SELECT count(DISTINCT date(created_at)) FROM live_execution"
+                f"SELECT count(DISTINCT date(created_at)) FROM live_execution "
+                f"WHERE state IN ({q_marks})",
+                qualified,
+            ).fetchone()[0])
+            real_attempts = int(conn.execute(
+                f"SELECT count(*) FROM live_execution WHERE state IN ({a_marks})",
+                attempted,
             ).fetchone()[0])
             states = {str(row[0]): int(row[1]) for row in conn.execute(
                 "SELECT state,count(*) FROM live_execution GROUP BY state"
             )}
         ambiguous = states.get("unknown", 0) + states.get("cancel-unknown", 0)
         reasons = []
-        if total < min_samples:
+        if samples < min_samples:
             reasons.append("insufficient-samples")
         if days < min_days:
             reasons.append("insufficient-days")
@@ -176,10 +197,14 @@ class ExecutionLedger:
             reasons.append("ambiguous-outcomes")
         return {
             "ready": not reasons,
-            "samples": total,
+            "samples": samples,
             "days": days,
+            "real_attempts": real_attempts,
+            "dry_run_excluded": states.get("dry-run", 0),
+            "rejected": states.get("rejected", 0),
             "ambiguous": ambiguous,
             "states": states,
+            "evidence_basis": "qualified-real-orders",
             "required": {"samples": min_samples, "days": min_days, "ambiguous": 0},
             "reasons": reasons,
             "applied": False,

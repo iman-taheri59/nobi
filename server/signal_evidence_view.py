@@ -60,7 +60,15 @@ FIELDS = (
     "mfe_pct",
     "mae_pct",
     "hit_tp1",
+    "hit_tp2",
     "hit_sl",
+    "timeout",
+    "ambiguous",
+    "exit_reason",
+    "dataset_hash",
+    "dataset_rows",
+    "dataset_start",
+    "dataset_end",
     "review_count",
     "model_status",
 )
@@ -77,7 +85,13 @@ NUMERIC = {
     "atr",
     "voided_at",
     "hit_tp1",
+    "hit_tp2",
     "hit_sl",
+    "timeout",
+    "ambiguous",
+    "dataset_rows",
+    "dataset_start",
+    "dataset_end",
     "resolved_at",
     "r_multiple",
     "return_pct",
@@ -89,7 +103,7 @@ MEASUREMENT = {
     "net_account_pnl": False,
     "sample_threshold_is_count_only": True,
     "independent_samples_established": False,
-    "source_basis": "signal-recording-candles; outcome-candle provenance not stored",
+    "source_basis": "signal-recording-candles; new outcomes carry ordered OHLCV hash/range, original payload archival separate",
     "export_is_executed_account_ledger": False,
     "expectancy_ci95_method": "normal-approximation-1.96-sample-sd; independence unverified",
     "win_rate_ci95_method": "Wilson; positive-R event, independence unverified",
@@ -149,6 +163,9 @@ def _base(conn: sqlite3.Connection, f: dict) -> tuple[str, list[Any]]:
         else "'legacy-unlinked'"
     )
     cycle = "s.scan_cycle_id" if "scan_cycle_id" in columns else "NULL"
+    outcome_columns = {r["name"] for r in conn.execute("PRAGMA table_info(signal_outcomes)")}
+    def outcome(name: str) -> str:
+        return f"o.{name}" if name in outcome_columns else "NULL"
     where, args = _where(f)
     valid_inputs = (
         f"(s.entry>0 AND s.atr>0 AND {_finite_sql('s.entry')} AND {_finite_sql('s.atr')})"
@@ -158,6 +175,10 @@ def _base(conn: sqlite3.Connection, f: dict) -> tuple[str, list[Any]]:
         s.entry,s.stop,s.tp1,s.tp2,s.atr,s.voided_at,s.void_reason,
         {linkage} linkage_status,{cycle} scan_cycle_id,
         o.resolved_at,o.r_multiple,o.return_pct,o.mfe_pct,o.mae_pct,o.hit_tp1,o.hit_sl,
+        {outcome("hit_tp2")} hit_tp2,{outcome("timeout")} timeout,
+        {outcome("ambiguous")} ambiguous,{outcome("exit_reason")} exit_reason,
+        {outcome("dataset_hash")} dataset_hash,{outcome("dataset_rows")} dataset_rows,
+        {outcome("dataset_start")} dataset_start,{outcome("dataset_end")} dataset_end,
         (SELECT count(*) FROM signal_reviews r WHERE r.signal_id=s.id) review_count,
         CASE WHEN s.voided_at IS NOT NULL THEN 'void'
              WHEN s.direction!='LONG' THEN 'non_long_not_applicable'
@@ -183,7 +204,9 @@ def _row(row: sqlite3.Row) -> dict:
         if v is not None and (not isinstance(v, (int, float)) or not math.isfinite(v)):
             out[key] = None
     if out["model_status"] != "resolved":
-        for key in ("r_multiple", "return_pct", "mfe_pct", "mae_pct", "hit_tp1", "hit_sl"):
+        for key in ("r_multiple", "return_pct", "mfe_pct", "mae_pct", "hit_tp1",
+                    "hit_tp2", "hit_sl", "timeout", "ambiguous", "exit_reason",
+                    "dataset_hash", "dataset_rows", "dataset_start", "dataset_end"):
             out[key] = None
     return out
 

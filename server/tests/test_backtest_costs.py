@@ -54,6 +54,7 @@ def test_the_simulator_defaults_to_the_declared_cost_model():
     bt = EventBacktester({"initial_equity": 100_000})
     assert SLIP_BPS > 0
     assert bt.slippage == pytest.approx(SLIP_BPS / 10_000.0)
+    assert (bt.tp1_r, bt.tp2_r) == (1.2, 2.0)
 
 
 def test_a_run_without_a_slippage_argument_costs_something():
@@ -85,6 +86,24 @@ def test_an_explicit_value_is_echoed_not_overridden():
     rep = _report(slippage_bps=25)
     assert rep["slippage_bps"] == pytest.approx(25.0)
     assert rep["costs"]["modeled"] is True
+
+
+def test_fee_scenario_is_echoed_hashed_and_never_called_a_verified_account_tier():
+    low = _report(fee_pct=0.0005, fixed_params=True)
+    high = _report(fee_pct=0.004, fixed_params=True)
+    assert low["costs"]["fee_pct"] == pytest.approx(0.0005)
+    assert high["costs"]["fee_pct"] == pytest.approx(0.004)
+    assert low["costs"]["fee_source"] == "caller-configured-scenario"
+    assert low["costs"]["account_tier_verified"] is False
+    assert low["config_hash"] != high["config_hash"]
+    assert high["aggregate"]["final_equity"] <= low["aggregate"]["final_equity"]
+
+
+def test_zero_fee_cannot_pass_the_cost_gate_even_with_slippage():
+    rep = _report(fee_pct=0)
+    assert rep["costs"]["modeled"] is False
+    assert rep["gate"]["checks"]["costs_modeled"]["pass"] is False
+    assert "costs_modeled" in rep["gate"]["failed"]
 
 
 # --------------------------------------------------------------------------- #
@@ -127,6 +146,11 @@ def test_the_persisted_report_keeps_its_cost_model():
     assert saved["slippage_bps"] == pytest.approx(12.0)
     assert saved["costs"]["fee_pct"] > 0
     assert saved["gate"]["checks"]["costs_modeled"]["value"] == pytest.approx(12.0)
+    assert len(saved["dataset"]["hash"]) == 64
+    assert saved["dataset"]["rows"] == 700
+    assert saved["dataset"]["raw_payload_archived"] is False
+    assert saved["execution_assumptions"]["entry"] == "signal-close"
+    assert saved["execution_assumptions"]["order_book_depth"] is False
 
 
 def test_grid_search_uses_the_same_default_as_the_simulator():

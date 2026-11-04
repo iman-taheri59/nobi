@@ -109,8 +109,10 @@ def test_the_stable_pair_is_not_scanned_for_technical_analysis(monkeypatch):
 
     scanned: list[str] = []
     monkeypatch.setitem(main._cached, "universe", [
-        {"symbol": "BTCIRT", "last": 1.0, "vol24": 1e9, "change24": 0.0, "closed": False},
-        {"symbol": "USDTIRT", "last": 1.0, "vol24": 1e9, "change24": 0.0, "closed": False},
+        {"symbol": "BTCIRT", "last": 1.0, "vol24": 1e9, "vol24_usd": 10_000.0,
+         "change24": 0.0, "closed": False},
+        {"symbol": "USDTIRT", "last": 1.0, "vol24": 1e9, "vol24_usd": 10_000.0,
+         "change24": 0.0, "closed": False},
     ])
     # `rescan()` writes into these three caches in place. Without swapping them
     # for fresh dicts, the snapshot a fake candle produced for BTCIRT survived

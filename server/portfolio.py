@@ -89,7 +89,8 @@ def corr_pair(a: list[float], b: list[float]) -> float | None:
     n = min(len(a), len(b))
     if n < MIN_OBS:
         return None
-    a, b = a[:n], b[:n]
+    # Unequal inputs represent the latest overlap, not the oldest history.
+    a, b = a[-n:], b[-n:]
     ma = sum(a) / n
     mb = sum(b) / n
     da = [x - ma for x in a]
@@ -125,6 +126,60 @@ def corr_matrix(returns: dict[str, list[float]], shrinkage: float = DEFAULT_SHRI
             s = r * (1.0 - lam)
             matrix[i][j] = matrix[j][i] = s
     return syms, matrix, missing
+
+
+def symbol_returns(series: dict[str, list[tuple[int, float]]]) -> dict[str, list[float]]:
+    """Each asset's own chronological log returns; no cross-asset intersection."""
+    out: dict[str, list[float]] = {}
+    for sym, rows in series.items():
+        by_time = {int(ts): float(close) for ts, close in rows}
+        closes = [by_time[ts] for ts in sorted(by_time)]
+        try:
+            out[sym] = log_returns(closes)
+        except ValueError:
+            continue
+    return out
+
+
+def pairwise_corr_matrix(
+    series: dict[str, list[tuple[int, float]]], shrinkage: float = DEFAULT_SHRINKAGE,
+) -> tuple[list[str], list[list[float | None]], list[tuple[str, str]], dict[str, int]]:
+    """Correlate each pair on that pair's shared close timestamps.
+
+    A single global intersection lets one old gap in one asset erase every other
+    pair. Pairwise alignment preserves the usable evidence without forward-fill,
+    zero-return fabrication, or pretending mismatched intervals are independent.
+    """
+    syms = sorted(series)
+    maps = {sym: {int(ts): float(c) for ts, c in series[sym]} for sym in syms}
+    n = len(syms)
+    matrix: list[list[float | None]] = [[None] * n for _ in range(n)]
+    missing: list[tuple[str, str]] = []
+    samples: dict[str, int] = {}
+    lam = max(0.0, min(1.0, float(shrinkage)))
+    for i, left in enumerate(syms):
+        matrix[i][i] = 1.0
+        for j in range(i + 1, n):
+            right = syms[j]
+            common = sorted(set(maps[left]) & set(maps[right]))
+            pair = f"{left}|{right}"
+            if len(common) < MIN_OBS + 1:
+                missing.append((left, right))
+                continue
+            try:
+                ra = log_returns([maps[left][ts] for ts in common])
+                rb = log_returns([maps[right][ts] for ts in common])
+            except ValueError:
+                missing.append((left, right))
+                continue
+            r = corr_pair(ra, rb)
+            if r is None:
+                missing.append((left, right))
+                continue
+            shrunk = r * (1.0 - lam)
+            matrix[i][j] = matrix[j][i] = shrunk
+            samples[pair] = len(ra)
+    return syms, matrix, missing, samples
 
 
 def erc_weights(vols: list[float], corr: list[list[float | None]]) -> list[float]:
@@ -224,7 +279,10 @@ class Alloc:
     gates: list[dict] = field(default_factory=list)
 
 
-def allocate(candidates: list[Candidate], returns: dict[str, list[float]], lim: Limits) -> dict:
+def allocate(
+    candidates: list[Candidate], returns: dict[str, list[float]], lim: Limits, *,
+    pairwise: tuple[list[str], list[list[float | None]], list[tuple[str, str]], dict[str, int]] | None = None,
+) -> dict:
     """Risk-budget the candidates, then keep only what the broker would take.
 
     ``returns`` are already-aligned log returns per symbol (see
@@ -245,7 +303,13 @@ def allocate(candidates: list[Candidate], returns: dict[str, list[float]], lim: 
     if not usable:
         return _empty(lim, dropped, "no candidate had enough history to allocate")
 
-    syms, corr, missing = corr_matrix({c.symbol: returns[c.symbol] for c in usable}, lim.shrinkage)
+    if pairwise is None:
+        syms, corr, missing = corr_matrix({c.symbol: returns[c.symbol] for c in usable}, lim.shrinkage)
+        pair_samples: dict[str, int] = {}
+        correlation_basis = "prealigned-global-intersection"
+    else:
+        syms, corr, missing, pair_samples = pairwise
+        correlation_basis = "pairwise-shared-close-timestamps"
     order = {s: i for i, s in enumerate(syms)}
     usable.sort(key=lambda c: order.get(c.symbol, 0))
 
@@ -389,6 +453,8 @@ def allocate(candidates: list[Candidate], returns: dict[str, list[float]], lim: 
             "symbols": syms,
             "values": [[None if v is None else round(v, 4) for v in row] for row in corr],
             "missing": [list(p) for p in missing],
+            "samples": pair_samples,
+            "basis": correlation_basis,
         },
         "vol": {c.symbol: round(vols[order[c.symbol]], 8) for c in usable},
         "returned_symbols": [c.symbol for c in usable],
@@ -433,6 +499,6 @@ def _empty(lim: Limits, dropped: list[dict], reason: str) -> dict:
             "slots_left": max(0, lim.concurrent_limit - lim.open_positions),
             "cash_scale": 1.0,
         },
-        "correlation": {"symbols": [], "values": [], "missing": []},
+        "correlation": {"symbols": [], "values": [], "missing": [], "samples": {}, "basis": "unavailable"},
         "vol": {},
     }

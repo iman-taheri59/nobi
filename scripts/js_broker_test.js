@@ -200,6 +200,11 @@ check('offline backtest models slippage and says so in its gate', () => {
   // direction is asserted on the server side (test_backtest_costs.py) where
   // the sample is large enough for it to mean something.
   assert(free.config_hash !== rep.config_hash, 'the cost model is missing from the config hash');
+  const zeroFee = NBX.Backtest.runWalkForward(candles, 'BTCUSDT', '1h',
+    { equity: 50_000, risk_pct: 0.75, fee_pct: 0 });
+  assert(zeroFee.costs.fee_pct === 0 && zeroFee.costs.modeled === false, 'zero fee was hidden');
+  assert(zeroFee.gate.checks.costs_modeled.pass === false, 'zero fee passed the cost gate');
+  assert(zeroFee.costs.fee_source === 'caller-configured-scenario', 'fee provenance missing');
   return `default ${rep.slippage_bps} bps, frictionless gate state ${free.gate.state}`;
 });
 
@@ -262,6 +267,83 @@ check('the walk-forward exposes the share and gates on it', () => {
   const chk = rep.gate.checks.ambiguous_share_le_10;
   assert(chk && chk.pass === (chk.value <= 10), 'gate check missing or inconsistent');
   return `share ${a.ambiguous_share}% over ${a.trades} trades`;
+});
+
+check('post-TP1 stop ambiguity is conservative in the browser engine', () => {
+  const rows = Array.from({ length: 67 }, (_, i) => ({
+    t: 1_700_000_000 + i * 3600, o: 100, h: 100, l: 100, c: 100, v: 1,
+  }));
+  rows[65] = { ...rows[65], h: 104, l: 99.5, c: 103.5 };
+  rows[66] = { ...rows[66], h: 110, l: 100.5 };
+  const signals = [];
+  signals[61] = { direction: 'LONG', score: 80, risk: { atr: 1 } };
+  const w = NBX.Backtest.runWindow(rows, 'XUSDT', '1h', {
+    initial_equity: 100_000, risk_pct: 1, atr_stop_k: 2, tp1_r: 1.5, tp2_r: 2.5,
+    slippage_bps: 0, _signals: signals,
+  });
+  const t = w.sample_trades[0];
+  assert(t.reason === 'sl-tp1-ambiguous', `reason=${t.reason}`);
+  assert(t.exit === 100 && t.ambiguous === true, JSON.stringify(t));
+  assert(w.ambiguous_exits === 1, `ambiguous=${w.ambiguous_exits}`);
+  return `${t.reason}, exit=${t.exit}`;
+});
+
+check('gap stops use the open and zero-loss PF matches the server cap', () => {
+  const rows = Array.from({ length: 67 }, (_, i) => ({
+    t: 1_700_000_000 + i * 3600, o: 100, h: 100, l: 100, c: 100, v: 1,
+  }));
+  rows[65] = { ...rows[65], o: 80, h: 81, l: 79, c: 80 };
+  const signals = [];
+  signals[61] = { direction: 'LONG', score: 80, risk: { atr: 1 } };
+  const gap = NBX.Backtest.runWindow(rows, 'XUSDT', '1h', {
+    initial_equity: 100_000, risk_pct: 1, atr_stop_k: 2,
+    slippage_bps: 0, _signals: signals,
+  });
+  assert(gap.sample_trades[0].exit === 80, JSON.stringify(gap.sample_trades[0]));
+  assert(gap.sample_trades[0].r < -1, 'a gap was still capped at -1R');
+
+  rows[65] = { ...rows[65], o: 100, h: 104, l: 100.5, c: 103.5 };
+  rows[66] = { ...rows[66], h: 110, l: 100.5 };
+  const win = NBX.Backtest.runWindow(rows, 'XUSDT', '1h', {
+    initial_equity: 100_000, risk_pct: 1, atr_stop_k: 2, tp1_r: 1.5, tp2_r: 2.5,
+    slippage_bps: 0, _signals: signals,
+  });
+  assert(win.sample_trades[0].reason === 'tp2', win.sample_trades[0].reason);
+  assert(win.losses === 0 && win.profit_factor === 99.99, `PF=${win.profit_factor}`);
+  return `gap exit=80, one-winner PF=${win.profit_factor}`;
+});
+
+check('repeated LONG labels do not stack same-symbol browser positions', () => {
+  const rows = Array.from({ length: 67 }, (_, i) => ({
+    t: 1_700_000_000 + i * 3600, o: 100, h: 100, l: 100, c: 100, v: 1,
+  }));
+  const signals = [];
+  signals[61] = { direction: 'LONG', score: 80, risk: { atr: 1 } };
+  signals[62] = signals[61];
+  const w = NBX.Backtest.runWindow(rows, 'XUSDT', '1h', {
+    initial_equity: 100_000, slippage_bps: 0, _signals: signals,
+  });
+  assert(w.trades === 1, `trades=${w.trades}`);
+  return `trades=${w.trades}`;
+});
+
+check('third consecutive stop halts the fourth browser backtest entry', () => {
+  const rows = Array.from({ length: 67 }, (_, i) => ({
+    t: 1_700_000_000 + i * 3600, o: 100, h: 100,
+    l: i >= 62 && i <= 64 ? 95 : 100, c: 100, v: 100,
+  }));
+  const signals = Array.from({ length: 67 }, (_, i) => (
+    i >= 61 && i <= 65 ? { direction: 'LONG', score: 80, risk: { atr: 1 } } : null
+  ));
+  const w = NBX.Backtest.runWindow(rows, 'XUSDT', '1h', {
+    initial_equity: 100_000, risk_pct: 1, slippage_bps: 0,
+    daily_loss_halt_pct: 100, weekly_loss_halt_pct: 100, _signals: signals,
+  });
+  assert(w.trades === 3, `trades=${w.trades}`);
+  assert(w.risk_triggers.halted === true, JSON.stringify(w.risk_triggers));
+  assert(w.risk_triggers.consecutive_sl === 3, 'the stop streak was not retained');
+  assert(w.risk_triggers.reasons.join(',') === 'consecutive-stop-halt', w.risk_triggers.reasons);
+  return `${w.trades} trades; ${w.risk_triggers.reasons[0]}`;
 });
 
 /* Execution geometry must use signed distances and preserve rejected accounts. */

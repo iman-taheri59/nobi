@@ -403,17 +403,59 @@ class NobitexClient:
         self, symbol: str, resolution: str, from_ts: int, to_ts: int,
         count: int | None = None,
     ) -> dict:
-        """OHLC series. ``countback`` is the documented way to ask for the last
-        ``count`` candles before ``to`` and takes priority over ``from``, so the
-        request does not depend on the server's idea of how far back the range
-        may start."""
-        params = {"symbol": symbol.upper(), "resolution": resolution, "to": int(to_ts)}
-        if count:
-            params["countback"] = int(count)
-        else:
-            params["from"] = int(from_ts)
-        res = await self.get("/market/udf/history", params=params, attempts=1)
-        return scale_udf(res, symbol)
+        """OHLC series, paginated above the exchange's 500-row response cap.
+
+        ``countback`` has priority over ``from`` in the UDF contract. For a long
+        request every page asks for 500 rows; pages are deduplicated by timestamp,
+        sorted, and trimmed to the newest ``count`` rows. Requesting a short
+        final page would change the meaning of `page` and can skip history.
+        Exchange retention still applies: pagination cannot recreate candles the
+        venue no longer serves.
+        """
+        if count is not None and count <= 0:
+            raise ValueError("count must be positive")
+        base = {"symbol": symbol.upper(), "resolution": resolution, "to": int(to_ts)}
+        if not count or count <= 500:
+            params = {**base, "countback": int(count)} if count else {
+                **base, "from": int(from_ts)
+            }
+            res = await self.get("/market/udf/history", params=params, attempts=1)
+            return scale_udf(res, symbol)
+
+        keys = ("t", "o", "h", "l", "c", "v")
+        by_timestamp: dict[int, list[float | int]] = {}
+        pages_needed = (int(count) + 499) // 500
+        for page in range(1, pages_needed + 1):
+            res = await self.get(
+                "/market/udf/history",
+                params={**base, "countback": 500, "page": page},
+                attempts=1,
+            )
+            if res.get("s") == "no_data":
+                break
+            if res.get("s") != "ok":
+                # Never silently turn a failed later page into apparently
+                # complete history.
+                return scale_udf(res, symbol)
+            scaled = scale_udf(res, symbol)
+            stamps = scaled.get("t") or []
+            if not stamps:
+                break
+            lengths = {len(scaled.get(key) or []) for key in keys}
+            if len(lengths) != 1:
+                raise ClientError("bad-udf-arrays", "UDF arrays have different lengths")
+            for i, stamp in enumerate(stamps):
+                by_timestamp[int(stamp)] = [scaled[key][i] for key in keys]
+            if len(stamps) < 500:
+                break
+
+        if not by_timestamp:
+            return {"s": "no_data", **{key: [] for key in keys}}
+        rows = sorted(by_timestamp.values(), key=lambda row: int(row[0]))[-int(count):]
+        return {
+            "s": "ok",
+            **{key: [row[i] for row in rows] for i, key in enumerate(keys)},
+        }
 
     async def get_candles(
         self, symbol: str, tf: str = "15m", count: int = 260

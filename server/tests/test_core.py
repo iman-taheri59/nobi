@@ -258,12 +258,57 @@ def test_stop_wins_when_one_candle_touches_both_levels():
     assert res.final_equity < 100_000
 
 
+def test_post_tp1_stop_in_the_same_candle_is_conservative_and_ambiguous():
+    from backtest import EventBacktester
+
+    df = _frame([100.0] * 33)
+    df.loc[31, "h"] = 104.0
+    df.loc[31, "l"] = 99.5  # above original 98 stop, below new 100 stop
+    df.loc[32, "h"] = 110.0  # must not turn the remainder into a TP2 win
+    bt = EventBacktester({"initial_equity": 100_000, "risk_pct": 1.0, "atr_stop_k": 2.0,
+                          "tp1_r": 1.5, "tp2_r": 2.5, "slippage_bps": 0})
+    res = bt.run_symbol(df, "XUSDT", "1h", signals=_long_signal(), start=30, end=33)
+    tr = bt.closed[0]
+    assert tr.reason == "sl-tp1-ambiguous"
+    assert tr.ambiguous is True
+    assert tr.exit == pytest.approx(100.0)
+    assert res.ambiguous_exits == 1
+
+
+def test_a_gap_through_the_stop_fills_at_the_open_not_the_old_stop():
+    from backtest import EventBacktester
+
+    df = _frame([100.0] * 33)
+    df.loc[31, "o"] = 80.0
+    df.loc[31, "h"] = 81.0
+    df.loc[31, "l"] = 79.0
+    df.loc[31, "c"] = 80.0
+    bt = EventBacktester({"initial_equity": 100_000, "risk_pct": 1.0,
+                          "atr_stop_k": 2.0, "slippage_bps": 0})
+    bt.run_symbol(df, "XUSDT", "1h", signals=_long_signal(), start=30, end=33)
+    tr = bt.closed[0]
+    assert tr.reason == "sl"
+    assert tr.exit == pytest.approx(80.0)
+    assert tr.r_multiple < -1.0
+
+
+def test_repeated_long_labels_do_not_stack_positions_in_one_symbol():
+    from backtest import EventBacktester
+
+    df = _frame([100.0] * 34)
+    signals = _long_signal()
+    signals[31] = signals[30]
+    bt = EventBacktester({"initial_equity": 100_000, "slippage_bps": 0})
+    res = bt.run_symbol(df, "XUSDT", "1h", signals=signals, start=30, end=33)
+    assert res.trades == 1
+
+
 def test_tp1_takes_half_then_tp2_closes_the_rest():
     from backtest import EventBacktester
 
     df = _frame([100.0] * 33)
-    df.loc[31, "h"] = 104.0   # >= tp1 (103), above stop
-    df.loc[31, "l"] = 99.5
+    df.loc[31, "h"] = 104.0   # >= tp1 (103), above the post-TP1 stop
+    df.loc[31, "l"] = 100.5
     df.loc[32, "h"] = 110.0   # >= tp2 (105)
     df.loc[32, "l"] = 100.5
     # Target arithmetic only — costs are asserted separately (test_backtest_costs).
@@ -982,8 +1027,8 @@ def test_js_mirror_uses_the_same_weights_as_python():
     assert d, "the JS direction thresholds moved; update this guard"
     assert float(d.group(1)) == ta_engine.LONG_SCORE_MIN
     assert float(d.group(2)) == ta_engine.NEUTRAL_SCORE_MIN
-    assert re.search(r"score >= longMin \? 'LONG' : score >= neutralMin \?", js), \
-        "the JS label no longer uses the named bars"
+    assert re.search(r"roundedScore >= longMin \? 'LONG' : roundedScore >= neutralMin \?", js), \
+        "the JS label no longer applies the named bars to the rounded score"
 
     # The browser engine now runs the "no fundamentals" branch of the same
     # formula (TA + liquidity, renormalised). The FA term must not reappear with
