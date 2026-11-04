@@ -2,8 +2,8 @@
 
 The repository ships two HTML files:
 
-    index.html            the dashboard: markup + links to 5 stylesheets and 2 scripts
-    nobitex-mobile.html   the same dashboard with those 7 files inlined
+    index.html            the dashboard: markup + links to 5 stylesheets and 3 scripts
+    nobitex-mobile.html   the same dashboard with those 8 files inlined
 
 The second is *generated* by ``scripts/build_standalone.py`` and exists because
 some contexts block subresources entirely — a phone opening the file from a
@@ -28,7 +28,7 @@ ROOT = Path(__file__).resolve().parents[2]
 INDEX = ROOT / "index.html"
 STANDALONE = ROOT / "nobitex-mobile.html"
 CSS_FILES = ("layers", "tailwind", "base", "components", "dashboard")
-JS_FILES = ("nbx-core.js", "nbx-app.js")
+JS_FILES = ("nbx-core.js", "nbx-app.js", "nbx-alerts.js")
 
 pytestmark = pytest.mark.skipif(
     not (INDEX.is_file() and STANDALONE.is_file()),
@@ -63,7 +63,7 @@ def _deinline(page: str) -> str:
 
 
 def _normalise(page: str) -> str:
-    # Removing seven link tags leaves runs of blank lines behind. Those runs are
+    # Removing resource tags leaves runs of blank lines behind. Those runs are
     # the only difference between the two files, and they carry no meaning.
     return re.sub(r"\n{2,}", "\n", page.strip())
 
@@ -93,8 +93,8 @@ def test_the_inlined_stylesheets_are_exactly_the_five_source_files() -> None:
     )
 
 
-def test_the_inlined_javascript_is_exactly_the_two_engines() -> None:
-    """The engines must be byte-identical, or the two pages compute differently."""
+def test_the_inlined_javascript_is_exactly_the_three_modules() -> None:
+    """The modules must be byte-identical, or the two pages compute differently."""
     page = STANDALONE.read_text(encoding="utf-8")
     for js in JS_FILES:
         code = (ROOT / js).read_text(encoding="utf-8")
@@ -155,8 +155,8 @@ def test_the_stylesheet_scans_only_the_page_and_its_engines() -> None:
     its "generated files are current" step because the committed CSS no longer
     matched a rebuild. The build depended on the wording of documentation.
 
-    `source(none)` plus three explicit `@source` lines makes the stylesheet a
-    function of the page and its two engines, and of nothing else.
+    `source(none)` plus four explicit `@source` lines makes the stylesheet a
+    function of the page and its three modules, and of nothing else.
     """
     src = (ROOT / "assets" / "css" / "tailwind.src.css").read_text(encoding="utf-8")
     assert '@import "tailwindcss" source(none);' in src, (
@@ -165,7 +165,7 @@ def test_the_stylesheet_scans_only_the_page_and_its_engines() -> None:
     assert src.count('@import "tailwindcss"') == 1
     sources = re.findall(r'@source\s+"([^"]+)"', src)
     assert sorted(sources) == sorted(
-        ["../../index.html", "../../nbx-app.js", "../../nbx-core.js"]
+        ["../../index.html", "../../nbx-app.js", "../../nbx-core.js", "../../nbx-alerts.js"]
     ), f"unexpected scan set: {sources}"
     # The compiled stylesheet is what the page actually loads; it must exist and
     # be the product of the file above.

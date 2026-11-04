@@ -2,7 +2,7 @@
 //
 // Two populations of JavaScript live here and they are not the same:
 //
-//   nbx-core.js / nbx-app.js  browser code, `window` is real
+//   nbx-core.js / nbx-app.js / nbx-alerts.js  browser code, `window` is real
 //   scripts/*.js              node scripts, `require`/`process` are real
 //   index.html's inline block the dashboard logic (linted through
 //                             scripts/lint_dashboard.mjs, which extracts it)
@@ -40,7 +40,7 @@ const browserGlobals = {
   lucide: "readonly",
 };
 
-// Functions and values the inline block defines and the two module files
+// Functions and values the inline block defines and the external module files
 // read. Declared one by one rather than switched off with `/* global */`, so
 // a new cross-file name still has to be added here on purpose.
 //
@@ -85,7 +85,7 @@ const shared = {
 export default [
   js.configs.recommended,
   {
-    files: ["nbx-core.js", "nbx-app.js"],
+    files: ["nbx-core.js", "nbx-app.js", "nbx-alerts.js"],
     languageOptions: { ecmaVersion: 2022, sourceType: "script",
                        globals: { ...browserGlobals, ...pageGlobals } },
     rules: shared,

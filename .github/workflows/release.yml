@@ -52,6 +52,8 @@ jobs:
       - run: npm run test:escaping
       - name: Viewer notice is independent of upstream health
         run: npm run test:readonly-banner
+      - name: Price alert bell roles, CSRF, races and standalone parity
+        run: npm run test:price-alerts
       - run: npm run test:signal-detail
       - run: npm run test:queue
       - run: npm run test:lock

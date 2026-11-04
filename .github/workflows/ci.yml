@@ -120,6 +120,8 @@ jobs:
         run: npm run test:escaping
       - name: Viewer notice is independent of upstream health
         run: npm run test:readonly-banner
+      - name: Price alert bell roles, CSRF, races and standalone parity
+        run: npm run test:price-alerts
       - name: signal detail expand and collapse
         run: npm run test:signal-detail
       - name: approval queue updates and rejection reasons
@@ -185,6 +187,8 @@ jobs:
         run: python scripts/mobile_header_test.py
       - name: connection details do not cover navigation
         run: python scripts/live_status_layout_test.py
+      - name: alert bell layout and Viewer zero-request boundary
+        run: python scripts/price_alerts_layout_test.py
       # The sandbox has no reachable exchange, so the panels are exercised
       # against the contract-shaped fixture — the same two-script setup the
       # README documents. A panel that cannot explain itself still fails.

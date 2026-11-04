@@ -312,13 +312,66 @@
       <button id="logoutBtn" class="hidden p-2 rounded-lg hover:bg-white/5 shrink-0" aria-label="logout" title="">
         <i data-lucide="log-out" class="w-4.5 h-4.5 text-zinc-400"></i>
       </button>
-      <button class="p-2 rounded-lg hover:bg-white/5 relative shrink-0" aria-label="alerts">
+      <button id="alertsBtn" type="button" class="p-2 rounded-lg hover:bg-white/5 relative shrink-0" aria-label="alerts" aria-haspopup="dialog" aria-controls="alertsModal">
         <i data-lucide="bell" class="w-4.5 h-4.5 text-zinc-300"></i>
-        <span class="absolute top-1.5 end-1.5 w-2 h-2 rounded-full bg-red-400"></span>
+        <span id="alertsBadge" class="hidden absolute -top-1 -end-1 min-w-4 h-4 px-1 rounded-full bg-sky-400 text-[9px] leading-4 text-zinc-950 font-bold num" aria-hidden="true"></span>
       </button>
     </div>
   </div>
 </header>
+
+<!-- Conditional price/premium alerts (ADR-0049). The module makes no request
+     until an eligible user explicitly opens or refreshes this dialog. -->
+<div id="alertsModal" class="hidden fixed inset-0 z-[80]" aria-hidden="true">
+  <button id="alertsBackdrop" type="button" class="absolute inset-0 w-full h-full bg-black/75 backdrop-blur-sm" tabindex="-1" aria-label="close alerts"></button>
+  <div class="relative h-full w-full flex items-end sm:items-center justify-center sm:p-4 pointer-events-none">
+    <section id="alertsDialog" role="dialog" aria-modal="true" aria-labelledby="alertsTitle" aria-describedby="alertsSubtitle" class="pointer-events-auto w-full sm:max-w-3xl max-h-[94dvh] sm:max-h-[90vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl border border-white/10 bg-[#101014] shadow-2xl">
+      <div class="sticky top-0 z-10 flex items-start gap-3 px-4 sm:px-5 py-4 border-b border-white/10 bg-[#101014]/95 backdrop-blur-xl">
+        <span class="w-9 h-9 rounded-xl bg-sky-400/10 border border-sky-400/20 flex items-center justify-center shrink-0"><i data-lucide="bell-ring" class="w-4.5 h-4.5 text-sky-300"></i></span>
+        <div class="min-w-0 flex-1">
+          <h2 id="alertsTitle" class="font-extrabold text-sm sm:text-base" data-alert-i18n="title"></h2>
+          <p id="alertsSubtitle" class="text-[10px] sm:text-[11px] text-zinc-500 leading-5 mt-0.5" data-alert-i18n="subtitle"></p>
+        </div>
+        <button id="alertsRefresh" type="button" class="shrink-0 px-2.5 py-1.5 rounded-lg text-[10px] border border-white/10 bg-white/5 text-zinc-300" data-alert-i18n="refresh"></button>
+        <button id="alertsClose" type="button" class="shrink-0 p-2 rounded-lg hover:bg-white/5" data-alert-i18n-aria="close" aria-label="close alerts"><i data-lucide="x" class="w-4.5 h-4.5"></i></button>
+      </div>
+
+      <div class="p-4 sm:p-5 space-y-4">
+        <div id="alertsStatus" class="hidden text-[11px] leading-5 rounded-lg border px-3 py-2" role="status" aria-live="polite"></div>
+        <div id="alertsAccess" class="hidden glass p-4 border-amber-400/30 bg-amber-400/5" role="status">
+          <div class="flex items-start gap-2.5"><i data-lucide="lock-keyhole" class="w-4.5 h-4.5 text-amber-300 shrink-0 mt-0.5"></i><p id="alertsAccessText" class="text-[11px] leading-5 text-amber-100/90"></p></div>
+        </div>
+
+        <div id="alertsContent" class="hidden space-y-4">
+          <div class="rounded-xl border border-sky-400/20 bg-sky-400/5 px-3 py-2.5 text-[10px] leading-5 text-sky-100/80" data-alert-i18n="scope"></div>
+          <form id="alertRuleForm" class="glass p-3.5 sm:p-4 space-y-3" autocomplete="off">
+            <div class="font-bold text-[12px] flex items-center gap-2"><i data-lucide="plus" class="w-4 h-4 text-emerald-300"></i><span data-alert-i18n="newRule"></span></div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+              <label class="text-[10px] text-zinc-500 space-y-1"><span data-alert-i18n="metric"></span><select id="alertMetric" class="w-full num rounded-lg bg-white/5 border border-white/10 px-2.5 py-2 text-[11px] text-zinc-200"><option value="last" data-alert-i18n="metricLast"></option><option value="premium_pct" data-alert-i18n="metricPremium"></option></select></label>
+              <label class="text-[10px] text-zinc-500 space-y-1"><span data-alert-i18n="symbol"></span><input id="alertSymbol" value="BTCIRT" maxlength="24" required dir="ltr" class="w-full num rounded-lg bg-white/5 border border-white/10 px-2.5 py-2 text-[11px] text-zinc-200 uppercase"></label>
+              <label class="text-[10px] text-zinc-500 space-y-1"><span data-alert-i18n="operator"></span><select id="alertOperator" class="w-full rounded-lg bg-white/5 border border-white/10 px-2.5 py-2 text-[11px] text-zinc-200"><option value="above" data-alert-i18n="above"></option><option value="below" data-alert-i18n="below"></option></select></label>
+              <label class="text-[10px] text-zinc-500 space-y-1"><span data-alert-i18n="threshold"></span><input id="alertThreshold" required inputmode="decimal" dir="ltr" class="w-full num rounded-lg bg-white/5 border border-white/10 px-2.5 py-2 text-[11px] text-zinc-200" placeholder="100000"></label>
+            </div>
+            <div class="flex flex-wrap items-center gap-3">
+              <button id="alertSubmit" type="submit" class="px-3 py-2 rounded-lg bg-emerald-400/15 border border-emerald-300/30 text-emerald-300 text-[11px] font-bold" data-alert-i18n="create"></button>
+              <p class="text-[10px] leading-5 text-zinc-500 flex-1 min-w-52" data-alert-i18n="formNote"></p>
+            </div>
+          </form>
+
+          <section class="glass p-3.5 sm:p-4">
+            <div class="flex items-center justify-between gap-2 mb-3"><h3 class="font-bold text-[12px]" data-alert-i18n="rules"></h3><span id="alertsRulesCount" class="chip num text-[9px]">—</span></div>
+            <div id="alertsRules" class="space-y-2.5"></div>
+          </section>
+          <section class="glass p-3.5 sm:p-4">
+            <div class="flex items-center justify-between gap-2 mb-3"><h3 class="font-bold text-[12px]" data-alert-i18n="events"></h3><span id="alertsEventsCount" class="chip num text-[9px]">—</span></div>
+            <div id="alertsEvents" class="space-y-2.5"></div>
+            <p class="text-[10px] leading-5 text-zinc-500 mt-3" data-alert-i18n="deliveryNote"></p>
+          </section>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
 
 <div class="max-w-[1500px] mx-auto px-3 sm:px-4 lg:px-8 py-4 sm:py-6 flex gap-6 safe-bottom">
   <!-- ===== Sidebar ===== -->
@@ -7410,5 +7463,6 @@ window.addEventListener('resize', resizeCharts);
 <!-- Phase 1: live data + TA engine integration -->
 <script src="nbx-core.js"></script>
 <script src="nbx-app.js"></script>
+<script src="nbx-alerts.js"></script>
 </body>
 </html>

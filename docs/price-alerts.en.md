@@ -2,7 +2,7 @@
 
 [فارسی](price-alerts.md) · **English**
 
-This guide covers the ADR-0049 backend phase. The graphical bell panel is not implemented yet. Rules belong to the shared account and create no Paper/Live order or risk change.
+This guide covers the ADR-0049 backend and bell management panel. Rules belong to the shared account and create no Paper/Live order or risk change. The UI integration is in local changes after the 2.4.0 tag; it is not a claim of production deployment.
 
 ## Roles and access
 
@@ -10,6 +10,13 @@ This guide covers the ADR-0049 backend phase. The graphical bell panel is not im
 - Creating, changing, or deleting a rule requires that role, a session cookie, and a valid `X-CSRF-Token` header.
 - Viewer receives 403. No session returns 401 and a missing/invalid CSRF token returns 403.
 - No token, cookie, or Telegram credential is stored in or returned by this API.
+
+## Bell management panel
+
+- The bell in `index.html` and the rebuilt `nobitex-mobile.html` is connected to `nbx-alerts.js`. Assigning a role or loading the page makes no alert request. Rules/events are read only when an Owner/Operator opens the panel or clicks Refresh; there is no separate UI polling loop.
+- Viewer and anonymous users see only an access explanation and send no request to `/api/alerts/*`, even when opening the panel. Mutations consume the existing session cookie and CSRF header. A role change invalidates cached data and counts, and a late reply is discarded after the panel closes or the identity changes.
+- The panel provides price/premium creation, enable/disable, and two-step deletion. Selecting premium locks the symbol to USDTIRT. Deleting a rule retains its historical event snapshots in the event list.
+- Baseline/arm/disarm state, last value and observation time, previous→new crossing values, and `sent/failed/pending` delivery are displayed separately. The blue badge is only the enabled-rule count after a successful read, not an unread-event count or a new-notification claim; the previous fixed red dot was removed.
 
 ## Rule and evaluation
 
@@ -43,6 +50,15 @@ With no enabled rule, the scheduler sends no additional exchange request. With a
 
 An unknown id returns 404. An invalid body or rule contract returns 422.
 
+## Local UI checks
+
+```bash
+npm run test:price-alerts
+python scripts/price_alerts_layout_test.py
+```
+
+The first command performs 102 offline DOM checks against canonical and standalone builds. The second exercises 16 Chromium layouts with local fixtures and every non-fixture request blocked; neither uses a real session, Telegram, or an order route.
+
 ## Delivery and limits
 
 The trigger is stored in `journal.db` before Telegram is called and is included in that database's backup. `delivery_*` fields distinguish three states:
@@ -51,4 +67,4 @@ The trigger is stored in `journal.db` before Telegram is called and is included 
 - `delivery_sent: true`: Telegram returned success;
 - `delivery_sent: false`: delivery was not confirmed and a bounded reason such as `not-configured`, `backing-off`, or `http-400` was stored.
 
-Telegram error bodies, tokens, and request text are not stored in the event. Failed delivery is not automatically retried, preventing duplicate or ambiguous retries. Order-book-depth alerts, personal watchlists, and the management UI are outside this phase.
+Telegram error bodies, tokens, and request text are not stored in the event. Failed delivery is not automatically retried, preventing duplicate or ambiguous retries. Order-book-depth alerts and personal watchlists remain unimplemented. The bell panel only consumes the API; green UI tests do not prove real Telegram delivery, soak evidence, or production readiness.

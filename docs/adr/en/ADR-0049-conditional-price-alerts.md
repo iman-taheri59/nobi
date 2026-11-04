@@ -2,7 +2,7 @@
 
 [فارسی](../fa/ADR-0049-هشدار-شرطی-قیمت.md) · **English**
 
-**Status:** Accepted for the backend phase; the graphical interface is a later phase
+**Status:** Accepted; backend in 2.4.0 and bell-panel integration in local changes after that tag
 **Date:** 2026-11-04
 **Related:** ADR-0003, ADR-0011, ADR-0014, ADR-0018, and ADR-0041
 
@@ -20,7 +20,7 @@ The first fresh observation arms a rule without notifying. A trigger requires a 
 
 Trigger and delivery are separate facts. The event is stored before Telegram is called; then `sent` and a bounded reason with no external error body are recorded. A crash or delivery failure never causes a blind retry or duplicate message. Deleting a rule retains historical events with their rule snapshot.
 
-This phase creates no Paper/Live order, risk change, execution-mode change, or Viewer privilege. The bell button and full management UI will consume this API in a later phase.
+This decision creates no Paper/Live order, risk change, execution-mode change, or Viewer privilege. In local changes after 2.4.0, the bell consumes this API: reads occur only when Owner/Operator opens or refreshes the panel, mutations use the existing session/CSRF contract, deletion requires confirmation, arming/freshness/delivery are visible, and identity changes invalidate cached data. The badge counts enabled rules only; the UI has neither an independent polling loop nor an order path.
 
 ## Consequences
 

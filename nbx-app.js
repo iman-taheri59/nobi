@@ -1368,6 +1368,11 @@
 
   let auditAuthIdentity = null;
   function paintUser(state) {
+    // Alert data has its own role boundary and request epoch. Invalidate it on
+    // every identity repaint before any market/UI state can be reused.
+    if (window.NBXAlerts && typeof window.NBXAlerts.setUser === 'function') {
+      window.NBXAlerts.setUser(state);
+    }
     const chip = $('userChip'), name = $('userName'), role = $('userRole'), out = $('logoutBtn');
     if (!state || !chip) return;
     const identity = JSON.stringify([state.user && state.user.username, state.user && state.user.role, !!state.can_mutate, !!state.token]);

@@ -83,4 +83,4 @@
 | 0046 | **Drift آماری Signal Intelligence** | پذیرفته — ۱٫۷٫۰ | BH، PSI، CI و شواهد immutable |
 | 0047 | **زمان‌بند و cohortهای Drift** | پذیرفته — ۱٫۸٫۰ | schedule، inventory، cohort و PSI bins |
 | 0048 | **نصبگر کامل سرور از مرورگر** | پذیرفته — نسخه کاری ۱٫۹٫۰ | state machine، preflight و helper محدود بدون shell |
-| 0049 | **هشدار شرطی قیمت و پرمیوم** | پذیرفته — بک‌اند ۲٫۴٫۰؛ UI مرحلهٔ بعد | `server/price_alerts.py`، `/api/alerts/*`، ADR-0049 و `test_price_alerts.py` |
+| 0049 | **هشدار شرطی قیمت و پرمیوم** | پذیرفته — بک‌اند ۲٫۴٫۰؛ پنل bell در تغییرات محلی پس از tag | `server/price_alerts.py`، `/api/alerts/*`، `nbx-alerts.js`، ADR-0049 و تست‌های Python/DOM/Chromium |

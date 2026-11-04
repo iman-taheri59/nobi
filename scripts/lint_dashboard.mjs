@@ -18,8 +18,8 @@ const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const file = path.join(ROOT, "index.html");
 const html = readFileSync(file, "utf8");
 
-// Only blocks without a `src`: the CDN tags and the two module files are
-// linted on their own.
+// Only blocks without a `src`: CDN tags and external module files are linted
+// on their own.
 const blocks = [...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi)]
   .map((m) => ({
     code: m[1],

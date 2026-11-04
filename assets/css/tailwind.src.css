@@ -11,7 +11,7 @@
  */
 @layer theme, base, components, utilities;
 
-/* Scan ONLY the three files that can contain a class name.
+/* Scan ONLY the four files that can contain a class name.
  *
  * Tailwind v4 detects sources automatically: every text file in the project,
  * including this repository's Python modules, ADRs and CHANGELOGs. The extractor
@@ -29,3 +29,4 @@
 @source "../../index.html";
 @source "../../nbx-app.js";
 @source "../../nbx-core.js";
+@source "../../nbx-alerts.js";

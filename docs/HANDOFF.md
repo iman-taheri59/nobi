@@ -126,3 +126,10 @@ mobile artifact: rebuilt for 1.6.0
 - preflight مالک/CSRF و مرز helper ثابت برای نصب، validation، restart/reload و rollback systemd/nginx اضافه شد.
 - sudo دارای argv دقیق و بدون wildcard است؛ خروجی محدود/redacted و mutationها lock می‌شوند.
 - Paper پیش‌فرض می‌ماند و انتشار به CI کاملاً سبز وابسته است.
+
+## مرحله ۳۸ — پنل A5 روی bell (محلی، پس از tag ۲٫۴٫۰)
+- `nbx-alerts.js` مدیریت دوزبانهٔ rule/event را در canonical و standalone فراهم می‌کند؛ GET فقط با open/refresh توسط Owner/Operator و mutation فقط با session/CSRF انجام می‌شود. Viewer/ناشناس هیچ alert request ندارد.
+- arming/freshness/crossing/delivery صریح است، badge صرفاً enabled-rule count است و حذف دومرحله‌ای تاریخچه را نگه می‌دارد. تغییر هویت و بستن پنل پاسخ قدیمی را بی‌اثر می‌کند.
+- تست DOM آفلاین ۱۰۲ بررسی و تست Chromium آفلاین ۱۶ layout را روی canonical/standalone و RTL/LTR پاس کرد؛ ۶۱ تست انتخاب‌شدهٔ قرارداد backend نیز سبز شد. هیچ شبکهٔ واقعی، سفارش، deploy یا ادعای production readiness انجام نشده است.
+- gate نهایی: `1808 passed, 1 warning`، Ruff/mypy روی 168 فایل، 25 suite JS/DOM و tick parity، 28×10 preflight parity، pip-audit پاک و layoutهای Chromium `80 + 56 + 16` سبز شدند. دو build متوالی standalone با SHA-256 `5e4e3c4d19b2f0bfc66dffb35cd7cce24dd6ec199120a5bcaf1b9d360bffc6f0` یکسان بود.
+- soak واقعی، contract test خصوصی و بازبینی امنیتی مستقل همچنان پیش‌نیازهای سرمایهٔ واقعی‌اند؛ push و انتشار جداگانه و با اجازه است.

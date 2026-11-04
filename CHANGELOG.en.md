@@ -2,6 +2,12 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## Unreleased
+
+- Connected a bilingual A5 bell panel to the existing price/premium API: rule creation, enable/disable, two-step deletion, event history, and manual refresh are available in canonical and standalone builds. Only Owner/Operator opening or refreshing the panel issues GETs; Viewer/anonymous sessions make no alert request, and mutations consume the existing session/CSRF contract.
+- Made arming/freshness, observed value/time, crossing, and `sent/failed/pending` delivery explicit. The badge counts enabled rules after a successful read rather than inventing unread state; identity changes invalidate cached data, late replies are discarded, and deleting a rule retains history.
+- Added independent DOM and Chromium regressions for access, CSRF, escaping, races, mobile/desktop layout, and standalone parity. The final gate passed 1808 Python tests, 25 JS/DOM suites, Ruff/mypy, and `80 + 56 + 16` layouts. This change creates no Paper/Live order, risk change, or execution-mode change; no deployment or real activation occurred.
+
 ## 2.4.0
 
 - Added the A5 backend phase for conditional price/premium alerts under ADR-0049. Owner/Operator can create `above`/`below` rules for any returned market's `last` price or the USDTIRT reference `premium_pct`, enable/disable or delete rules, and read events. Viewer receives no operational access and every mutation requires CSRF.

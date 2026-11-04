@@ -26,7 +26,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 CSS_FILES = ("layers", "tailwind", "base", "components", "dashboard")
-JS_FILES = ("nbx-core.js", "nbx-app.js")
+JS_FILES = ("nbx-core.js", "nbx-app.js", "nbx-alerts.js")
 
 
 def read(path: Path) -> str:

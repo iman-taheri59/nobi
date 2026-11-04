@@ -5,7 +5,7 @@
   "scripts": {
     "css": "tailwindcss -i assets/css/tailwind.src.css -o assets/css/tailwind.css --minify && node -e \"require('fs').utimesSync('assets/css/tailwind.css', new Date(), new Date())\"",
     "css:watch": "tailwindcss -i assets/css/tailwind.src.css -o assets/css/tailwind.css --watch",
-    "lint": "eslint nbx-core.js nbx-app.js \"scripts/**/*.js\" \"scripts/**/*.mjs\" eslint.config.mjs",
+    "lint": "eslint nbx-core.js nbx-app.js nbx-alerts.js \"scripts/**/*.js\" \"scripts/**/*.mjs\" eslint.config.mjs",
     "lint:dashboard": "node scripts/lint_dashboard.mjs",
     "test:js": "node scripts/js_broker_test.js",
     "test:intrabar": "node scripts/js_engine_parity.js",
@@ -15,6 +15,7 @@
     "test:adaptive-card": "node scripts/test_adaptive_card.cjs",
     "test:escaping": "node scripts/test_ui_escaping.cjs",
     "test:readonly-banner": "node scripts/test_readonly_banner.cjs",
+    "test:price-alerts": "node scripts/test_price_alerts_ui.cjs",
     "test:signal-detail": "node scripts/test_signal_detail.cjs",
     "test:queue": "node scripts/test_approval_queue.cjs && node scripts/test_queue_deadline.cjs && node scripts/test_queue_execution.cjs && node scripts/test_queue_filtered.cjs",
     "test:review-phase1": "node scripts/test_review_phase1.cjs",

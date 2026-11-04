@@ -2,6 +2,12 @@
 
 [English](CHANGELOG.en.md) · **فارسی**
 
+## Unreleased
+
+- پنل دوزبانهٔ bell برای A5 به API موجود قیمت/پرمیوم متصل شد: ساخت rule، فعال/غیرفعال، حذف دومرحله‌ای، فهرست رویدادها و refresh دستی در canonical و standalone موجود است. بازکردن/refresh فقط برای Owner/Operator GET می‌زند؛ Viewer و ناشناس هیچ request هشداری ندارند و mutationها session/CSRF فعلی را مصرف می‌کنند.
+- arming/freshness، مقدار و زمان مشاهده، crossing و نتیجهٔ تحویل `sent/failed/pending` صریح شد. badge فقط تعداد rule فعال پس از خواندن موفق است، نه unread ساختگی؛ تغییر هویت cache را باطل می‌کند، پاسخ دیررس دور ریخته می‌شود و حذف rule تاریخچه را حفظ می‌کند.
+- regression مستقل DOM و Chromium برای دسترسی، CSRF، escaping، race، چیدمان موبایل/دسکتاپ و parity standalone اضافه شد. gate نهایی با 1808 تست Python، 25 suite JS/DOM، Ruff/mypy و `80 + 56 + 16` layout سبز شد. این تغییر هیچ Paper/Live order، ریسک یا execution mode ایجاد نمی‌کند؛ deploy یا فعال‌سازی واقعی انجام نشده است.
+
 ## 2.4.0
 
 - فاز بک‌اند A5 (هشدار شرطی قیمت/پرمیوم) بر اساس ADR-0049 اضافه شد. Owner/Operator می‌توانند برای `last` هر بازار دریافت‌شده یا `premium_pct` مرجع USDTIRT قاعدهٔ `above`/`below` بسازند، آن را فعال/غیرفعال یا حذف کنند و رویدادها را بخوانند. Viewer دسترسی عملیاتی ندارد و mutationها CSRF می‌خواهند.

@@ -1419,7 +1419,7 @@ def _ui_sources():
 
     root = Path(__file__).resolve().parents[2]
     return {name: (root / name).read_text(encoding="utf-8")
-            for name in ("index.html", "nbx-core.js", "nbx-app.js")}
+            for name in ("index.html", "nbx-core.js", "nbx-app.js", "nbx-alerts.js")}
 
 
 def test_no_synthetic_generators_survive_in_the_ui():
@@ -1478,7 +1478,7 @@ def test_known_fabricated_values_stay_deleted():
 
     root = Path(__file__).resolve().parents[2]
     src = "\n".join((root / n).read_text(encoding="utf-8")
-                    for n in ("index.html", "nbx-app.js", "nbx-core.js"))
+                    for n in ("index.html", "nbx-app.js", "nbx-core.js", "nbx-alerts.js"))
     banned = {
         "'تکنیکال (۷۸)'": "fabricated TA score for candidate #1",
         "'فاندامنتال (۶۴)'": "fabricated FA score for candidate #1",
