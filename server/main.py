@@ -5822,6 +5822,15 @@ async def serve_nbx_app():
     )
 
 
+@app.get("/nbx-alerts.js", include_in_schema=False)
+async def serve_nbx_alerts():
+    return FileResponse(
+        REPO_ROOT / "nbx-alerts.js",
+        media_type="application/javascript",
+        headers={"Cache-Control": "no-store, must-revalidate"},
+    )
+
+
 @app.get("/manifest.json", include_in_schema=False)
 async def serve_manifest():
     return FileResponse(REPO_ROOT / "manifest.json", media_type="application/manifest+json")

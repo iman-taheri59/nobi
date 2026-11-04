@@ -55,9 +55,12 @@ An unknown id returns 404. An invalid body or rule contract returns 422.
 ```bash
 npm run test:price-alerts
 python scripts/price_alerts_layout_test.py
+python scripts/price_alerts_e2e_test.py
 ```
 
 The first command performs 102 offline DOM checks against canonical and standalone builds. The second exercises 16 Chromium layouts with local fixtures and every non-fixture request blocked; neither uses a real session, Telegram, or an order route.
+
+The third is the real integration: a scratch FastAPI instance on loopback with temporary SQLite databases, a controlled exchange client, and a controlled Telegram sender. Owner, Operator, and Viewer log in through the real session forms; Viewer is proven to receive 403 and to make zero alert requests; rules are created, toggled, and deleted only through the bell with the real CSRF contract; the scheduler is driven with deterministic timestamps through `baseline → armed → crossing → exactly one event`, timestamp replay, a sender crash after the committed event (`pending`), stale evidence older than `ALERT_MAX_AGE_S`, and a fresh baseline after the outage. The server is then restarted with its process caches cleared and the standalone build served, proving that rules and retained history come from SQLite. The 40 checks also assert no Paper/Live/risk/execution/order mutation and no server request outside loopback. No test-only endpoint exists; everything goes through product routes.
 
 ## Delivery and limits
 

@@ -55,9 +55,12 @@
 ```bash
 npm run test:price-alerts
 python scripts/price_alerts_layout_test.py
+python scripts/price_alerts_e2e_test.py
 ```
 
 تست اول ۱۰۲ بررسی آفلاین DOM روی canonical و standalone انجام می‌دهد. تست دوم ۱۶ حالت Chromium با fixture محلی و شبکهٔ غیرfixture مسدودشده می‌سنجد؛ هیچ‌کدام session واقعی، Telegram یا مسیر سفارش را مصرف نمی‌کنند.
+
+تست سوم یکپارچه‌سازی واقعی است: یک FastAPI موقت روی loopback با SQLiteهای موقت، client صرافی کنترل‌شده و sender تلگرام کنترل‌شده. Owner و Operator و Viewer از فرم واقعی وارد می‌شوند؛ 403 و صفر request هشدار برای Viewer اثبات می‌شود؛ ساخت، فعال/غیرفعال و حذف rule فقط از bell و با قرارداد واقعی CSRF انجام می‌شود؛ scheduler با timestampهای قطعی از مسیر `baseline → armed → crossing → دقیقاً یک event`، replay، crash فرستنده پس از commit رویداد (`pending`)، شواهد کهنه‌تر از `ALERT_MAX_AGE_S` و baseline تازه پس از قطعی عبور می‌کند. سپس سرور با پاک‌سازی cache پردازه restart و build standalone سرو می‌شود تا ثابت شود rules و history حفظ‌شده از SQLite می‌آیند. ۴۰ بررسی همچنین صفر mutation در Paper/Live/risk/execution/order و صفر درخواست سرور بیرون از loopback را تضمین می‌کنند. هیچ endpoint آزمایشی وجود ندارد؛ همه‌چیز از مسیر محصول است.
 
 ## تحویل و محدودیت‌ها
 

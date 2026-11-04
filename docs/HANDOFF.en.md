@@ -127,7 +127,7 @@ mobile artifact: rebuilt for 1.6.0
 - Paper remains default; release requires full CI green.
 
 ## Stage 38 — A5 bell panel (local, after the 2.4.0 tag)
-- `nbx-alerts.js` provides bilingual rule/event management in canonical and standalone builds. GET occurs only on Owner/Operator open/refresh and mutations use the existing session/CSRF contract; Viewer/anonymous sessions make no alert request.
+- `nbx-alerts.js` provides bilingual rule/event management in canonical and standalone builds. GET occurs only on Owner/Operator open/refresh and mutations use the existing session/CSRF contract; Viewer/anonymous sessions make no alert request. `scripts/price_alerts_e2e_test.py` (40 checks, in CI) proves this against a scratch FastAPI + SQLite with three real logins, bell-only CRUD, crossing/replay/stale, `sent/failed/pending`, restart persistence, and zero trading mutations; FastAPI now serves `/nbx-alerts.js` in non-inline mode too.
 - Arming/freshness/crossing/delivery are explicit, the badge is only an enabled-rule count, and two-step deletion retains history. Identity changes and closing the panel invalidate late replies.
 - The offline DOM test passed 102 checks and offline Chromium passed 16 layouts across canonical/standalone and RTL/LTR; 61 selected backend contract tests also passed. No real network, order, deployment, or production-readiness claim occurred.
 - Final gate: `1808 passed, 1 warning`, Ruff/mypy over 168 files, 25 JS/DOM suites plus tick parity, 28×10 preflight parity, clean pip-audit, and `80 + 56 + 16` Chromium layouts passed. Two consecutive standalone builds produced the same SHA-256: `5e4e3c4d19b2f0bfc66dffb35cd7cce24dd6ec199120a5bcaf1b9d360bffc6f0`.

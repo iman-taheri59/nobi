@@ -102,6 +102,19 @@ def test_the_inlined_javascript_is_exactly_the_three_modules() -> None:
         assert marker in page, f"{js} is missing, truncated or edited inside the artifact"
 
 
+def test_fastapi_serves_every_external_dashboard_module() -> None:
+    """Canonical mode must not depend on the standalone bundle to hide a 404."""
+    from fastapi.testclient import TestClient
+
+    import main
+
+    client = TestClient(main.app)
+    for js in JS_FILES:
+        response = client.get(f"/{js}")
+        assert response.status_code == 200, f"/{js} is not served in canonical mode"
+        assert response.content == (ROOT / js).read_bytes(), f"/{js} serves stale bytes"
+
+
 def test_the_page_ships_no_mobile_only_markup() -> None:
     """One responsive page: no second layout hiding behind a width check.
 

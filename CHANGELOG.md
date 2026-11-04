@@ -4,6 +4,9 @@
 
 ## Unreleased
 
+- مسیر `/nbx-alerts.js` در FastAPI سرو نمی‌شد و در حالت canonical با `NBX_SERVE_INLINE=0` خطای 404 می‌داد؛ route اضافه و regression «هر ماژول خارجی dashboard سرو می‌شود» (200 و تطابق بایت) به `test_single_page.py` افزوده شد. `ui_smoke_prep.py` نیز ماژول سوم را inline می‌کند.
+- E2E واقعی هشدار قیمت (`scripts/price_alerts_e2e_test.py`, ۴۰ بررسی) با FastAPI موقت، SQLite موقت، صرافی و تلگرام کنترل‌شده و Chromium: ورود واقعی سه نقش، 401/403، CRUD فقط از bell با CSRF، `baseline → armed → crossing → یک event`، replay، `sent/failed/pending` با crash فرستنده پس از commit، stale/baseline مجدد، restart با پاک‌سازی cache و خواندن history از SQLite، صفر mutation معاملاتی و صفر egress سرور. به CI افزوده شد.
+
 - پنل دوزبانهٔ bell برای A5 به API موجود قیمت/پرمیوم متصل شد: ساخت rule، فعال/غیرفعال، حذف دومرحله‌ای، فهرست رویدادها و refresh دستی در canonical و standalone موجود است. بازکردن/refresh فقط برای Owner/Operator GET می‌زند؛ Viewer و ناشناس هیچ request هشداری ندارند و mutationها session/CSRF فعلی را مصرف می‌کنند.
 - arming/freshness، مقدار و زمان مشاهده، crossing و نتیجهٔ تحویل `sent/failed/pending` صریح شد. badge فقط تعداد rule فعال پس از خواندن موفق است، نه unread ساختگی؛ تغییر هویت cache را باطل می‌کند، پاسخ دیررس دور ریخته می‌شود و حذف rule تاریخچه را حفظ می‌کند.
 - regression مستقل DOM و Chromium برای دسترسی، CSRF، escaping، race، چیدمان موبایل/دسکتاپ و parity standalone اضافه شد. gate نهایی با 1808 تست Python، 25 suite JS/DOM، Ruff/mypy و `80 + 56 + 16` layout سبز شد. این تغییر هیچ Paper/Live order، ریسک یا execution mode ایجاد نمی‌کند؛ deploy یا فعال‌سازی واقعی انجام نشده است.

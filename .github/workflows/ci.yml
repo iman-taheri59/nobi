@@ -189,6 +189,10 @@ jobs:
         run: python scripts/live_status_layout_test.py
       - name: alert bell layout and Viewer zero-request boundary
         run: python scripts/price_alerts_layout_test.py
+      # Real FastAPI + SQLite + three browser roles; exchange and Telegram are
+      # controlled in-process and every non-loopback request is refused.
+      - name: price alerts end-to-end (login, CRUD, crossing, restart)
+        run: python scripts/price_alerts_e2e_test.py --report alert-e2e-report.json
       # The sandbox has no reachable exchange, so the panels are exercised
       # against the contract-shaped fixture — the same two-script setup the
       # README documents. A panel that cannot explain itself still fails.
