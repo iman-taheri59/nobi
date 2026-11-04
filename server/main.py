@@ -59,6 +59,7 @@ import notify
 import operations_api
 import package_bundle
 import paper_trading
+import price_alerts
 import queue_policy
 import reference_feed
 import setup_api
@@ -285,6 +286,83 @@ async def _position_tick_loop() -> None:
         await asyncio.sleep(TICK_S)
 
 
+#: Conditional market alerts (ADR-0049). The extra REST read exists only while
+#: an operator has an enabled rule; it never touches the Paper/Live executors.
+ALERT_TICK_S = max(15.0, float(os.getenv("NBX_ALERT_TICK_S", "30")))
+ALERT_MAX_AGE_S = max(
+    ALERT_TICK_S * 2, float(os.getenv("NBX_ALERT_MAX_AGE_S", "90"))
+)
+
+
+def _evaluate_alert_batch(observations: dict[str, dict[str, Any]], now: int
+                          ) -> list[dict[str, Any]]:
+    conn = price_alerts.connect()
+    try:
+        return price_alerts.evaluate(
+            conn, observations, now=now, max_age_s=ALERT_MAX_AGE_S,
+        )
+    finally:
+        conn.close()
+
+
+def _record_alert_delivery(event_id: int, result: dict[str, Any]) -> None:
+    conn = price_alerts.connect()
+    try:
+        price_alerts.record_delivery(conn, event_id, result)
+    finally:
+        conn.close()
+
+
+async def evaluate_price_alerts(*, now: int | None = None) -> dict[str, Any]:
+    """Evaluate the current cache and record delivery facts for new events.
+
+    Kept separate from the timer so tests can provide deterministic timestamps
+    without running a scheduler or making a network request.
+    """
+    stamp = int(time.time() if now is None else now)
+    rows = _cached.get("alert_universe") or _cached.get("universe") or []
+    observations = price_alerts.observations_from_universe(
+        rows, float(_cached.get("universe_ts") or 0), _cached.get("premium_pct"),
+    )
+    events = await asyncio.to_thread(_evaluate_alert_batch, observations, stamp)
+    deliveries: list[dict[str, Any]] = []
+    for event in events:
+        try:
+            delivery = await notify.send(price_alerts.alert_text(event))
+        except Exception as exc:  # notify.send itself is also fail-safe
+            log.warning("price alert sender escaped its guard: %s", type(exc).__name__)
+            delivery = {"sent": False, "transport": "unknown", "reason": "sender-error"}
+        await asyncio.to_thread(_record_alert_delivery, int(event["id"]), delivery)
+        deliveries.append({
+            "event_id": int(event["id"]),
+            "sent": delivery.get("sent") is True,
+            "reason": str(delivery.get("reason") or ("sent" if delivery.get("sent") else "unknown"))[:80],
+        })
+    return {
+        "observations": len(observations),
+        "triggered": len(events),
+        "deliveries": deliveries,
+    }
+
+
+async def _price_alert_loop() -> None:
+    while True:
+        try:
+            enabled = await asyncio.to_thread(price_alerts.has_enabled_rules)
+            if enabled:
+                # Reuse the canonical loader and lock. No alert-only exchange
+                # client, credential, order route, or parallel market cache.
+                await load_universe()
+                result = await evaluate_price_alerts()
+                if result["triggered"]:
+                    log.info("price alerts: %d new trigger(s)", result["triggered"])
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # one bad tick must not kill the supervisor
+            log.warning("price alert tick failed: %s", type(exc).__name__)
+        await asyncio.sleep(ALERT_TICK_S)
+
+
 #: Scheduled export + digest (ADR-0012 §2.6). Off by default: writing files
 #: and sending messages are side effects an operator should opt into.
 DIGEST_HOURS = float(os.getenv("NBX_DIGEST_HOURS", "0"))
@@ -406,6 +484,7 @@ async def lifespan(_app: FastAPI):
         # without somebody leaving a browser tab open.
         _supervise("scan-loop", _scan_loop()),
         _supervise("position-tick", _position_tick_loop()),
+        _supervise("price-alerts", _price_alert_loop()),
         _supervise("digest", _digest_loop()),
         _supervise("signal-drift", _drift_schedule_loop()),
         # The exchange publishes its own minimums and tick sizes at /v2/options;
@@ -435,7 +514,7 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(
     title="nobiTrader",
-    version="2.3.4",
+    version="2.4.0",
     lifespan=lifespan,
 )
 
@@ -659,7 +738,9 @@ def _apply_stream_stat(symbol: str, st) -> None:
     closed is a fill that could not have happened.
     """
     try:
-        rows = _cached.get("universe") or []
+        # The full stats list feeds price alerts; the public top-60 list shares
+        # these row objects, so one update keeps both views consistent.
+        rows = _cached.get("alert_universe") or _cached.get("universe") or []
         for r in rows:
             if r.get("symbol") != symbol:
                 continue
@@ -685,6 +766,9 @@ def _apply_stream_stat(symbol: str, st) -> None:
 
 _cached: dict = {
     "universe": [],
+    # Full /market/stats rows for enabled price-alert rules. Public ranking is
+    # still capped at 60; alert symbols must not disappear below that cutoff.
+    "alert_universe": [],
     "universe_ts": 0.0,
     "closed_markets": [],
     "signals": {},
@@ -1175,6 +1259,7 @@ async def _load_universe_locked():
             value = _quote_turnover_usd(item, fx_irt)
             return value if value is not None else -1.0
         rows.sort(key=turnover_rank, reverse=True)
+        _cached["alert_universe"] = rows
         _cached["universe"] = rows[:60]
         closed = sorted(r["symbol"] for r in rows if r.get("closed"))
         _cached["closed_markets"] = closed
@@ -1202,6 +1287,7 @@ async def _load_universe_locked():
     except (ClientError, UpstreamUnavailable) as e:
         log.warning("load_universe: %s", e)
         _cached["universe"] = []
+        _cached["alert_universe"] = []
         _cached["universe_error"] = str(e)
     return _cached["universe"]
 
@@ -2985,6 +3071,102 @@ async def audit_events(
 async def notify_status():
     """Whether Telegram can actually receive anything right now."""
     return {"ok": True, **notify.status()}
+
+
+class PriceAlertRuleBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    symbol: str = Field(min_length=2, max_length=24)
+    metric: str = Field(pattern="^(last|premium_pct)$")
+    operator: str = Field(pattern="^(above|below)$")
+    threshold: float = Field(allow_inf_nan=False)
+
+
+class PriceAlertStateBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    enabled: bool
+
+
+@app.get("/api/alerts/rules", dependencies=[Depends(install_api.require_operator)])
+def alert_rules(limit: int = Query(200, ge=1, le=200)):
+    conn = price_alerts.connect()
+    try:
+        rules = price_alerts.list_rules(conn, limit=limit)
+        return {"ok": True, "rules": rules, "n": len(rules), "limit": limit}
+    finally:
+        conn.close()
+
+
+@app.get("/api/alerts/events", dependencies=[Depends(install_api.require_operator)])
+def alert_events(
+    limit: int = Query(50, ge=1, le=200),
+    rule_id: int | None = Query(default=None, ge=1),
+):
+    conn = price_alerts.connect()
+    try:
+        events = price_alerts.list_events(conn, limit=limit, rule_id=rule_id)
+        return {"ok": True, "events": events, "n": len(events), "limit": limit,
+                "rule_id": rule_id}
+    finally:
+        conn.close()
+
+
+@app.post("/api/alerts/rules", status_code=201)
+def create_alert_rule(body: PriceAlertRuleBody, request: Request):
+    user = install_api.require_operator_mutation(request)
+    conn = price_alerts.connect()
+    try:
+        try:
+            rule = price_alerts.create_rule(
+                conn, symbol=body.symbol, metric=body.metric, operator=body.operator,
+                threshold=body.threshold, actor_user_id=user.id,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+    finally:
+        conn.close()
+    audit_id = audit(
+        "price_alert.create", actor=user.username, request=request,
+        detail={"rule_id": rule["id"], "symbol": rule["symbol"],
+                "metric": rule["metric"], "operator": rule["operator"],
+                "threshold": rule["threshold"]},
+    )
+    return {"ok": True, "rule": rule, "audit_id": audit_id}
+
+
+@app.patch("/api/alerts/rules/{rule_id}")
+def set_alert_rule_state(rule_id: int, body: PriceAlertStateBody, request: Request):
+    user = install_api.require_operator_mutation(request)
+    conn = price_alerts.connect()
+    try:
+        rule = price_alerts.set_enabled(conn, rule_id, body.enabled)
+    finally:
+        conn.close()
+    if rule is None:
+        raise HTTPException(status_code=404, detail="alert rule not found")
+    audit_id = audit(
+        "price_alert.enable" if body.enabled else "price_alert.disable",
+        actor=user.username, request=request,
+        detail={"rule_id": rule_id, "enabled": body.enabled},
+    )
+    return {"ok": True, "rule": rule, "audit_id": audit_id}
+
+
+@app.delete("/api/alerts/rules/{rule_id}")
+def delete_alert_rule(rule_id: int, request: Request):
+    user = install_api.require_operator_mutation(request)
+    conn = price_alerts.connect()
+    try:
+        deleted = price_alerts.delete_rule(conn, rule_id)
+    finally:
+        conn.close()
+    if not deleted:
+        raise HTTPException(status_code=404, detail="alert rule not found")
+    audit_id = audit(
+        "price_alert.delete", actor=user.username, request=request,
+        detail={"rule_id": rule_id, "history_retained": True},
+    )
+    return {"ok": True, "deleted": True, "rule_id": rule_id,
+            "history_retained": True, "audit_id": audit_id}
 
 
 # NOTE: declared before /api/journal/void for readability only — the paths are

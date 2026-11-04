@@ -26,13 +26,16 @@ def test_operator_can_read_operational_audit_notify_and_live_status(monkeypatch,
         assert client.get("/api/notify/status").status_code == 200
         assert client.get("/api/live/status").status_code == 200
         assert client.get("/api/live/evidence").status_code == 200
+        assert client.get("/api/alerts/rules").status_code == 200
+        assert client.get("/api/alerts/events").status_code == 200
 
 
 def test_viewer_cannot_read_operational_or_private_exchange_state(monkeypatch, tmp_path):
     client = _client_for(monkeypatch, tmp_path, "viewer")
     with client:
         for path in ("/api/audit", "/api/notify/status", "/api/live/status",
-                     "/api/live/evidence", "/api/live/orders"):
+                     "/api/live/evidence", "/api/live/orders",
+                     "/api/alerts/rules", "/api/alerts/events"):
             assert client.get(path).status_code == 403, path
 
 
@@ -43,5 +46,6 @@ def test_machine_token_does_not_inherit_a_human_role(monkeypatch, tmp_path):
     monkeypatch.setattr(security, "API_TOKEN", "script-token")
     headers = {"X-API-Token": "script-token"}
     with TestClient(main.app) as client:
-        for path in ("/api/audit", "/api/live/status", "/api/settings"):
+        for path in ("/api/audit", "/api/live/status", "/api/settings",
+                     "/api/alerts/rules"):
             assert client.get(path, headers=headers).status_code == 401, path

@@ -2,6 +2,13 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 2.4.0
+
+- Added the A5 backend phase for conditional price/premium alerts under ADR-0049. Owner/Operator can create `above`/`below` rules for any returned market's `last` price or the USDTIRT reference `premium_pct`, enable/disable or delete rules, and read events. Viewer receives no operational access and every mutation requires CSRF.
+- The first fresh observation only arms a rule. A trigger requires a false→true crossing; remaining beyond the threshold or replaying a timestamp cannot repeat it. Missing, invalid, future, or stale data disarms the rule and recovery starts with a fresh baseline. Rules/events persist in `journal.db` and the existing backup, while deleting a rule retains event history.
+- The scheduler refreshes `/market/stats` only while a rule is enabled and never calls Paper/Live or risk execution paths. A trigger is stored before Telegram delivery; the delivery result carries a bounded reason without an external error body, and failed delivery is not blindly retried. The bell/management UI is a later phase.
+- Verified with 1800 Python tests, mypy/Ruff, and API/scheduler/freshness contracts. The MINOR bump reflects a compatible new capability. Production was not deployed and no real order or Live/Auto change occurred.
+
 ## 2.3.4
 
 - Applied six patch-level Dependabot updates together: `pydantic 2.14.2` and `pydantic-settings 2.16.2` at runtime, plus `pytest 9.2.0`, `Ruff 0.17.3`, `mypy 2.4.1`, and `ESLint 10.14.0` in the development toolchain. The Pydantic update includes released fixes for two JSON/TypedDict validation advisories; the product API contract is unchanged.

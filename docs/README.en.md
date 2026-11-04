@@ -2,7 +2,7 @@
 
 [فارسی](README.md) · **English**
 
-Working version: **2.3.4**. See [versioning and GitHub releases](releases.en.md) and the
+Working version: **2.4.0**. See [versioning and GitHub releases](releases.en.md) and the
 [changelog](../CHANGELOG.en.md).
 
 ## Documentation map
@@ -19,6 +19,7 @@ This file is only a way to find things; the content lives in the folders beside 
 | Know what was last verified, and what was not | [`reviews/`](reviews) (Persian) |
 | Know what the analysis engines actually compute today | [`analysis/`](analysis) — catalogue plus an "implemented / catalogue only" table: [technical](analysis/technical-analysis-capabilities.en.md) · [fundamental](analysis/fundamental-analysis-capabilities.en.md) |
 | Run the tests against a live exchange | [`testing.en.md`](testing.en.md) |
+| Understand conditional price/premium alerts and their API | [`price-alerts.en.md`](price-alerts.en.md) · [Persian](price-alerts.md) |
 | Pick a cheap server for testing | [`ops/`](ops) — [English](ops/en/free-server-options-for-testing-and-development.md) · [Persian](ops/fa/free-server-options-for-testing-and-development.md) |
 | Install the project on ArvanCloud (Ubuntu cloud server) | [`deploy-arvan.md`](deploy-arvan.md) — step by step + `scripts/deploy_arvan.sh` + `scripts/check_deploy.py` (Persian) |
 | Want one comprehensive, up-to-date ArvanCloud runbook | [`deploy-arvan-cloud.md`](deploy-arvan-cloud.md) — architecture, DNS/firewall, TLS, backup, troubleshooting, checklist (Persian) |

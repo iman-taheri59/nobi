@@ -10,7 +10,7 @@
 - The standalone CLI does not import the application or automatically load `.env`. Restore requires explicit `--journal`, `--auth` and `--live` destinations. Match actual runtime paths; repository defaults are not evidence of those paths.
 - Any missing/zero-byte required source refuses backup. Do not create empty SQLite files merely to bypass this check; first establish the correct source and state-domain requirements.
 - New archives are private (`0600` on POSIX); newly created backup directories are private too. Existing directory and ancestor permissions still need independent verification.
-- The three-DB archive contains sensitive account data and hashes. Excluding `.env` and API keys does not make it public. It is not a complete backup of the OS, Paper JSON, credentials or all application state.
+- The three-DB archive contains sensitive account data and hashes. Excluding `.env` and API keys does not make it public. ADR-0049 price-alert rules and events also live in `journal.db` and this backup. It is not a complete backup of the OS, Paper JSON, credentials or all application state.
 - Snapshot consistency is **per database**, not one cross-database transaction. A coordinated multi-domain checkpoint requires quiescing/coordinating writers before backup as well.
 - Existing output archives are not overwritten; choose a new output name/time.
 

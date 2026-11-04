@@ -2,7 +2,7 @@
 
 **فارسی** · [English](README.en.md)
 
-نسخهٔ کاری: **2.3.4**. راهنمای [نسخه‌بندی و انتشار GitHub](releases.md) ([English](releases.en.md)) و [تاریخچهٔ تغییرات](../CHANGELOG.md) ([English](../CHANGELOG.en.md)).
+نسخهٔ کاری: **2.4.0**. راهنمای [نسخه‌بندی و انتشار GitHub](releases.md) ([English](releases.en.md)) و [تاریخچهٔ تغییرات](../CHANGELOG.md) ([English](../CHANGELOG.en.md)).
 
 ## نقشهٔ مستندات
 
@@ -14,6 +14,7 @@
 |---|---|
 | پشتیبان و بازیابی آفلاین ایمن را بررسی کنی | [`operations-recovery.md`](operations-recovery.md) · [English](operations-recovery.en.md) |
 | پروژه را راه بیندازی | [`../README.md`](../README.md) |
+| هشدار شرطی قیمت/پرمیوم و API آن را بفهمی | [`price-alerts.md`](price-alerts.md) · [English](price-alerts.en.md) |
 | بفهمی چرا معماری این‌طور است | [`adr/`](adr) — ۱۸ ADR، هر کدام فارسی و انگلیسی |
 | ببینی کدام تصمیم واقعاً پیاده شده | [`adr/README.md`](adr/README.md) — جدول وضعیت با شاهد کد |
 | بدانی آخرین بار چه چیزی تأیید شد و چه چیزی نه | [`reviews/`](reviews) |

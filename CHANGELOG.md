@@ -2,6 +2,13 @@
 
 [English](CHANGELOG.en.md) · **فارسی**
 
+## 2.4.0
+
+- فاز بک‌اند A5 (هشدار شرطی قیمت/پرمیوم) بر اساس ADR-0049 اضافه شد. Owner/Operator می‌توانند برای `last` هر بازار دریافت‌شده یا `premium_pct` مرجع USDTIRT قاعدهٔ `above`/`below` بسازند، آن را فعال/غیرفعال یا حذف کنند و رویدادها را بخوانند. Viewer دسترسی عملیاتی ندارد و mutationها CSRF می‌خواهند.
+- اولین دادهٔ تازه فقط rule را arm می‌کند؛ trigger فقط با عبور false→true ساخته می‌شود و ماندن روی آستانه یا replay همان timestamp پیام تکراری ندارد. دادهٔ missing/invalid/future/stale قاعده را disarm می‌کند و recovery با baseline تازه از سر گرفته می‌شود. قواعد و رویدادها در `journal.db` و backup فعلی پایدارند؛ حذف rule تاریخچه را پاک نمی‌کند.
+- scheduler فقط هنگام وجود rule فعال `/market/stats` را دوباره می‌خواند و هیچ مسیر Paper/Live یا ریسکی را صدا نمی‌زند. trigger پیش از Telegram ثبت می‌شود و نتیجهٔ تحویل با reason محدود و بدون body خطای بیرونی ذخیره می‌شود؛ شکست تحویل retry کور ندارد. رابط مدیریت bell/UI در مرحلهٔ بعد است.
+- نسخه با 1800 تست Python، mypy/Ruff و تست‌های API/scheduler/freshness بررسی شد. افزایش MINOR برای قابلیت سازگار جدید است؛ production deploy نشده و هیچ سفارش واقعی یا تغییر Live/Auto انجام نشده است.
+
 ## 2.3.4
 
 - شش به‌روزرسانی جزئی Dependabot یک‌جا اعمال شدند: `pydantic 2.14.2` و `pydantic-settings 2.16.2` در runtime، و `pytest 9.2.0`، `Ruff 0.17.3`، `mypy 2.4.1` و `ESLint 10.14.0` در ابزارهای توسعه. ارتقای Pydantic شامل اصلاح‌های انتشارشده برای دو advisory اعتبارسنجی JSON/TypedDict است؛ قرارداد API محصول عوض نشده است.
