@@ -41,6 +41,7 @@ import re
 import shutil
 import socket
 import ssl
+import stat
 import subprocess
 import sys
 import urllib.error
@@ -133,29 +134,52 @@ def check_config() -> dict:
     neither may be readable by other users.
     """
     server_env = SERVER / ".env"
-    existing = [path for path in (server_env, UNIT_ENV) if path.is_file()]
-    if not existing:
+    # stat() itself is denied for a root-only unit file on some installations;
+    # Path.is_file() does not make that safe. Keep the file in the picture with
+    # an unknown mode, then let --verify's explicitly supplied NBX_* values
+    # provide the configuration without requiring read access to the file.
+    file_modes: dict[Path, int | None] = {}
+    for path in (server_env, UNIT_ENV):
+        try:
+            info = path.stat()
+        except FileNotFoundError:
+            continue
+        except OSError:
+            file_modes[path] = None
+            continue
+        if stat.S_ISREG(info.st_mode):
+            file_modes[path] = info.st_mode & 0o777
+    if not file_modes:
         return _row(FAIL, "config", f"neither {server_env} nor {UNIT_ENV} exists",
                     "configure /etc/nobi/nobi.env for systemd, or copy "
                     "deploy/nobi.env.example to server/.env for local development")
     pairs = _env()
+    # update_arvan.sh --verify deliberately passes the root-read unit values in
+    # the environment when running this checker as the unprivileged service
+    # user. Match _unreadable_note(): NBX_UNIT_ENV is a path, not a setting.
+    pairs.update({key: value for key, value in os.environ.items()
+                  if key.startswith("NBX_") and key != "NBX_UNIT_ENV"})
     if not pairs:
+        if any(mode is None for mode in file_modes.values()):
+            return _row(SKIP, "config", "configuration is unreadable by this user",
+                        "run as root, or pass the service's NBX_* values in the environment")
         return _row(FAIL, "config", "configuration files have no KEY=VALUE lines",
                     "an empty file is not a configuration")
-    if server_env.is_file():
-        mode = server_env.stat().st_mode & 0o777
-        if mode & 0o077:
+    for path, mode in file_modes.items():
+        if mode is None:
+            continue
+        if path == server_env and mode & 0o077:
             return _row(FAIL, "config",
                         f"{server_env} is mode {mode:o} — group/other can read the secrets",
                         f"chmod 600 {server_env}")
-    if UNIT_ENV.is_file():
-        mode = UNIT_ENV.stat().st_mode & 0o777
-        if mode & 0o007:
+        if path == UNIT_ENV and mode & 0o007:
             return _row(FAIL, "config",
                         f"{UNIT_ENV} is mode {mode:o} — other users can read the secrets",
                         f"chmod 640 {UNIT_ENV} (or 600)")
-    sources = ", ".join(str(path) for path in existing)
-    return _row(OK, "config", f"{sources}; {len(pairs)} keys")
+    sources = ", ".join(str(path) for path in file_modes)
+    unknown = "; mode unreadable by this user" if any(
+        mode is None for mode in file_modes.values()) else ""
+    return _row(OK, "config", f"{sources}; {len(pairs)} keys{unknown}")
 
 
 #: The floor is set by the pins, not by the syntax: `numpy==2.5.4` publishes

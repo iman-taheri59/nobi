@@ -2,6 +2,11 @@
 
 [English](CHANGELOG.en.md) · **فارسی**
 
+## 2.3.2
+
+- traceback مرحلهٔ `--verify` در `check_config` رفع شد: روی میزبانی که `/etc/nobi/nobi.env` برای کاربر سرویس root-only است، خودِ `stat` نیز PermissionError می‌دهد. checker حالا mode ناشناخته را بدون crash نگه می‌دارد و مقادیر `NBX_*` را که `update_arvan.sh --verify` صریحاً پاس می‌کند مصرف می‌کند؛ بدون آن مقادیر، نتیجهٔ شفاف SKIP است نه traceback یا گزارش config خالی.
+- regression دقیق خطای production نسخهٔ 2.3.1 برای هر دو حالت «مقادیر پاس‌داده‌شده» و «فایل خواندنی بدون مقدار محیطی» اضافه شد. نسخه با 1788 تست Python بررسی شد و رفتار runtime احراز هویت، ریسک، معامله، Live/Auto یا سفارش واقعی تغییری ندارد.
+
 ## 2.3.1
 
 - `check_deploy.py` حالا همان منابع config را بررسی می‌کند که سرویس systemd واقعاً می‌خواند: `/etc/nobi/nobi.env` بدون وجود `server/.env` معتبر است، override اختیاری همچنان پشتیبانی می‌شود و دسترسی group/other به secretها کنترل می‌شود. دیگر برای سبزشدن preflight لازم نیست فایل `.env` خالی ساخته شود.

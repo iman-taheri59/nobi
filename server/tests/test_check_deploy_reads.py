@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import urllib.error
 
 from test_check_deploy import check_deploy
@@ -117,6 +118,7 @@ def test_unit_environment_is_a_complete_config_without_server_dot_env(tmp_path, 
     unit.chmod(0o640)
     monkeypatch.setattr(check_deploy, "SERVER", server)
     monkeypatch.setattr(check_deploy, "UNIT_ENV", unit)
+    _clear_nbx_environment(monkeypatch)
     row = check_deploy.check_config()
     assert row["status"] == "ok"
     assert str(unit) in row["detail"]
@@ -140,3 +142,57 @@ def test_world_readable_unit_secrets_fail(tmp_path, monkeypatch):
     row = check_deploy.check_config()
     assert row["status"] == "fail"
     assert "other users can read" in row["detail"]
+
+
+def _deny_unit_stat(unit, monkeypatch):
+    """Reproduce root-only /etc/nobi/nobi.env deterministically, even as root."""
+    from pathlib import Path
+
+    real_stat = Path.stat
+
+    def stat_with_denied_unit(path, *args, **kwargs):
+        if path == unit:
+            raise PermissionError(13, "Permission denied", str(unit))
+        return real_stat(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "stat", stat_with_denied_unit)
+
+
+def _clear_nbx_environment(monkeypatch):
+    for key in list(os.environ):
+        if key.startswith("NBX_") and key != "NBX_UNIT_ENV":
+            monkeypatch.delenv(key, raising=False)
+
+
+def test_verify_uses_supplied_values_when_unit_stat_is_denied(tmp_path, monkeypatch):
+    """Exact production 2.3.1 traceback: check_config crashed before _env()."""
+    server = tmp_path / "server"
+    server.mkdir()
+    unit = tmp_path / "nobi.env"
+    unit.write_text("NBX_API_TOKEN=0123456789abcdef0123456789abcdef\n", encoding="utf-8")
+    monkeypatch.setattr(check_deploy, "SERVER", server)
+    monkeypatch.setattr(check_deploy, "UNIT_ENV", unit)
+    _clear_nbx_environment(monkeypatch)
+    monkeypatch.setenv("NBX_API_TOKEN", "0123456789abcdef0123456789abcdef")
+    _deny_unit_stat(unit, monkeypatch)
+
+    row = check_deploy.check_config()  # must not raise PermissionError
+    assert row["status"] == "ok"
+    assert "1 keys" in row["detail"]
+    assert "mode unreadable by this user" in row["detail"]
+
+
+def test_unreadable_unit_without_supplied_values_skips_instead_of_crashing(
+        tmp_path, monkeypatch):
+    server = tmp_path / "server"
+    server.mkdir()
+    unit = tmp_path / "nobi.env"
+    unit.write_text("NBX_API_TOKEN=0123456789abcdef0123456789abcdef\n", encoding="utf-8")
+    monkeypatch.setattr(check_deploy, "SERVER", server)
+    monkeypatch.setattr(check_deploy, "UNIT_ENV", unit)
+    _clear_nbx_environment(monkeypatch)
+    _deny_unit_stat(unit, monkeypatch)
+
+    row = check_deploy.check_config()
+    assert row["status"] == "skip"
+    assert "unreadable by this user" in row["detail"]
