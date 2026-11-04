@@ -2,6 +2,12 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 2.3.4
+
+- Applied six patch-level Dependabot updates together: `pydantic 2.14.2` and `pydantic-settings 2.16.2` at runtime, plus `pytest 9.2.0`, `Ruff 0.17.3`, `mypy 2.4.1`, and `ESLint 10.14.0` in the development toolchain. The Pydantic update includes released fixes for two JSON/TypedDict validation advisories; the product API contract is unchanged.
+- Compatibility is verified by 1788 Python tests, mypy/Ruff, `pip-audit`, and every JS/DOM suite on Node 24. `pip-audit` reports no known vulnerabilities and `npm audit` has no high/critical failure; five moderate advisories remain in the minimatch development-only dependency chain, and npm's incompatible forced fix was not applied.
+- Runtime authentication, risk, trading, Live/Auto, and real-order behavior are unchanged. Production has not been deployed by this release.
+
 ## 2.3.3
 
 - The “your role is read-only” notice is no longer conflated with the upstream-health banner. Previously `upShow(false)` hid it after a healthy scan and an upstream error overwrote its text. An independent `roleBanner` now survives both healthy and failed upstream states, while the Owner view is unchanged.

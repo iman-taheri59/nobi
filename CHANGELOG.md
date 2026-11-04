@@ -2,6 +2,12 @@
 
 [English](CHANGELOG.en.md) · **فارسی**
 
+## 2.3.4
+
+- شش به‌روزرسانی جزئی Dependabot یک‌جا اعمال شدند: `pydantic 2.14.2` و `pydantic-settings 2.16.2` در runtime، و `pytest 9.2.0`، `Ruff 0.17.3`، `mypy 2.4.1` و `ESLint 10.14.0` در ابزارهای توسعه. ارتقای Pydantic شامل اصلاح‌های انتشارشده برای دو advisory اعتبارسنجی JSON/TypedDict است؛ قرارداد API محصول عوض نشده است.
+- سازگاری با 1788 تست Python، mypy/Ruff، `pip-audit` و تمام suiteهای JS/DOM روی Node 24 اثبات شد. `pip-audit` مورد شناخته‌شده‌ای ندارد و `npm audit` در سطح high/critical شکستی ندارد؛ پنج هشدار moderate در dev dependency مربوط به minimatch باقی است و fix ناسازگار پیشنهادی npm اعمال نشده است.
+- این نسخه رفتار احراز هویت، ریسک، معامله، Live/Auto یا سفارش واقعی را تغییر نمی‌دهد و استقرار production انجام نشده است.
+
 ## 2.3.3
 
 - پیام «نقش شما فقط‌خواندنی است» دیگر با banner وضعیت upstream مخلوط نمی‌شود. پیش از این `upShow(false)` بعد از یک scan سالم آن را مخفی می‌کرد و خطای upstream متن نقش را بازنویسی می‌کرد. `roleBanner` مستقل اکنون در هر دو حالت سالم/خطا پایدار می‌ماند و Owner تغییری نمی‌بیند.
