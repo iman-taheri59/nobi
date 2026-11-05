@@ -11,7 +11,7 @@
 #   sudo bash scripts/update_arvan.sh --yes        # unattended, no prompt
 #   sudo bash scripts/update_arvan.sh --reset      # fork/branch: fetch + reset --hard
 #   sudo bash scripts/update_arvan.sh --force      # with --reset, also discard uncommitted edits
-#   sudo bash scripts/update_arvan.sh --backup     # run the documented backup first
+#   sudo bash scripts/update_arvan.sh --backup     # state_backup.py snapshot of the 3 databases first
 #   sudo bash scripts/update_arvan.sh --verify     # then run check_deploy.py
 #   sudo bash scripts/update_arvan.sh --public https://nobi.example.ir   # same, with a URL
 #
@@ -126,8 +126,10 @@ printf '    commit  %s\n' "$OLD_SHA"
 printf '    tag     %s\n' "$OLD_VER"
 printf '    /api/health reports version %s\n' "$RUNNING_VER"
 if [ "$RUNNING_VER" != "(service not answering)" ] && [ "$RUNNING_VER" != "?" ]; then
-  case "$RUNNING_VER" in
-    "v$OLD_VER"|"$OLD_VER") printf '    (the running service matches the checkout)\n' ;;
+  # `git describe` says `v2.3.2`; /api/health says `2.3.2`. Compare without
+  # the prefix on either side, or every healthy install is warned about.
+  case "${RUNNING_VER#v}" in
+    "${OLD_VER#v}") printf '    (the running service matches the checkout)\n' ;;
     *) warn "the service runs $RUNNING_VER but the checkout is at $OLD_VER — a previous update may have half-applied" ;;
   esac
 fi
@@ -272,13 +274,42 @@ fi
 # 5. Backup first, if asked — the guide's own procedure, not a new one
 # --------------------------------------------------------------------------- #
 if [ "$DO_BACKUP" -eq 1 ]; then
-  step "backing up the data directory"
-  STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
-  TARGET="${BACKUP_DIR:-/root}/nobi-data-$STAMP.tar.gz"
-  tar -C "$DATA_DIR" -czf "$TARGET" . || die "backup failed — stopping before the update"
-  chmod 600 "$TARGET"
-  printf '    %s (%s)\n' "$TARGET" "$(du -h "$TARGET" | cut -f1)"
-  warn "this is a file copy, not a tested restore. Keep it somewhere else too."
+  step "backing up the state databases"
+  # The guide's own procedure: scripts/state_backup.py snapshots journal, auth
+  # and live execution through SQLite's online backup API. A tar of the data
+  # directory was tried first and failed on a live host — the candle cache is
+  # rewritten while tar reads it, and a raw copy of a database that is being
+  # written is not a consistent snapshot anyway. The cache is rebuildable and
+  # is deliberately not part of the backup; .env and keys never were.
+  BACKUP_DIR="${BACKUP_DIR:-$DATA_DIR/backup}"
+  backup_env=()
+  if [ -r "$ENV_FILE" ]; then
+    while IFS= read -r line; do
+      case "$line" in
+        NBX_JOURNAL_DB=*|NBX_AUTH_DB=*|NBX_LIVE_DB=*) backup_env+=("$line") ;;
+      esac
+    done < "$ENV_FILE"
+  fi
+  BACKUP_JOURNAL="$DATA_DIR/journal.db"; BACKUP_AUTH="$DATA_DIR/auth.db"
+  BACKUP_LIVE="$DATA_DIR/live_execution.db"
+  for kv in "${backup_env[@]}"; do
+    case "$kv" in
+      NBX_JOURNAL_DB=*) BACKUP_JOURNAL="${kv#NBX_JOURNAL_DB=}" ;;
+      NBX_AUTH_DB=*)    BACKUP_AUTH="${kv#NBX_AUTH_DB=}" ;;
+      NBX_LIVE_DB=*)    BACKUP_LIVE="${kv#NBX_LIVE_DB=}" ;;
+    esac
+  done
+  mkdir -p "$BACKUP_DIR" && chmod 700 "$BACKUP_DIR"
+  chown "$SERVICE_USER" "$BACKUP_DIR" 2>/dev/null || true
+  backup_out="$(runas "$APP_DIR/.venv/bin/python" "$APP_DIR/scripts/state_backup.py" backup \
+      --output "$BACKUP_DIR" --journal "$BACKUP_JOURNAL" --auth "$BACKUP_AUTH" \
+      --live "$BACKUP_LIVE" 2>&1)" \
+    || die "backup failed — stopping before the update
+    $backup_out
+    The three databases must exist and be non-empty; check NBX_JOURNAL_DB,
+    NBX_AUTH_DB and NBX_LIVE_DB in $ENV_FILE."
+  printf '    %s\n' "$backup_out"
+  warn "this is a snapshot, not a tested restore. Keep a copy somewhere else too."
 fi
 
 # --------------------------------------------------------------------------- #

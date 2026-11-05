@@ -541,8 +541,9 @@ sudo bash /opt/nobi/scripts/update_arvan.sh           # نشان می‌دهد،
 | بعد از restart سلامتی را می‌سنجد و اگر سرویس بالا نیامد، دستور برگشت را با SHA قبلی چاپ می‌کند | وسط شب تنها چیزی که لازم دارید همان یک دستور است |
 
 پرچم‌ها: `--check` (فقط نگاه، هیچ تغییری)، `--yes` (بدون پرسش)، `--reset` (fork/برنچ:
-`fetch` + `reset --hard`، همان مسیر مستند)، `--backup` (پیش از به‌روزرسانی نسخهٔ پشتیبان
-بگیر)، `--verify` (بعدش `check_deploy.py` را اجرا کن)، `--public URL` (همراه `--verify`).
+`fetch` + `reset --hard`، همان مسیر مستند)، `--backup` (پیش از به‌روزرسانی با `state_backup.py`
+از سه دیتابیس journal/auth/live snapshot سازگار بگیر؛ پیش‌فرض در `/srv/nobi-data/backup/`،
+بدون cache کندل و بدون `.env`)، `--verify` (بعدش `check_deploy.py` را اجرا کن)، `--public URL` (همراه `--verify`).
 
 `/etc/nobi/nobi.env` را هرگز نمی‌نویسد، به `DATA_DIR` دست نمی‌زند و فایروال را باز نمی‌کند.
 اگر استقرارتان از یک fork/برنچ است، `--reset` را بگیرید — همان `reset --hard origin/main`ای

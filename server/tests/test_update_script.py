@@ -17,6 +17,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -426,3 +427,100 @@ def test_pip_runs_as_the_service_user_not_as_root() -> None:
     assert "runas" in text
     assert '! -user "$SERVICE_USER"' in text
     assert "an earlier pip ran as root" in text
+
+
+def _bash_snippet(snippet: str, tmp_path, env: dict | None = None) -> subprocess.CompletedProcess:
+    script = tmp_path / "snippet.sh"
+    script.write_text(
+        "set -u\n"
+        "warn() { printf '  !  %s\\n' \"$*\"; }\n"
+        "die() { printf '  x  %s\\n' \"$*\" >&2; exit 1; }\n"
+        "step() { printf '\\n==> %s\\n' \"$*\"; }\n"
+        "runas() { \"$@\"; }\n" + snippet,
+        encoding="utf-8",
+    )
+    return subprocess.run(
+        ["bash", str(script)], capture_output=True, text=True, encoding="utf-8",
+        env={**os.environ, **(env or {})}, timeout=60,
+    )
+
+
+def _lift(text: str, start_marker: str, end_marker: str) -> str:
+    start = text.index(start_marker)
+    return text[start:text.index(end_marker, start) + len(end_marker)]
+
+
+def test_a_matching_service_version_is_not_reported_as_half_applied(tmp_path) -> None:
+    """`git describe` says `v2.3.2`, health says `2.3.2`: that is a match.
+
+    The comparison prefixed another `v`, so every healthy install was warned
+    about a half-applied update — seen on the production host before 2.5.0.
+    """
+    if os.name != "posix" or shutil.which("bash") is None:
+        pytest.skip("bash required")
+    text = _text()
+    compare = _lift(text, 'if [ "$RUNNING_VER" != "(service not answering)" ]', "\nfi\n")
+    for old_ver, running in (("v2.3.2", "2.3.2"), ("2.3.2", "2.3.2"), ("v2.3.2", "v2.3.2")):
+        result = _bash_snippet(
+            f'OLD_VER="{old_ver}"\nRUNNING_VER="{running}"\n' + compare, tmp_path,
+        )
+        assert result.returncode == 0, result.stderr
+        assert "half-applied" not in result.stdout, (old_ver, running, result.stdout)
+        assert "matches the checkout" in result.stdout
+    result = _bash_snippet('OLD_VER="v2.3.2"\nRUNNING_VER="2.5.0"\n' + compare, tmp_path)
+    assert "half-applied" in result.stdout
+
+
+def test_the_backup_is_the_documented_sqlite_backup_not_a_tar_of_live_files(tmp_path) -> None:
+    """A tar of the data directory fails while the service writes its candle
+    cache (`file changed as we read it`), and a raw copy of a live SQLite file
+    is not a consistent snapshot anyway. The guide's own procedure is
+    `state_backup.py`, which uses SQLite's online backup API. That is what
+    `--backup` must run — and a missing database must still stop the update.
+    """
+    if os.name != "posix" or shutil.which("bash") is None:
+        pytest.skip("bash required")
+    text = _text()
+    assert "tar -C \"$DATA_DIR\"" not in text, "do not tar a live data directory"
+    assert "state_backup.py" in text
+    backup = _lift(text, 'if [ "$DO_BACKUP" -eq 1 ]; then', "\nfi\n")
+
+    import sqlite3
+    data = tmp_path / "data"
+    data.mkdir()
+    for name in ("journal.db", "auth.db", "live_execution.db"):
+        with sqlite3.connect(data / name) as conn:
+            conn.execute("CREATE TABLE t (x)")
+            conn.execute("INSERT INTO t VALUES (1)")
+    (data / "candle-cache").mkdir()
+    (data / "candle-cache" / "busy.json").write_text("{}", encoding="utf-8")
+    env_file = tmp_path / "nobi.env"
+    env_file.write_text(
+        f"NBX_JOURNAL_DB={data}/journal.db\nNBX_AUTH_DB={data}/auth.db\n"
+        f"NBX_LIVE_DB={data}/live_execution.db\nNBX_API_TOKEN=must-not-leak\n",
+        encoding="utf-8",
+    )
+    app = tmp_path / "app"
+    (app / ".venv" / "bin").mkdir(parents=True)
+    (app / "scripts").mkdir()
+    shutil.copy(ROOT / "scripts" / "state_backup.py", app / "scripts" / "state_backup.py")
+    os.symlink(sys.executable, app / ".venv" / "bin" / "python")
+    prelude = (
+        f'APP_DIR="{app}"\nDATA_DIR="{data}"\nENV_FILE="{env_file}"\n'
+        f'BACKUP_DIR="{tmp_path / "backups"}"\nSERVICE_USER="$(id -un)"\nDO_BACKUP=1\n'
+    )
+    result = _bash_snippet(prelude + backup, tmp_path)
+    assert result.returncode == 0, result.stdout + result.stderr
+    archives = list((tmp_path / "backups").glob("*.zip"))
+    assert len(archives) == 1, result.stdout
+    assert "must-not-leak" not in result.stdout + result.stderr
+    import zipfile
+    names = zipfile.ZipFile(archives[0]).namelist()
+    assert not any("candle" in n for n in names), "the cache is rebuildable, not state"
+    assert any("journal" in n for n in names) and any("auth" in n for n in names)
+
+    # A database the env file points at but which is missing must refuse.
+    (data / "live_execution.db").unlink()
+    result = _bash_snippet(prelude + backup, tmp_path)
+    assert result.returncode != 0
+    assert "stopping before the update" in result.stderr

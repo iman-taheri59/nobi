@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+- `update_arvan.sh --backup` failed on the real host: a `tar` of the live data directory errored while the candle cache was being rewritten, and a raw copy of a SQLite file under write is not a consistent snapshot anyway. It now runs the guide's documented procedure, `state_backup.py` over SQLite's online backup API, for the three databases (paths from `nobi.env`, no cache, no `.env`). The spurious "half-applied" warning caused by the `v` prefix from `git describe` on every healthy install is fixed too; both are tested by executing the lifted bash fragments.
+
 ## 2.5.0
 
 - `/api/health` now carries a `price_alerts` block (the ADR-0024 pattern used by `scan_loop`): tick interval, freshness cap, run count, last tick outcome/error, and the durable `sent/failed/pending` split with the oldest pending timestamp. Failed ticks and unconfirmed deliveries are recorded once in the errors tab under `task.price-alerts`, without the Telegram body.

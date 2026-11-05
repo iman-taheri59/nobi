@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+- `update_arvan.sh --backup` روی سرور واقعی شکست می‌خورد: `tar` از data dir زنده با نوشته‌شدن هم‌زمان cache کندل خطا می‌داد و کپی خام SQLite در حال نوشتن هم snapshot سازگاری نیست. اکنون همان روش مستند راهنما، `state_backup.py` با backup API خودِ SQLite، برای سه دیتابیس اجرا می‌شود (مسیرها از `nobi.env`، بدون cache و `.env`). هشدار کاذب «half-applied» که به‌خاطر پیشوند `v` در `git describe` روی هر نصب سالم چاپ می‌شد نیز رفع شد؛ هر دو با اجرای واقعی قطعه‌های bash تست می‌شوند.
+
 ## 2.5.0
 
 - `/api/health` اکنون بلوک `price_alerts` دارد (الگوی ADR-0024 مانند `scan_loop`): فاصلهٔ tick، سقف تازگی، شمار اجرا، نتیجه/خطای آخرین tick و تفکیک پایدار `sent/failed/pending` با زمان قدیمی‌ترین pending. شکست tick و تحویل تأییدنشده با منبع `task.price-alerts` در تب خطاها ثبت می‌شود (دقیقاً یک بار، بدون body تلگرام).
