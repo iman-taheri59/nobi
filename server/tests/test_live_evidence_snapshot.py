@@ -136,3 +136,25 @@ def test_snapshot_uses_a_real_operator_session_and_logs_out(monkeypatch, tmp_pat
     assert client.get("/api/live/status").status_code == 401, "logout must end the session"
     with sqlite3.connect(tmp_path / "auth.db") as conn:
         assert conn.execute("SELECT COUNT(*) FROM sessions").fetchone()[0] == 0
+
+
+def test_secure_session_cookie_over_plain_http_is_explained_not_401():
+    """Seen on the production host: login over http://127.0.0.1 succeeded, every
+    read then returned 401, because the cookie carried `Secure`. The tool must
+    name the cause and point at the HTTPS entry point."""
+    import http.cookiejar
+
+    jar = http.cookiejar.CookieJar()
+    jar.set_cookie(http.cookiejar.Cookie(
+        0, "nbx_session", "x", None, False, "127.0.0.1", False, False, "/", True,
+        True, None, False, None, None, {},
+    ))
+    assert snapshot.secure_cookie_mismatch("http://127.0.0.1:8000", jar) is not None
+    assert "https://" in snapshot.secure_cookie_mismatch("http://127.0.0.1:8000", jar)
+    assert snapshot.secure_cookie_mismatch("https://capoy.example", jar) is None
+    plain = http.cookiejar.CookieJar()
+    plain.set_cookie(http.cookiejar.Cookie(
+        0, "nbx_session", "x", None, False, "127.0.0.1", False, False, "/", True,
+        False, None, False, None, None, {},
+    ))
+    assert snapshot.secure_cookie_mismatch("http://127.0.0.1:8000", plain) is None

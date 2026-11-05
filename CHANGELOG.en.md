@@ -4,6 +4,7 @@
 
 ## Unreleased
 
+- `live_evidence_snapshot.py` with `--url http://127.0.0.1` logged in and then got 401 on the host: the production session cookie is `Secure` and is not sent over http. The tool now detects that, logs out, and asks for the HTTPS entry point instead of a bare 401; the five-day guide was corrected. The v2/v3 × User-Agent matrix on the host returned 200 for all four, so the earlier preflight 403 was transient; aligning the probe with the service stays correct, but the agent was not the cause.
 - `check_deploy.py` probed the exchange with `/v2/orderbook` and urllib's default User-Agent and got 403 on the host while the service itself was healthy. It now sends the same `/v3` route and the same `TraderBot/...` agent (`NBX_UA` honoured) as the product client, so a failure is about the network rather than the probe.
 - `update_arvan.sh --backup` failed on the real host: a `tar` of the live data directory errored while the candle cache was being rewritten, and a raw copy of a SQLite file under write is not a consistent snapshot anyway. It now runs the guide's documented procedure, `state_backup.py` over SQLite's online backup API, for the three databases (paths from `nobi.env`, no cache, no `.env`). The spurious "half-applied" warning caused by the `v` prefix from `git describe` on every healthy install is fixed too; both are tested by executing the lifted bash fragments.
 

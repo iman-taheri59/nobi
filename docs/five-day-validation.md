@@ -84,9 +84,14 @@ python3 /root/nobi-background-scan.py --check
 ```bash
 NBX_SNAPSHOT_USERNAME=<حساب Operator یا Owner مخصوص پایش> \
 NBX_SNAPSHOT_PASSWORD=<رمز همان حساب> \
-python3 /opt/nobi/scripts/live_evidence_snapshot.py \
-  --url http://127.0.0.1:8000 --csv /srv/nobi-data/live-evidence.csv
+/opt/nobi/.venv/bin/python /opt/nobi/scripts/live_evidence_snapshot.py \
+  --url https://<دامنهٔ شما> --csv /srv/nobi-data/live-evidence.csv
 ```
+
+- `--url` باید **نقطهٔ ورود HTTPS واقعی** باشد، نه `http://127.0.0.1`: cookie نشست در
+  production با flag `Secure` صادر می‌شود و روی http ارسال نمی‌شود؛ ورود موفق
+  می‌شود ولی هر خواندنی 401 می‌گیرد (روی سرور واقعی دیده شد). ابزار این حالت را
+  تشخیص می‌دهد و با پیام روشن متوقف می‌شود.
 
 - مسیرهای `/api/live/*` session اپراتور می‌خواهند؛ `NBX_API_TOKEN` به‌تنهایی
   401 می‌گیرد و حساب Viewer 403. ابزار با یک session وارد می‌شود، می‌خواند و

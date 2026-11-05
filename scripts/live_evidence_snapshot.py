@@ -38,9 +38,8 @@ def _opt(block: Any, key: str) -> Any:
     return block.get(key)
 
 
-_OPENER = urllib.request.build_opener(
-    urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar())
-)
+_JAR = http.cookiejar.CookieJar()
+_OPENER = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(_JAR))
 _HEADERS = {"Accept": "application/json", "User-Agent": "nobi-evidence-snapshot/1.0"}
 
 
@@ -64,6 +63,22 @@ def login(base_url: str, username: str, password: str, timeout: float = 30.0) ->
             response.read()
     except (urllib.error.URLError, TimeoutError, OSError) as exc:
         raise RuntimeError(f"snapshot login failed: {_describe(exc)}") from exc
+
+
+def secure_cookie_mismatch(base_url: str, jar: http.cookiejar.CookieJar = _JAR) -> str | None:
+    """Explain the one way a successful login still yields 401 on every read.
+
+    Production issues the session cookie with `Secure` (NBX_COOKIE_SECURE=always
+    or TLS detected). A standards-following cookie jar will not send it over
+    plain `http://`, so a loopback URL logs in fine and then reads nothing.
+    The fix is to use the real HTTPS entry point, not to weaken the cookie.
+    """
+    if base_url.lower().startswith("https://"):
+        return None
+    if any(cookie.secure for cookie in jar):
+        return ("the session cookie is Secure and will not be sent over http://; "
+                "run with --url https://<your-domain> (the real entry point)")
+    return None
 
 
 def logout(base_url: str, timeout: float = 10.0) -> None:
@@ -152,6 +167,10 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if session:
             login(args.url, username, password)
+            mismatch = secure_cookie_mismatch(args.url)
+            if mismatch:
+                logout(args.url)
+                raise RuntimeError("snapshot cannot read with this session: " + mismatch)
         try:
             row = collect(args.url, os.getenv("NBX_API_TOKEN", ""))
         finally:
