@@ -4,6 +4,7 @@
 
 ## Unreleased
 
+- `/api/health` اکنون بلوک `build {commit, commit_full, source}` دارد: commit فرایندِ در حال اجرا که یک‌بار در شروع از `NBX_BUILD_COMMIT` یا `.git/HEAD` خوانده می‌شود (بدون subprocess) و با checkout بعدی روی دیسک تغییر نمی‌کند؛ نبودش `null` است، نه حدس. پاسخ به P2 بررسی («health نسخه را ثابت می‌کند، نه commit را»). روی production پس از soak دیده می‌شود.
 - `scripts/market_archive.py` + unitهای `deploy/nobi-market-archive.*`: archiver خام بازار (stats + orderbook/all، هر ۵ دقیقه، gzip، retention روزانه) به‌عنوان فرایند جدا از سرویس تا ذخیرهٔ payload بدون deploy در طول soak شروع شود.
 - شروع رسمی soak پایداری روی `capoy.ir` در `2026-11-05T07:19:52Z` با baseline و چک‌لیست روزانه در `docs/five-day-validation.md` ثبت شد.
 - `live_evidence_snapshot.py` روی سرور با `--url http://127.0.0.1` پس از ورود موفق 401 می‌گرفت، چون cookie نشست در production `Secure` است و روی http ارسال نمی‌شود. ابزار اکنون این حالت را تشخیص می‌دهد، خارج می‌شود و به‌جای 401 مبهم، استفاده از نقطهٔ ورود HTTPS را می‌خواهد؛ راهنمای پنج‌روزه اصلاح شد. همچنین ماتریس v2/v3×UA روی سرور هر چهار حالت را 200 نشان داد؛ 403 اولیهٔ preflight گذرا بود و همسان‌سازی probe با سرویس همچنان درست است، اما UA عامل آن نبود.

@@ -42,6 +42,7 @@ import _env  # noqa: F401 — must precede every module that reads os.environ
 import adaptive
 import auth
 import auth_api
+import build_info
 import coin_metadata
 import devsuite
 import diagnostics
@@ -1210,6 +1211,9 @@ async def health():
         "ok": True,
         "backend": "python-fastapi-nobi",
         "version": app.version,
+        # Which commit this process started from (ADR P2: a version string
+        # does not prove the deployed commit). Frozen at import; see build_info.
+        "build": build_info.BUILD,
         "ts": datetime.now(UTC).isoformat(),
         "upstream": _upstream_snapshot(),
         "auth": {
