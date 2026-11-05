@@ -148,8 +148,15 @@ unattended-upgrades آن را restart نکند؛ `Automatic-Reboot` پیش‌ف�
 tail -1 /srv/nobi-data/live-evidence.csv
 systemctl show nobi -p NRestarts -p MemoryPeak; free -m | sed -n 2,3p
 curl -s http://127.0.0.1:8000/api/health | python3 -c "import json,sys;h=json.load(sys.stdin);print(h['scan_loop']['runs'],h['scan_loop']['last_ok'],h['scan_loop']['last_freshness']['symbols'],h['stats'])"
-journalctl -u nobi --since "-24h" --no-pager | grep -ciE "warning|error|traceback"
+# access-log درخواست‌های /api/errors را نشمار؛ فقط لاگ خود برنامه
+journalctl -u nobi --since "-24h" --no-pager | grep -iE "warning|error|traceback" | grep -vE '"(GET|POST|HEAD)' | sed 's/^.*python\[[0-9]*\]: //' | sort | uniq -c | sort -rn | head
+du -sh /srv/nobi-data/archive; ls /srv/nobi-data/backup | tail -1
 ```
+
+بررسی ساعت ۰۲:۳۰ پس از شروع (09:46Z): scan 28، alerts 293، stats 2830/2831،
+MemoryPeak بدون تغییر، swap 0، تنها خطای برنامه همان 403 کندل USDTIRT در
+07:24Z. timerهای `nobi-snapshot`، `nobi-backup` (00:15Z) و `nobi-market-archive`
+فعال؛ archive از 09:33:51Z (~50 MB/روز).
 
 ### archive خام بازار در طول soak (بدون دست‌زدن به سرویس)
 
