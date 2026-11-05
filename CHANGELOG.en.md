@@ -4,6 +4,7 @@
 
 ## Unreleased
 
+- Native `<select>` popups opened with a light background and light text on desktop, so options were unreadable: `color-scheme: dark` on `html` + meta, explicit `option` colours.
 - **Bug fix: the timeframe selector had not rendered since 2026-10-20.** `injectCandleSelector` located its anchor via the chart's `previousElementSibling`; commit `17be1af` wrapped the chart in `<div class="relative">`, the anchor became null and the function returned silently, pinning the dashboard to 15m. It now anchors on `#candleHeader` and a source test guards it.
 - **Header:** name and role removed from the mobile header; the user icon opens a menu with "My account" (jumps to the Account tab) and "Sign out"; the loose sign-out button is gone (desktop shows name/role inside the same button). The language switch shows only the inactive language. `user-round`, `circle-user-round`, `log-out`, `search` added to the offline icon set.
 - **Mobile package removed (user-facing):** header button, download dialog, `/download/nobitex-mobile.html`, `/download/nobitex-trader-robat.zip` and the `package_bundle` module are gone. A single file opened from `file://` has no API and is an empty dashboard — the "offline" promise was misleading. The service still serves the inlined page (ADR-0019); dropping the artifact itself and a real PWA are a separate ADR.

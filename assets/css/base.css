@@ -10,7 +10,16 @@
 html[dir="ltr"] * {
   font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
 }
-html { scroll-behavior: smooth; }
+html { scroll-behavior: smooth; color-scheme: dark; }
+/* Native <select> popups, scrollbars and date pickers are drawn by the
+ * browser from `color-scheme`, not from our classes. Without `dark` a desktop
+ * Chrome/Edge popup is white with our light option text — unreadable. */
+select, option, optgroup {
+  color-scheme: dark;
+  background-color: #101014;
+  color: #e4e4e7;
+}
+option:checked { background-color: rgba(52, 211, 153, 0.2); }
 body {
   background: #09090b;
   color: #e4e4e7;
