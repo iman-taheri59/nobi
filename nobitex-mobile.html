@@ -505,6 +505,40 @@ table td {
 }
 
 
+/* ---------- Click affordance & activity feedback ----------
+ * Tailwind v4 preflight sets `button { cursor: default }`, so nothing on the
+ * page looked clickable. Pointer for every interactive control, a visible
+ * press, a clear disabled state, and two activity signals wired from
+ * nbx-activity (index.html): a thin top progress bar while any request is in
+ * flight, and `aria-busy` on the button that started it. */
+button:not(:disabled), [role="button"], [role="menuitem"], [role="tab"],
+a[href], a[onclick], label[for], select:not(:disabled), summary,
+.navbtn, .tfSel, .sigDir, .mnav-btn, .sig-row, .sig-card, [data-mtab],
+input[type="checkbox"], input[type="radio"], input[type="range"] { cursor: pointer; }
+button:disabled, select:disabled, input:disabled, [aria-disabled="true"] { cursor: not-allowed; opacity: .55; }
+button:not(:disabled):active, [role="button"]:active, .navbtn:active, .mnav-btn:active { transform: scale(.97); transition: transform .08s ease; }
+button:not(:disabled):hover, [role="button"]:hover { filter: brightness(1.12); }
+
+button[aria-busy="true"], [role="button"][aria-busy="true"], [role="menuitem"][aria-busy="true"] { position: relative; pointer-events: none; opacity: .7; }
+button[aria-busy="true"] > *, [role="button"][aria-busy="true"] > *, [role="menuitem"][aria-busy="true"] > * { visibility: hidden; }
+button[aria-busy="true"]::after, [role="button"][aria-busy="true"]::after, [role="menuitem"][aria-busy="true"]::after {
+  content: ''; position: absolute; top: 50%; left: 50%; width: 14px; height: 14px;
+  margin: -7px 0 0 -7px; border-radius: 50%;
+  border: 2px solid rgba(255,255,255,.25); border-top-color: #34d399;
+  animation: nbxSpin .7s linear infinite;
+}
+@keyframes nbxSpin { to { transform: rotate(360deg); } }
+
+#nbxProgress {
+  position: fixed; top: 0; left: 0; height: 2px; width: 0%; z-index: 100;
+  background: linear-gradient(90deg, #34d399, #38bdf8);
+  box-shadow: 0 0 8px rgba(52,211,153,.6);
+  opacity: 0; transition: width .25s ease, opacity .3s ease;
+  pointer-events: none;
+}
+#nbxProgress.on { opacity: 1; }
+
+
 /* ---- dashboard.css ---- */
 @layer components {
 /* ===========================================================
@@ -7973,6 +8007,51 @@ window.addEventListener('resize', resizeCharts);
 <!-- INLINE-MOBILE-JS-START -->
 <!-- INLINE-MOBILE-JS-END -->
 <!-- Phase 1: live data + TA engine integration -->
+<script id="nbx-activity">
+/* Activity feedback (no framework): wraps fetch once. While a click-triggered request is in
+   flight a 2px bar runs at the top; the button clicked within the last 1.2 s
+   gets `aria-busy` (spinner, no double-click) until its requests finish.
+   An attribute, not a class: many handlers rewrite `className` wholesale.
+   Pure UI — requests, retries and errors are untouched. */
+(function(){
+  if (window.__nbxActivity || typeof window.fetch !== 'function') return;
+  window.__nbxActivity = true;
+  var bar = null, inflight = 0, hideTimer = null, last = null;
+  window.__nbxActivityState = function(){ return { inflight: inflight, last: last && last.el, age: last ? performance.now() - last.t : null }; };
+  function barEl(){ if(!bar){ bar=document.createElement('div'); bar.id='nbxProgress'; bar.setAttribute('aria-hidden','true'); (document.body||document.documentElement).appendChild(bar);} return bar; }
+  function paint(){
+    var b = barEl();
+    clearTimeout(hideTimer);
+    if (inflight > 0){ b.classList.add('on'); b.style.width = Math.min(90, 30 + inflight*15) + '%'; }
+    else { b.style.width='100%'; hideTimer=setTimeout(function(){ b.classList.remove('on'); setTimeout(function(){ b.style.width='0%'; }, 300); }, 150); }
+  }
+  document.addEventListener('click', function(e){
+    var el = e.target && e.target.closest ? e.target.closest('button, [role="button"], [role="menuitem"]') : null;
+    if (!el || el.disabled) return;
+    // navigation / toggles finish instantly; only mark when a request follows
+    last = { el: el, t: performance.now() };
+  }, true);
+  var orig = window.fetch;
+  window.fetch = function(){
+    // Only requests that follow a click count: background polling (scan,
+    // health, prices) must not keep the bar lit forever.
+    var el = null;
+    if (last && performance.now() - last.t < 1200 && document.contains(last.el)) {
+      el = last.el; el.__busy = (el.__busy||0) + 1;
+      if (el.__busy === 1){ el.setAttribute('aria-busy','true'); }
+    }
+    if (!el) return orig.apply(this, arguments);
+    inflight++; paint();
+    var done = function(){
+      inflight = Math.max(0, inflight-1); paint();
+      if (el){ el.__busy--; if (el.__busy <= 0){ el.__busy=0; el.removeAttribute('aria-busy'); } }
+    };
+    var p;
+    try { p = orig.apply(this, arguments); } catch (err) { done(); throw err; }
+    return p.then(function(r){ done(); return r; }, function(err){ done(); throw err; });
+  };
+})();
+</script>
 <script id="nbx-inline-nbx-core-js">
 /* ============================================================
  * nobiTrader — Core (Phase 1–2 + Standalone Mobile Engine)

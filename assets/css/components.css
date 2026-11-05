@@ -160,3 +160,37 @@ table td {
   color: rgb(110, 231, 183);
   border-color: rgba(110, 231, 183, 0.4);
 }
+
+
+/* ---------- Click affordance & activity feedback ----------
+ * Tailwind v4 preflight sets `button { cursor: default }`, so nothing on the
+ * page looked clickable. Pointer for every interactive control, a visible
+ * press, a clear disabled state, and two activity signals wired from
+ * nbx-activity (index.html): a thin top progress bar while any request is in
+ * flight, and `aria-busy` on the button that started it. */
+button:not(:disabled), [role="button"], [role="menuitem"], [role="tab"],
+a[href], a[onclick], label[for], select:not(:disabled), summary,
+.navbtn, .tfSel, .sigDir, .mnav-btn, .sig-row, .sig-card, [data-mtab],
+input[type="checkbox"], input[type="radio"], input[type="range"] { cursor: pointer; }
+button:disabled, select:disabled, input:disabled, [aria-disabled="true"] { cursor: not-allowed; opacity: .55; }
+button:not(:disabled):active, [role="button"]:active, .navbtn:active, .mnav-btn:active { transform: scale(.97); transition: transform .08s ease; }
+button:not(:disabled):hover, [role="button"]:hover { filter: brightness(1.12); }
+
+button[aria-busy="true"], [role="button"][aria-busy="true"], [role="menuitem"][aria-busy="true"] { position: relative; pointer-events: none; opacity: .7; }
+button[aria-busy="true"] > *, [role="button"][aria-busy="true"] > *, [role="menuitem"][aria-busy="true"] > * { visibility: hidden; }
+button[aria-busy="true"]::after, [role="button"][aria-busy="true"]::after, [role="menuitem"][aria-busy="true"]::after {
+  content: ''; position: absolute; top: 50%; left: 50%; width: 14px; height: 14px;
+  margin: -7px 0 0 -7px; border-radius: 50%;
+  border: 2px solid rgba(255,255,255,.25); border-top-color: #34d399;
+  animation: nbxSpin .7s linear infinite;
+}
+@keyframes nbxSpin { to { transform: rotate(360deg); } }
+
+#nbxProgress {
+  position: fixed; top: 0; left: 0; height: 2px; width: 0%; z-index: 100;
+  background: linear-gradient(90deg, #34d399, #38bdf8);
+  box-shadow: 0 0 8px rgba(52,211,153,.6);
+  opacity: 0; transition: width .25s ease, opacity .3s ease;
+  pointer-events: none;
+}
+#nbxProgress.on { opacity: 1; }

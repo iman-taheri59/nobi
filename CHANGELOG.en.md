@@ -4,6 +4,7 @@
 
 ## Unreleased
 
+- **Click feedback:** Tailwind v4 preflight left `cursor: default` on buttons, so nothing looked clickable. Now: pointer on every control, a visible press, a clear disabled state; plus an activity layer (`nbx-activity`): a 2px progress bar at the top and a spinner on the very button that started a request (`aria-busy`, also blocks double clicks) until it completes. Only click-triggered requests count; background polling never lights the bar.
 - Native `<select>` popups opened with a light background and light text on desktop, so options were unreadable: `color-scheme: dark` on `html` + meta, explicit `option` colours.
 - **Bug fix: the timeframe selector had not rendered since 2026-10-20.** `injectCandleSelector` located its anchor via the chart's `previousElementSibling`; commit `17be1af` wrapped the chart in `<div class="relative">`, the anchor became null and the function returned silently, pinning the dashboard to 15m. It now anchors on `#candleHeader` and a source test guards it.
 - **Header:** name and role removed from the mobile header; the user icon opens a menu with "My account" (jumps to the Account tab) and "Sign out"; the loose sign-out button is gone (desktop shows name/role inside the same button). The language switch shows only the inactive language. `user-round`, `circle-user-round`, `log-out`, `search` added to the offline icon set.

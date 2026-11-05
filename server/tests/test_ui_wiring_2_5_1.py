@@ -50,3 +50,11 @@ def test_signals_toolbar_and_i18n_keys():
 
 def test_header_language_switch_hides_active_language():
     assert "hb.classList.toggle('hidden', on)" in INDEX
+
+
+def test_activity_feedback_is_wired():
+    assert 'id="nbx-activity"' in INDEX
+    assert "window.__nbxActivity" in INDEX
+    css = (ROOT / "assets" / "css" / "components.css").read_text(encoding="utf-8")
+    assert "cursor: pointer" in css and 'button[aria-busy="true"]' in css and "#nbxProgress" in css
+    assert "color-scheme: dark" in (ROOT / "assets" / "css" / "base.css").read_text(encoding="utf-8")

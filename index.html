@@ -7486,6 +7486,51 @@ window.addEventListener('resize', resizeCharts);
 <!-- INLINE-MOBILE-JS-START -->
 <!-- INLINE-MOBILE-JS-END -->
 <!-- Phase 1: live data + TA engine integration -->
+<script id="nbx-activity">
+/* Activity feedback (no framework): wraps fetch once. While a click-triggered request is in
+   flight a 2px bar runs at the top; the button clicked within the last 1.2 s
+   gets `aria-busy` (spinner, no double-click) until its requests finish.
+   An attribute, not a class: many handlers rewrite `className` wholesale.
+   Pure UI — requests, retries and errors are untouched. */
+(function(){
+  if (window.__nbxActivity || typeof window.fetch !== 'function') return;
+  window.__nbxActivity = true;
+  var bar = null, inflight = 0, hideTimer = null, last = null;
+  window.__nbxActivityState = function(){ return { inflight: inflight, last: last && last.el, age: last ? performance.now() - last.t : null }; };
+  function barEl(){ if(!bar){ bar=document.createElement('div'); bar.id='nbxProgress'; bar.setAttribute('aria-hidden','true'); (document.body||document.documentElement).appendChild(bar);} return bar; }
+  function paint(){
+    var b = barEl();
+    clearTimeout(hideTimer);
+    if (inflight > 0){ b.classList.add('on'); b.style.width = Math.min(90, 30 + inflight*15) + '%'; }
+    else { b.style.width='100%'; hideTimer=setTimeout(function(){ b.classList.remove('on'); setTimeout(function(){ b.style.width='0%'; }, 300); }, 150); }
+  }
+  document.addEventListener('click', function(e){
+    var el = e.target && e.target.closest ? e.target.closest('button, [role="button"], [role="menuitem"]') : null;
+    if (!el || el.disabled) return;
+    // navigation / toggles finish instantly; only mark when a request follows
+    last = { el: el, t: performance.now() };
+  }, true);
+  var orig = window.fetch;
+  window.fetch = function(){
+    // Only requests that follow a click count: background polling (scan,
+    // health, prices) must not keep the bar lit forever.
+    var el = null;
+    if (last && performance.now() - last.t < 1200 && document.contains(last.el)) {
+      el = last.el; el.__busy = (el.__busy||0) + 1;
+      if (el.__busy === 1){ el.setAttribute('aria-busy','true'); }
+    }
+    if (!el) return orig.apply(this, arguments);
+    inflight++; paint();
+    var done = function(){
+      inflight = Math.max(0, inflight-1); paint();
+      if (el){ el.__busy--; if (el.__busy <= 0){ el.__busy=0; el.removeAttribute('aria-busy'); } }
+    };
+    var p;
+    try { p = orig.apply(this, arguments); } catch (err) { done(); throw err; }
+    return p.then(function(r){ done(); return r; }, function(err){ done(); throw err; });
+  };
+})();
+</script>
 <script src="nbx-core.js"></script>
 <script src="nbx-app.js"></script>
 <script src="nbx-alerts.js"></script>
