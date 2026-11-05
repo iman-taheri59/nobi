@@ -20,7 +20,7 @@
 | ۲۰۲۶-۱۱-۰۲ | [`2026-11-02-external-analysis.en.md`](2026-11-02-external-analysis.en.md) | **ورودی بیرونی ۲** — تحلیل research parity (۴۸۸ خط) | 2.2.2 |
 | ۲۰۲۶-۱۱-۰۳ | [`2026-11-03-comprehensive-audit.fa.md`](2026-11-03-comprehensive-audit.fa.md) · [en](2026-11-03-comprehensive-audit.en.md) | بازبینی جامع مستقل: فرمول‌های واقعی TA/FA، ریسک، IC، اولویت‌بندی + الحاقیهٔ remediation | `2b5ea13` |
 | ۲۰۲۶-۱۱-۰۴ | [`2026-11-04-review-of-reviews-and-capoy.fa.md`](2026-11-04-review-of-reviews-and-capoy.fa.md) · [en](2026-11-04-review-of-reviews-and-capoy.en.md) | بازبینیِ دو ورودی بیرونی + مشاهدهٔ production + وضعیت remediation (بخش ۹) | `2b5ea13` → `66e7575` |
-| ۲۰۲۶-۱۱-۰۴ | [`probes/independent-probes-2026-11-04.js`](probes/independent-probes-2026-11-04.js) | probe مستقل JS که اعداد بازبینی بالا را تولید کرد | — |
+| ۲۰۲۶-۱۱-۰۴ | [`probes/independent-probes-2026-11-04.js`](probes/independent-probes-2026-11-04.js) · [`probes/capoy-readonly-export-2026-11-04.js`](probes/capoy-readonly-export-2026-11-04.js) | probe مستقل JS که اعداد بازبینی بالا را تولید کرد؛ exporter فقط‌خواندنی حساب Viewer | — |
 | ۲۰۲۶-۱۱-۰۵ | [`../ops/fa/soak-2026-11.md`](../ops/fa/soak-2026-11.md) | دفتر وقایع soak پایداری production (پیش‌شرط‌ها، baseline، چک روزانه) | 2.5.0 |
 
 ## ماتریس یافته‌ها → وضعیت

@@ -20,7 +20,7 @@ file is current and the review is dated.
 | 2026-11-02 | [`2026-11-02-external-analysis.en.md`](2026-11-02-external-analysis.en.md) | **External input 2** — research-parity analysis (488 lines) | 2.2.2 |
 | 2026-11-03 | [`2026-11-03-comprehensive-audit.en.md`](2026-11-03-comprehensive-audit.en.md) · [fa](2026-11-03-comprehensive-audit.fa.md) | Independent comprehensive audit: actual TA/FA formulas, risk, IC, priorities + remediation addendum | `2b5ea13` |
 | 2026-11-04 | [`2026-11-04-review-of-reviews-and-capoy.en.md`](2026-11-04-review-of-reviews-and-capoy.en.md) · [fa](2026-11-04-review-of-reviews-and-capoy.fa.md) | Second pass over the two external inputs + production observation + remediation status (§9) | `2b5ea13` → `66e7575` |
-| 2026-11-04 | [`probes/independent-probes-2026-11-04.js`](probes/independent-probes-2026-11-04.js) | Independent JS probe that produced the numbers above | — |
+| 2026-11-04 | [`probes/independent-probes-2026-11-04.js`](probes/independent-probes-2026-11-04.js) · [`probes/capoy-readonly-export-2026-11-04.js`](probes/capoy-readonly-export-2026-11-04.js) | Independent JS probe behind the numbers above; read-only Viewer exporter | — |
 | 2026-11-05 | [`../ops/en/soak-2026-11.md`](../ops/en/soak-2026-11.md) | Production stability-soak log (preconditions, baseline, daily check) | 2.5.0 |
 
 ## Findings → status matrix

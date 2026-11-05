@@ -134,7 +134,7 @@ Signals, saved backtest reports, and risk state required login. One anonymous un
 
 A Viewer account was selected, but direct IPv4 access from the sandbox timed out and the public fetch tool cannot send login cookies or authorization headers. **Do not send the password.**
 
-Use `/home/user/capoy-readonly-export.js` in the browser console of the authenticated capoy.ir origin. It performs only same-origin GET requests and downloads a JSON file. It exports no cookie, password, or localStorage value; contains no POST/order/settings/logout call; and deliberately excludes Paper positions/metrics because those GET handlers can evaluate and update Paper state. Review and redact private information before sharing the JSON. Sanitized text output is sufficient for operator-only live status/evidence if Viewer receives 403; neither Owner access nor Nobitex API keys are needed.
+Use `docs/reviews/probes/capoy-readonly-export-2026-11-04.js` in the browser console of the authenticated capoy.ir origin. It performs only same-origin GET requests and downloads a JSON file. It exports no cookie, password, or localStorage value; contains no POST/order/settings/logout call; and deliberately excludes Paper positions/metrics because those GET handlers can evaluate and update Paper state. Review and redact private information before sharing the JSON. Sanitized text output is sufficient for operator-only live status/evidence if Viewer receives 403; neither Owner access nor Nobitex API keys are needed.
 
 ---
 
@@ -240,10 +240,10 @@ This section describes `/home/user/nobi` **after remediation**. Earlier probes a
 ## Sources and reproducibility
 
 - Audited checkout: `/home/user/nobi`, commit `2b5ea130f53959d357c5c8a664bfb1a52bd781e0`.
-- Prior full review: `/home/user/nobi-comprehensive-audit-fa-en.md`.
-- Attached documents: `/home/user/uploads/nobi-audit-report.en.md` and `/home/user/uploads/nobi-analysis-en.md`.
-- The independent JS probe is retained at `/home/user/review-inputs/independent-probes.js`; the exact independent numerical results are recorded above because the temporary JSON result file did not persist.
-- Viewer exporter: `/home/user/capoy-readonly-export.js` (syntax checked with Node).
+- Prior full review: `docs/reviews/2026-11-03-comprehensive-audit.fa.md`.
+- Attached documents: `docs/reviews/2026-11-02-external-audit-report.en.md` and `docs/reviews/2026-11-02-external-analysis.en.md`.
+- The independent JS probe is retained at `docs/reviews/probes/independent-probes-2026-11-04.js`; the exact independent numerical results are recorded above because the temporary JSON result file did not persist.
+- Viewer exporter: `docs/reviews/probes/capoy-readonly-export-2026-11-04.js` (syntax checked with Node).
 - Public deployment snapshot: [capoy.ir/api/health](https://capoy.ir/api/health).
 - Official market-data contract: [Nobitex UDF OHLC](https://apidocs.nobitex.ir/market_data/%D8%AF%D8%B1%DB%8C%D8%A7%D9%81%D8%AA-%D8%AF%D8%A7%D8%AF%D9%87-%D9%87%D8%A7%DB%8C-ohlc).
 - Official fee schedule: [Nobitex pricing](https://nobitex.ir/pricing/).

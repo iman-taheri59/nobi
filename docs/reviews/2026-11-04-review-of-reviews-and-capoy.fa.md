@@ -257,7 +257,7 @@ Snapshot عمومی `https://capoy.ir/api/health` با timestamp `2026-11-04T03:
 
 حساب Viewer انتخاب شد، اما اتصال مستقیم sandbox به `capoy.ir` روی IPv4 نیز timeout شد و ابزار fetch عمومی توان ارسال cookie/header ورود ندارد. بنابراین **رمز نباید ارسال شود**.
 
-فایل `/home/user/capoy-readonly-export.js` آماده شده است. پس از login با Viewer، اجرای آن در console همان origin فقط GET same-origin انجام می‌دهد و یک JSON دانلود می‌کند. این فایل:
+فایل `docs/reviews/probes/capoy-readonly-export-2026-11-04.js` آماده شده است. پس از login با Viewer، اجرای آن در console همان origin فقط GET same-origin انجام می‌دهد و یک JSON دانلود می‌کند. این فایل:
 
 - cookie، localStorage یا رمز را نمی‌خواند و در خروجی نمی‌گذارد؛
 - POST، logout، order یا settings call ندارد؛
@@ -393,10 +393,10 @@ Fixture مستقل:
 ## منابع و بازتولیدپذیری
 
 - checkout بررسی‌شده: `/home/user/nobi`، commit `2b5ea130f53959d357c5c8a664bfb1a52bd781e0`.
-- بررسی جامع قبلی: `/home/user/nobi-comprehensive-audit-fa-en.md`.
-- اسناد الصاقی: `/home/user/uploads/nobi-audit-report.en.md` و `/home/user/uploads/nobi-analysis-en.md`.
-- probe مستقل JS در `/home/user/review-inputs/independent-probes.js` باقی مانده است؛ نتایج عددی مستقل به‌دلیل ماندگارنبودن فایل موقت JSON، مستقیماً در متن گزارش ثبت شده‌اند.
-- exporter حساب Viewer: `/home/user/capoy-readonly-export.js`؛ syntax آن با Node بررسی شده است.
+- بررسی جامع قبلی: `docs/reviews/2026-11-03-comprehensive-audit.fa.md`.
+- اسناد الصاقی: `docs/reviews/2026-11-02-external-audit-report.en.md` و `docs/reviews/2026-11-02-external-analysis.en.md`.
+- probe مستقل JS در `docs/reviews/probes/independent-probes-2026-11-04.js` باقی مانده است؛ نتایج عددی مستقل به‌دلیل ماندگارنبودن فایل موقت JSON، مستقیماً در متن گزارش ثبت شده‌اند.
+- exporter حساب Viewer: `docs/reviews/probes/capoy-readonly-export-2026-11-04.js`؛ syntax آن با Node بررسی شده است.
 - snapshot عمومی deployment: [capoy.ir/api/health](https://capoy.ir/api/health).
 - قرارداد رسمی دادهٔ بازار: [مستندات Nobitex UDF OHLC](https://apidocs.nobitex.ir/market_data/%D8%AF%D8%B1%DB%8C%D8%A7%D9%81%D8%AA-%D8%AF%D8%A7%D8%AF%D9%87-%D9%87%D8%A7%DB%8C-ohlc).
 - تعرفهٔ رسمی کارمزد: [Nobitex pricing](https://nobitex.ir/pricing/).
