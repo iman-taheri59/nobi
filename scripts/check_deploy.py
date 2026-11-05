@@ -337,10 +337,33 @@ def check_accounts() -> dict:
     return _row(OK, "accounts", f"{len(users)} account(s), {owners} owner(s)")
 
 
-def check_exchange() -> dict:
-    url = "https://apiv2.nobitex.ir/v2/orderbook/USDTIRT"
+def _service_user_agent() -> str:
+    """The agent the bot itself sends: `TraderBot/` + name, `NBX_UA` honoured.
+
+    Nobitex documents that prefix and its edge refused urllib's default agent
+    with 403 on the production host while the service, sending this one, was
+    answering fine. Import the client's rule rather than copying it; fall back
+    to the documented default if the server package is not importable here.
+    """
     try:
-        with urllib.request.urlopen(url, timeout=12) as r:
+        if str(SERVER) not in sys.path:
+            sys.path.insert(0, str(SERVER))
+        from nobitex_client import resolve_ua
+        return resolve_ua()
+    except Exception:
+        name = (os.getenv("NBX_UA") or "nobi").strip()
+        return name if name.startswith("TraderBot/") else f"TraderBot/{name}"
+
+
+def check_exchange() -> dict:
+    # Same route and same agent as the service, so a FAIL here is about the
+    # network between this host and the exchange, not about the probe.
+    url = "https://apiv2.nobitex.ir/v3/orderbook/USDTIRT"
+    request = urllib.request.Request(
+        url, headers={"User-Agent": _service_user_agent(), "Accept": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=12) as r:
             body = json.loads(r.read().decode("utf-8"))
         if body.get("status") != "ok":
             return _row(FAIL, "exchange", f"Nobitex answered with status={body.get('status')!r}",
@@ -350,7 +373,8 @@ def check_exchange() -> dict:
     except (urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError) as e:
         return _row(FAIL, "exchange", f"{type(e).__name__}: {str(e)[:120]}",
                     "check outbound HTTPS from this server; ArvanCloud's default "
-                    "firewall already allows all outbound")
+                    "firewall already allows all outbound. Compare with the running "
+                    "service: /api/health -> stats.ok/fail and upstream.ok")
 
 
 def classify_bind(addr: str) -> str:

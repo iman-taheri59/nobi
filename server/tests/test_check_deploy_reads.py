@@ -196,3 +196,36 @@ def test_unreadable_unit_without_supplied_values_skips_instead_of_crashing(
     row = check_deploy.check_config()
     assert row["status"] == "skip"
     assert "unreadable by this user" in row["detail"]
+
+
+def test_exchange_probe_speaks_like_the_service(monkeypatch):
+    """The production preflight reported `HTTP Error 403` while the service
+    itself was answering 51/52 exchange calls. The probe used `/v2/orderbook`
+    with urllib's default User-Agent; the service uses `/v3` and the
+    `TraderBot/...` agent Nobitex documents (`NBX_UA` honoured). The probe must
+    make the same request the bot makes, or its verdict is about itself.
+    """
+    seen = {}
+
+    class Reply(io.BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            self.close()
+
+    def fake_urlopen(request, timeout=0):
+        seen["url"] = request.full_url
+        seen["ua"] = request.get_header("User-agent")
+        return Reply(json.dumps({"status": "ok", "bids": [[1, 2]]}).encode())
+
+    monkeypatch.setattr(check_deploy.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setenv("NBX_UA", "capoy-preflight")
+    row = check_deploy.check_exchange()
+    assert row["status"] == "ok", row
+    assert seen["url"] == "https://apiv2.nobitex.ir/v3/orderbook/USDTIRT"
+    assert seen["ua"] == "TraderBot/capoy-preflight"
+
+    monkeypatch.delenv("NBX_UA")
+    check_deploy.check_exchange()
+    assert seen["ua"] == "TraderBot/nobi"

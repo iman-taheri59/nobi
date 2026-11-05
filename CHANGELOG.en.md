@@ -4,6 +4,7 @@
 
 ## Unreleased
 
+- `check_deploy.py` probed the exchange with `/v2/orderbook` and urllib's default User-Agent and got 403 on the host while the service itself was healthy. It now sends the same `/v3` route and the same `TraderBot/...` agent (`NBX_UA` honoured) as the product client, so a failure is about the network rather than the probe.
 - `update_arvan.sh --backup` failed on the real host: a `tar` of the live data directory errored while the candle cache was being rewritten, and a raw copy of a SQLite file under write is not a consistent snapshot anyway. It now runs the guide's documented procedure, `state_backup.py` over SQLite's online backup API, for the three databases (paths from `nobi.env`, no cache, no `.env`). The spurious "half-applied" warning caused by the `v` prefix from `git describe` on every healthy install is fixed too; both are tested by executing the lifted bash fragments.
 
 ## 2.5.0
