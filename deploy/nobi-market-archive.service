@@ -1,0 +1,11 @@
+[Unit]
+Description=nobi raw market archive (stats + orderbook/all), independent of nobi.service
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=nobi
+EnvironmentFile=-/etc/nobi/nobi.env
+ExecStart=/opt/nobi/.venv/bin/python /opt/nobi/scripts/market_archive.py --root /srv/nobi-data/archive --keep-days 120
+Nice=10
+IOSchedulingClass=idle

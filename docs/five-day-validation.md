@@ -150,3 +150,14 @@ systemctl show nobi -p NRestarts -p MemoryPeak; free -m | sed -n 2,3p
 curl -s http://127.0.0.1:8000/api/health | python3 -c "import json,sys;h=json.load(sys.stdin);print(h['scan_loop']['runs'],h['scan_loop']['last_ok'],h['scan_loop']['last_freshness']['symbols'],h['stats'])"
 journalctl -u nobi --since "-24h" --no-pager | grep -ciE "warning|error|traceback"
 ```
+
+### archive خام بازار در طول soak (بدون دست‌زدن به سرویس)
+
+محدودیت‌های ۹.۳/۲ و ۹.۳/۶ بررسی (backtest TA-only، hash ≠ replay) فقط با
+ذخیرهٔ payload خام از امروز به بعد بسته می‌شوند. چون soak هیچ deploy/restart را
+مجاز نمی‌کند، archiver یک فرایند **جدا** است: `scripts/market_archive.py` با
+unitهای `deploy/nobi-market-archive.{service,timer}` هر ۵ دقیقه `market/stats`
+و `v3/orderbook/all` را خام و gzip‌شده در `/srv/nobi-data/archive/YYYY-MM-DD/`
+می‌نویسد (پوشش ~۱۰–۴۰ MB/روز؛ `--keep-days 120`). خطای 403/timeout هم به‌عنوان
+شاهد ثبت می‌شود. این فایل‌ها ورودی composite backtest بعدی هستند؛ تا آن زمان
+«وجود archive» ادعایی دربارهٔ کیفیت استراتژی نیست.
