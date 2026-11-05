@@ -153,3 +153,10 @@ table td {
   border-color: rgba(248, 113, 113, 0.3);
 }
 }
+
+/* Signals page: direction filter segment (same look as the language segment). */
+#sigDirFilter .sigDir.active {
+  background: rgba(52, 211, 153, 0.15);
+  color: rgb(110, 231, 183);
+  border-color: rgba(110, 231, 183, 0.4);
+}

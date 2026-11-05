@@ -45,7 +45,8 @@ FIXTURE = """({direction, name}) => {
   document.querySelector('#userRole').textContent = direction === 'rtl' ? '· مالک' : '· owner';
   const chip = document.querySelector('#userChip');
   chip.classList.remove('hidden'); chip.classList.add('inline-flex');
-  document.querySelector('#logoutBtn').classList.remove('hidden');
+  document.querySelector('#userName').classList.remove('hidden');
+  document.querySelector('#userRole').classList.remove('hidden');
 }"""
 
 
@@ -90,7 +91,7 @@ def main() -> int:
 
                             page.route("**/*", serve)
                             page.goto("https://layout.test/", wait_until="load")
-                            page.locator("#mobilePkgBtn").wait_for(state="attached")
+                            page.locator("#userMenuBtn").wait_for(state="attached")
                             page.evaluate(FIXTURE, {"direction": direction, "name": name})
                             data = page.evaluate(PROBE)
                             context = (source, direction, width, name, data)

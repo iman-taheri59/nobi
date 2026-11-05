@@ -58,7 +58,6 @@ import live_api
 import nobitex_metadata
 import notify
 import operations_api
-import package_bundle
 import paper_trading
 import price_alerts
 import queue_policy
@@ -5898,31 +5897,3 @@ async def serve_mobile_html():
     return FileResponse(target if target.exists() else REPO_ROOT / "index.html")
 
 
-@app.get("/download/nobitex-mobile.html", include_in_schema=False)
-async def download_mobile_html():
-    target = REPO_ROOT / "nobitex-mobile.html"
-    return FileResponse(
-        target if target.exists() else REPO_ROOT / "index.html",
-        media_type="text/html",
-        filename="nobiTrader-mobile.html",
-    )
-
-
-@app.get("/download/nobitex-trader-robat.zip", include_in_schema=False)
-async def download_package_zip():
-    """A snapshot of the running checkout, never a stale committed binary.
-
-    The old ``nobitex-trader-robat.zip`` in the repository was dated
-    2026-10-19 and still claimed "100% offline"; users downloaded code that
-    predated weeks of security fixes. Building it here keeps the download
-    honest. ``package_bundle`` refuses .env files, databases and caches.
-    """
-    data = await asyncio.to_thread(package_bundle.build_archive)
-    return Response(
-        content=data,
-        media_type="application/zip",
-        headers={
-            "Content-Disposition": 'attachment; filename="nobitex-trader-robat.zip"',
-            "Cache-Control": "no-store",
-        },
-    )

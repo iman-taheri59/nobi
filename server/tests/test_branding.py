@@ -6,9 +6,7 @@ import re
 from pathlib import Path
 
 import pytest
-from fastapi.testclient import TestClient
 
-import auth
 import main
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -42,20 +40,10 @@ def test_api_documentation_title():
     assert main.app.openapi()["info"]["title"] == NAME
 
 
-def test_existing_mobile_url_downloads_with_new_product_filename(tmp_path, monkeypatch):
-    monkeypatch.setattr(auth, "AUTH_DB", tmp_path / "auth.db")
-    auth.reset_caches()
-    response = TestClient(main.app).get("/download/nobitex-mobile.html")
-    assert response.status_code == 200
-    assert 'filename="nobiTrader-mobile.html"' in response.headers["content-disposition"]
-    assert "<title>nobiTrader</title>" in response.text
-    auth.reset_caches()
-
-
 def test_exchange_names_and_service_identity_are_not_renamed():
     text = (ROOT / "nbx-app.js").read_text(encoding="utf-8")
     assert "Live Nobitex data" in text
-    assert "/download/nobitex-mobile.html" in text
+    assert "/download/" not in text, "the mobile-package download was removed in 2.5.1"
     unit = (ROOT / "deploy/nobi.service").read_text(encoding="utf-8")
     assert "Description=nobiTrader trading dashboard (FastAPI)" in unit
     assert "WorkingDirectory=/opt/nobi/server" in unit

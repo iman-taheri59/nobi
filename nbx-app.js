@@ -215,98 +215,6 @@
       });
     }
 
-    /* Inject Mobile Package button in header */
-    const clockEl = $('clock');
-    if (clockEl && !$('mobilePkgBtn')) {
-      const btn = document.createElement('button');
-      btn.id = 'mobilePkgBtn';
-      btn.className = 'chip text-sky-300 border-sky-400/30 hover:bg-sky-400/10 cursor-pointer px-2.5 py-1.5';
-      btn.innerHTML = `<i data-lucide="smartphone" class="w-3.5 h-3.5"></i> <span id="mobilePkgBtnTxt" class="hidden sm:inline">${LANG === 'fa' ? 'پکیج موبایل' : 'Mobile Pkg'}</span>`;
-      clockEl.parentElement.insertBefore(btn, clockEl);
-      btn.onclick = openMobileModal;
-    }
-  }
-
-  function openMobileModal() {
-    let m = $('mobilePkgModal');
-    if (!m) {
-      m = document.createElement('div');
-      m.id = 'mobilePkgModal';
-      m.className = 'fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm';
-      document.body.appendChild(m);
-    }
-    const isServer = location.protocol === 'http:' || location.protocol === 'https:';
-    m.classList.remove('hidden');
-    m.classList.add('flex');
-    m.innerHTML = `
-      <div class="glass max-w-lg w-full p-5 sm:p-6 space-y-4 border border-sky-400/30">
-        <div class="flex items-center justify-between">
-          <div class="flex items-center gap-2.5">
-            <div class="w-9 h-9 rounded-xl bg-sky-400/15 border border-sky-300/30 flex items-center justify-center text-sky-300">
-              <i data-lucide="smartphone" class="w-5 h-5"></i>
-            </div>
-            <div>
-              <div class="font-extrabold text-sm sm:text-base text-sky-300">${LANG === 'fa' ? 'دریافت و اجرای پیش‌نمایش روی گوشی موبایل' : 'Mobile Preview Package'}</div>
-              <div class="text-[11px] text-zinc-400">${LANG === 'fa' ? 'بدون نیاز به نصب پایتون یا سرور — ۱۰۰٪ مستقل و آفلاین/آنلاین' : 'Zero server required — 100% standalone on Android & iOS'}</div>
-            </div>
-          </div>
-          <button id="closeMobileModal" class="p-1.5 rounded-lg hover:bg-white/10 text-zinc-400"><i data-lucide="x" class="w-4.5 h-4.5"></i></button>
-        </div>
-
-        <div class="rounded-xl bg-white/[.03] border border-white/10 p-3.5 text-xs space-y-2 leading-6 text-zinc-300">
-          <div class="font-bold text-emerald-300">${LANG === 'fa' ? 'قابلیت‌های نسخه موبایل:' : 'Mobile Package Highlights:'}</div>
-          <ul class="list-disc ps-4 space-y-1 text-[11px] text-zinc-400">
-            <li>${LANG === 'fa' ? 'تمامی استایل‌ها، آیکون‌ها، چارت‌ها و موتورهای TA، FA، مدیریت ریسک، بک‌تست Walk-Forward و گرید سرچ درون خود فایل تعبیه شده‌اند.' : 'All styles, charts, TA/FA engines, Risk, Walk-Forward Backtest & Grid Search are embedded.'}</li>
-            <li>${LANG === 'fa' ? 'سازگار با باز شدن مستقیم از فایل‌منیجر گوشی (Android / iOS Files)، تلگرام، کروم و سافاری حتی در حالت آفلاین.' : 'Works directly from Android/iOS Files, Telegram, Chrome, and Safari even offline.'}</li>
-          </ul>
-        </div>
-
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-          <a id="dlSingleHtmlBtn" href="${isServer ? '/download/nobitex-mobile.html' : '#'}" download="nobiTrader-mobile.html"
-             class="flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-xs font-bold bg-emerald-400/15 border border-emerald-300/40 text-emerald-300 hover:bg-emerald-400/25 transition text-center">
-            <i data-lucide="download" class="w-4 h-4"></i>
-            <span>${LANG === 'fa' ? 'دانلود تک‌فایل موبایل (.html)' : 'Download Single-File (.html)'}</span>
-          </a>
-          ${
-            isServer
-              ? `<a href="/download/nobitex-trader-robat.zip" download="nobitex-trader-robat.zip"
-                   class="flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-xs font-bold bg-sky-400/15 border border-sky-300/40 text-sky-300 hover:bg-sky-400/25 transition text-center">
-                  <i data-lucide="download" class="w-4 h-4"></i>
-                  <span>${LANG === 'fa' ? 'دانلود کل پکیج (.zip)' : 'Download Full ZIP (.zip)'}</span>
-                </a>`
-              : `<button id="dlLocalBlobBtn" class="flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-xs font-bold bg-sky-400/15 border border-sky-300/40 text-sky-300">
-                  <i data-lucide="download" class="w-4 h-4"></i>
-                  <span>${LANG === 'fa' ? 'ذخیره کپی آفلاین (.html)' : 'Save Offline Copy (.html)'}</span>
-                </button>`
-          }
-        </div>
-      </div>
-    `;
-    if (typeof refreshIcons === 'function') refreshIcons();
-    $('closeMobileModal').onclick = () => {
-      m.classList.add('hidden');
-      m.classList.remove('flex');
-    };
-    m.onclick = (e) => {
-      if (e.target === m) {
-        m.classList.add('hidden');
-        m.classList.remove('flex');
-      }
-    };
-    if (!isServer) {
-      const saveFn = (e) => {
-        e.preventDefault();
-        m.classList.add('hidden');
-        const htmlContent = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
-        const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
-        a.download = 'nobiTrader-mobile.html';
-        a.click();
-      };
-      if ($('dlSingleHtmlBtn')) $('dlSingleHtmlBtn').onclick = saveFn;
-      if ($('dlLocalBlobBtn')) $('dlLocalBlobBtn').onclick = saveFn;
-    }
   }
 
   /* ---------- index.html i18n augmentation ---------- */
@@ -385,7 +293,11 @@
 
   function injectCandleSelector() {
     if ($('candleChips')) return;
-    const anchor = $('candleChart')?.previousElementSibling;
+    // The chart sits inside a `.relative` wrapper (for the unavailable overlay),
+    // so `previousElementSibling` of the chart is null and the selector was
+    // silently never rendered (2026-10-20 → 2026-11-05). Anchor on the card
+    // header by id; a test guards `#candleChips` now.
+    const anchor = $('candleHeader') || $('candleChart')?.parentElement?.previousElementSibling;
     if (!anchor) return;
     const div = document.createElement('div');
     div.id = 'candleChips';
@@ -843,6 +755,45 @@
    * the scan, so it lives here with a name and can be lifted by one click. */
   const SIG_ROW_LIMIT = 15;
 
+  /* Search + direction filter above the list. Pure view state: the scan,
+   * the ranks and the queue are untouched, so "3 of 39" is always the
+   * ranked list of this scan narrowed by text/direction. */
+  const sigFilter = { q: '', dir: '' };
+  function applySignalFilter(rows) {
+    const q = sigFilter.q.trim().toUpperCase().replace(/[\s/_-]/g, '');
+    return rows.filter((s) => {
+      if (sigFilter.dir && String(s.direction || '').toUpperCase() !== sigFilter.dir) return false;
+      if (!q) return true;
+      const sym = String(s.symbol || '').toUpperCase();
+      const base = sym.replace(/(IRT|USDT)$/, '');
+      return sym.includes(q) || base.includes(q);
+    });
+  }
+  function bindSignalFilter() {
+    const input = $('sigSearch');
+    if (input && !input.dataset.bound) {
+      input.dataset.bound = '1';
+      let timer = null;
+      input.addEventListener('input', () => {
+        clearTimeout(timer);
+        timer = setTimeout(() => { sigFilter.q = input.value || ''; renderSignalsLive(); }, 120);
+      });
+    }
+    document.querySelectorAll('#sigDirFilter .sigDir').forEach((b) => {
+      if (b.dataset.bound) return;
+      b.dataset.bound = '1';
+      b.onclick = () => {
+        sigFilter.dir = b.dataset.dir || '';
+        document.querySelectorAll('#sigDirFilter .sigDir').forEach((x) => {
+          const on = (x.dataset.dir || '') === sigFilter.dir;
+          x.classList.toggle('active', on);
+          x.classList.toggle('text-zinc-400', !on);
+        });
+        renderSignalsLive();
+      };
+    });
+  }
+
   window.sigShowAll = function sigShowAll(show) {
     live.showAll = !!show;
     renderSignalsLive();
@@ -858,7 +809,19 @@
   function renderSignalsLive() {
     const list = $('sigList');
     if (!list) return;
-    const ranked = live.ranked;
+    bindSignalFilter();
+    const allRanked = live.ranked;
+    const ranked = applySignalFilter(allRanked);
+    const countEl = $('sigFilterCount');
+    if (countEl) {
+      const narrowed = ranked.length !== allRanked.length;
+      countEl.classList.toggle('hidden', !narrowed);
+      if (narrowed) countEl.textContent = inFa('sg.filterCount').replace('{n}', faNum(ranked.length)).replace('{t}', faNum(allRanked.length));
+    }
+    if (allRanked.length && !ranked.length) {
+      list.innerHTML = `<div class="glass p-5 text-center text-[11px] text-zinc-400">${esc(inFa('sg.filterEmpty'))}</div>`;
+      return;
+    }
     if (!ranked.length) {
       // Two very different reasons for an empty list: a scan still running, or
       // an exchange we cannot reach. The second one must look like an error,
@@ -1386,17 +1349,14 @@
       name.textContent = state.user.username;
       role.textContent = '· ' + roleLabel(state.user.role);
       chip.classList.remove('hidden');
-      chip.classList.add('inline-flex');
-      chip.title = state.user.username + ' — ' + roleLabel(state.user.role);
+      const menuBtn = $('userMenuBtn');
+      if (menuBtn) menuBtn.title = state.user.username + ' — ' + roleLabel(state.user.role);
       document.documentElement.dataset.canMutate = state.can_mutate ? '1' : '0';
       document.documentElement.dataset.signalReview =
         state.capabilities && state.capabilities.signal_intelligence_review ? '1' : '0';
       const auditPanel = $('operatorAuditPanel');
       if (auditPanel) auditPanel.classList.toggle('hidden', !state.can_mutate);
-      if (out) {
-        out.classList.remove('hidden');
-        out.title = inFa('auth.logout');
-      }
+      if (out) out.title = inFa('auth.logout');
       // Upstream health has its own alert and repaint cycle. Keep role state
       // independent so a healthy scan cannot hide the Viewer's read-only notice.
       const roleBanner = $('roleBanner'), roleMessage = $('roleBannerMsg');
@@ -1858,6 +1818,23 @@
   function bindLogout() {
     const out = $('logoutBtn');
     if (out) out.onclick = () => AUTH.logout();
+    const menuBtn = $('userMenuBtn'), menu = $('userMenu');
+    if (menuBtn && menu && !menuBtn.dataset.bound) {
+      menuBtn.dataset.bound = '1';
+      const setOpen = (open) => {
+        menu.classList.toggle('hidden', !open);
+        menuBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+      };
+      menuBtn.onclick = (e) => { e.stopPropagation(); setOpen(menu.classList.contains('hidden')); };
+      document.addEventListener('click', (e) => { if (!menu.contains(e.target)) setOpen(false); });
+      document.addEventListener('keydown', (e) => { if (e.key === 'Escape') setOpen(false); });
+      const acct = $('userMenuAccount');
+      if (acct) acct.onclick = () => {
+        setOpen(false);
+        const nav = document.querySelector('.navbtn[data-tab="account"]');
+        if (nav) nav.click();
+      };
+    }
     document.querySelectorAll('.navbtn[data-tab="account"]').forEach((b) => {
       b.addEventListener('click', () => setTimeout(renderAccount, 120));
     });

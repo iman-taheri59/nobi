@@ -299,19 +299,25 @@
     <div class="ms-auto flex items-center gap-1.5 shrink-0">
       <span class="hidden xl:inline-flex chip num" id="clock">--:--:--</span>
       <span id="apiChip" class="hidden 2xl:inline-flex chip num text-zinc-400 border-white/10" title=""><i data-lucide="wifi-off" class="w-3.5 h-3.5"></i> <span>API: —</span></span>
-      <!-- language switch (always visible) -->
+      <!-- language switch: only the inactive language is rendered (refreshLangBtns hides the active one) -->
       <div class="langseg flex items-center p-0.5 rounded-xl bg-white/5 border border-white/10 shrink-0">
         <button id="langFa" class="num px-2.5 py-1.5 rounded-lg text-[11px] font-bold border border-transparent transition">فا</button>
         <button id="langEn" class="num px-2.5 py-1.5 rounded-lg text-[11px] font-bold border border-transparent text-zinc-400 transition">EN</button>
       </div>
-      <span id="userChip" class="hidden items-center gap-1.5 chip shrink-0" title="">
-        <i data-lucide="user-round" class="w-3.5 h-3.5 text-emerald-300"></i>
-        <span id="userName" class="num max-w-[100px] truncate"></span>
-        <span id="userRole" class="text-zinc-500"></span>
-      </span>
-      <button id="logoutBtn" class="hidden p-2 rounded-lg hover:bg-white/5 shrink-0" aria-label="logout" title="">
-        <i data-lucide="log-out" class="w-4.5 h-4.5 text-zinc-400"></i>
-      </button>
+      <!-- user menu: one icon on every width; name + role only on lg+. The
+           account page and sign-out live in the dropdown, never as loose
+           header buttons (they did not fit a 360px phone). -->
+      <div id="userChip" class="hidden relative shrink-0">
+        <button id="userMenuBtn" type="button" class="flex items-center gap-1.5 p-2 rounded-lg hover:bg-white/5" aria-haspopup="menu" aria-expanded="false" aria-controls="userMenu" title="">
+          <i data-lucide="user-round" class="w-4.5 h-4.5 text-emerald-300"></i>
+          <span id="userName" class="hidden lg:inline num max-w-[100px] truncate text-[11px] font-bold"></span>
+          <span id="userRole" class="hidden lg:inline text-[11px] text-zinc-500"></span>
+        </button>
+        <div id="userMenu" class="hidden absolute top-full end-0 mt-1 min-w-[160px] rounded-xl border border-white/10 bg-[#101014] shadow-2xl p-1 z-50" role="menu">
+          <button id="userMenuAccount" type="button" role="menuitem" class="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-zinc-200 hover:bg-white/5 text-start"><i data-lucide="circle-user-round" class="w-4 h-4 text-emerald-300"></i> <span data-i18n="page.account.title"></span></button>
+          <button id="logoutBtn" type="button" role="menuitem" class="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-red-300 hover:bg-white/5 text-start"><i data-lucide="log-out" class="w-4 h-4"></i> <span data-i18n="auth.logout"></span></button>
+        </div>
+      </div>
       <button id="alertsBtn" type="button" class="p-2 rounded-lg hover:bg-white/5 relative shrink-0" aria-label="alerts" aria-haspopup="dialog" aria-controls="alertsModal">
         <i data-lucide="bell" class="w-4.5 h-4.5 text-zinc-300"></i>
         <span id="alertsBadge" class="hidden absolute -top-1 -end-1 min-w-4 h-4 px-1 rounded-full bg-sky-400 text-[9px] leading-4 text-zinc-950 font-bold num" aria-hidden="true"></span>
@@ -527,7 +533,7 @@
 
       <div class="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4">
         <div class="glass p-4 sm:p-5 lg:col-span-2">
-          <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+          <div id="candleHeader" class="flex flex-wrap items-center justify-between gap-2 mb-3">
             <div class="font-bold text-[13px] sm:text-sm flex flex-wrap items-center gap-2">BTC/IRT
               <span class="chip num text-zinc-500" id="lastPrice">—</span>
               <span class="chip text-zinc-500 num" id="lastChg">—</span>
@@ -598,6 +604,20 @@
       </div>
       <div class="glass p-3 space-y-2 text-[11px] text-zinc-400 leading-6" aria-live="polite">
         <p id="sgReceiptSummary"></p><p id="sgFaProvenanceSummary"></p><p id="sgGateSummary"></p>
+      </div>
+      <div class="glass p-3 flex flex-wrap items-center gap-2" id="sigToolbar">
+        <label class="sr-only" for="sigSearch" data-i18n="sg.search"></label>
+        <div class="relative flex-1 min-w-[160px]">
+          <i data-lucide="search" class="w-4 h-4 text-zinc-500 absolute top-1/2 -translate-y-1/2 start-3 pointer-events-none"></i>
+          <input id="sigSearch" type="search" autocomplete="off" spellcheck="false" class="auth-input !ps-9" placeholder="BTC, ETHUSDT, …" data-i18n-ph="sg.searchPh">
+        </div>
+        <div class="flex gap-1 rounded-xl bg-white/5 border border-white/10 p-0.5" role="group" id="sigDirFilter">
+          <button type="button" data-dir="" class="sigDir px-2.5 py-1.5 rounded-lg text-[11px] font-bold border border-transparent transition active" data-i18n="sg.filterAll"></button>
+          <button type="button" data-dir="LONG" class="sigDir px-2.5 py-1.5 rounded-lg text-[11px] font-bold border border-transparent text-zinc-400 transition" data-i18n="sg.filterLong"></button>
+          <button type="button" data-dir="NEUTRAL" class="sigDir px-2.5 py-1.5 rounded-lg text-[11px] font-bold border border-transparent text-zinc-400 transition" data-i18n="sg.filterNeutral"></button>
+          <button type="button" data-dir="EXIT" class="sigDir px-2.5 py-1.5 rounded-lg text-[11px] font-bold border border-transparent text-zinc-400 transition" data-i18n="sg.filterExit"></button>
+        </div>
+        <span id="sigFilterCount" class="chip num text-zinc-400 hidden"></span>
       </div>
       <div id="sigList" class="space-y-3"></div>
       <div class="glass p-4 sm:p-5">
@@ -1731,7 +1751,7 @@ const T = {
     'setup.title':'راه‌اندازی نخست nobiTrader','setup.sub':'توکن کنسول را وارد و حساب مالک را ایجاد کنید.',
     'auth.code':'کد دعوت','auth.newuser':'نام کاربری دلخواه','auth.newpass':'رمز عبور (دست‌کم ۱۲ کاراکتر)',
     'auth.register':'ساخت حساب','auth.back':'بازگشت','auth.haveCode':'کد دعوت دارم',
-    'auth.logout':'خروج','auth.err.bad':'نام کاربری یا رمز عبور درست نیست',
+    'auth.logout':'خروج','sg.search':'جستجوی نماد','sg.searchPh':'جستجوی نماد (BTC، ETHUSDT…)','sg.filterAll':'همه','sg.filterLong':'خرید','sg.filterNeutral':'خنثی','sg.filterExit':'خروج','sg.filterCount':'{n} از {t}','sg.filterEmpty':'هیچ سیگنالی با این فیلتر نیست','auth.err.bad':'نام کاربری یا رمز عبور درست نیست',
     'auth.err.net':'سرور پاسخ نداد؛ اتصال یا وضعیت سرویس را بررسی کنید',
     'auth.err.invite':'کد دعوت معتبر نیست یا منقضی شده است',
     'auth.err.noowner':'این نصب هنوز مالک ندارد؛ روی سرور scripts/manage_users.py را اجرا کنید',
@@ -2044,7 +2064,7 @@ const T = {
     'setup.title':'First-run nobiTrader setup','setup.sub':'Enter the console token and create the owner account.',
     'auth.code':'Invite code','auth.newuser':'Choose a username','auth.newpass':'Password (at least 12 characters)',
     'auth.register':'Create account','auth.back':'Back','auth.haveCode':'I have an invite code',
-    'auth.logout':'Sign out','auth.err.bad':'Wrong username or password',
+    'auth.logout':'Sign out','sg.search':'Search symbol','sg.searchPh':'Search symbol (BTC, ETHUSDT…)','sg.filterAll':'All','sg.filterLong':'Long','sg.filterNeutral':'Neutral','sg.filterExit':'Exit','sg.filterCount':'{n} of {t}','sg.filterEmpty':'No signal matches this filter','auth.err.bad':'Wrong username or password',
     'auth.err.net':'The server did not answer; check the connection or the service',
     'auth.err.invite':'That invite is not valid, or it expired',
     'auth.err.noowner':'This install has no owner yet; run scripts/manage_users.py on the server',
@@ -2344,6 +2364,10 @@ window.NBXDisplay = { dateLocale, money:fmtMoney, price:fmtMarketPrice, qty:fmtQ
 const L = o => localizeText((typeof o === 'object' && o !== null) ? (o[LANG] ?? o.fa ?? '') : o);
 
 const OFFLINE_ICONS = {
+  'user-round': "<circle cx='12' cy='8' r='5'/><path d='M20 21a8 8 0 0 0-16 0'/>",
+  'circle-user-round': "<path d='M18 20a6 6 0 0 0-12 0'/><circle cx='12' cy='10' r='4'/><circle cx='12' cy='12' r='10'/>",
+  'log-out': "<path d='m16 17 5-5-5-5'/><path d='M21 12H9'/><path d='M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4'/>",
+  'search': "<circle cx='11' cy='11' r='8'/><path d='m21 21-4.3-4.3'/>",
   'activity': "<path d='M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2'/>",
   'badge-check': "<path d='M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76Z'/><path d='m9 12 2 2 4-4'/>",
   'banknote': "<rect width='20' height='12' x='2' y='6' rx='2'/><circle cx='12' cy='12' r='2'/><path d='M6 12h.01M18 12h.01'/>",
@@ -2560,7 +2584,8 @@ function refreshLangBtns(){
   const activeCls = 'bg-emerald-400/15 text-emerald-300 border-emerald-300/40';
   [['langFa','mLangFa','fa'],['langEn','mLangEn','en']].forEach(([h,m,l])=>{
     const on = LANG===l;
-    const hb = byId(h); if(hb){ hb.classList.toggle('active', on); hb.classList.remove('text-zinc-400'); if(!on) hb.classList.add('text-zinc-400'); }
+    // Header shows only the language you can switch *to*; the sidebar keeps both.
+    const hb = byId(h); if(hb){ hb.classList.toggle('active', on); hb.classList.toggle('hidden', on); hb.classList.remove('text-zinc-400'); if(!on) hb.classList.add('text-zinc-400'); hb.title = on ? '' : (l==='fa' ? 'فارسی' : 'English'); }
     const mb = byId(m); if(mb){ mb.className = 'px-3 py-2.5 rounded-lg text-xs font-bold border transition ' + (on ? activeCls : 'bg-white/[.03] border-white/10 text-zinc-400'); }
   });
 }
