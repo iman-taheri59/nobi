@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>راهنمای کامل استفاده از nobi — برای مبتدیان</title>
+<style>
+  :root{--bg:#0b0f14;--panel:#121923;--panel2:#18222e;--line:#243040;--text:#e6edf3;--muted:#9aa7b4;--accent:#22c55e;--accent2:#38bdf8;--warn:#f59e0b;--danger:#ef4444;--violet:#a78bfa}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:Vazirmatn,Tahoma,"Segoe UI",system-ui,sans-serif;line-height:1.9;font-size:16px}
+  header{background:linear-gradient(135deg,#0f172a,#0b2a1f);border-bottom:1px solid var(--line);padding:40px 24px}
+  header h1{margin:0 0 8px;font-size:30px}
+  header p{margin:0;color:var(--muted);max-width:900px}
+  .wrap{max-width:1040px;margin:0 auto;padding:24px}
+  nav.toc{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px 22px;margin:24px 0}
+  nav.toc ol{margin:0;padding-inline-start:22px;columns:2;column-gap:32px}
+  nav.toc li{break-inside:avoid;margin:4px 0}
+  a{color:var(--accent2);text-decoration:none}a:hover{text-decoration:underline}
+  h2{font-size:24px;margin:56px 0 12px;padding-top:12px;border-top:1px solid var(--line);scroll-margin-top:16px}
+  h3{font-size:19px;margin:28px 0 8px;color:#dbeafe}
+  p,li{color:#d6dee6}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px 22px;margin:16px 0}
+  .tip{border-right:4px solid var(--accent);background:#0f1f17}
+  .warn{border-right:4px solid var(--warn);background:#221a0a}
+  .danger{border-right:4px solid var(--danger);background:#24100f}
+  .info{border-right:4px solid var(--accent2);background:#0b1a24}
+  .card b.tag{display:inline-block;font-size:12px;padding:1px 8px;border-radius:999px;background:#1f2a37;color:#cbd5e1;margin-inline-end:6px}
+  figure{margin:18px 0;background:var(--panel2);border:1px solid var(--line);border-radius:14px;padding:14px;overflow:auto}
+  figure svg{display:block;max-width:100%;height:auto;margin:0 auto}
+  figcaption{color:var(--muted);font-size:13px;margin-top:8px;text-align:center}
+  table{width:100%;border-collapse:collapse;margin:14px 0;font-size:15px}
+  th,td{border:1px solid var(--line);padding:8px 10px;text-align:right;vertical-align:top}
+  th{background:#1a2432;color:#e2e8f0}
+  code,kbd{font-family:ui-monospace,Consolas,monospace;background:#1b2531;padding:1px 6px;border-radius:6px;font-size:14px;direction:ltr;display:inline-block}
+  .num{font-family:ui-monospace,Consolas,monospace;direction:ltr;display:inline-block}
+  .glossary dt{font-weight:700;color:#fff;margin-top:10px}.glossary dd{margin:0 0 6px;color:#cbd5e1}
+  .steps{counter-reset:s}.steps>li{list-style:none;position:relative;padding-inline-start:44px;margin:12px 0}
+  .steps>li::before{counter-increment:s;content:counter(s);position:absolute;right:0;top:4px;width:30px;height:30px;border-radius:50%;background:var(--accent);color:#04120a;font-weight:800;display:flex;align-items:center;justify-content:center}
+  footer{color:var(--muted);font-size:13px;text-align:center;padding:40px 16px;border-top:1px solid var(--line);margin-top:60px}
+  @media (max-width:700px){nav.toc ol{columns:1}body{font-size:15px}}
+  @media print{body{background:#fff;color:#000}.card,figure,nav.toc{background:#fff;border-color:#999}p,li,td{color:#000}}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <h1>راهنمای کامل استفاده از nobi</h1>
+    <p>داشبورد تحلیل و مدیریت معاملات رمزارز روی صرافی نوبیتکس — نوشته‌شده برای کسی که تازه با تحلیل تکنیکال و معاملهٔ رمزارز آشنا می‌شود. نسخهٔ راهنما: 2.5.0 (آبان ۱۴۰۵).</p>
+  </div>
+</header>
+
+<div class="wrap">
+
+<div class="card danger">
+  <b>پیش از هر چیز، سه حقیقت که nobi خودش هم روی صفحه می‌نویسد:</b>
+  <ol style="margin:8px 0 0">
+    <li>nobi یک <b>ابزار اندازه‌گیری و انضباط</b> است، نه ماشین پول‌سازی. هیچ امتیاز، نمودار یا گزارشی در آن سود آینده را تضمین نمی‌کند.</li>
+    <li>به‌صورت پیش‌فرض nobi <b>هیچ سفارش واقعی ثبت نمی‌کند</b>. همهٔ معاملات در «حساب کاغذی» (Paper) شبیه‌سازی می‌شوند و فعال‌کردن معاملهٔ واقعی چند قفل پشت‌سرهم دارد.</li>
+    <li>آمار فعلی سیستم (در لحظهٔ نوشتن این راهنما) نشان می‌دهد سیگنال‌ها هنوز <b>لبهٔ آماری اثبات‌شده ندارند</b>. این را خودتان در تب «گزارش عملکرد» خواهید دید. با پول واقعی وارد نشوید مگر این که این تصویر تغییر کند و شما دلیلش را بفهمید.</li>
+  </ol>
+</div>
+
+<nav class="toc">
+  <b>فهرست</b>
+  <ol>
+    <li><a href="#what">nobi چیست و چه کاری انجام می‌دهد؟</a></li>
+    <li><a href="#basics">الفبای بازار: کندل، تایم‌فریم، روند</a></li>
+    <li><a href="#login">ورود، نقش‌ها و اولین نگاه</a></li>
+    <li><a href="#layout">نقشهٔ صفحه</a></li>
+    <li><a href="#overview">تب نمای کلی</a></li>
+    <li><a href="#signals">تب کاوشگر سیگنال — قلب nobi</a></li>
+    <li><a href="#score">امتیاز سیگنال چگونه ساخته می‌شود؟</a></li>
+    <li><a href="#risk">ریسک: حد ضرر، R و اندازهٔ موقعیت</a></li>
+    <li><a href="#desk">میز معاملات دستی و حالت‌های اجرا</a></li>
+    <li><a href="#paper">حساب کاغذی (Paper)</a></li>
+    <li><a href="#performance">گزارش عملکرد و هوشمندی سیگنال</a></li>
+    <li><a href="#fa">فاندامنتال</a></li>
+    <li><a href="#alerts">هشدارهای قیمت و پرمیوم</a></li>
+    <li><a href="#backtest">آزمایشگاه بک‌تست</a></li>
+    <li><a href="#riskpage">تب ریسک و کنترل</a></li>
+    <li><a href="#live">معاملهٔ واقعی: قفل‌ها و پیش‌شرط‌ها</a></li>
+    <li><a href="#errors">لاگ خطاها، تنظیمات و حساب</a></li>
+    <li><a href="#routine">روال پیشنهادی روزانه برای مبتدی</a></li>
+    <li><a href="#mistakes">اشتباهات رایج</a></li>
+    <li><a href="#glossary">واژه‌نامه</a></li>
+  </ol>
+</nav>
+
+<!-- ============================================================ -->
+<h2 id="what">۱. nobi چیست و چه کاری انجام می‌دهد؟</h2>
+<p>nobi هر پنج دقیقه قیمت‌های نوبیتکس را می‌خواند، بازارهای کم‌عمق را کنار می‌گذارد، برای هر نماد باقی‌مانده یک <b>امتیاز ۰ تا ۱۰۰</b> حساب می‌کند، نتیجه را در یک دفترچه (ژورنال) ثبت می‌کند و بعداً برمی‌گردد و بررسی می‌کند «آن سیگنال درست از آب درآمد یا نه». شما این چرخه را در داشبورد می‌بینید و تصمیم می‌گیرید.</p>
+
+<figure>
+<svg viewBox="0 0 980 230" xmlns="http://www.w3.org/2000/svg" font-family="Vazirmatn,Tahoma,sans-serif" font-size="14">
+  <defs><marker id="ar" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#64748b"/></marker></defs>
+  <g>
+    <rect x="820" y="40" width="140" height="70" rx="12" fill="#1e293b" stroke="#334155"/><text x="890" y="70" text-anchor="middle" fill="#e2e8f0">نوبیتکس</text><text x="890" y="92" text-anchor="middle" fill="#94a3b8" font-size="12">قیمت و دفتر سفارش</text>
+    <line x1="820" y1="75" x2="730" y2="75" stroke="#64748b" stroke-width="2" marker-end="url(#ar)"/>
+    <rect x="590" y="40" width="140" height="70" rx="12" fill="#1e293b" stroke="#334155"/><text x="660" y="70" text-anchor="middle" fill="#e2e8f0">فیلتر نقدینگی</text><text x="660" y="92" text-anchor="middle" fill="#94a3b8" font-size="12">~۲۴۰ → ~۴۰ نماد</text>
+    <line x1="590" y1="75" x2="500" y2="75" stroke="#64748b" stroke-width="2" marker-end="url(#ar)"/>
+    <rect x="360" y="40" width="140" height="70" rx="12" fill="#14532d" stroke="#22c55e"/><text x="430" y="70" text-anchor="middle" fill="#e2e8f0">امتیازدهی TA</text><text x="430" y="92" text-anchor="middle" fill="#bbf7d0" font-size="12">روند، مومنتوم، حجم، ساختار</text>
+    <line x1="360" y1="75" x2="270" y2="75" stroke="#64748b" stroke-width="2" marker-end="url(#ar)"/>
+    <rect x="130" y="40" width="140" height="70" rx="12" fill="#1e293b" stroke="#334155"/><text x="200" y="70" text-anchor="middle" fill="#e2e8f0">ژورنال</text><text x="200" y="92" text-anchor="middle" fill="#94a3b8" font-size="12">ثبت هر سیگنال</text>
+    <line x1="200" y1="110" x2="200" y2="150" stroke="#64748b" stroke-width="2" marker-end="url(#ar)"/>
+    <rect x="130" y="150" width="140" height="60" rx="12" fill="#1e293b" stroke="#334155"/><text x="200" y="175" text-anchor="middle" fill="#e2e8f0">نتیجه بعد از ۱ ساعت / ۱ روز / ۱ هفته</text><text x="200" y="196" text-anchor="middle" fill="#94a3b8" font-size="12">درست بود؟ چقدر؟</text>
+    <line x1="430" y1="110" x2="430" y2="150" stroke="#64748b" stroke-width="2" marker-end="url(#ar)"/>
+    <rect x="330" y="150" width="200" height="60" rx="12" fill="#172554" stroke="#38bdf8"/><text x="430" y="175" text-anchor="middle" fill="#e2e8f0">داشبورد → شما تصمیم می‌گیرید</text><text x="430" y="196" text-anchor="middle" fill="#bae6fd" font-size="12">کاغذی، تأیید دستی، یا هیچ</text>
+  </g>
+</svg>
+<figcaption>چرخهٔ کاری nobi: داده → فیلتر → امتیاز → ثبت → ارزیابی. تصمیم نهایی همیشه با انسان است.</figcaption>
+</figure>
+
+<div class="card info"><b class="tag">نکته</b> فیلتر نقدینگی چرا مهم است؟ در بازاری که روزانه فقط چند میلیون تومان معامله می‌شود، یک سفارش معمولی می‌تواند قیمت را چند درصد جابه‌جا کند و الگوهای «زیبا» بسازد که هیچ‌کس نمی‌تواند در آن‌ها معامله کند. nobi این بازارها را نشان نمی‌دهد تا شما فریب نخورید.</div>
+
+<!-- ============================================================ -->
+<h2 id="basics">۲. الفبای بازار: کندل، تایم‌فریم، روند</h2>
+<p>اگر این بخش را بلدید، رد شوید. اگر نه، ده دقیقه وقت بگذارید؛ همهٔ تب‌های nobi روی این مفاهیم سوارند.</p>
+
+<h3>کندل (شمع) چیست؟</h3>
+<p>هر کندل خلاصهٔ قیمت در یک بازهٔ زمانی است: قیمت <b>باز شدن</b>، <b>بالاترین</b>، <b>پایین‌ترین</b> و <b>بسته شدن</b>. بدنهٔ سبز یعنی قیمت بالا رفته، قرمز یعنی پایین آمده. خط‌های نازک بالا و پایین (سایه) نشان می‌دهند قیمت در آن بازه تا کجا رفته و برگشته.</p>
+
+<figure>
+<svg viewBox="0 0 700 260" xmlns="http://www.w3.org/2000/svg" font-family="Vazirmatn,Tahoma,sans-serif" font-size="13">
+  <line x1="60" y1="20" x2="60" y2="230" stroke="#334155"/><line x1="60" y1="230" x2="680" y2="230" stroke="#334155"/>
+  <!-- green candle anatomy -->
+  <g>
+    <line x1="150" y1="40" x2="150" y2="200" stroke="#22c55e" stroke-width="2"/>
+    <rect x="130" y="80" width="40" height="90" fill="#22c55e"/>
+    <text x="190" y="45" fill="#94a3b8">بالاترین قیمت (High)</text>
+    <text x="190" y="85" fill="#94a3b8">بسته شدن (Close)</text>
+    <text x="190" y="172" fill="#94a3b8">باز شدن (Open)</text>
+    <text x="190" y="205" fill="#94a3b8">پایین‌ترین (Low)</text>
+    <text x="150" y="250" fill="#bbf7d0" text-anchor="middle">کندل صعودی</text>
+  </g>
+  <g>
+    <line x1="420" y1="50" x2="420" y2="210" stroke="#ef4444" stroke-width="2"/>
+    <rect x="400" y="70" width="40" height="110" fill="#ef4444"/>
+    <text x="460" y="75" fill="#94a3b8">باز شدن</text>
+    <text x="460" y="182" fill="#94a3b8">بسته شدن</text>
+    <text x="420" y="250" fill="#fecaca" text-anchor="middle">کندل نزولی</text>
+  </g>
+  <!-- mini series -->
+  <g transform="translate(540,0)">
+    <rect x="0" y="150" width="10" height="40" fill="#22c55e"/><line x1="5" y1="140" x2="5" y2="200" stroke="#22c55e"/>
+    <rect x="18" y="120" width="10" height="35" fill="#22c55e"/><line x1="23" y1="110" x2="23" y2="160" stroke="#22c55e"/>
+    <rect x="36" y="125" width="10" height="20" fill="#ef4444"/><line x1="41" y1="115" x2="41" y2="150" stroke="#ef4444"/>
+    <rect x="54" y="90" width="10" height="40" fill="#22c55e"/><line x1="59" y1="80" x2="59" y2="135" stroke="#22c55e"/>
+    <rect x="72" y="60" width="10" height="35" fill="#22c55e"/><line x1="77" y1="50" x2="77" y2="100" stroke="#22c55e"/>
+    <rect x="90" y="65" width="10" height="25" fill="#ef4444"/><line x1="95" y1="55" x2="95" y2="95" stroke="#ef4444"/>
+    <text x="50" y="250" fill="#94a3b8" text-anchor="middle">یک روند صعودی کوتاه</text>
+  </g>
+</svg>
+<figcaption>آناتومی کندل. در نوبیتکس قیمت‌های بازار ریالی به <b>ریال</b> گزارش می‌شوند و nobi آن‌ها را به <b>تومان</b> نمایش می‌دهد (÷۱۰).</figcaption>
+</figure>
+
+<h3>تایم‌فریم</h3>
+<p>مدت هر کندل. nobi چهار تایم‌فریم دارد: <code>15m</code> (۱۵ دقیقه)، <code>1h</code>، <code>4h</code> و <code>D</code> (روزانه). اسکن خودکار پس‌زمینه روی <code>15m</code> انجام می‌شود. هرچه تایم‌فریم کوتاه‌تر، سیگنال‌ها بیشتر و پرنویزتر؛ هرچه بلندتر، کمتر و کندتر. برای مبتدی، <b>1h و 4h</b> نقطهٔ شروع بهتری هستند چون فرصت فکر کردن می‌دهند.</p>
+
+<h3>روند و رنج</h3>
+<p>بازار دو حالت کلی دارد: <b>روند</b> (قیمت جهت دارد) و <b>رنج</b> (قیمت در یک محدوده بالا و پایین می‌رود). nobi با اندیکاتور ADX این دو را تشخیص می‌دهد و در حالت رنج امتیازها را ۱۵٪ کم می‌کند چون سیگنال‌های روندی در بازار بی‌جهت کمتر جواب می‌دهند.</p>
+
+<figure>
+<svg viewBox="0 0 900 220" xmlns="http://www.w3.org/2000/svg" font-family="Vazirmatn,Tahoma,sans-serif" font-size="13">
+  <g>
+    <rect x="470" y="20" width="410" height="170" rx="10" fill="#0f172a" stroke="#334155"/>
+    <polyline points="490,160 540,150 580,120 620,130 660,95 700,105 740,70 790,80 830,45 860,55" fill="none" stroke="#22c55e" stroke-width="3"/>
+    <line x1="490" y1="165" x2="860" y2="60" stroke="#22c55e" stroke-dasharray="6 6" opacity=".5"/>
+    <text x="675" y="210" text-anchor="middle" fill="#bbf7d0">روند (TREND): سقف‌ها و کف‌های بالاتر — ADX بالا</text>
+  </g>
+  <g>
+    <rect x="20" y="20" width="410" height="170" rx="10" fill="#0f172a" stroke="#334155"/>
+    <polyline points="40,100 80,70 120,130 160,75 200,135 240,80 280,125 320,72 360,130 400,85" fill="none" stroke="#f59e0b" stroke-width="3"/>
+    <line x1="40" y1="70" x2="410" y2="70" stroke="#f59e0b" stroke-dasharray="6 6" opacity=".5"/><line x1="40" y1="135" x2="410" y2="135" stroke="#f59e0b" stroke-dasharray="6 6" opacity=".5"/>
+    <text x="225" y="210" text-anchor="middle" fill="#fde68a">رنج (RANGE): نوسان بین دو سطح — ADX پایین</text>
+  </g>
+</svg>
+<figcaption>nobi برچسب رژیم هر نماد را کنار امتیاز نشان می‌دهد.</figcaption>
+</figure>
+
+<!-- ============================================================ -->
+<h2 id="login">۳. ورود، نقش‌ها و اولین نگاه</h2>
+<p>آدرس داشبورد را در مرورگر باز کنید (مثلاً <code>https://capoy.ir</code>). صفحهٔ ورود نام کاربری و رمز می‌خواهد؛ حساب را مالک سیستم برای شما ساخته یا با لینک دعوت دریافت کرده‌اید.</p>
+
+<table>
+  <tr><th>نقش</th><th>چه می‌بیند</th><th>چه می‌تواند بکند</th><th>برای چه کسی</th></tr>
+  <tr><td><b>Viewer</b> (بیننده)</td><td>همهٔ تب‌های تحلیلی</td><td>فقط نگاه می‌کند؛ هیچ دکمهٔ تغییردهنده‌ای ندارد</td><td>مبتدی — <b>بهترین نقطهٔ شروع</b></td></tr>
+  <tr><td><b>Operator</b> (اپراتور)</td><td>+ میز معاملات، هشدارها، ریسک</td><td>تأیید/رد سیگنال، سفارش کاغذی، ساخت هشدار، توقف اضطراری</td><td>کسی که معامله را مدیریت می‌کند</td></tr>
+  <tr><td><b>Owner</b> (مالک)</td><td>+ کاربران، تنظیمات، لاگ خطا</td><td>مدیریت حساب‌ها، تنظیم موتور، فعال‌کردن معاملهٔ واقعی</td><td>مدیر سیستم</td></tr>
+</table>
+
+<div class="card tip"><b class="tag">توصیه</b> هفتهٔ اول را با نقش Viewer بگذرانید. هیچ چیزی را نمی‌توانید خراب کنید و همهٔ آنچه برای یادگیری لازم است می‌بینید. دکمهٔ زبان (FA/EN) بالای صفحه است و تنظیم تم تاریک/روشن در «تنظیمات».</div>
+
+<!-- ============================================================ -->
+<h2 id="layout">۴. نقشهٔ صفحه</h2>
+<figure>
+<svg viewBox="0 0 960 520" xmlns="http://www.w3.org/2000/svg" font-family="Vazirmatn,Tahoma,sans-serif" font-size="13">
+  <rect x="0" y="0" width="960" height="520" rx="14" fill="#0b0f14" stroke="#243040"/>
+  <!-- topbar -->
+  <rect x="0" y="0" width="960" height="54" rx="14" fill="#121923"/>
+  <text x="930" y="33" text-anchor="end" fill="#e2e8f0" font-weight="700">nobi <tspan fill="#64748b" font-weight="400" font-size="11">v2.5.0</tspan></text>
+  <rect x="640" y="15" width="90" height="24" rx="12" fill="#14532d"/><text x="685" y="32" text-anchor="middle" fill="#bbf7d0" font-size="11">داده: زنده</text>
+  <rect x="540" y="15" width="90" height="24" rx="12" fill="#1e293b"/><text x="585" y="32" text-anchor="middle" fill="#cbd5e1" font-size="11">1h ▾</text>
+  <circle cx="500" cy="27" r="12" fill="#1e293b"/><text x="500" y="32" text-anchor="middle" fill="#fbbf24" font-size="13">🔔</text>
+  <rect x="30" y="15" width="70" height="24" rx="12" fill="#1e293b"/><text x="65" y="32" text-anchor="middle" fill="#cbd5e1" font-size="11">FA | EN</text>
+  <text x="440" y="32" text-anchor="middle" fill="#94a3b8" font-size="11">اپراتور: ali</text>
+  <!-- sidebar -->
+  <rect x="760" y="54" width="200" height="466" fill="#0f141b"/>
+  <g fill="#cbd5e1" font-size="13">
+    <rect x="770" y="70" width="180" height="30" rx="8" fill="#1e293b"/><text x="940" y="90" text-anchor="end" fill="#fff">▣ نمای کلی</text>
+    <text x="940" y="126" text-anchor="end">◎ کاوشگر سیگنال</text>
+    <text x="940" y="156" text-anchor="end">✦ هوشمندی سیگنال</text>
+    <text x="940" y="186" text-anchor="end">🏛 فاندامنتال</text>
+    <text x="940" y="216" text-anchor="end">☰ سفارش‌ها</text>
+    <text x="940" y="246" text-anchor="end">▥ گزارش عملکرد</text>
+    <text x="940" y="276" text-anchor="end">⚙ میز معاملات دستی</text>
+    <text x="940" y="306" text-anchor="end">🛡 ریسک و کنترل</text>
+    <text x="940" y="336" text-anchor="end">⚗ آزمایشگاه بک‌تست</text>
+    <line x1="775" y1="352" x2="945" y2="352" stroke="#243040"/>
+    <text x="940" y="378" text-anchor="end" fill="#94a3b8">👤 حساب من</text>
+    <text x="940" y="408" text-anchor="end" fill="#94a3b8">🐞 لاگ خطاها</text>
+    <text x="940" y="438" text-anchor="end" fill="#94a3b8">👥 کاربران (مالک)</text>
+    <text x="940" y="468" text-anchor="end" fill="#94a3b8">⚙ تنظیمات</text>
+  </g>
+  <!-- content -->
+  <g>
+    <rect x="20" y="70" width="230" height="80" rx="10" fill="#121923" stroke="#243040"/><text x="240" y="95" text-anchor="end" fill="#94a3b8" font-size="12">ارزش حساب کاغذی</text><text x="240" y="130" text-anchor="end" fill="#e2e8f0" font-size="20" font-weight="700">$97,689</text>
+    <rect x="260" y="70" width="230" height="80" rx="10" fill="#121923" stroke="#243040"/><text x="480" y="95" text-anchor="end" fill="#94a3b8" font-size="12">بازده هفته</text><text x="480" y="130" text-anchor="end" fill="#fca5a5" font-size="20" font-weight="700">−2.2%</text>
+    <rect x="500" y="70" width="240" height="80" rx="10" fill="#121923" stroke="#243040"/><text x="730" y="95" text-anchor="end" fill="#94a3b8" font-size="12">موقعیت‌های باز / حرارت</text><text x="730" y="130" text-anchor="end" fill="#e2e8f0" font-size="20" font-weight="700">0 / 0.0%</text>
+    <rect x="20" y="165" width="720" height="150" rx="10" fill="#121923" stroke="#243040"/>
+    <text x="725" y="188" text-anchor="end" fill="#e2e8f0" font-size="13" font-weight="700">نمای بازار</text>
+    <polyline points="40,290 100,270 160,280 220,240 280,250 340,210 400,225 460,190 520,200 580,170 640,185 700,160" fill="none" stroke="#38bdf8" stroke-width="2"/>
+    <rect x="20" y="330" width="720" height="170" rx="10" fill="#121923" stroke="#243040"/>
+    <text x="725" y="353" text-anchor="end" fill="#e2e8f0" font-size="13" font-weight="700">سیگنال‌های برتر</text>
+    <g font-size="12" fill="#cbd5e1">
+      <text x="725" y="380" text-anchor="end">ETHUSDT · 1h · <tspan fill="#22c55e">LONG</tspan></text><text x="40" y="380" fill="#22c55e" font-weight="700">78.7</text>
+      <text x="725" y="408" text-anchor="end">BTCIRT · 1h · <tspan fill="#22c55e">LONG</tspan></text><text x="40" y="408" fill="#22c55e" font-weight="700">71.2</text>
+      <text x="725" y="436" text-anchor="end">SOLUSDT · 1h · <tspan fill="#94a3b8">NEUTRAL</tspan></text><text x="40" y="436" fill="#94a3b8" font-weight="700">61.0</text>
+      <text x="725" y="464" text-anchor="end">XAUTIRT · 1h · <tspan fill="#94a3b8">NEUTRAL</tspan></text><text x="40" y="464" fill="#94a3b8" font-weight="700">57.4</text>
+    </g>
+  </g>
+</svg>
+<figcaption>طرح کلی داشبورد: نوار بالا (وضعیت داده، تایم‌فریم، زنگولهٔ هشدار، زبان)، منوی تب‌ها در کنار، محتوا در میانه. اعداد نمونه‌اند.</figcaption>
+</figure>
+
+<p>سه چیز در نوار بالا را همیشه چک کنید:</p>
+<ul>
+  <li><b>نشان «داده: زنده / کهنه / مصنوعی»</b> — اگر «کهنه» است، یعنی ارتباط با صرافی قطع شده و هیچ تصمیمی نگیرید. «مصنوعی» فقط در محیط آزمایش دیده می‌شود.</li>
+  <li><b>انتخابگر تایم‌فریم</b> — همهٔ تب‌ها بر اساس همین تایم‌فریم نمایش داده می‌شوند.</li>
+  <li><b>زنگوله</b> — پنل هشدارهای قیمت (بخش ۱۳).</li>
+</ul>
+
+<!-- ============================================================ -->
+<h2 id="overview">۵. تب نمای کلی</h2>
+<p>خلاصهٔ وضعیت در یک نگاه: ارزش حساب کاغذی به دلار و تومان، سود/زیان روز و هفته، موقعیت‌های باز، «حرارت» سبد (مجموع ریسکی که همین حالا باز است)، نقشهٔ بازار و چند سیگنال برتر.</p>
+<div class="card info"><b class="tag">معنی اعداد</b>
+<ul style="margin:6px 0 0">
+<li><b>Equity</b> = پول نقد + ارزش فعلی موقعیت‌های باز. در حساب کاغذی از ۱۰۰٬۰۰۰ دلار فرضی شروع می‌شود.</li>
+<li><b>نرخ تبدیل (USDTIRT)</b> همان قیمت تتر در نوبیتکس است و برای تبدیل دلار↔تومان استفاده می‌شود. اگر این نرخ کهنه باشد nobi معادل تومانی را نشان نمی‌دهد به‌جای این که عدد غلط بدهد.</li>
+<li><b>پرمیوم</b> = اختلاف قیمت تتر در نوبیتکس با قیمت جهانی دلار؛ مثبت یعنی تتر در ایران گران‌تر است.</li>
+</ul></div>
+
+<!-- ============================================================ -->
+<h2 id="signals">۶. تب کاوشگر سیگنال — قلب nobi</h2>
+<p>اینجا فهرست نمادها به ترتیب امتیاز می‌آید. هر ردیف یک «کاندیدا» است، نه دستور خرید. با کلیک روی هر ردیف، شواهد امتیاز باز می‌شود.</p>
+
+<figure>
+<svg viewBox="0 0 960 330" xmlns="http://www.w3.org/2000/svg" font-family="Vazirmatn,Tahoma,sans-serif" font-size="13">
+  <rect x="0" y="0" width="960" height="330" rx="12" fill="#121923" stroke="#243040"/>
+  <g fill="#94a3b8" font-size="12">
+    <text x="930" y="30" text-anchor="end">نماد</text><text x="790" y="30" text-anchor="end">جهت</text><text x="690" y="30" text-anchor="end">امتیاز</text><text x="560" y="30" text-anchor="end">رژیم</text><text x="440" y="30" text-anchor="end">قیمت</text><text x="300" y="30" text-anchor="end">حد ضرر</text><text x="170" y="30" text-anchor="end">هدف ۱ / ۲</text><text x="40" y="30" text-anchor="end">تازگی</text>
+  </g>
+  <line x1="15" y1="40" x2="945" y2="40" stroke="#243040"/>
+  <g font-size="13" fill="#e2e8f0">
+    <rect x="15" y="48" width="930" height="40" rx="8" fill="#14532d" opacity=".35"/>
+    <text x="930" y="73" text-anchor="end" font-weight="700">ETHUSDT</text><rect x="735" y="56" width="55" height="24" rx="12" fill="#14532d"/><text x="762" y="73" text-anchor="middle" fill="#bbf7d0" font-size="11">LONG</text>
+    <text x="690" y="73" text-anchor="end" fill="#22c55e" font-weight="700">78.7</text><text x="560" y="73" text-anchor="end" fill="#bbf7d0">TREND</text><text x="440" y="73" text-anchor="end">2,417.58</text><text x="300" y="73" text-anchor="end" fill="#fca5a5">2,371.20</text><text x="170" y="73" text-anchor="end" fill="#86efac">2,473 / 2,510</text><text x="40" y="73" text-anchor="end" fill="#22c55e">●</text>
+    <text x="930" y="118" text-anchor="end" font-weight="700">BTCIRT</text><rect x="735" y="101" width="55" height="24" rx="12" fill="#14532d"/><text x="762" y="118" text-anchor="middle" fill="#bbf7d0" font-size="11">LONG</text>
+    <text x="690" y="118" text-anchor="end" fill="#22c55e" font-weight="700">71.2</text><text x="560" y="118" text-anchor="end" fill="#bbf7d0">TREND</text><text x="440" y="118" text-anchor="end">2,133,100,914</text><text x="300" y="118" text-anchor="end" fill="#fca5a5">2,101,000,000</text><text x="170" y="118" text-anchor="end" fill="#86efac">2,171M / 2,197M</text><text x="40" y="118" text-anchor="end" fill="#22c55e">●</text>
+    <text x="930" y="163" text-anchor="end" font-weight="700">SOLUSDT</text><rect x="735" y="146" width="70" height="24" rx="12" fill="#1e293b"/><text x="770" y="163" text-anchor="middle" fill="#cbd5e1" font-size="11">NEUTRAL</text>
+    <text x="690" y="163" text-anchor="end" fill="#cbd5e1" font-weight="700">61.0</text><text x="560" y="163" text-anchor="end" fill="#fde68a">RANGE</text><text x="440" y="163" text-anchor="end">96.68</text><text x="300" y="163" text-anchor="end" fill="#64748b">—</text><text x="170" y="163" text-anchor="end" fill="#64748b">—</text><text x="40" y="163" text-anchor="end" fill="#22c55e">●</text>
+    <text x="930" y="208" text-anchor="end" font-weight="700">DOGEIRT</text><rect x="735" y="191" width="55" height="24" rx="12" fill="#3f1d1d"/><text x="762" y="208" text-anchor="middle" fill="#fecaca" font-size="11">AVOID</text>
+    <text x="690" y="208" text-anchor="end" fill="#fca5a5" font-weight="700">38.5</text><text x="560" y="208" text-anchor="end" fill="#fde68a">RANGE</text><text x="440" y="208" text-anchor="end">3,120</text><text x="300" y="208" text-anchor="end" fill="#64748b">—</text><text x="170" y="208" text-anchor="end" fill="#64748b">—</text><text x="40" y="208" text-anchor="end" fill="#f59e0b">●</text>
+  </g>
+  <!-- expanded evidence -->
+  <rect x="15" y="235" width="930" height="80" rx="8" fill="#0b0f14" stroke="#243040"/>
+  <text x="930" y="258" text-anchor="end" fill="#94a3b8" font-size="12">شواهد ETHUSDT — سهم هر مؤلفه در امتیاز</text>
+  <g font-size="11">
+    <rect x="640" y="270" width="280" height="14" rx="4" fill="#1e293b"/><rect x="640" y="270" width="230" height="14" rx="4" fill="#22c55e"/><text x="930" y="282" text-anchor="end" fill="#e2e8f0">روند ۸۲</text>
+    <rect x="340" y="270" width="280" height="14" rx="4" fill="#1e293b"/><rect x="340" y="270" width="200" height="14" rx="4" fill="#38bdf8"/><text x="630" y="282" text-anchor="end" fill="#e2e8f0">مومنتوم ۷۱</text>
+    <rect x="640" y="295" width="280" height="14" rx="4" fill="#1e293b"/><rect x="640" y="295" width="190" height="14" rx="4" fill="#a78bfa"/><text x="930" y="307" text-anchor="end" fill="#e2e8f0">حجم ۶۸</text>
+    <rect x="340" y="295" width="280" height="14" rx="4" fill="#1e293b"/><rect x="340" y="295" width="215" height="14" rx="4" fill="#f59e0b"/><text x="630" y="307" text-anchor="end" fill="#e2e8f0">ساختار ۷۷</text>
+    <text x="40" y="290" fill="#94a3b8">RSI 61 · ADX 29 · ATR 23.1</text>
+  </g>
+</svg>
+<figcaption>کاوشگر سیگنال با یک ردیف بازشده. ردیف AVOID یعنی «کاری نکن»؛ نقطهٔ نارنجی تازگی یعنی آخرین کندل این نماد عقب‌تر از حد مجاز است.</figcaption>
+</figure>
+
+<h3>ستون‌ها به زبان ساده</h3>
+<table>
+  <tr><th>ستون</th><th>یعنی چه</th></tr>
+  <tr><td>جهت</td><td><b>LONG</b> = شرایط خرید (امتیاز ≥ ۶۸)؛ <b>NEUTRAL</b> = نه خرید نه فروش (۵۵ تا ۶۸)؛ <b>AVOID</b> = دور بمان (زیر ۵۵). nobi در نوبیتکس سیگنال فروش استقراضی (Short) صادر نمی‌کند.</td></tr>
+  <tr><td>امتیاز</td><td>۰ تا ۱۰۰؛ میانگین وزنی چهار مؤلفه (بخش بعد). <b>امتیاز بالاتر = قطعیت بیشتر نیست</b>، فقط «شواهد تکنیکال بیشتری هم‌جهت‌اند».</td></tr>
+  <tr><td>رژیم</td><td>TREND یا RANGE (بخش ۲). در RANGE امتیاز ×۰٫۸۵ می‌شود.</td></tr>
+  <tr><td>حد ضرر</td><td>قیمتی که اگر بازار به آن رسید، فرض اولیه غلط بوده و باید خارج شد. nobi آن را از نوسان اخیر (ATR) می‌سازد، نه از یک درصد ثابت.</td></tr>
+  <tr><td>هدف ۱ / ۲</td><td>دو قیمت هدف: در هدف ۱ (۱٫۲ برابر ریسک) نیمی از موقعیت بسته و حد ضرر به نقطهٔ ورود منتقل می‌شود؛ در هدف ۲ (۲ برابر ریسک) باقی بسته می‌شود.</td></tr>
+  <tr><td>تازگی</td><td>آخرین کندل این نماد چقدر تازه است. اگر عقب باشد سیگنال <b>قابل اتکا نیست</b> و nobi اجازهٔ اجرا نمی‌دهد.</td></tr>
+</table>
+
+<!-- ============================================================ -->
+<h2 id="score">۷. امتیاز سیگنال چگونه ساخته می‌شود؟</h2>
+<p>چهار پرسش از نمودار پرسیده می‌شود و پاسخ هر کدام عددی بین ۰ و ۱۰۰ است. سپس با وزن‌های زیر ترکیب می‌شوند:</p>
+
+<figure>
+<svg viewBox="0 0 900 300" xmlns="http://www.w3.org/2000/svg" font-family="Vazirmatn,Tahoma,sans-serif" font-size="14">
+  <!-- donut -->
+  <g transform="translate(720,150)">
+    <circle r="90" fill="none" stroke="#1e293b" stroke-width="40"/>
+    <!-- trend 40% -->
+    <circle r="90" fill="none" stroke="#22c55e" stroke-width="40" stroke-dasharray="226 565" transform="rotate(-90)"/>
+    <!-- momentum 25% -->
+    <circle r="90" fill="none" stroke="#38bdf8" stroke-width="40" stroke-dasharray="141 565" transform="rotate(54)"/>
+    <!-- structure 20% -->
+    <circle r="90" fill="none" stroke="#f59e0b" stroke-width="40" stroke-dasharray="113 565" transform="rotate(144)"/>
+    <!-- volume 15% -->
+    <circle r="90" fill="none" stroke="#a78bfa" stroke-width="40" stroke-dasharray="85 565" transform="rotate(216)"/>
+    <text y="6" text-anchor="middle" fill="#e2e8f0" font-size="16" font-weight="700">امتیاز</text>
+  </g>
+  <g font-size="14">
+    <rect x="560" y="40" width="14" height="14" fill="#22c55e"/><text x="550" y="52" text-anchor="end" fill="#e2e8f0">روند — ۴۰٪ — آیا میانگین‌های متحرک مرتب و صعودی‌اند؟ (EMA 20/50/200)</text>
+    <rect x="560" y="100" width="14" height="14" fill="#38bdf8"/><text x="550" y="112" text-anchor="end" fill="#e2e8f0">مومنتوم — ۲۵٪ — آیا شتاب حرکت سالم است؟ (RSI، MACD)</text>
+    <rect x="560" y="160" width="14" height="14" fill="#f59e0b"/><text x="550" y="172" text-anchor="end" fill="#e2e8f0">ساختار — ۲۰٪ — آیا قیمت بالاتر از سقف‌های اخیر بسته شده؟</text>
+    <rect x="560" y="220" width="14" height="14" fill="#a78bfa"/><text x="550" y="232" text-anchor="end" fill="#e2e8f0">حجم — ۱۵٪ — آیا حجم معاملات حرکت را تأیید می‌کند؟</text>
+    <text x="550" y="275" text-anchor="end" fill="#94a3b8" font-size="12">× ضریب رژیم (TREND = ۱٫۰ ، RANGE = ۰٫۸۵)</text>
+  </g>
+</svg>
+<figcaption>وزن مؤلفه‌ها در امتیاز نهایی. این وزن‌ها ثابت‌اند و در تب «شواهد» هر سیگنال سهم هر کدام را می‌بینید.</figcaption>
+</figure>
+
+<h3>اندیکاتورها به زبان آدمیزاد</h3>
+<dl class="glossary">
+  <dt>میانگین متحرک (EMA)</dt><dd>میانگین قیمت چند کندل اخیر که مثل یک خط صاف‌شده دنبال قیمت می‌آید. وقتی EMA کوتاه (۲۰) بالای EMA میانی (۵۰) و آن هم بالای EMA بلند (۲۰۰) باشد، یعنی روند صعودی «مرتب» است.</dd>
+  <dt>RSI</dt><dd>دماسنج ۰ تا ۱۰۰ برای شتاب. زیر ۳۰ «بیش‌فروش» و بالای ۷۰ «بیش‌خرید» خوانده می‌شود، ولی در روند قوی می‌تواند مدت‌ها بالای ۷۰ بماند. nobi RSI را در محدودهٔ سالم ۵۰–۷۰ برای خرید ترجیح می‌دهد.</dd>
+  <dt>MACD</dt><dd>اختلاف دو میانگین متحرک؛ وقتی از منفی به مثبت می‌رود یعنی شتاب رو به بالاست.</dd>
+  <dt>ADX</dt><dd>قدرت روند (نه جهت آن). بالای ~۲۵ یعنی بازار روند دارد.</dd>
+  <dt>ATR</dt><dd>میانگین دامنهٔ نوسان هر کندل. nobi حد ضرر را چند برابر ATR زیر قیمت ورود می‌گذارد تا نوسان عادی شما را بیرون نیندازد.</dd>
+  <dt>بولینگر</dt><dd>دو خط در فاصلهٔ دو انحراف معیار از میانگین؛ تنگ‌شدنشان یعنی آرامش پیش از حرکت.</dd>
+</dl>
+
+<div class="card warn"><b class="tag">مهم</b> همهٔ این اندیکاتورها از <b>قیمت گذشته</b> ساخته می‌شوند. هیچ‌کدام آینده را نمی‌بینند؛ فقط می‌گویند «الان شرایط شبیه کدام الگوی گذشته است». به همین دلیل nobi هر سیگنال را ثبت می‌کند و بعداً نتیجه‌اش را می‌سنجد — تا معلوم شود این الگوها در این بازار واقعاً کار می‌کنند یا نه.</div>
+
+<!-- ============================================================ -->
+<h2 id="risk">۸. ریسک: حد ضرر، R و اندازهٔ موقعیت</h2>
+<p>این مهم‌ترین بخش راهنما برای یک مبتدی است. بیشتر زیان‌های بزرگ نه از سیگنال بد، بلکه از <b>اندازهٔ غلط موقعیت</b> و <b>نداشتن حد ضرر</b> می‌آیند.</p>
+
+<h3>R چیست؟</h3>
+<p>R = فاصلهٔ قیمت ورود تا حد ضرر = «یک واحد ریسک». اگر در ۱۰۰ بخرید و حد ضرر ۹۸ باشد، 1R = ۲ واحد. هدف ۱ در ۱٫۲R یعنی ۱۰۲٫۴ و هدف ۲ در ۲R یعنی ۱۰۴. نتیجهٔ هر معامله هم بر حسب R گزارش می‌شود: «+۱٫۶R» یعنی ۱٫۶ برابر آنچه ریسک کردید سود کردید؛ «−۱R» یعنی حد ضرر خورد.</p>
+
+<figure>
+<svg viewBox="0 0 900 300" xmlns="http://www.w3.org/2000/svg" font-family="Vazirmatn,Tahoma,sans-serif" font-size="13">
+  <line x1="120" y1="30" x2="120" y2="270" stroke="#334155"/>
+  <!-- levels -->
+  <g>
+    <line x1="120" y1="60" x2="820" y2="60" stroke="#22c55e" stroke-dasharray="6 5"/><text x="830" y="65" fill="#86efac">هدف ۲ = ۱۰۴ (+2R)</text>
+    <line x1="120" y1="110" x2="820" y2="110" stroke="#22c55e" stroke-dasharray="6 5" opacity=".7"/><text x="830" y="115" fill="#86efac">هدف ۱ = ۱۰۲٫۴ (+1.2R)</text>
+    <line x1="120" y1="170" x2="820" y2="170" stroke="#e2e8f0"/><text x="830" y="175" fill="#e2e8f0">ورود = ۱۰۰</text>
+    <line x1="120" y1="230" x2="820" y2="230" stroke="#ef4444" stroke-dasharray="6 5"/><text x="830" y="235" fill="#fca5a5">حد ضرر = ۹۸ (−1R)</text>
+  </g>
+  <!-- R bracket -->
+  <line x1="90" y1="170" x2="90" y2="230" stroke="#f59e0b" stroke-width="3"/><text x="80" y="205" fill="#fde68a" text-anchor="end">1R = ۲</text>
+  <!-- price path -->
+  <polyline points="140,170 200,185 260,165 320,150 380,160 440,130 500,115 540,108 600,120 660,95 720,80 780,62" fill="none" stroke="#38bdf8" stroke-width="2.5"/>
+  <circle cx="540" cy="108" r="6" fill="#22c55e"/><text x="540" y="95" text-anchor="middle" fill="#bbf7d0" font-size="12">نصف بسته شد، حد ضرر → ۱۰۰</text>
+  <circle cx="780" cy="62" r="6" fill="#22c55e"/><text x="760" y="48" text-anchor="middle" fill="#bbf7d0" font-size="12">باقی بسته شد</text>
+  <text x="450" y="290" text-anchor="middle" fill="#94a3b8" font-size="12">نتیجهٔ این معامله ≈ (۰٫۵ × ۱٫۲R) + (۰٫۵ × ۲R) = +۱٫۶R پیش از کارمزد</text>
+</svg>
+<figcaption>نردبان حد ضرر / هدف‌ها که nobi برای هر سیگنال LONG پیشنهاد می‌دهد.</figcaption>
+</figure>
+
+<h3>اندازهٔ موقعیت</h3>
+<p>nobi به‌صورت پیش‌فرض اجازه می‌دهد در هر معامله حداکثر <b>۰٫۷۵٪ از کل حساب</b> را ریسک کنید. یعنی اگر حساب ۱۰۰ میلیون تومان است و حد ضرر ۲٪ زیر ورود، اندازهٔ موقعیت می‌شود ۷۵۰ هزار ÷ ۲٪ = ۳۷٫۵ میلیون تومان. ده معاملهٔ پیاپی زیان‌ده (که اتفاق می‌افتد!) حدود ۷٫۵٪ حساب را می‌برد — دردناک ولی قابل بازگشت.</p>
+
+<table>
+  <tr><th>سقف</th><th>پیش‌فرض</th><th>چرا</th></tr>
+  <tr><td>ریسک هر معامله</td><td>۰٫۷۵٪ حساب</td><td>زنده ماندن در دنباله‌های باخت</td></tr>
+  <tr><td>حداکثر موقعیت هم‌زمان</td><td>۵</td><td>کنترل‌پذیری</td></tr>
+  <tr><td>حداکثر در یک دارایی</td><td>۲۵٪ حساب</td><td>تمرکز نکردن</td></tr>
+  <tr><td>حرارت سبد (مجموع ریسک باز)</td><td>۶٪</td><td>اگر همه با هم حد ضرر بخورند</td></tr>
+  <tr><td>حداقل نقد</td><td>۱۰٪</td><td>همیشه ذخیره داشته باش</td></tr>
+  <tr><td>حداقل نسبت سود به ریسک</td><td>۱٫۵</td><td>معاملهٔ با هدف کوچک پذیرفته نمی‌شود</td></tr>
+  <tr><td>توقف خودکار</td><td>زیان روزانه/هفتگی یا ۳ حد ضرر پیاپی</td><td>ورود جدید متوقف می‌شود؛ موقعیت‌های باز مدیریت می‌شوند</td></tr>
+</table>
+<div class="card tip"><b class="tag">قاعدهٔ طلایی</b> اگر نمی‌دانید حد ضرر کجاست، معامله نکنید. اگر ریسک معامله را نمی‌توانید به تومان بگویید، اندازهٔ موقعیت را نمی‌دانید.</div>
+
+<!-- ============================================================ -->
+<h2 id="desk">۹. میز معاملات دستی و حالت‌های اجرا</h2>
+<p>این تب (برای Operator و Owner) جایی است که سیگنال به سفارش تبدیل می‌شود — یا نمی‌شود. سه حالت اجرا وجود دارد:</p>
+
+<figure>
+<svg viewBox="0 0 960 200" xmlns="http://www.w3.org/2000/svg" font-family="Vazirmatn,Tahoma,sans-serif" font-size="14">
+  <g>
+    <rect x="650" y="30" width="290" height="140" rx="14" fill="#1e293b" stroke="#334155"/>
+    <text x="795" y="62" text-anchor="middle" fill="#e2e8f0" font-weight="700">Manual — دستی</text>
+    <text x="795" y="92" text-anchor="middle" fill="#cbd5e1" font-size="13">هیچ سفارشی خودکار نیست</text>
+    <text x="795" y="116" text-anchor="middle" fill="#cbd5e1" font-size="13">شما خودتان فرم سفارش را پر می‌کنید</text>
+    <text x="795" y="150" text-anchor="middle" fill="#86efac" font-size="12">برای شروع یادگیری</text>
+  </g>
+  <g>
+    <rect x="335" y="30" width="290" height="140" rx="14" fill="#172554" stroke="#38bdf8"/>
+    <text x="480" y="62" text-anchor="middle" fill="#e2e8f0" font-weight="700">Semi — نیمه‌خودکار (پیش‌فرض)</text>
+    <text x="480" y="92" text-anchor="middle" fill="#cbd5e1" font-size="13">سیگنال‌های LONG وارد صف تأیید می‌شوند</text>
+    <text x="480" y="116" text-anchor="middle" fill="#cbd5e1" font-size="13">شما هر کدام را تأیید یا رد می‌کنید</text>
+    <text x="480" y="150" text-anchor="middle" fill="#bae6fd" font-size="12">تعادل بین انضباط و کنترل</text>
+  </g>
+  <g>
+    <rect x="20" y="30" width="290" height="140" rx="14" fill="#1e293b" stroke="#334155"/>
+    <text x="165" y="62" text-anchor="middle" fill="#e2e8f0" font-weight="700">Auto — خودکار</text>
+    <text x="165" y="92" text-anchor="middle" fill="#cbd5e1" font-size="13">سیگنال‌های واجد شرایط خودشان اجرا می‌شوند</text>
+    <text x="165" y="116" text-anchor="middle" fill="#cbd5e1" font-size="13">فقط با دادهٔ تازه و درون سقف‌های ریسک</text>
+    <text x="165" y="150" text-anchor="middle" fill="#fde68a" font-size="12">فقط روی حساب کاغذی برای مبتدی</text>
+  </g>
+</svg>
+<figcaption>سه حالت اجرا. تغییر حالت فقط برای Operator/Owner ممکن است و در دفتر فعالیت ثبت می‌شود.</figcaption>
+</figure>
+
+<h3>صف تأیید (Semi)</h3>
+<p>هر سیگنال LONG که از سقف‌های ریسک رد شود، کارتی در صف می‌سازد: نماد، قیمت ورود پیشنهادی، حد ضرر، هدف‌ها، اندازهٔ محاسبه‌شده و <b>دلیل</b>. شما سه کار می‌توانید بکنید:</p>
+<ul>
+  <li><b>تأیید</b> → سفارش روی حساب کاغذی (یا واقعی اگر فعال باشد) ثبت می‌شود.</li>
+  <li><b>رد</b> با یادداشت → چیزی ثبت نمی‌شود ولی تصمیم شما در ژورنال می‌ماند. بعداً می‌بینید ردکردن‌هایتان درست بوده یا نه!</li>
+  <li><b>هیچ</b> → کارت پس از کهنه‌شدن داده خودش منقضی می‌شود. nobi هرگز با قیمت قدیمی اجرا نمی‌کند.</li>
+</ul>
+<div class="card warn"><b class="tag">پیش‌پرواز</b> پیش از هر سفارش، nobi یک «پیش‌پرواز» انجام می‌دهد: نقد کافی هست؟ حرارت از ۶٪ رد نمی‌شود؟ نسبت سود/ریسک ≥ ۱٫۵ است؟ داده تازه است؟ اگر هر کدام رد شود، دکمهٔ تأیید غیرفعال و دلیلش نوشته می‌شود. این را «مانع» نبینید؛ این همان چیزی است که شما را از خودتان محافظت می‌کند.</div>
+
+<!-- ============================================================ -->
+<h2 id="paper">۱۰. حساب کاغذی (Paper)</h2>
+<p>حساب کاغذی با ۱۰۰٬۰۰۰ دلار فرضی شروع می‌شود و همهٔ سفارش‌ها را با <b>قیمت واقعی لحظهٔ بازار</b> شبیه‌سازی می‌کند — با کارمزد ۰٫۲٪ هر طرف و بدون این که ریالی از شما کم شود. تب «سفارش‌ها» چرخهٔ حیات هر سفارش (باز، پرشده، بسته در هدف/حد ضرر) را نشان می‌دهد.</p>
+<p>چرا حساب کاغذی جدی است؟ چون <b>تنها راه ارزان فهمیدن این که آیا شما (و nobi) در این بازار سود می‌کنید</b> همین است. سه ماه حساب کاغذی با انضباط، از هر دوره‌ای آموزنده‌تر است.</p>
+<div class="card info"><b class="tag">محدودیت صادقانه</b> حساب کاغذی اسپرد، لغزش قیمت و عمق واقعی بازار را کامل مدل نمی‌کند؛ نتیجهٔ واقعی معمولاً کمی بدتر از کاغذی است. nobi این را در گزارش‌ها با عبارت «R مدل OHLC ناخالص» یادآوری می‌کند.</div>
+
+<!-- ============================================================ -->
+<h2 id="performance">۱۱. گزارش عملکرد و هوشمندی سیگنال</h2>
+<p>این دو تب جواب سؤال اصلی را می‌دهند: <b>«سیگنال‌های nobi تا حالا چقدر درست بوده‌اند؟»</b> — بدون تعارف.</p>
+
+<figure>
+<svg viewBox="0 0 960 300" xmlns="http://www.w3.org/2000/svg" font-family="Vazirmatn,Tahoma,sans-serif" font-size="13">
+  <rect x="0" y="0" width="960" height="300" rx="12" fill="#121923" stroke="#243040"/>
+  <g>
+    <rect x="730" y="20" width="210" height="80" rx="10" fill="#0b0f14" stroke="#243040"/><text x="925" y="45" text-anchor="end" fill="#94a3b8" font-size="12">نرخ موفقیت H2</text><text x="925" y="80" text-anchor="end" fill="#fca5a5" font-size="22" font-weight="700">32%</text>
+    <rect x="500" y="20" width="210" height="80" rx="10" fill="#0b0f14" stroke="#243040"/><text x="695" y="45" text-anchor="end" fill="#94a3b8" font-size="12">میانگین نتیجه (R)</text><text x="695" y="80" text-anchor="end" fill="#fca5a5" font-size="22" font-weight="700">−0.39R</text>
+    <rect x="270" y="20" width="210" height="80" rx="10" fill="#0b0f14" stroke="#243040"/><text x="465" y="45" text-anchor="end" fill="#94a3b8" font-size="12">ضریب اطلاعات (IC)</text><text x="465" y="80" text-anchor="end" fill="#fca5a5" font-size="22" font-weight="700">−0.07</text>
+    <rect x="40" y="20" width="210" height="80" rx="10" fill="#0b0f14" stroke="#243040"/><text x="235" y="45" text-anchor="end" fill="#94a3b8" font-size="12">نمونه‌های ارزیابی‌شده</text><text x="235" y="80" text-anchor="end" fill="#e2e8f0" font-size="22" font-weight="700">2,753</text>
+  </g>
+  <text x="925" y="135" text-anchor="end" fill="#e2e8f0" font-weight="700">کالیبراسیون: آیا امتیاز بالاتر = نتیجهٔ بهتر؟</text>
+  <g font-size="12">
+    <line x1="60" y1="270" x2="900" y2="270" stroke="#334155"/>
+    <rect x="760" y="200" width="110" height="70" fill="#38bdf8" opacity=".8"/><text x="815" y="192" text-anchor="middle" fill="#cbd5e1">امتیاز ۶۰–۷۰: ۳۳٪</text>
+    <rect x="600" y="203" width="110" height="67" fill="#38bdf8" opacity=".8"/><text x="655" y="195" text-anchor="middle" fill="#cbd5e1">۷۰–۸۰: ۳۱٪</text>
+    <rect x="440" y="200" width="110" height="70" fill="#38bdf8" opacity=".8"/><text x="495" y="192" text-anchor="middle" fill="#cbd5e1">۸۰–۹۳: ۳۲٪</text>
+    <line x1="60" y1="162" x2="900" y2="162" stroke="#22c55e" stroke-dasharray="6 5"/><text x="70" y="156" fill="#86efac">اگر امتیاز معنی داشت، ستون‌ها باید پله‌پله بالا می‌رفتند ↗</text>
+  </g>
+</svg>
+<figcaption>نمونهٔ واقعی گزارش عملکرد در آبان ۱۴۰۵: نرخ موفقیت در همهٔ باندهای امتیاز تقریباً یکسان است — یعنی امتیاز فعلاً قدرت تفکیک ندارد. این دقیقاً چیزی است که باید پیش از ریسک واقعی ببینید.</figcaption>
+</figure>
+
+<h3>مفاهیم کلیدی</h3>
+<dl class="glossary">
+  <dt>افق (H1 / H2 / H3)</dt><dd>نتیجهٔ هر سیگنال بعد از ۱ ساعت، ۱ روز و ۱ هفته سنجیده می‌شود. H3 روی تایم‌فریم ۱۵ دقیقه معمولاً خالی است چون صرافی کندل‌های قدیمی‌تر از ۷ روز را نمی‌دهد — nobi به‌جای حدس زدن، خالی می‌گذارد.</dd>
+  <dt>نرخ موفقیت (Hit rate)</dt><dd>درصد سیگنال‌هایی که در آن افق به سود رسیدند. به‌تنهایی کافی نیست: ۳۰٪ موفقیت با سودهای ۳R و زیان‌های ۱R سودده است.</dd>
+  <dt>میانگین R (Expectancy)</dt><dd>مهم‌ترین عدد. مثبت = در بلندمدت سودده، منفی = زیان‌ده. −۰٫۳۹R یعنی به‌طور متوسط هر سیگنال ۳۹٪ از ریسکش را از دست داده.</dd>
+  <dt>IC (ضریب اطلاعات)</dt><dd>همبستگی امتیاز با نتیجه. بالای +۰٫۰۵ ارزشمند؛ نزدیک صفر یا منفی یعنی امتیاز پیش‌بینی‌کننده نیست.</dd>
+  <dt>MFE / MAE</dt><dd>بیشترین سودِ در دسترس و بیشترین زیانِ تحمل‌شده در طول عمر سیگنال. کمک می‌کند بفهمید حد ضرر/هدف خوب تنظیم شده یا نه.</dd>
+  <dt>پایش تغییر کیفیت (Drift)</dt><dd>مقایسهٔ IC اخیر با مبنای گذشته. وقتی مبنا خودش منفی است، nobi صریحاً می‌گوید «لبه‌ای برای سنجش drift وجود ندارد».</dd>
+</dl>
+<div class="card danger"><b class="tag">نتیجه‌گیری برای مبتدی</b> تا وقتی میانگین R در «گزارش عملکرد» روی تایم‌فریم مورد نظرتان <b>مثبت و با نمونهٔ کافی</b> نشده، nobi را به‌عنوان ابزار یادگیری و ثبت استفاده کنید، نه منبع تصمیم با پول واقعی. خودِ nobi هم اجازهٔ معاملهٔ واقعی را پشت همین شواهد قفل کرده است.</div>
+
+<!-- ============================================================ -->
+<h2 id="fa">۱۲. فاندامنتال</h2>
+<p>تب فاندامنتال (FA) برای هر دارایی داده‌های غیرقیمتی می‌آورد: ارزش قفل‌شده در پروتکل (TVL)، رویدادها، و «وتو»ها. وتو یعنی رویدادی که بدون توجه به امتیاز تکنیکال، ورود را ممنوع می‌کند (مثلاً هک شبکه یا توقف برداشت). اگر دادهٔ FA برای نمادی موجود نباشد، nobi <b>امتیاز خنثای ساختگی نمی‌سازد</b> و صادقانه «ناموجود» می‌نویسد؛ به منبع و تازگی هر داده (کنار هر عدد) توجه کنید.</p>
+
+<!-- ============================================================ -->
+<h2 id="alerts">۱۳. هشدارهای قیمت و پرمیوم</h2>
+<p>با زنگولهٔ بالای صفحه (Operator/Owner) می‌توانید قاعده‌هایی مثل «اگر BTCIRT از ۲٫۲ میلیارد تومان بالاتر رفت خبر بده» یا «اگر پرمیوم تتر از ۳٪ گذشت» بسازید. nobi هر ۳۰ ثانیه قیمت‌های تازه را بررسی می‌کند و در صورت عبور، یک «رویداد trigger» ثبت و در صورت پیکربندی، پیام تلگرام می‌فرستد.</p>
+<ul>
+  <li>هشدار <b>فقط اطلاع‌رسانی</b> است؛ هیچ سفارشی ایجاد نمی‌کند و ریسک را تغییر نمی‌دهد.</li>
+  <li>اولین ارزیابی هر قاعده فقط «نقطهٔ مبنا» است؛ هشدار از <b>عبور</b> بعدی صادر می‌شود، نه از همان لحظهٔ ساخت.</li>
+  <li>ثبت trigger و تحویل پیام دو چیز جدا هستند: اگر تلگرام تنظیم نشده باشد، رویداد ثبت می‌شود ولی تحویل «ناموفق/غیرفعال» می‌ماند — و شما این را می‌بینید.</li>
+</ul>
+
+<!-- ============================================================ -->
+<h2 id="backtest">۱۴. آزمایشگاه بک‌تست</h2>
+<p>بک‌تست یعنی «اگر این قواعد را روی گذشته اجرا می‌کردیم چه می‌شد». nobi آن را با روش <b>پیش‌رونده (walk-forward)</b> انجام می‌دهد: پارامترها روی یک بازه انتخاب و روی بازهٔ بعدیِ دیده‌نشده آزموده می‌شوند، تا نتیجهٔ «زیادی خوب» از برازش به گذشته نگیرید.</p>
+<div class="card warn"><b class="tag">سه هشدار</b>
+<ol style="margin:6px 0 0">
+<li>بک‌تست فعلی <b>فقط تکنیکال</b> است (برچسب <code>matches_live=false</code>): فاندامنتال و عمق بازار تاریخی در آن نیست.</li>
+<li>کارمزد پیش‌فرض ۰٫۲٪ است؛ کارمزد واقعی حساب شما در نوبیتکس می‌تواند متفاوت باشد (بازار ریالی ۰٫۲۵٪ برای سطح پایه). پیش از نتیجه‌گیری، کارمزد را در فرم تنظیم کنید.</li>
+<li>بک‌تست با کارمزد صفر عمداً «قبول» نمی‌شود.</li>
+</ol></div>
+
+<!-- ============================================================ -->
+<h2 id="riskpage">۱۵. تب ریسک و کنترل</h2>
+<p>وضعیت زندهٔ سقف‌های بخش ۸، دلایل توقف خودکار (اگر فعال شده)، و دو دکمهٔ مهم برای Operator/Owner:</p>
+<ul>
+  <li><b>توقف اضطراری (Panic stop)</b>: همهٔ ورودهای جدید متوقف و صف تأیید خالی می‌شود. موقعیت‌های باز بسته <b>نمی‌شوند</b> (تصمیم انسانی می‌خواهد).</li>
+  <li><b>کلیدهای قطع (Kill switches)</b>: خاموش‌کردن اجرای خودکار یا یک نماد خاص.</li>
+</ul>
+<p>اگر «توقف خودکار» فعال است (مثلاً پس از ۳ حد ضرر پیاپی)، این یک پیام است: <b>امروز را تمام کن</b>. تلاش برای «جبران» همان روز رایج‌ترین راه از دست دادن حساب است.</p>
+
+<!-- ============================================================ -->
+<h2 id="live">۱۶. معاملهٔ واقعی: قفل‌ها و پیش‌شرط‌ها</h2>
+<p>برای این که nobi حتی یک سفارش واقعی روی نوبیتکس بگذارد، <b>همهٔ</b> این‌ها باید هم‌زمان برقرار باشند:</p>
+<ol class="steps">
+  <li>مالک، کلید API صرافی را با مجوز معامله (نه برداشت) در سرور تنظیم کرده باشد.</li>
+  <li>مالک حالت اجرای واقعی را فعال کرده باشد (پیش‌فرض: غیرفعال).</li>
+  <li>یک «تصویر لحظه‌ای حساب واقعی» (موجودی و موقعیت‌های واقعی صرافی) تازه در دسترس باشد؛ بدون آن سیستم با خطای ۵۰۳ رد می‌کند و <b>هرگز از اعداد حساب کاغذی به‌جای حساب واقعی استفاده نمی‌کند</b>.</li>
+  <li>کاربر نقش Operator داشته باشد و سفارش را با تأیید صریح (و توکن ضد-جعل) بفرستد.</li>
+  <li>پیش‌پرواز ریسک پاس شود و داده تازه باشد.</li>
+  <li>برای حالت خودکار واقعی: ≥۳۰ سفارش واقعی پذیرفته‌شده در ≥۵ روز بدون نتیجهٔ مبهم ثبت شده باشد. معاملات کاغذی و آزمایشی <b>در این شمارش حساب نمی‌شوند</b>.</li>
+</ol>
+<div class="card danger"><b class="tag">برای مبتدی</b> حتی اگر مالک سیستم هستید، تا پایان دست‌کم یک فصل حساب کاغذی با نتیجهٔ مثبت، گام ۱ را انجام ندهید. ترتیب درست: Viewer → Paper در حالت Manual → Paper در حالت Semi → بازخوانی «گزارش عملکرد» → تازه آن وقت بحث دربارهٔ پول واقعی با مبالغ کوچک.</div>
+
+<!-- ============================================================ -->
+<h2 id="errors">۱۷. لاگ خطاها، تنظیمات و حساب</h2>
+<ul>
+  <li><b>حساب من</b>: تغییر رمز، نشست‌های فعال (می‌توانید نشست‌های دیگر را ببندید)، سقف‌های شخصی و فعالیت اخیر شما.</li>
+  <li><b>لاگ خطاها</b> (مالک): خطاهای سرور، وظایف پس‌زمینه و خطاهای همین مرورگر. ردیف‌های <code>udf/history 403</code> گاه‌به‌گاه برای چند نماد کم‌عمق عادی‌اند؛ تکرار زیاد یا سرایت به BTC/ETH غیرعادی است. دکمهٔ «خروجی» برای ارسال به پشتیبانی.</li>
+  <li><b>تنظیمات</b>: وضعیت موتور (با تفکیک منبع: فایل محیطی سرور / پایگاه‌داده / مرورگر)، تم، فشرده‌سازی جدول‌ها، و عملیات مالک.</li>
+  <li><b>کاربران</b> (مالک): ساخت حساب، دعوت، تغییر نقش، بستن نشست‌ها، مشاهدهٔ دفتر فعالیت.</li>
+</ul>
+
+<!-- ============================================================ -->
+<h2 id="routine">۱۸. روال پیشنهادی روزانه برای مبتدی (۱۵ دقیقه)</h2>
+<ol class="steps">
+  <li><b>نوار بالا</b>: داده «زنده» است؟ اگر نه، تمام.</li>
+  <li><b>نمای کلی</b>: equity، بازده هفته، حرارت. آیا توقف خودکار فعال است؟</li>
+  <li><b>کاوشگر سیگنال روی 1h یا 4h</b>: فقط ردیف‌های LONG با رژیم TREND و تازگی سبز را ببینید. شواهد دو تای اول را باز کنید و سعی کنید <i>بدون نگاه به عدد</i> حدس بزنید کدام مؤلفه قوی است. بعد مقایسه کنید.</li>
+  <li><b>میز معاملات</b> (اگر Operator هستید): کارت‌های صف را بخوانید. برای هر کدام یک جمله دلیل تأیید یا رد بنویسید. این یادداشت‌ها بعد از یک ماه معلم شما می‌شوند.</li>
+  <li><b>گزارش عملکرد</b> هفته‌ای یک بار: میانگین R و کالیبراسیون. تغییر کرده؟ چرا؟</li>
+  <li>یک خط در دفترچهٔ شخصی: «امروز چه دیدم، چه کردم، چه حسی داشتم». حس (ترس/طمع) را هم بنویسید — ثبت آن نصف راه کنترلش است.</li>
+</ol>
+
+<!-- ============================================================ -->
+<h2 id="mistakes">۱۹. اشتباهات رایج</h2>
+<table>
+  <tr><th>اشتباه</th><th>چرا پیش می‌آید</th><th>nobi چه کمکی می‌کند</th></tr>
+  <tr><td>امتیاز ۹۰ را «قطعی» دانستن</td><td>عدد بزرگ حس اطمینان می‌دهد</td><td>کالیبراسیون را نگاه کنید: باند ۸۰–۹۳ فعلاً همان‌قدر موفق است که ۶۰–۷۰</td></tr>
+  <tr><td>جابه‌جا کردن حد ضرر به پایین</td><td>«الان برمی‌گردد»</td><td>nobi حد ضرر را فقط به <i>بالا</i> (نقطهٔ سربه‌سر) می‌برد</td></tr>
+  <tr><td>معامله روی نماد کم‌عمق چون «ارزان» است</td><td>قیمت پایین با فرصت اشتباه گرفته می‌شود</td><td>فیلتر نقدینگی آن‌ها را اصلاً نشان نمی‌دهد</td></tr>
+  <tr><td>چند معامله پشت‌سرهم بعد از زیان</td><td>جبران‌طلبی</td><td>توقف خودکار پس از ۳ حد ضرر پیاپی</td></tr>
+  <tr><td>تصمیم با دادهٔ کهنه</td><td>اینترنت/صرافی قطع و شما متوجه نمی‌شوید</td><td>نشان تازگی + رد اجرای خودکار با دادهٔ کهنه</td></tr>
+  <tr><td>باور به بک‌تست عالی</td><td>برازش به گذشته</td><td>walk-forward، کارمزد اجباری، برچسب TA-only</td></tr>
+  <tr><td>پرش از کاغذی به واقعی بعد از یک هفتهٔ خوب</td><td>شانس را مهارت می‌پنداریم</td><td>گیت ۵ روز / ۳۰ سفارش واقعی و قفل‌های بخش ۱۶</td></tr>
+</table>
+
+<!-- ============================================================ -->
+<h2 id="glossary">۲۰. واژه‌نامه</h2>
+<dl class="glossary">
+  <dt>LONG / خرید</dt><dd>خریدن با انتظار افزایش قیمت. تنها جهتی که nobi در نوبیتکس سیگنال می‌دهد.</dd>
+  <dt>Short / فروش استقراضی</dt><dd>سود از کاهش قیمت با قرض‌گرفتن دارایی. nobi برای اسپات نوبیتکس آن را پیشنهاد نمی‌کند.</dd>
+  <dt>اسپات</dt><dd>خرید و فروش مستقیم دارایی (در مقابل مشتقات/اهرم).</dd>
+  <dt>اهرم (Leverage)</dt><dd>معامله با پول قرضی. nobi از آن استفاده نمی‌کند؛ مبتدی هم نباید.</dd>
+  <dt>اسپرد</dt><dd>فاصلهٔ بهترین قیمت خرید و فروش در دفتر سفارش. هزینهٔ پنهان هر معامله.</dd>
+  <dt>لغزش (Slippage)</dt><dd>اختلاف قیمت مورد انتظار و قیمت واقعی اجرا؛ در بازار کم‌عمق بزرگ است.</dd>
+  <dt>دفتر سفارش / عمق</dt><dd>فهرست سفارش‌های خرید و فروش منتظر در هر قیمت. عمق زیاد = می‌توان بدون جابه‌جایی قیمت معامله کرد.</dd>
+  <dt>سفارش محدود (Limit)</dt><dd>سفارش با قیمت مشخص؛ ممکن است پر نشود. nobi از این نوع استفاده می‌کند.</dd>
+  <dt>سفارش بازار (Market)</dt><dd>اجرا با هر قیمت موجود؛ سریع ولی با لغزش.</dd>
+  <dt>Maker / Taker</dt><dd>سازندهٔ نقدینگی (سفارش منتظر) / برداشت‌کنندهٔ آن (سفارش فوری). کارمزد maker معمولاً کمتر است.</dd>
+  <dt>تتر (USDT)</dt><dd>رمزارز با پشتوانهٔ دلار؛ در نوبیتکس پایهٔ «بازار تتری» و مبنای تبدیل دلار↔تومان در nobi.</dd>
+  <dt>IRT / RLS</dt><dd>بازار ریالی نوبیتکس. API قیمت را به ریال می‌دهد؛ nobi به تومان نمایش می‌دهد.</dd>
+  <dt>پرمیوم تتر</dt><dd>درصد گرانی تتر در ایران نسبت به دلار جهانی.</dd>
+  <dt>Walk-forward</dt><dd>بک‌تست پیش‌رونده: انتخاب پارامتر روی گذشته، آزمون روی آیندهٔ دیده‌نشده، پنجره‌به‌پنجره.</dd>
+  <dt>OOS (خارج از نمونه)</dt><dd>داده‌ای که در انتخاب پارامتر استفاده نشده؛ تنها بخش قابل اعتماد بک‌تست.</dd>
+  <dt>Drawdown (افت سرمایه)</dt><dd>بیشترین کاهش از اوج حساب تا کف بعدی. معیار درد، نه فقط بازده.</dd>
+  <dt>حرارت (Heat)</dt><dd>مجموع ریسک همهٔ موقعیت‌های باز به درصد حساب.</dd>
+  <dt>Expectancy</dt><dd>میانگین نتیجهٔ هر معامله بر حسب R. عدد اصلی برای قضاوت دربارهٔ یک روش.</dd>
+</dl>
+
+<div class="card tip" style="margin-top:40px">
+<b>یک جمله برای یادآوری:</b> nobi برای این ساخته شده که شما <b>کمتر اشتباه کنید و اشتباهاتتان را اندازه بگیرید</b> — نه برای این که به‌جای شما فکر کند. هر جا داشبورد چیزی را «ناموجود»، «کهنه» یا «اثبات‌نشده» می‌نویسد، همان صداقت است که از آن محافظت می‌کند.
+</div>
+
+</div>
+<footer>راهنمای کاربری nobi · نسخهٔ 2.5.0 · این سند توصیهٔ سرمایه‌گذاری نیست. اعداد تصاویر نمونه‌اند مگر جایی که «نمونهٔ واقعی» ذکر شده.</footer>
+</body>
+</html>
