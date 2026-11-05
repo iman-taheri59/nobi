@@ -4,6 +4,7 @@
 
 ## Unreleased
 
+- Documentation reorganisation: the two external inputs, the comprehensive audit and the review-of-reviews (fa/en) moved into `docs/reviews/`; `docs/reviews/README*.md` added as the single living finding→status→commit matrix; the soak log split into `docs/ops/*/soak-2026-11.md`; roadmap status table rewritten (wrong B1 label fixed); illustrated user guide `docs/user-guide.fa.html`; README and HANDOFF updated.
 - `/api/health` now carries `build {commit, commit_full, source}`: the commit the running process started from, read once at start-up from `NBX_BUILD_COMMIT` or `.git/HEAD` (no subprocess) and unaffected by a later checkout on disk; `null` when unknown, never guessed. Answers review P2 ("health proves the version, not the commit"). Visible on production after the soak.
 - `scripts/market_archive.py` + `deploy/nobi-market-archive.*` units: an out-of-process raw market archiver (stats + orderbook/all every 5 minutes, gzip, day-level retention) so payload capture starts during the soak without a deploy.
 - The stability soak on `capoy.ir` formally started at `2026-11-05T07:19:52Z`; baseline and daily checklist recorded in `docs/five-day-validation.md`.

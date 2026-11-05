@@ -108,63 +108,8 @@ NBX_SNAPSHOT_PASSWORD=<رمز همان حساب> \
 - اگر ابزار روزی شکست خورد، ردیفی نوشته نمی‌شود؛ شکافِ تاریخ خودِ شاهد است.
   آن را دستی پر نکنید.
 
-## ثبت شروع رسمی — 2026-11-05 (۱۴۰۵/۰۸/۱۴)
+## دفتر وقایع soak
 
-**نوع:** soak پایداری (الف). گیت «۳۰ نمونهٔ واقعی» عمداً در این دوره دنبال
-نمی‌شود: `mode=disabled` است و `samples` صفر می‌ماند. تلگرام پیکربندی نشده و تا
-پایان دوره اضافه نمی‌شود (نیاز به restart دارد).
-
-| | |
-|---|---|
-| شروع | `2026-11-05T07:19:52Z` (ActiveEnterTimestamp سرویس 2.5.0، commit `dcac952`) |
-| زودترین پایان | `2026-11-10T07:19:52Z` با ≥۵ snapshot روزانه (00:05 UTC، `nobi-snapshot.timer`) |
-| شرط شکست | هر restart (`NRestarts>0`)، deploy، تغییر env، یا `alert_last_ok=False` / `scan_loop.last_ok=false` در دو snapshot متوالی |
-| بکاپ پیش از دوره | `/srv/nobi-data/backup/nobitrader-state-20261105T071909Z.zip` (zip-ok) |
-
-**baseline روز صفر (برای مقایسهٔ روزانه):**
-
-- health: `scan_loop runs=11`, `interval 300s`, `tf 15m`, 39/39 current؛ `stats 566/567`؛
-  `price_alerts runs=118 last_ok=True enabled_rules=0`.
-- journal: `issued 28341`, `resolved 2753`, `pending 1300`, `void 96`, **H3 n=0**
-  (retention ۷روزهٔ کندل 15m — محدودیت شناخته‌شده؛ `pending` باید حول همین عدد
-  بماند، نه رشد خطی). KPI: hit 0.32، exp −0.39R، IC −0.07، `msi degraded`.
-  این شواهد **علیه** لبهٔ استراتژی در پیکربندی فعلی‌اند؛ soak آن را تغییر نمی‌دهد.
-- live: `disabled`, `placement_enabled=false`; risk: Paper equity 97,689، `halted=false`.
-- سیستم: RAM 961 MB، `MemoryPeak` nobi 459 MB، swap 1 GB (اضافه‌شده امروز)،
-  journald سقف 500M، root 40%، `/srv/nobi-data` 7%، TLS تا 2027-01-25.
-- خطاهای شناخته‌شدهٔ upstream (baseline، نه رویداد): `AUTH 403 GET
-  /market/udf/history` گاه‌به‌گاه برای `USDTIRT/DAIIRT/USDCIRT`؛ FX/premium از
-  `stats` تغذیه می‌شود و اثر نمی‌پذیرد. افزایش فرکانس یا سرایت به نمادهای اصلی =
-  رویداد.
-
-**سخت‌سازی‌های اعمال‌شده بدون restart سرویس:** `SystemMaxUse=500M`، swapfile 1G
-با `swappiness=10`، `needrestart` override برای `nobi.service` (تا
-unattended-upgrades آن را restart نکند؛ `Automatic-Reboot` پیش‌فرض false)،
-`nobi-snapshot.timer`.
-
-**چک‌لیست روزانه (کنار CSV):**
-
-```bash
-tail -1 /srv/nobi-data/live-evidence.csv
-systemctl show nobi -p NRestarts -p MemoryPeak; free -m | sed -n 2,3p
-curl -s http://127.0.0.1:8000/api/health | python3 -c "import json,sys;h=json.load(sys.stdin);print(h['scan_loop']['runs'],h['scan_loop']['last_ok'],h['scan_loop']['last_freshness']['symbols'],h['stats'])"
-# access-log درخواست‌های /api/errors را نشمار؛ فقط لاگ خود برنامه
-journalctl -u nobi --since "-24h" --no-pager | grep -iE "warning|error|traceback" | grep -vE '"(GET|POST|HEAD)' | sed 's/^.*python\[[0-9]*\]: //' | sort | uniq -c | sort -rn | head
-du -sh /srv/nobi-data/archive; ls /srv/nobi-data/backup | tail -1
-```
-
-بررسی ساعت ۰۲:۳۰ پس از شروع (09:46Z): scan 28، alerts 293، stats 2830/2831،
-MemoryPeak بدون تغییر، swap 0، تنها خطای برنامه همان 403 کندل USDTIRT در
-07:24Z. timerهای `nobi-snapshot`، `nobi-backup` (00:15Z) و `nobi-market-archive`
-فعال؛ archive از 09:33:51Z (~50 MB/روز).
-
-### archive خام بازار در طول soak (بدون دست‌زدن به سرویس)
-
-محدودیت‌های ۹.۳/۲ و ۹.۳/۶ بررسی (backtest TA-only، hash ≠ replay) فقط با
-ذخیرهٔ payload خام از امروز به بعد بسته می‌شوند. چون soak هیچ deploy/restart را
-مجاز نمی‌کند، archiver یک فرایند **جدا** است: `scripts/market_archive.py` با
-unitهای `deploy/nobi-market-archive.{service,timer}` هر ۵ دقیقه `market/stats`
-و `v3/orderbook/all` را خام و gzip‌شده در `/srv/nobi-data/archive/YYYY-MM-DD/`
-می‌نویسد (پوشش ~۱۰–۴۰ MB/روز؛ `--keep-days 120`). خطای 403/timeout هم به‌عنوان
-شاهد ثبت می‌شود. این فایل‌ها ورودی composite backtest بعدی هستند؛ تا آن زمان
-«وجود archive» ادعایی دربارهٔ کیفیت استراتژی نیست.
+شروع رسمی، baseline روز صفر، سخت‌سازی‌های سرور و چک‌لیست روزانه در
+[`ops/fa/soak-2026-11.md`](ops/fa/soak-2026-11.md) ثبت می‌شوند؛ این راهنما
+فقط روش است، نه دفتر وقایع.

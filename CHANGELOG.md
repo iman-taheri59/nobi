@@ -4,6 +4,7 @@
 
 ## Unreleased
 
+- سازمان‌دهی مستندات تحلیلی: دو ورودی بیرونی، بازبینی جامع و «بازبینیِ بازبینی‌ها» (fa/en) به `docs/reviews/` منتقل شدند؛ `docs/reviews/README.md` به‌عنوان تنها سند زنده با ماتریس «یافته → وضعیت → commit» اضافه شد؛ دفتر وقایع soak به `docs/ops/*/soak-2026-11.md` جدا شد؛ جدول وضعیت roadmap بازنویسی شد (برچسب غلط B1 اصلاح)؛ راهنمای مصور کاربر `docs/user-guide.fa.html`؛ README و HANDOFF به‌روز.
 - `/api/health` اکنون بلوک `build {commit, commit_full, source}` دارد: commit فرایندِ در حال اجرا که یک‌بار در شروع از `NBX_BUILD_COMMIT` یا `.git/HEAD` خوانده می‌شود (بدون subprocess) و با checkout بعدی روی دیسک تغییر نمی‌کند؛ نبودش `null` است، نه حدس. پاسخ به P2 بررسی («health نسخه را ثابت می‌کند، نه commit را»). روی production پس از soak دیده می‌شود.
 - `scripts/market_archive.py` + unitهای `deploy/nobi-market-archive.*`: archiver خام بازار (stats + orderbook/all، هر ۵ دقیقه، gzip، retention روزانه) به‌عنوان فرایند جدا از سرویس تا ذخیرهٔ payload بدون deploy در طول soak شروع شود.
 - شروع رسمی soak پایداری روی `capoy.ir` در `2026-11-05T07:19:52Z` با baseline و چک‌لیست روزانه در `docs/five-day-validation.md` ثبت شد.

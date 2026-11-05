@@ -4,26 +4,39 @@
 
 ---
 
-## وضعیت پیاده‌سازی — به‌روزرسانی ۲۰۲۶-۱۱-۰۴
+## وضعیت پیاده‌سازی — به‌روزرسانی ۲۰۲۶-۱۱-۰۵ (کد `bc11fda`، production 2.5.0)
 
-این جدول فقط چیزهایی را می‌گوید که در همین مخزن با تست یا اجرا تأیید شده‌اند؛
-بقیهٔ موارد همچنان پیشنهاد هستند.
+فقط آنچه در همین مخزن با تست یا اجرا تأیید شده «انجام» است. ستون وضعیت سه
+مقدار دارد: ✅ انجام، ◐ نیمه (با ذکر دقیق بخش باقی‌مانده)، ❌ شروع‌نشده.
 
-| مورد | وضعیت | شاهد |
+| مورد | وضعیت | شاهد / باقی‌مانده |
 |---|---|---|
-| A1 — دادهٔ واقعی نوبیتکس در بک‌اند | **انجام شد** | `/api/universe`، `/api/signals`، `/api/candles/{symbol}`، `/api/orderbook/{symbol}` |
-| A4 — بک‌تست Walk-Forward + Grid | **انجام شد** | `WalkForwardRunner`, `grid_search`, `/api/backtest`, `/api/grid-multi` |
-| زیرساخت A5 — ارسال تلگرام | **انجام شد** (اختیاری، با `NBX_TELEGRAM_*`) | `server/notify.py`، `/api/notify/status` |
-| A5 — هشدار شرطی قیمت/پرمیوم | **بک‌اند و پنل bell انجام شد؛ هشدار عمق باقی است** (crossing، freshness و رویداد پایدار) | `server/price_alerts.py`، `/api/alerts/*`، `nbx-alerts.js`، ADR-0049، `test_price_alerts.py` و `test_price_alerts_ui.cjs` |
-| B1 — ثبت نتیجهٔ سیگنال | **انجام شد** | `server/journal.py`، `/api/journal/*` |
-| B2 — MSI / چرخهٔ عمر استراتژی | **انجام شد** (گذار `train→run→watch→retire`؛ ارتقا به پول واقعی عمداً دستی) | `/api/journal/msi`، `/api/journal/stage`، `journal.next_stage()` |
-| A2 — تحلیل سناریو «اگر-آنگاه» | **انجام شد** (بدون تغییر state؛ پیش‌نمایش و اجرا هر دو از یک `preflight()` می‌خوانند) | `risk_engine.preflight()`، `POST /api/risk/whatif`، کارت `#whatifBox` در بلیت |
-| A3 — تخصیص سبد با احتساب همبستگی | **انجام شد** (ERC + شرینک؛ سپس همان دروازه‌های بروکر روی هر سفارش) | `server/portfolio.py`، `POST /api/portfolio/allocate`، کارت «سبد پیشنهادی» در تب desk |
-| A7 — آلفا/بتا نسبت به معیار | **انجام شد** (بتا، آلفا، خطای ردیابی، نسبت اطلاعات، ضبط صعود/نزول) | `server/benchmark.py`، `POST /api/benchmark/relative`، کارت «عملکرد نسبت به بازار» در تب performance |
-| A6 — شاخص‌های بازار | **انجام شد** (گستردگی، پراکندگی، تمرکز گردش؛ عمداً «شاخص» نیست) | `server/market_overview.py`، `GET /api/market/overview`، کارت «وضعیت بازار» در تب overview |
-| B8 — استریم WebSocket | **نیمه‌کاره** (فقط opt-in؛ پیش‌فرض REST polling) | `NBX_WS_URL`، `/api/ws/status` |
-| B7 — آستانه‌های تطبیقی | **اندازه‌گیری و شاهدِ خارج‌از‌نمونه انجام شد، اعمال نشد** (مقایسهٔ جفت‌شده روی همان پنجره‌ها با یک متغیر؛ `applied: false`؛ آستانه‌های جهت پارامتری شدند و هر دو جهت آزمون‌پذیر است؛ اعمال نیازمند ADR-0021) | `server/adaptive.py`، `GET /api/adaptive/thresholds/{symbol}`، `server/adaptive_evidence.py`، `GET /api/adaptive/evidence/{symbol}`، کارت `#adCard`، ADR-0020، ADR-0021 |
-| — | **تأیید قرارداد داده** (ابزار تازه، خارج از نقشهٔ اولیه) | `scripts/probe_live.py`، `scripts/mock_upstream.py` |
+| A1 — دادهٔ واقعی نوبیتکس (فقط‌خواندنی) | ✅ | `/api/universe`, `/api/signals`, `/api/candles/{symbol}`, `/api/orderbook/{symbol}`؛ production روی آن می‌چرخد |
+| A2 — تحلیل «اگر-آنگاه» | ✅ | `risk_engine.preflight()`, `POST /api/risk/whatif`, `#whatifBox` |
+| A3 — تخصیص سبد با همبستگی | ✅ | `server/portfolio.py` (ERC + شرینک)، `POST /api/portfolio/allocate` |
+| A4 — بک‌تست walk-forward + grid | ✅ | `WalkForwardRunner`, `grid_search`, `/api/backtest`, `/api/grid-multi` |
+| A5 — هشدار شرطی قیمت/پرمیوم | ◐ | قیمت/پرمیوم، پنل bell، تلگرام، ADR-0049 انجام؛ **باقی: هشدار عمق بازار** (داده‌اش از `market_archive` در دسترس می‌شود) |
+| A6 — شاخص‌های بازار | ✅ | `market_overview.py`؛ «دامیننس تتر» عمداً حذف (سبد کل بازار در دسترس نیست) |
+| A7 — آلفا/بتا نسبت به معیار | ✅ | `benchmark.py`, `POST /api/benchmark/relative` |
+| A8 — تقویم رویدادهای کریپتو | ❌ | فقط placeholder در `fa_engine.py` (`unlock-7d>5%`) |
+| B1 — Shadow Orders / A-B روی موتور | ◐ | زیرساخت (ژورنال با `scan_cycle_id`، engine identity) هست؛ **خودِ A/B دو پیکربندی به‌صورت shadow پیاده نشده**. (در نسخهٔ قبلی این جدول «ثبت نتیجهٔ سیگنال» به‌اشتباه B1 خوانده شده بود) |
+| B2 — چرخهٔ عمر استراتژی / MSI | ✅ | `/api/journal/msi`, `/api/journal/stage`, `train→run→watch→retire`؛ ارتقا به پول واقعی عمداً دستی |
+| B3 — ژورنالینگ تصمیم انسانی | ◐ | بازبینی tag/note روی هر سیگنال (`signal_intelligence.review`) و رد با دلیل در میز هست؛ **باقی: گزارش «آیا مداخلهٔ انسانی افزودنی بود؟»** (R تأییدشده‌ها در برابر ردشده‌ها) |
+| B4 — اجرای هوشمند TWAP/VWAP | ❌ | — |
+| B5 — ورود پله‌ای / DCA | ❌ | — |
+| B6 — مشاورهٔ hedge پرمیوم | ❌ | فقط هشدار پرمیوم (A5) هست، نه منطق توصیه |
+| B7 — آستانه‌های تطبیقی | ◐ | اندازه‌گیری + شاهد OOS (`adaptive.py`, `adaptive_evidence.py`, ADR-0020/0021)؛ `applied:false`؛ **اعمال نیازمند ADR-0021 و لبهٔ مثبت** |
+| B8 — استریم WebSocket | ◐ | opt-in با `NBX_WS_URL`، `/api/ws/status`؛ پیش‌فرض REST |
+| C1 چندصرافی، C2 استیکینگ، C3 مارجین/فیوچرز، C5 ML سنگین، C7 منابع پولی | ❌ | عمداً؛ پیش‌نیاز (لبهٔ اثبات‌شده، تجربهٔ زندهٔ ۳–۶ ماهه) محقق نیست |
+| C4 — RBAC چندکاربره | ◐ | نقش‌های Viewer/Operator/Owner، نشست، دعوت، دفتر فعالیت انجام؛ OIDC نه (فعلاً لازم نیست) |
+| C6 — PWA موبایل | ◐ | `manifest.json` + «پکیج موبایل» تک‌فایل؛ service worker/آفلاین نه |
+| — خارج از نقشهٔ اولیه | ✅ | احراز هویت، اسکن پس‌زمینه، ابزارهای شاهد (`live_evidence_snapshot`, `state_backup`, `market_archive`), `probe_live`/`mock_upstream`, preflight حساب واقعی، گیت ۵ روز/۳۰ نمونه، `build` در health |
+
+**اولویت باقی‌مانده‌ها با توجه به شواهد فعلی (IC منفی ژورنال):** موارد اجرایی
+(B4, B5, B6) تا اثبات لبه ارزش پایینی دارند. بالاترین ارزش: تکمیل **B3** (قضاوت
+انسانی در برابر امتیاز)، **B1 واقعی** (A/B پیکربندی امتیاز به‌صورت shadow — ابزار
+اصلی تشخیص) و **هشدار عمق A5**. وضعیت یافته‌های بازبینی در
+[`../../reviews/README.md`](../../reviews/README.md).
 
 > قانون شواهد در مورد A1 تغییر نمی‌کند: اتصال «فقط-خواندنی» است؛ هیچ سفارش
 > واقعی از این داشبورد به نوبیتکس نمی‌رود.

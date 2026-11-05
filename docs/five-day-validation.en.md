@@ -84,3 +84,7 @@ and strategy quality are separate evaluations too.
 Scans now exclude unfinished candles BEFORE scoring, so a partial candle is not
 relabelled as a completed-candle signal merely because time passed. Score formulae
 are unchanged, but rankings may differ when the prior input included a forming bar.
+
+## Soak log
+
+The formal start, day-zero baseline, host hardening and the daily checklist live in [`ops/en/soak-2026-11.md`](ops/en/soak-2026-11.md); this guide is the method, not the log.

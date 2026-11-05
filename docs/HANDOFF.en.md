@@ -2,6 +2,12 @@
 
 [فارسی](HANDOFF.md) · **English**
 
+> **State 2026-11-05 (supersedes the "last updated" block below; stages 30–32 are historical):**
+> released **2.5.0** (`dcac952`) on `capoy.ir`; `main` = `bc11fda`+docs. Stability soak from `2026-11-05T07:19:52Z` until at least `2026-11-10T07:19:52Z` — **no deploy/restart until it ends.**
+> Documentation entry points: [`reviews/README.en.md`](reviews/README.en.md) (finding status), [`ops/en/soak-2026-11.md`](ops/en/soak-2026-11.md) (soak log), [`roadmap/fa/capability-roadmap.md`](roadmap/fa/capability-roadmap.md) (roadmap status, fa).
+> Suggested next work: diagnose the negative journal IC on a copy of `journal.db` (stage 0), then real B3/B1.
+
+
 **Last updated:** 2026-10-25 — stage 32 (drift scheduler hardening)
 **Working version:** 1.8.0 (unreleased; release only after green CI)
 

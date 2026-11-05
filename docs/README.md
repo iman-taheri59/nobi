@@ -61,6 +61,10 @@
 | [`reviews/probe-offline-2026-10-20.md`](reviews/probe-offline-2026-10-20.md) | خروجی خام پروب با صرافیِ قطع (۴۴ پنل) |
 | [`reviews/2026-10-21-shared-constants-fa.md`](reviews/2026-10-21-shared-constants-fa.md) | ثابت‌های مشترک: کارمزد، سرمایهٔ شروع و دروازهٔ مردهٔ `low-rr` — و دو شکافی که عمداً بسته نشد |
 | [`reviews/real-ic-2026-10-19.json`](reviews/real-ic-2026-10-19.json) | اندازه‌گیری IC روی دادهٔ واقعی |
+| [`reviews/README.md`](reviews/README.md) | **فهرست زنده + ماتریس یافته → وضعیت → commit** (نوامبر ۲۰۲۶ به بعد) |
+| [`reviews/2026-11-02-external-*.en.md`](reviews/README.md) | دو تحلیل بیرونی (audit و research parity) — ورودی‌های بازبینی نوامبر |
+| [`reviews/2026-11-03-comprehensive-audit.fa.md`](reviews/2026-11-03-comprehensive-audit.fa.md) | بازبینی جامع مستقل روی 2.2.2 + الحاقیهٔ remediation (انگلیسی هم هست) |
+| [`reviews/2026-11-04-review-of-reviews-and-capoy.fa.md`](reviews/2026-11-04-review-of-reviews-and-capoy.fa.md) | بازبینیِ بازبینی‌ها + مشاهدهٔ production + وضعیت remediation (انگلیسی هم هست) |
 
 > **قاعده:** بازبینی‌ها عکس لحظه‌ای‌اند و بازنویسی نمی‌شوند. اگر بعداً چیزی
 > درست شد، بازبینی تازه نوشته می‌شود که به قبلی ارجاع می‌دهد — تاریخِ ادعاها
@@ -71,6 +75,8 @@
 | فایل | موضوع |
 |---|---|
 | [`ops/fa/free-server-options-for-testing-and-development.md`](ops/fa/free-server-options-for-testing-and-development.md) | گزینه‌های سرور رایگان/ارزان برای تست (نسخهٔ انگلیسی هم موجود است) |
+| [`ops/fa/soak-2026-11.md`](ops/fa/soak-2026-11.md) | دفتر وقایع soak پایداری production (شروع، baseline، سخت‌سازی، چک روزانه) |
+| [`user-guide.fa.html`](user-guide.fa.html) | راهنمای مصور کاربر برای مبتدیان (HTML خودکفا) |
 
 ## چه چیزی دوزبانه است، چه چیزی نه
 
