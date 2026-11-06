@@ -14,7 +14,7 @@ This file is only a way to find things; the content lives in the folders beside 
 | You want to… | Go to |
 |---|---|
 | Get the project running | [`../README.en.md`](../README.en.md) |
-| Understand why the architecture is this way | [`adr/`](adr) — 50 ADRs, each in Persian and English |
+| Understand why the architecture is this way | [`adr/`](adr) — 51 ADRs, each in Persian and English |
 | See which decision is actually implemented | [`adr/README.md`](adr/README.md) — status table with code evidence (Persian) |
 | Know what was last verified, and what was not | [`reviews/`](reviews) (Persian) |
 | Know what the analysis engines actually compute today | [`analysis/`](analysis) — catalogue plus an "implemented / catalogue only" table: [technical](analysis/technical-analysis-capabilities.en.md) · [fundamental](analysis/fundamental-analysis-capabilities.en.md) |
@@ -91,7 +91,7 @@ What is written twice, what is written once, and what is pending. The gate in
 | 2.1.10 controlled deployment checklist | [`upgrade-2.1.10.md`](upgrade-2.1.10.md) | [`upgrade-2.1.10.en.md`](upgrade-2.1.10.en.md) |
 | Changelog | [`CHANGELOG.md`](../CHANGELOG.md) | [`CHANGELOG.en.md`](../CHANGELOG.en.md) |
 | Live handoff | [`HANDOFF.md`](HANDOFF.md) | [`HANDOFF.en.md`](HANDOFF.en.md) |
-| ADR-0001 … ADR-0050 | [`adr/fa/`](adr/fa) | [`adr/en/`](adr/en) |
+| ADR-0001 … ADR-0051 | [`adr/fa/`](adr/fa) | [`adr/en/`](adr/en) |
 | Free testing servers | [`ops/fa/`](ops/fa) | [`ops/en/`](ops/en) |
 | ArvanCloud deployment | [`deploy-arvan.md`](deploy-arvan.md) | **pending** |
 | ArvanCloud full runbook | [`deploy-arvan-cloud.md`](deploy-arvan-cloud.md) | **pending** |

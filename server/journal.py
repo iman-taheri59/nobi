@@ -75,6 +75,24 @@ try:
     RISK_K = parse_risk_k(os.getenv("NBX_RISK_K"))
 except ValueError:
     RISK_K = DEFAULT_RISK_K
+#: ADR-0051: alternative stop multipliers evaluated in the shadow table only.
+#: Comma list; the live RISK_K is skipped (it is already in signal_outcomes).
+def _shadow_risk_ks() -> tuple[float, ...]:
+    out: list[float] = []
+    for part in (os.getenv("NBX_SHADOW_RISK_K", "3") or "").replace(";", ",").split(","):
+        part = part.strip()
+        if not part:
+            continue
+        try:
+            k = parse_risk_k(part)
+        except ValueError:
+            continue
+        if k != RISK_K and k not in out:
+            out.append(k)
+    return tuple(out)
+
+
+SHADOW_RISK_KS = _shadow_risk_ks()
 try:
     _RR_LEVELS = parse_rr_levels(os.getenv("NBX_RR_LEVELS"))
 except ValueError:
@@ -109,6 +127,7 @@ def _engine_config_identity() -> dict[str, Any]:
     parameters = {
         "risk_k": RISK_K, "rr_levels": list(_RR_LEVELS), "trail_r": TRAIL_R,
         "long_min": LONG_MIN,
+        "shadow_risk_ks": list(SHADOW_RISK_KS),
         "environment": {k: os.environ[k] for k in sorted(os.environ) if k.startswith("NBX_")
                         and not any(secret in k for secret in ("TOKEN", "KEY", "SECRET", "PASSWORD"))},
     }
@@ -200,6 +219,29 @@ CREATE TABLE IF NOT EXISTS signal_log (
 );
 CREATE INDEX IF NOT EXISTS ix_signal_ts ON signal_log(ts DESC);
 CREATE INDEX IF NOT EXISTS ix_signal_sym_tf ON signal_log(symbol, timeframe);
+
+-- ADR-0051: outcomes that must not touch production metrics — rows only a
+-- shadow arm called LONG, and every LONG re-simulated at an alternative stop
+-- multiplier. Same geometry/resolver as signal_outcomes, keyed by risk_k.
+CREATE TABLE IF NOT EXISTS signal_shadow_outcomes (
+    signal_id INTEGER NOT NULL,
+    horizon_key TEXT NOT NULL,
+    risk_k REAL NOT NULL,
+    resolved_at INTEGER,
+    exit_ts INTEGER,
+    exit_price REAL,
+    mfe_pct REAL,
+    mae_pct REAL,
+    hit_tp1 INTEGER,
+    hit_sl INTEGER,
+    timeout INTEGER,
+    r_multiple REAL,
+    return_pct REAL,
+    bars_used INTEGER,
+    exit_reason TEXT,
+    dataset_hash TEXT,
+    UNIQUE(signal_id, horizon_key, risk_k)
+);
 
 CREATE TABLE IF NOT EXISTS journal_meta (
     key TEXT PRIMARY KEY,
@@ -392,6 +434,10 @@ def make_row(snapshot: dict, bar_ts: int, *, rank: int | None = None,
         "market_regime": snapshot.get("market_regime"),
         "regime_gate": snapshot.get("regime_gate"),
         "regime_cap": snapshot.get("regime_cap"),
+        # ADR-0051: alternative verdicts from the same inputs. `shadow_any_long`
+        # is what the resolver indexes on so shadow-only LONGs get outcomes.
+        "shadow_arms": snapshot.get("shadow_arms"),
+        "shadow_any_long": bool(snapshot.get("shadow_any_long")),
     }
     return JournalRow(
         ts=int(bar_ts),
@@ -525,7 +571,7 @@ def candles_identity(df: pd.DataFrame) -> dict[str, Any]:
 
 
 def simulate_long(df: pd.DataFrame, i: int, entry: float, atr: float,
-                  bars: int) -> dict[str, Any] | None:
+                  bars: int, *, risk_k: float | None = None) -> dict[str, Any] | None:
     """Walk forward from bar ``i`` for ``bars`` bars and score the trade.
 
     Mirrors the Paper trade geometry: half off at TP1, stop to breakeven,
@@ -533,7 +579,7 @@ def simulate_long(df: pd.DataFrame, i: int, entry: float, atr: float,
     ``r_multiple`` and ``return_pct`` both include both realised legs. Returns
     ``None`` when there is not a single future bar yet.
     """
-    stop_dist = RISK_K * atr
+    stop_dist = (RISK_K if risk_k is None else float(risk_k)) * atr
     if stop_dist <= 0 or entry <= 0:
         return None
     stop = entry - stop_dist
@@ -706,7 +752,61 @@ def resolve_symbol(conn: sqlite3.Connection, symbol: str, tf: str,
                  dataset["rows"], dataset["start"], dataset["end"]),
             )
             filled += 1
+    # ADR-0051: shadow fills are counted separately so `filled` keeps meaning
+    # "production outcomes" for every caller, log line and test.
+    _resolve_shadow(conn, symbol, tf, df, ts_index, dataset["hash"])
     conn.commit()
+    return filled
+
+
+def _resolve_shadow(conn: sqlite3.Connection, symbol: str, tf: str, df: pd.DataFrame,
+                    ts_index: dict[int, int], dataset_hash: str) -> int:
+    """ADR-0051: fill `signal_shadow_outcomes` for (a) live LONGs at each
+    alternative stop multiplier and (b) rows only a shadow arm called LONG at
+    the live multiplier and the alternatives. Production tables are untouched."""
+    ks_live = (RISK_K,)
+    ks_alt = SHADOW_RISK_KS
+    pending = conn.execute(
+        """SELECT id, ts, entry, atr, direction FROM signal_evidence
+           WHERE symbol=? AND timeframe=? AND voided_at IS NULL
+             AND (direction='LONG' OR json_extract(features,'$.shadow_any_long')=1)
+             AND id NOT IN (SELECT signal_id FROM signal_shadow_outcomes
+                            WHERE horizon_key=? AND risk_k=?)""",
+        (symbol.upper(), tf, max(HORIZONS), (ks_alt or ks_live)[-1]),
+    ).fetchall()
+    filled = 0
+    for row in pending:
+        i = ts_index.get(int(row["ts"]))
+        if i is None:
+            continue
+        ks = ks_alt if row["direction"] == "LONG" else ks_live + ks_alt
+        for key, seconds in HORIZONS.items():
+            if not horizon_supported(tf, key):
+                continue
+            bars = bars_for(tf, seconds)
+            if i + bars > len(df) - 1:
+                continue
+            for k in ks:
+                if conn.execute(
+                    "SELECT 1 FROM signal_shadow_outcomes WHERE signal_id=? AND horizon_key=? AND risk_k=?",
+                    (row["id"], key, k),
+                ).fetchone():
+                    continue
+                out = simulate_long(df, i, float(row["entry"]), float(row["atr"]), bars, risk_k=k)
+                if out is None:
+                    continue
+                conn.execute(
+                    """INSERT OR REPLACE INTO signal_shadow_outcomes
+                       (signal_id, horizon_key, risk_k, resolved_at, exit_ts, exit_price,
+                        mfe_pct, mae_pct, hit_tp1, hit_sl, timeout, r_multiple, return_pct,
+                        bars_used, exit_reason, dataset_hash)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    (row["id"], key, k, int(time.time()), out["exit_ts"], out["exit_price"],
+                     out["mfe_pct"], out["mae_pct"], int(out["hit_tp1"]), int(out["hit_sl"]),
+                     int(out["timeout"]), out["r_multiple"], out["return_pct"],
+                     out["bars_used"], out["exit_reason"], dataset_hash),
+                )
+                filled += 1
     return filled
 
 

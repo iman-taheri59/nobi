@@ -184,6 +184,50 @@ def main() -> int:
         print("  …")
         for s, v in table[-4:]:
             print(f"  {s:12s} n={len(v):3d} mean={st.mean(v):+.3f}%")
+    # 5. ADR-0051 shadow arms: identical bars, identical stop geometry, different verdicts
+    print("\n5) Shadow arms (ADR-0051): H1 R̄ / stop-rate of the bars each arm called LONG")
+    arm_rows = conn.execute(
+        f"""SELECT s.id, s.direction, s.features,
+                   o.r_multiple AS r2, o.hit_sl AS sl2,
+                   (SELECT r_multiple FROM signal_shadow_outcomes x
+                     WHERE x.signal_id=s.id AND x.horizon_key='H1' AND x.risk_k=2.0) AS r2s,
+                   (SELECT hit_sl FROM signal_shadow_outcomes x
+                     WHERE x.signal_id=s.id AND x.horizon_key='H1' AND x.risk_k=2.0) AS sl2s,
+                   (SELECT r_multiple FROM signal_shadow_outcomes x
+                     WHERE x.signal_id=s.id AND x.horizon_key='H1' AND x.risk_k=3.0) AS r3,
+                   (SELECT hit_sl FROM signal_shadow_outcomes x
+                     WHERE x.signal_id=s.id AND x.horizon_key='H1' AND x.risk_k=3.0) AS sl3
+            FROM signal_log s
+            LEFT JOIN signal_outcomes o ON o.signal_id=s.id AND o.horizon_key='H1'
+            WHERE {sel} AND json_extract(s.features,'$.shadow_arms') IS NOT NULL""", params).fetchall()
+    if not arm_rows:
+        print("  (no rows carry shadow arms yet — they appear with the first deploy of ADR-0051)")
+    else:
+        import json as _json
+        arms: dict[str, dict[str, list]] = defaultdict(lambda: {"r2": [], "sl2": [], "r3": [], "sl3": []})
+        for r in arm_rows:
+            feats = _json.loads(r["features"] or "{}")
+            verdicts = {"A_live": {"direction": r["direction"]}, **(feats.get("shadow_arms") or {})}
+            r2 = r["r2"] if r["r2"] is not None else r["r2s"]
+            sl2 = r["sl2"] if r["sl2"] is not None else r["sl2s"]
+            for name, v in verdicts.items():
+                if (v or {}).get("direction") != "LONG":
+                    continue
+                if r2 is not None:
+                    arms[name]["r2"].append(r2)
+                    arms[name]["sl2"].append(sl2 or 0)
+                if r["r3"] is not None:
+                    arms[name]["r3"].append(r["r3"])
+                    arms[name]["sl3"].append(r["sl3"] or 0)
+        print(f"  {'arm':10s} {'n(k=2)':>7s} {'R̄ k=2':>8s} {'stop%':>6s}   {'n(k=3)':>7s} {'R̄ k=3':>8s} {'stop%':>6s}")
+        for name in sorted(arms):
+            a = arms[name]
+            def _f(v): return f"{st.mean(v):+.3f}" if v else "   —  "
+            def _p(v): return f"{100 * st.mean(v):5.0f}%" if v else "   — "
+            print(f"  {name:10s} {len(a['r2']):7d} {_f(a['r2']):>8s} {_p(a['sl2']):>6s}   "
+                  f"{len(a['r3']):7d} {_f(a['r3']):>8s} {_p(a['sl3']):>6s}")
+        print("  read: same bars, same entry/ATR; an arm 'wins' only with ≥500 LONGs and non-overlapping 95% CIs.")
+
     print("\nfees are not included in any number above; the clean window may be short — read with the date range in mind.")
     return 0
 

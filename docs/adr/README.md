@@ -85,3 +85,4 @@
 | 0048 | **نصبگر کامل سرور از مرورگر** | پذیرفته — نسخه کاری ۱٫۹٫۰ | state machine، preflight و helper محدود بدون shell |
 | 0049 | **هشدار شرطی قیمت و پرمیوم** | پذیرفته — بک‌اند ۲٫۴٫۰؛ پنل bell در تغییرات محلی پس از tag | `server/price_alerts.py`، `/api/alerts/*`، `nbx-alerts.js`، ADR-0049 و تست‌های Python/DOM/Chromium |
 | 0050 | **گیت رژیم بازار روی LONG و stop همسو با افق** | پذیرفته — کد روی `main` پشت پرچم؛ `shadow` پیش‌فرض، فعال با deploy بعد از soak | `server/regime.py`، `NBX_REGIME_GATE`، `NBX_RISK_K`، فیلدهای `market_regime` در ژورنال، `journal_diagnostic.py` §3b |
+| 0051 | **آزمون A/B سایه: بازوهای وزن/قاعده و stop جایگزین** | پذیرفته — کد روی `main`؛ ثبت از deploy بعد از soak، بدون تغییر production | `server/shadow_arms.py`، `features.shadow_arms`، جدول `signal_shadow_outcomes`، `NBX_SHADOW_RISK_K`، `journal_diagnostic.py` §5 |

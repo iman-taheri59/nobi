@@ -64,6 +64,7 @@ import queue_policy
 import reference_feed
 import regime
 import setup_api
+import shadow_arms
 import signal_cycles
 import signal_drift
 import signal_evidence_view
@@ -1532,6 +1533,15 @@ async def rescan(tf: str = "15m", top: int = 40):
                 snap["direction"], snap["composite"] = new_dir, new_comp
             snap.update(meta)
         _cached["market_regime"] = {**market_regime, **regime.config(), "tf": tf, "at": time.time()}
+
+    # ADR-0051: fixed alternative arms scored from the same inputs, recorded on
+    # the row for a later like-for-like comparison. Never changes the verdict.
+    if shadow_arms.enabled():
+        regime_state = (market_regime or {}).get("state")
+        for snap in out.values():
+            arms = shadow_arms.score(snap, regime_state)
+            snap["shadow_arms"] = arms
+            snap["shadow_any_long"] = shadow_arms.any_long(arms)
 
     # ADR-0025: three states, not two. `unmapped` is symbols no provider knows;
     # counting them as `fallback` (let alone `live`) is how "39 symbols scored
