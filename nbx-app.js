@@ -1114,6 +1114,7 @@
         live.authMode = (backend.auth && backend.auth.mode) || null;
         const uni = await api.getBackendUniverse();
         NBX.core.engine.universe = uni.symbols || [];
+        if (typeof window.refreshTicketSymbols === 'function') window.refreshTicketSymbols();
         NBX.core.engine.premium = uni.premium_usdtirt;
         NBX.core.engine.premium_pct = uni.premium_pct;
         live.source = uni.source || null;

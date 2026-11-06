@@ -5899,6 +5899,27 @@ function ticketSymbols(){
   const live = [...new Set(unis.map(u => u && u.symbol).filter(Boolean))];
   return live.length ? live : symbolsFallback;
 }
+/* The ticket select used to be filled once in initTicket(), at page load —
+ * before `/api/universe` had answered — so it showed the 6-symbol fallback
+ * forever while the scanner listed 60. Refill whenever the universe changes,
+ * keep the user's pick, and label the quote currency so IRT/USDT pairs are
+ * easy to tell apart. */
+let ticketSymbolsKey = '';
+function refreshTicketSymbols(force){
+  const sel = byId('mSym'); if(!sel) return;
+  const syms = ticketSymbols();
+  const key = syms.join(',');
+  if(!force && key === ticketSymbolsKey) return;
+  ticketSymbolsKey = key;
+  const current = manual.sym;
+  const groups = [['IRT', syms.filter(s=>s.endsWith('IRT'))], ['USDT', syms.filter(s=>s.endsWith('USDT'))], ['', syms.filter(s=>!s.endsWith('IRT') && !s.endsWith('USDT'))]];
+  sel.innerHTML = groups.filter(([,list])=>list.length).map(([q,list])=>
+    (q ? `<optgroup label="${q}">` : '') + list.map(s=>`<option value="${s}">${s}</option>`).join('') + (q ? '</optgroup>' : '')
+  ).join('');
+  sel.value = syms.includes(current) ? current : syms[0];
+  if(sel.value !== current){ manual.sym = sel.value; manualDirty=false; if(typeof fillTicketFromLive==='function') fillTicketFromLive(); }
+}
+window.refreshTicketSymbols = refreshTicketSymbols;
 /* Per-symbol overrides now come from the server (`GET /api/exec/mode`) and are
  * edited through the select on each queue row. This used to be a hard-coded
  * table while the hint promised a per-symbol choice: BTCIRT was pinned to
@@ -6611,8 +6632,7 @@ function initTicket(){
   const bmRun = byId('bmRun'); if(bmRun) bmRun.onclick = ()=>loadBenchmark();
   const bmSel = byId('bmBench'); if(bmSel) bmSel.onchange = ()=>loadBenchmark();
   const run = byId('allocRun'); if(run) run.onclick = ()=>runBookAlloc(true);
-  byId('mSym').innerHTML = ticketSymbols().map(s=>`<option value="${s}">${s}</option>`).join('');
-  byId('mSym').value = manual.sym;
+  refreshTicketSymbols(true);
   byId('mAmt').value = manual.amount;
   fillTicketFromLive();
   byId('mSym').onchange = e=>{ manual.sym=e.target.value; manualDirty=false;fillTicketFromLive(); };
@@ -11667,6 +11687,7 @@ window.addEventListener('resize', resizeCharts);
         live.authMode = (backend.auth && backend.auth.mode) || null;
         const uni = await api.getBackendUniverse();
         NBX.core.engine.universe = uni.symbols || [];
+        if (typeof window.refreshTicketSymbols === 'function') window.refreshTicketSymbols();
         NBX.core.engine.premium = uni.premium_usdtirt;
         NBX.core.engine.premium_pct = uni.premium_pct;
         live.source = uni.source || null;

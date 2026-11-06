@@ -58,3 +58,10 @@ def test_activity_feedback_is_wired():
     css = (ROOT / "assets" / "css" / "components.css").read_text(encoding="utf-8")
     assert "cursor: pointer" in css and 'button[aria-busy="true"]' in css and "#nbxProgress" in css
     assert "color-scheme: dark" in (ROOT / "assets" / "css" / "base.css").read_text(encoding="utf-8")
+
+
+def test_ticket_symbols_refresh_when_universe_arrives():
+    # initTicket() ran once before /api/universe answered → 6 fallback symbols forever.
+    assert "function refreshTicketSymbols" in INDEX
+    assert "refreshTicketSymbols(true)" in INDEX
+    assert "window.refreshTicketSymbols()" in APP

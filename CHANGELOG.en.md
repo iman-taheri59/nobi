@@ -4,6 +4,7 @@
 
 ## Unreleased
 
+- **Order ticket listed only 6 symbols:** `initTicket()` filled the select once at page load — before `/api/universe` had answered — and stayed on the 6-symbol fallback while the scanner showed 60. It now refills whenever the universe arrives, keeps the user's pick and groups symbols by IRT/USDT.
 - **Click feedback:** Tailwind v4 preflight left `cursor: default` on buttons, so nothing looked clickable. Now: pointer on every control, a visible press, a clear disabled state; plus an activity layer (`nbx-activity`): a 2px progress bar at the top and a spinner on the very button that started a request (`aria-busy`, also blocks double clicks) until it completes. Only click-triggered requests count; background polling never lights the bar.
 - Native `<select>` popups opened with a light background and light text on desktop, so options were unreadable: `color-scheme: dark` on `html` + meta, explicit `option` colours.
 - **Bug fix: the timeframe selector had not rendered since 2026-10-20.** `injectCandleSelector` located its anchor via the chart's `previousElementSibling`; commit `17be1af` wrapped the chart in `<div class="relative">`, the anchor became null and the function returned silently, pinning the dashboard to 15m. It now anchors on `#candleHeader` and a source test guards it.
