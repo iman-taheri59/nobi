@@ -14,7 +14,7 @@ This file is only a way to find things; the content lives in the folders beside 
 | You want to… | Go to |
 |---|---|
 | Get the project running | [`../README.en.md`](../README.en.md) |
-| Understand why the architecture is this way | [`adr/`](adr) — 18 ADRs, each in Persian and English |
+| Understand why the architecture is this way | [`adr/`](adr) — 50 ADRs, each in Persian and English |
 | See which decision is actually implemented | [`adr/README.md`](adr/README.md) — status table with code evidence (Persian) |
 | Know what was last verified, and what was not | [`reviews/`](reviews) (Persian) |
 | Know what the analysis engines actually compute today | [`analysis/`](analysis) — catalogue plus an "implemented / catalogue only" table: [technical](analysis/technical-analysis-capabilities.en.md) · [fundamental](analysis/fundamental-analysis-capabilities.en.md) |
