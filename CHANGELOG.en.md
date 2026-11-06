@@ -4,6 +4,7 @@
 
 ## Unreleased
 
+- `scripts/journal_diagnostic.py` (read-only) + `docs/analysis/journal-diagnostic-2026-11-06.{md,en.md}`: diagnosis of the negative journal IC — the whole universe fell 3.5–4% in the clean window, TA anti-predictive / FA and liquidity positive at 1h, 93% stops at the 24h horizon with a 2×ATR(15m) stop; proposed 2.6.0 actions: market-regime gate, horizon-consistent stop, shadow A/B.
 - **Order ticket listed only 6 symbols:** `initTicket()` filled the select once at page load — before `/api/universe` had answered — and stayed on the 6-symbol fallback while the scanner showed 60. It now refills whenever the universe arrives, keeps the user's pick and groups symbols by IRT/USDT.
 - **Click feedback:** Tailwind v4 preflight left `cursor: default` on buttons, so nothing looked clickable. Now: pointer on every control, a visible press, a clear disabled state; plus an activity layer (`nbx-activity`): a 2px progress bar at the top and a spinner on the very button that started a request (`aria-busy`, also blocks double clicks) until it completes. Only click-triggered requests count; background polling never lights the bar.
 - Native `<select>` popups opened with a light background and light text on desktop, so options were unreadable: `color-scheme: dark` on `html` + meta, explicit `option` colours.

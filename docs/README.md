@@ -61,6 +61,7 @@
 | [`reviews/probe-offline-2026-10-20.md`](reviews/probe-offline-2026-10-20.md) | خروجی خام پروب با صرافیِ قطع (۴۴ پنل) |
 | [`reviews/2026-10-21-shared-constants-fa.md`](reviews/2026-10-21-shared-constants-fa.md) | ثابت‌های مشترک: کارمزد، سرمایهٔ شروع و دروازهٔ مردهٔ `low-rr` — و دو شکافی که عمداً بسته نشد |
 | [`reviews/real-ic-2026-10-19.json`](reviews/real-ic-2026-10-19.json) | اندازه‌گیری IC روی دادهٔ واقعی |
+| [`analysis/journal-diagnostic-2026-11-06.md`](analysis/journal-diagnostic-2026-11-06.md) | تشخیص IC منفی روی کپی ژورنال: رژیم بازار، IC اجزا، هندسهٔ stop، نمادها + اقدام‌ها (انگلیسی هم هست؛ اسکریپت `scripts/journal_diagnostic.py`) |
 | [`reviews/README.md`](reviews/README.md) | **فهرست زنده + ماتریس یافته → وضعیت → commit** (نوامبر ۲۰۲۶ به بعد) |
 | [`reviews/2026-11-02-external-*.en.md`](reviews/README.md) | دو تحلیل بیرونی (audit و research parity) — ورودی‌های بازبینی نوامبر |
 | [`reviews/2026-11-03-comprehensive-audit.fa.md`](reviews/2026-11-03-comprehensive-audit.fa.md) | بازبینی جامع مستقل روی 2.2.2 + الحاقیهٔ remediation (انگلیسی هم هست) |
