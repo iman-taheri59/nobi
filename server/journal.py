@@ -44,7 +44,7 @@ from typing import Any
 
 import pandas as pd
 
-from risk_engine import DEFAULT_RR_LEVELS, parse_rr_levels
+from risk_engine import DEFAULT_RISK_K, DEFAULT_RR_LEVELS, parse_risk_k, parse_rr_levels
 from units import IRT_PRICE_CONTRACT, price_contract
 
 
@@ -68,8 +68,13 @@ TF_SECONDS = {"15m": 900, "1h": 3600, "4h": 14_400, "D": 86_400}
 #: floor of one bar so H1 stays meaningful on the 4h/daily charts.
 HORIZONS = {"H1": 3_600, "H2": 86_400, "H3": 7 * 86_400}
 
-#: Same risk geometry as ``risk_engine`` / ``paper_trading``.
-RISK_K = 2.0          # stop distance = 2 * ATR
+#: Same risk geometry as ``risk_engine`` / ``paper_trading``. ADR-0050 made the
+#: multiplier a setting (`NBX_RISK_K`, default 2.0) parsed in one place; a bad
+#: value keeps the default here exactly as `main.risk_config_from_env()` does.
+try:
+    RISK_K = parse_risk_k(os.getenv("NBX_RISK_K"))
+except ValueError:
+    RISK_K = DEFAULT_RISK_K
 try:
     _RR_LEVELS = parse_rr_levels(os.getenv("NBX_RR_LEVELS"))
 except ValueError:
@@ -382,6 +387,11 @@ def make_row(snapshot: dict, bar_ts: int, *, rank: int | None = None,
         "veto_cap": snapshot.get("veto_cap"),
         "veto_severe": snapshot.get("veto_severe"),
         "uncapped_composite": snapshot.get("uncapped_composite"),
+        # ADR-0050: the market-wide regime at issue time, so outcomes can be
+        # split by tape without re-deriving it from candles later.
+        "market_regime": snapshot.get("market_regime"),
+        "regime_gate": snapshot.get("regime_gate"),
+        "regime_cap": snapshot.get("regime_cap"),
     }
     return JournalRow(
         ts=int(bar_ts),

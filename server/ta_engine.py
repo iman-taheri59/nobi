@@ -8,6 +8,7 @@ Public API:
 """
 from __future__ import annotations
 
+import os
 from typing import Any
 
 import numpy as np
@@ -22,7 +23,18 @@ RANGE_GATE = 0.85          # multiplier applied outside a trending regime
 ADX_TREND_MIN = 25.0       # ADX above this counts as a trend
 LONG_SCORE_MIN = 68.0      # score >= this -> LONG
 NEUTRAL_SCORE_MIN = 55.0   # score >= this -> NEUTRAL, else EXIT
-RISK_K = 2.0               # stop distance = 2 * ATR (kept in step with journal)
+# stop distance = RISK_K * ATR. ADR-0050: one setting (`NBX_RISK_K`, default
+# 2.0) parsed in risk_engine; journal, manual ticket and paper plans read it
+# from here or from the same parser, never from their own literal.
+try:
+    from risk_engine import DEFAULT_RISK_K as _DEFAULT_RISK_K
+    from risk_engine import parse_risk_k as _parse_risk_k
+    try:
+        RISK_K = _parse_risk_k(os.getenv("NBX_RISK_K"))
+    except ValueError:
+        RISK_K = _DEFAULT_RISK_K
+except ImportError:  # ta_engine is also used standalone by scripts
+    RISK_K = 2.0
 
 
 def component_score(comp: dict) -> float:

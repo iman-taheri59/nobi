@@ -155,6 +155,23 @@ def main() -> int:
             hit = sum(1 for o, d in zip(h1, dists, strict=True) if o["mae_pct"] <= -(k * d / 2.0)) / len(h1)
             print(f"    {k:.1f}×ATR → {hit:.2f}")
 
+    # 3b. ADR-0050: the same outcomes split by the market regime recorded at issue
+    print("\n3b) LONG 1h return by market regime recorded at issue (ADR-0050 shadow)")
+    import json as _json
+    feat = {r["id"]: r["features"] for r in conn.execute(
+        f"SELECT id, features FROM signal_log WHERE {sel} AND direction='LONG'", params)}
+    by_regime: dict[str, list[float]] = defaultdict(list)
+    for r, f in pairs:
+        try:
+            state = (_json.loads(feat.get(r["id"]) or "{}").get("market_regime")) or "not-recorded"
+        except ValueError:
+            state = "not-recorded"
+        by_regime[str(state)].append(f)
+    for k, v in sorted(by_regime.items(), key=lambda kv: -len(kv[1])):
+        print(f"  {k:14s} n={len(v):4d} mean={st.mean(v):+.3f}%  win={sum(1 for x in v if x > 0) / len(v):.2f}")
+    if set(by_regime) == {"not-recorded"}:
+        print("  (rows predate the regime gate; nothing to split yet)")
+
     # 4. symbols
     print("\n4) 1h return after LONG by symbol (n ≥ 15)")
     by_sym: dict[str, list[float]] = defaultdict(list)

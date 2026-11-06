@@ -41,6 +41,27 @@ MIN_RR = 1.5
 DEFAULT_RR_LEVELS: tuple[float, ...] = (1.2, 2.0)
 
 
+DEFAULT_RISK_K = 2.0
+#: ADR-0050: the stop multiplier is one setting, read here and nowhere else.
+#: Bounds are deliberate — below 1×ATR a 15m stop is noise, above 5× the
+#: position is too small to matter — and a bad value raises like a bad ladder.
+RISK_K_BOUNDS = (1.0, 5.0)
+
+
+def parse_risk_k(raw: str | None) -> float:
+    """`"3"` → `3.0`; empty → default; anything outside the bounds raises."""
+    if raw is None or not str(raw).strip():
+        return DEFAULT_RISK_K
+    try:
+        k = float(str(raw).strip())
+    except ValueError as exc:
+        raise ValueError(f"NBX_RISK_K={raw!r} is not a number") from exc
+    lo, hi = RISK_K_BOUNDS
+    if not (lo <= k <= hi) or k != k:
+        raise ValueError(f"NBX_RISK_K={raw!r} must be between {lo:g} and {hi:g}")
+    return k
+
+
 def parse_rr_levels(raw: str | None) -> tuple[float, ...]:
     """`"1.5,2.5"` → `(1.5, 2.5)`; anything unusable raises.
 

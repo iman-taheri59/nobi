@@ -62,6 +62,7 @@ import paper_trading
 import price_alerts
 import queue_policy
 import reference_feed
+import regime
 import setup_api
 import signal_cycles
 import signal_drift
@@ -91,10 +92,12 @@ from portfolio import (
 )
 from portfolio import allocate as allocate_portfolio
 from risk_engine import (
+    DEFAULT_RISK_K,
     DEFAULT_RR_LEVELS,
     MIN_RR,
     RiskConfig,
     RiskEngine,
+    parse_risk_k,
     parse_rr_levels,
     preflight,
 )
@@ -715,7 +718,12 @@ def risk_config_from_env() -> RiskConfig:
     except ValueError as exc:
         log.warning("%s — keeping the default take-profit ladder %s", exc, DEFAULT_RR_LEVELS)
         levels = DEFAULT_RR_LEVELS
-    return RiskConfig(equity=EQUITY, rr_levels=levels)
+    try:
+        risk_k = parse_risk_k(os.getenv("NBX_RISK_K"))
+    except ValueError as exc:
+        log.warning("%s — keeping the default stop multiplier %s", exc, DEFAULT_RISK_K)
+        risk_k = DEFAULT_RISK_K
+    return RiskConfig(equity=EQUITY, rr_levels=levels, risk_k_multiplier=risk_k)
 
 
 risk = RiskEngine(risk_config_from_env())
@@ -1227,6 +1235,7 @@ async def health():
         # ADR-0024: whether the evidence window is being filled by the process or
         # by a browser tab. "off" here plus a rising `days` means a tab is doing it.
         "scan_loop": _cached.get("scan_loop"),
+        "market_regime": _cached.get("market_regime"),
         # ADR-0049 scheduler: enabled rules, last tick outcome and the durable
         # sent/failed/pending split, so a stuck delivery is visible to a monitor.
         "price_alerts": _cached.get("price_alerts"),
@@ -1507,6 +1516,23 @@ async def rescan(tf: str = "15m", top: int = 40):
 
     await asyncio.gather(*(enrich(sym, snap) for sym, snap in out.items()))
 
+    # ADR-0050: one market-wide regime per cycle, from the same tickers the
+    # overview panel reads. Computed after the per-symbol work so a slow FA
+    # provider cannot age it; applied per row below (shadow by default).
+    market_regime = regime.assess(_overview_for_regime()) if regime.MODE != "off" else None
+    if market_regime is not None:
+        for snap in out.values():
+            new_dir, new_comp, meta = regime.apply(
+                snap.get("direction") or "NEUTRAL", snap.get("composite"), market_regime
+            )
+            if meta.get("regime_cap") is not None:
+                snap.setdefault("direction_raw", snap.get("direction"))
+                if snap.get("uncapped_composite") is None and snap.get("composite") is not None:
+                    snap["uncapped_composite"] = round(float(snap["composite"]), 1)
+                snap["direction"], snap["composite"] = new_dir, new_comp
+            snap.update(meta)
+        _cached["market_regime"] = {**market_regime, **regime.config(), "tf": tf, "at": time.time()}
+
     # ADR-0025: three states, not two. `unmapped` is symbols no provider knows;
     # counting them as `fallback` (let alone `live`) is how "39 symbols scored
     # fundamentally" got assembled out of neutral defaults.
@@ -1630,6 +1656,7 @@ async def signals(tf: str = Query("15m", pattern="^(15m|1h|4h|D)$")):
             "premium_usdtirt": _cached["premium"],
             "premium_pct": _cached["premium_pct"],
             "fa_coverage": _cached.get("fa_coverage"),
+            "market_regime": _cached.get("market_regime"),
             "pair_premium": pair_premium_block([]),
             # No scores is not the same as no candles: the block still says
             # which wall was hit, with a named reason.
@@ -1649,6 +1676,7 @@ async def signals(tf: str = Query("15m", pattern="^(15m|1h|4h|D)$")):
         "premium_usdtirt": _cached["premium"],
         "premium_pct": _cached["premium_pct"],
         "fa_coverage": _cached.get("fa_coverage"),
+        "market_regime": _cached.get("market_regime"),
         # ADR-0025 — each coin's own Toman premium, from its two legs. A
         # measurement beside the ranking, never inside it.
         "pair_premium": pair_premium_block(ranked),
@@ -4070,6 +4098,7 @@ async def market_overview_route(tf: str = Query("15m", pattern="^(15m|1h|4h|D)$"
         enriched, signals=signals_for_tf or None, premium_pct=_cached.get("premium_pct")
     )
     uni_as_of = fresh["universe"]["as_of"]
+    out["regime"] = {**regime.assess(out), **regime.config()}
     out.update(
         {
             **provenance(),
@@ -4082,6 +4111,34 @@ async def market_overview_route(tf: str = Query("15m", pattern="^(15m|1h|4h|D)$"
         }
     )
     return out
+
+
+def _overview_for_regime() -> dict | None:
+    """Plain `market_overview()` of the cached tickers, for the regime gate.
+
+    The same rows and the same FX conversion as `/api/market/overview`, minus
+    the freshness/provenance wrapper; returns None when the universe or the
+    toman rate is missing, which `regime.assess` reports as `unknown`.
+    """
+    rows = [r for r in list(_cached.get("universe") or []) if isinstance(r, dict)]
+    if not rows:
+        return None
+    usdt_irt = next(
+        (px for r in rows if r.get("symbol") == "USDTIRT" and (px := _finite_pos(r.get("last"))) is not None),
+        0.0,
+    )
+    if usdt_irt <= 0:
+        return None
+    enriched = []
+    for r in rows:
+        sym = str(r.get("symbol") or "").upper()
+        fx = 1.0 if sym.endswith("USDT") else (usdt_irt if sym.endswith("IRT") else None)
+        enriched.append({**r, "fx_usd": fx})
+    try:
+        return market_overview(enriched, premium_pct=_cached.get("premium_pct"))
+    except Exception as e:  # the gate must never break a scan
+        log.warning("regime overview failed: %s", e)
+        return None
 
 
 def _live_equity() -> tuple[float, float]:

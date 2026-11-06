@@ -15,7 +15,7 @@
 | پشتیبان و بازیابی آفلاین ایمن را بررسی کنی | [`operations-recovery.md`](operations-recovery.md) · [English](operations-recovery.en.md) |
 | پروژه را راه بیندازی | [`../README.md`](../README.md) |
 | هشدار شرطی قیمت/پرمیوم و API آن را بفهمی | [`price-alerts.md`](price-alerts.md) · [English](price-alerts.en.md) |
-| بفهمی چرا معماری این‌طور است | [`adr/`](adr) — ۱۸ ADR، هر کدام فارسی و انگلیسی |
+| بفهمی چرا معماری این‌طور است | [`adr/`](adr) — ۵۰ ADR، هر کدام فارسی و انگلیسی |
 | ببینی کدام تصمیم واقعاً پیاده شده | [`adr/README.md`](adr/README.md) — جدول وضعیت با شاهد کد |
 | بدانی آخرین بار چه چیزی تأیید شد و چه چیزی نه | [`reviews/`](reviews) |
 | بدانی موتورهای تحلیل امروز چه چیزی را واقعاً محاسبه می‌کنند | [`analysis/`](analysis) — کاتالوگ + جدول «پیاده‌شده / فقط کاتالوگ»: [تکنیکال](analysis/technical-analysis-capabilities.md) ([English](analysis/technical-analysis-capabilities.en.md)) · [فاندامنتال](analysis/fundamental-analysis-capabilities.md) ([English](analysis/fundamental-analysis-capabilities.en.md)) |
@@ -91,7 +91,7 @@
 | نسخه‌بندی و انتشار | [`releases.md`](releases.md) | [`releases.en.md`](releases.en.md) |
 | چک‌لیست استقرار کنترل‌شده 2.1.10 | [`upgrade-2.1.10.md`](upgrade-2.1.10.md) | [`upgrade-2.1.10.en.md`](upgrade-2.1.10.en.md) |
 | تاریخچهٔ تغییرات | [`../CHANGELOG.md`](../CHANGELOG.md) | [`../CHANGELOG.en.md`](../CHANGELOG.en.md) |
-| ADR-0001 … ADR-0018 | [`adr/fa/`](adr/fa) | [`adr/en/`](adr/en) |
+| ADR-0001 … ADR-0050 | [`adr/fa/`](adr/fa) | [`adr/en/`](adr/en) |
 | سرور رایگان تست | [`ops/fa/`](ops/fa) | [`ops/en/`](ops/en) |
 | استقرار آروان | [`deploy-arvan.md`](deploy-arvan.md) | **در انتظار** |
 | راهنمای جامع استقرار آروان | [`deploy-arvan-cloud.md`](deploy-arvan-cloud.md) | **در انتظار** |

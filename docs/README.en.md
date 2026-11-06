@@ -91,7 +91,7 @@ What is written twice, what is written once, and what is pending. The gate in
 | 2.1.10 controlled deployment checklist | [`upgrade-2.1.10.md`](upgrade-2.1.10.md) | [`upgrade-2.1.10.en.md`](upgrade-2.1.10.en.md) |
 | Changelog | [`CHANGELOG.md`](../CHANGELOG.md) | [`CHANGELOG.en.md`](../CHANGELOG.en.md) |
 | Live handoff | [`HANDOFF.md`](HANDOFF.md) | [`HANDOFF.en.md`](HANDOFF.en.md) |
-| ADR-0001 … ADR-0027 | [`adr/fa/`](adr/fa) | [`adr/en/`](adr/en) |
+| ADR-0001 … ADR-0050 | [`adr/fa/`](adr/fa) | [`adr/en/`](adr/en) |
 | Free testing servers | [`ops/fa/`](ops/fa) | [`ops/en/`](ops/en) |
 | ArvanCloud deployment | [`deploy-arvan.md`](deploy-arvan.md) | **pending** |
 | ArvanCloud full runbook | [`deploy-arvan-cloud.md`](deploy-arvan-cloud.md) | **pending** |

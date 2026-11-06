@@ -84,3 +84,4 @@
 | 0047 | **زمان‌بند و cohortهای Drift** | پذیرفته — ۱٫۸٫۰ | schedule، inventory، cohort و PSI bins |
 | 0048 | **نصبگر کامل سرور از مرورگر** | پذیرفته — نسخه کاری ۱٫۹٫۰ | state machine، preflight و helper محدود بدون shell |
 | 0049 | **هشدار شرطی قیمت و پرمیوم** | پذیرفته — بک‌اند ۲٫۴٫۰؛ پنل bell در تغییرات محلی پس از tag | `server/price_alerts.py`، `/api/alerts/*`، `nbx-alerts.js`، ADR-0049 و تست‌های Python/DOM/Chromium |
+| 0050 | **گیت رژیم بازار روی LONG و stop همسو با افق** | پذیرفته — کد روی `main` پشت پرچم؛ `shadow` پیش‌فرض، فعال با deploy بعد از soak | `server/regime.py`، `NBX_REGIME_GATE`، `NBX_RISK_K`، فیلدهای `market_regime` در ژورنال، `journal_diagnostic.py` §3b |
