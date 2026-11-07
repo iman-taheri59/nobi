@@ -22,7 +22,9 @@ def _checkout(tmp_path: Path, *, packed: bool = False, detached: bool = False) -
 
 def test_loose_packed_and_detached_heads_all_resolve(tmp_path):
     for kw in ({}, {"packed": True}, {"detached": True}):
-        root = _checkout(tmp_path / str(kw), **kw)
+        # `str(kw)` contains quotes, braces and a colon — not a valid directory
+        # name on Windows (WinError 123), which kept the advisory job red.
+        root = _checkout(tmp_path / ("-".join(kw) or "loose"), **kw)
         assert build_info.resolve(root, env={}) == {
             "commit": SHA[:12], "commit_full": SHA, "source": "git"}
 

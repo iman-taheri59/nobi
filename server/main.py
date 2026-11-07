@@ -239,7 +239,7 @@ async def journal_resolve(tf: str = "15m", symbols: list[str] | None = None) -> 
     conn = signal_journal.connect()
     filled = 0
     try:
-        syms = symbols or [r["symbol"] for r in _cached["universe"][:40]]
+        syms = symbols or [r["symbol"] for r in _cached["universe"][:SCAN_TOP]]
         for sym in syms:
             try:
                 rows, _src = await client.get_candles_ex(sym, tf, 1200)
@@ -567,7 +567,7 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(
     title="nobiTrader",
-    version="2.5.0",
+    version="2.5.1",
     lifespan=lifespan,
 )
 
@@ -770,6 +770,13 @@ PAIR_PREMIUM_LIMIT_PCT = float(os.getenv("NBX_PAIR_PREMIUM_LIMIT_PCT", "5"))
 #: The floor is not a preference: a value below it is *refused* rather than
 #: quietly rounded up, the same rule ADR-0023 set for the prefetch count.
 SCAN_LOOP_MIN_S = 60
+#: How many of the cached universe (top 60 by 24h USD turnover) each scan
+#: cycle scores. Fixed at 40 since ADR-0007; *membership* is not fixed —
+#: the ranking is recomputed every cycle, so a symbol near the cut-off drops
+#: in and out. `docs/analysis/universe-churn-2026-11-07.md` measures that:
+#: only 17 symbols sat in ≥90 % of cycles over 12 days. Whether to freeze
+#: membership is part of the 24 Nov decision; the number itself is not.
+SCAN_TOP = 40
 UPSTREAM_TTL_S = int(os.getenv("NBX_UPSTREAM_TTL_S", "20"))
 
 #: Read by `paper_trading.market_closed_hook`; kept as its own object so the
@@ -1392,7 +1399,7 @@ async def universe():
 NOT_A_TA_SYMBOL = frozenset({"USDTIRT"})
 
 
-async def rescan(tf: str = "15m", top: int = 40):
+async def rescan(tf: str = "15m", top: int = SCAN_TOP):
     """Score the universe with TA + liquidity, then enrich with fundamentals.
 
     Fundamentals are attempted for **every** symbol; when they are unavailable

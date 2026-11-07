@@ -1,6 +1,6 @@
 # nobi (nobitrader) — Unified Review of the Project and the Market-Analysis Engine
 
-Source: external review received 2026-11-07 (English only; archived verbatim, universe size is 60 not 40 — see CHANGELOG).
+Source: external review received 2026-11-07 (English only; archived verbatim). Note: the "universe (≤ 40)" figure is correct — `/api/universe` caches the top 60 by turnover, but the scan scores the top 40 (`SCAN_TOP`); an earlier note here claiming 60 was wrong.
 
 Repository: `github.com/iman-taheri59/nobi` · branch `main` · commit `61bc2be` · version `2.5.0` · MIT
 

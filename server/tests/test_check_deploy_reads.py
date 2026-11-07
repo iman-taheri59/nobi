@@ -7,6 +7,7 @@ import json
 import os
 import urllib.error
 
+import pytest
 from test_check_deploy import check_deploy
 
 
@@ -110,6 +111,7 @@ def test_an_unexpected_sensitive_get_status_cannot_pass(monkeypatch):
     assert check_deploy.check_reads("https://capoy.ir")["status"] == "fail"
 
 
+@pytest.mark.skipif(os.name != "posix", reason="the 0o640 secret check reads a POSIX mode; chmod is a no-op on Windows")
 def test_unit_environment_is_a_complete_config_without_server_dot_env(tmp_path, monkeypatch):
     server = tmp_path / "server"
     server.mkdir()

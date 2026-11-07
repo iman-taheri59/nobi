@@ -1209,7 +1209,7 @@ def test_root_page_needs_no_external_hosts():
     assert "fonts.googleapis.com" not in body
     assert "cdn.jsdelivr.net" not in body, "a stylesheet still points at a CDN"
 
-    allowed = ("lightweight-charts", "lucide")
+    allowed = ("lightweight-charts",)  # lucide left the page: icons are inline (test_inline_icons.py)
     external = re.findall(r'<script[^>]+src="https://([^/"]+)', body)
     for host in external:
         assert host in ("unpkg.com",), f"unexpected external script host {host}"

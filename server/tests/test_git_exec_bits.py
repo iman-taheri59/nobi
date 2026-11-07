@@ -14,19 +14,32 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
-MUST_BE_EXECUTABLE = (
-    "scripts/update_arvan.sh",
-    "scripts/deploy_arvan.sh",
-    "scripts/resolve_fa.py",
-    "deploy/nobi-privileged-helper",
-    "deploy/nobi-helper-client",
-)
+#: Tracked files that start with a shebang are meant to be run directly; the
+#: list is derived, not hand-kept, so a new script cannot forget to be added.
+EXCLUDE_PREFIXES = ("node_modules/",)
+
+
+def _shebang_files() -> list[str]:
+    out = subprocess.run(["git", "ls-files"], cwd=ROOT, capture_output=True, text=True,
+                         encoding="utf-8", check=True).stdout.split("\n")
+    found = []
+    for rel in out:
+        if not rel or rel.startswith(EXCLUDE_PREFIXES):
+            continue
+        path = ROOT / rel
+        try:
+            with path.open("rb") as fh:
+                if fh.read(2) == b"#!":
+                    found.append(rel)
+        except OSError:
+            continue
+    return found
 
 
 def _index_modes() -> dict[str, str] | None:
     if shutil.which("git") is None or not (ROOT / ".git").exists():
         return None
-    out = subprocess.run(["git", "ls-files", "-s", *MUST_BE_EXECUTABLE], cwd=ROOT,
+    out = subprocess.run(["git", "ls-files", "-s"], cwd=ROOT,
                          capture_output=True, text=True, encoding="utf-8", check=True).stdout
     modes: dict[str, str] = {}
     for line in out.splitlines():
@@ -39,5 +52,7 @@ def test_operational_scripts_are_executable_in_the_git_index() -> None:
     modes = _index_modes()
     if modes is None:
         pytest.skip("not a git checkout")
-    wrong = {p: modes.get(p, "untracked") for p in MUST_BE_EXECUTABLE if modes.get(p) != "100755"}
+    wanted = _shebang_files()
+    assert "scripts/update_arvan.sh" in wanted  # the derivation itself must work
+    wrong = {p: modes.get(p, "untracked") for p in wanted if modes.get(p) != "100755"}
     assert not wrong, f"not 100755 in the index (fix: git update-index --chmod=+x): {wrong}"
