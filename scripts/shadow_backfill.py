@@ -40,11 +40,18 @@ from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "server"))
+from datetime import UTC
+
 import shadow_arms
 
 FEE_RT_PCT = 0.4
 HORIZONS = {"1h": 3600, "4h": 14400, "24h": 86400}
 TOLERANCE_S = 20 * 60
+
+
+def _epoch(iso: str) -> int:
+    from datetime import datetime
+    return int(datetime.fromisoformat(iso.replace("Z", "+00:00")).astimezone(UTC).timestamp())
 
 
 def _spearman(x: list[float], y: list[float]) -> float | None:
@@ -73,14 +80,14 @@ def _spearman(x: list[float], y: list[float]) -> float | None:
     return cov / (vx * vy) if vx and vy else None
 
 
-def load(db: Path, tf: str) -> list[dict]:
+def load(db: Path, tf: str, since: int = 0, until: int | None = None) -> list[dict]:
     conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
     conn.row_factory = sqlite3.Row
     rows = conn.execute(
         "SELECT id, ts, symbol, direction, ta_score, fa_score, liquidity_score, composite, "
         "entry, stop, atr, features, scan_cycle_id, price_contract FROM signal_log "
-        "WHERE timeframe=? AND origin='live' AND voided_at IS NULL AND entry > 0 ORDER BY ts",
-        (tf,),
+        "WHERE timeframe=? AND origin='live' AND voided_at IS NULL AND entry > 0 AND ts >= ? AND ts < ? ORDER BY ts",
+        (tf, since, until if until is not None else 2**62),
     ).fetchall()
     out = []
     for r in rows:
@@ -272,8 +279,10 @@ def main() -> int:
     ap.add_argument("--tf", default="15m")
     ap.add_argument("--md", type=Path, help="write a Markdown report here")
     ap.add_argument("--json", action="store_true", help="print JSON instead of Markdown")
+    ap.add_argument("--since", help="ISO-8601 UTC lower bound on signal ts, e.g. 2026-11-05T07:19:52Z")
+    ap.add_argument("--until", help="ISO-8601 UTC upper bound (exclusive)")
     a = ap.parse_args()
-    rows = load(a.db, a.tf)
+    rows = load(a.db, a.tf, since=_epoch(a.since) if a.since else 0, until=_epoch(a.until) if a.until else None)
     attach_forward_returns(rows)
     rep = evaluate(rows)
     md = to_markdown(rep, a.db.name)
