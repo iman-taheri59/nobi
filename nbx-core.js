@@ -3,7 +3,8 @@
  * Implements per ADRs: 0003 API client, 0004 data store,
  * 0005 TA engine, 0006 FA engine, 0007 decision scoring,
  * 0008 risk engine, 0009 paper broker & walk-forward backtester.
- * Works both with Python FastAPI backend AND 100% standalone on mobile!
+ * Runs against the Python FastAPI backend; the "standalone" paths are a
+ * degraded fallback, not a second product (ADR-0019, README).
  * ============================================================ */
 (function () {
   'use strict';

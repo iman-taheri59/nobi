@@ -86,10 +86,10 @@ def test_shadow_outcomes_cover_shadow_only_longs_and_alt_k(tmp_path, monkeypatch
         journal.resolve_symbol(conn, sym, "15m", df)
     prod = {r[0] for r in conn.execute("SELECT s.symbol FROM signal_outcomes o JOIN signal_log s ON s.id=o.signal_id")}
     assert prod == {"AAAUSDT"}  # production metrics untouched by shadow rows
-    shadow = conn.execute(
+    shadow_rows = conn.execute(
         "SELECT s.symbol, o.risk_k, COUNT(*) FROM signal_shadow_outcomes o JOIN signal_log s ON s.id=o.signal_id "
         "GROUP BY 1,2 ORDER BY 1,2").fetchall()
-    got = {(r[0], r[1]) for r in shadow}
+    got = {(r[0], r[1]) for r in shadow_rows}
     assert ("AAAUSDT", 3.0) in got and ("AAAUSDT", 2.0) not in got  # live LONG: alt k only
     assert ("BBBUSDT", 2.0) in got and ("BBBUSDT", 3.0) in got        # shadow-only LONG: both
     assert not any(sym == "CCCUSDT" for sym, _ in got)

@@ -21,6 +21,7 @@ def test_simulate_long_reports_net_of_fee_without_touching_gross():
     # stop = 2 * 0.5 = 1.0 -> 1 % of entry; 0.4 % fee = 0.4 R
     assert out["r_net"] == pytest.approx(out["r_multiple"] - 0.4, abs=1e-6)
     out3 = journal.simulate_long(df, 10, 100.0, 0.5, 4, risk_k=3.0)
+    assert out3 is not None
     assert out3["r_net"] == pytest.approx(out3["r_multiple"] - 0.4 / 1.5, abs=1e-3)
 
 
@@ -51,6 +52,7 @@ def test_holdout_freezes_once(tmp_path):
     assert v["cutoff_ts"] == 1_800_000_000 and v["config_hash"] == journal.CONFIG_HASH
     with pytest.raises(ValueError):
         journal.freeze_holdout(conn, 1_800_000_100)
-    assert journal.holdout(conn)["cutoff_ts"] == 1_800_000_000
+    frozen = journal.holdout(conn)
+    assert frozen is not None and frozen["cutoff_ts"] == 1_800_000_000
     moved = journal.freeze_holdout(conn, 1_800_000_100, force=True)
     assert moved["previous"]["cutoff_ts"] == 1_800_000_000
