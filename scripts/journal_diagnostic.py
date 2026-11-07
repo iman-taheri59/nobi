@@ -186,7 +186,9 @@ def main() -> int:
             print(f"  {s:12s} n={len(v):3d} mean={st.mean(v):+.3f}%")
     # 5. ADR-0051 shadow arms: identical bars, identical stop geometry, different verdicts
     print("\n5) Shadow arms (ADR-0051): H1 R̄ / stop-rate of the bars each arm called LONG")
-    arm_rows = conn.execute(
+    has_shadow = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='signal_shadow_outcomes'").fetchone()
+    arm_rows = [] if not has_shadow else conn.execute(
         f"""SELECT s.id, s.direction, s.features,
                    o.r_multiple AS r2, o.hit_sl AS sl2,
                    (SELECT r_multiple FROM signal_shadow_outcomes x
@@ -201,7 +203,7 @@ def main() -> int:
             LEFT JOIN signal_outcomes o ON o.signal_id=s.id AND o.horizon_key='H1'
             WHERE {sel} AND json_extract(s.features,'$.shadow_arms') IS NOT NULL""", params).fetchall()
     if not arm_rows:
-        print("  (no rows carry shadow arms yet — they appear with the first deploy of ADR-0051)")
+        print("  (no shadow table / no rows with arms yet — they appear with the first deploy of ADR-0051)")
     else:
         import json as _json
         arms: dict[str, dict[str, list]] = defaultdict(lambda: {"r2": [], "sl2": [], "r3": [], "sl3": []})
