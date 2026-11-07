@@ -5663,6 +5663,7 @@ async function refreshQueue(){
         executionEntry: queuePositiveNumber(plan.execution.execution_entry),
         executionRR: queueFiniteNumber(plan.execution.execution_rr),
         minRR: queuePositiveNumber(plan.execution.min_rr),
+        stop: queuePositiveNumber(plan.stop), tp2: queuePositiveNumber(plan.tp2),
         reason: code,
         execPerf: performance.now(),
         ttl,
@@ -5707,6 +5708,22 @@ function queueGateLabel(code){
   const label = t(key);
   return label === key ? code : label;
 }
+/* Why a plan that showed R:R 2.0 fails at 1.5 on execution: the stop and TP2
+ * stay where the plan put them while the entry moves up to the real ask (book
+ * walk + slip). With TP2 at R2×stop the fill may sit at most
+ * (R2 − minRR)/(1 + minRR) of the stop distance above the plan entry — 20 % for
+ * the default ladder — and a calm tape shrinks that budget below one spread. */
+function queueFilteredWhy(f){
+  if(f.reason !== 'execution-rr-too-low') return '';
+  const e0=f.planEntry, e1=f.executionEntry, stop=f.stop, tp2=f.tp2, minRR=f.minRR;
+  if(!(e0>0 && e1>0 && stop>0 && e0>stop)) return '';
+  const dist=(e0-stop)/e0*100, gap=(e1-e0)/e0*100;
+  const r2 = tp2>0 ? (tp2-e0)/(e0-stop) : null;
+  const budget = r2!=null && minRR>0 ? Math.max(0,(r2-minRR)/(1+minRR))*dist : null;
+  return LANG==='fa'
+    ? `فاصلهٔ stop از قیمت پلن ${fmtNum(dist,2)}٪ است؛ قیمت واقعی پر شدن ${fmtNum(gap,2)}٪ بالاتر از پلن می‌نشیند${budget!=null?`، در حالی که برای حفظ R:R ≥ ${fmtNum(minRR,1)} حداکثر ${fmtNum(budget,2)}٪ جا بود`:''}. این یعنی stop برای spread فعلی خیلی تنگ است (بازار کم‌نوسان)، نه این‌که سفارش خراب باشد؛ با برگشت نوسان یا stop دورتر صف دوباره پر می‌شود.`
+    : `Stop sits ${fmtNum(dist,2)}% below the plan price; the real fill lands ${fmtNum(gap,2)}% above the plan${budget!=null?`, while keeping R:R ≥ ${fmtNum(minRR,1)} allowed at most ${fmtNum(budget,2)}%`:''}. The stop is too tight for the current spread (calm tape), not a broken order; the queue refills when volatility returns or the stop is wider.`;
+}
 function queueFilteredExpiryText(f){
   return new Date(f.approval.expires_at * 1000).toLocaleTimeString(dateLocale(),
     { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -5745,6 +5762,7 @@ function renderQueueFiltered(){
         ${metric(t('dk.filteredMinRR'), f.minRR === null ? '—' : fmtNum(f.minRR, 2))}
       </div>
       <div class="text-[11px] leading-5 text-red-200/90"><span class="text-zinc-500">${t('dk.filteredReason')}:</span> <span data-qfreason>${escText(queueGateLabel(f.reason))}</span> <code class="num text-zinc-500">${escText(f.reason)}</code></div>
+      ${queueFilteredWhy(f) ? `<div data-qfwhy class="mt-1 text-[10px] leading-5 text-zinc-400">${escText(queueFilteredWhy(f))}</div>` : ''}
       <div data-qfttl class="mt-1 text-[10px] text-zinc-500 num">${escText(queueFilteredTTLText(f))}</div>
       <div data-qfstale class="mt-1 text-[10px] text-amber-300/80">${escText(queueFilteredStaleText(f))}</div>
     </div>`;

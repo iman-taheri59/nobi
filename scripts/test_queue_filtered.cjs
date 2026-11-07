@@ -69,6 +69,13 @@ async function run(file, lang) {
     assert.equal(section.querySelectorAll('[data-approve],[data-reject],[data-edit],[data-symmode]').length, 0);
     assert.ok(section.textContent.includes('XRPIRT') && section.textContent.includes('USOONIRT'));
     assert.ok(section.textContent.includes('execution-rr-too-low'));
+    // The plain-language why: stop 5 % below plan, fill 2 % above, budget
+    // (R2 2.0 − minRR 1.5)/(1 + 1.5) × 5 % = 1 % — all three numbers must be shown.
+    const why = section.querySelector('[data-qfwhy]');
+    assert.ok(why, 'why line present for execution-rr-too-low');
+    const latin = why.textContent.replace(/[۰-۹]/g, c => '۰۱۲۳۴۵۶۷۸۹'.indexOf(c));
+    for (const n of ['5.00', '2.00', '1.00']) assert.ok(latin.includes(n), 'why mentions ' + n);
+    assert.ok(why.textContent.includes(lang === 'fa' ? 'تنگ' : 'too tight'));
     assert.ok(section.textContent.includes('1.20') && section.textContent.includes('1.50'));
     assert.ok(section.textContent.includes('102'));
     assert.ok(section.textContent.includes(lang === 'fa' ? 'انقضا' : 'Expires'));
