@@ -1,0 +1,10 @@
+[Unit]
+Description=nobi weekly journal diagnostic, Mondays 00:30 UTC
+
+[Timer]
+OnCalendar=Mon *-*-* 00:30:00 UTC
+Persistent=true
+RandomizedDelaySec=5m
+
+[Install]
+WantedBy=timers.target

@@ -95,6 +95,17 @@ def main() -> int:
         print("no signals match", file=sys.stderr)
         return 1
     lo, hi = min(r["ts"] for r in rows), max(r["ts"] for r in rows)
+    # ADR-0052: say which side of the frozen holdout this run is on. The
+    # cutoff lives in journal_meta; the report never moves it.
+    _h = conn.execute("SELECT value FROM journal_meta WHERE key='holdout_cutoff'").fetchone()
+    if _h:
+        import json as _hj
+        _cut = int(_hj.loads(_h[0])["cutoff_ts"])
+        _since = since
+        print(f"holdout cutoff: {datetime.fromtimestamp(_cut, UTC).isoformat()}  "
+              f"({'this window is HELD OUT (post-cutoff)' if (_since or 0) >= _cut else 'this window includes IN-SAMPLE rows — compare per side'})")
+    else:
+        print("holdout cutoff: not frozen (scripts/journal_holdout.py freeze --at …)")
     print(f"signals: {len(rows)}  range: {datetime.fromtimestamp(lo, UTC):%Y-%m-%d %H:%MZ} → "
           f"{datetime.fromtimestamp(hi, UTC):%Y-%m-%d %H:%MZ}  symbols: {len({r['symbol'] for r in rows})}")
 
@@ -145,7 +156,10 @@ def main() -> int:
         v = out_by[hk]
         rs = [o["r_multiple"] for o in v if o["r_multiple"] is not None]
         mix = Counter(o["exit_reason"] or "legacy" for o in v)
-        print(f"  {hk}: n={len(v)} R̄={st.mean(rs):+.3f} tp1={st.mean(o['hit_tp1'] or 0 for o in v):.2f} "
+        keys = v[0].keys()
+        rn = [o["r_net"] for o in v if "r_net" in keys and o["r_net"] is not None]
+        net = f" R̄net={st.mean(rn):+.3f} (n={len(rn)})" if rn else " R̄net=— (no net-of-fee rows yet)"
+        print(f"  {hk}: n={len(v)} R̄={st.mean(rs):+.3f}{net} tp1={st.mean(o['hit_tp1'] or 0 for o in v):.2f} "
               f"sl={st.mean(o['hit_sl'] or 0 for o in v):.2f} timeout={st.mean(o['timeout'] or 0 for o in v):.2f}  {dict(mix)}")
     h1 = [o for o in out_by.get("H1", []) if o["mae_pct"] is not None and o["s_entry"] and o["s_stop"]]
     if h1:
@@ -230,7 +244,7 @@ def main() -> int:
                   f"{len(a['r3']):7d} {_f(a['r3']):>8s} {_p(a['sl3']):>6s}")
         print("  read: same bars, same entry/ATR; an arm 'wins' only with ≥500 LONGs and non-overlapping 95% CIs.")
 
-    print("\nfees are not included in any number above; the clean window may be short — read with the date range in mind.")
+    print("\nsection 1/2/4 returns are gross; R̄net (section 3) deducts the round-trip fee assumption recorded per row; the clean window may be short — read with the date range in mind.")
     return 0
 
 

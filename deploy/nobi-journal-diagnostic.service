@@ -1,0 +1,15 @@
+[Unit]
+Description=nobi weekly read-only journal diagnostic (ADR-0052) — writes a text report, touches no service state
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=nobi
+EnvironmentFile=-/etc/nobi/nobi.env
+# Work on a consistent copy (sqlite online backup), never on the live file.
+ExecStart=/bin/sh -c 'set -e; D=/srv/nobi-data/reports; mkdir -p "$D"; T=$(mktemp -d); \
+  /opt/nobi/.venv/bin/python -c "import sqlite3,sys; s=sqlite3.connect(sys.argv[1]); d=sqlite3.connect(sys.argv[2]); s.backup(d); d.close()" /srv/nobi-data/journal.db "$T/journal.db"; \
+  /opt/nobi/.venv/bin/python /opt/nobi/scripts/journal_diagnostic.py "$T/journal.db" --since "$(date -u -d "14 days ago" +%%FT%%TZ)" > "$D/journal-diagnostic-$(date -u +%%F).txt" 2>&1 || true; \
+  rm -rf "$T"; find "$D" -name "journal-diagnostic-*.txt" -mtime +180 -delete'
+Nice=10
+IOSchedulingClass=idle

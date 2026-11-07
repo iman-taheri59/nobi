@@ -44,6 +44,7 @@ from typing import Any
 
 import pandas as pd
 
+from fees import FEE_PCT
 from risk_engine import DEFAULT_RISK_K, DEFAULT_RR_LEVELS, parse_risk_k, parse_rr_levels
 from units import IRT_PRICE_CONTRACT, price_contract
 
@@ -75,6 +76,12 @@ try:
     RISK_K = parse_risk_k(os.getenv("NBX_RISK_K"))
 except ValueError:
     RISK_K = DEFAULT_RISK_K
+#: ADR-0052: round-trip fee charged to every modelled trade, in percent of
+#: notional. Both legs pay on their full notional (a half-size TP1 leg and a
+#: half-size exit still add up to one entry and one exit), so the total is
+#: simply 2 × FEE_PCT regardless of how the exit is split.
+FEE_ROUND_TRIP_PCT = round(2 * FEE_PCT * 100, 4)
+
 #: ADR-0051: alternative stop multipliers evaluated in the shadow table only.
 #: Comma list; the live RISK_K is skipped (it is already in signal_outcomes).
 def _shadow_risk_ks() -> tuple[float, ...]:
@@ -240,6 +247,9 @@ CREATE TABLE IF NOT EXISTS signal_shadow_outcomes (
     bars_used INTEGER,
     exit_reason TEXT,
     dataset_hash TEXT,
+    return_net_pct REAL,
+    r_net REAL,
+    fee_pct REAL,
     UNIQUE(signal_id, horizon_key, risk_k)
 );
 
@@ -316,6 +326,16 @@ MIGRATIONS = {
         ("dataset_rows", "INTEGER"),
         ("dataset_start", "INTEGER"),
         ("dataset_end", "INTEGER"),
+        # ADR-0052: net-of-fee columns. Historical rows keep NULL; nothing is
+        # rewritten. `fee_pct` records the assumption used for that row.
+        ("return_net_pct", "REAL"),
+        ("r_net", "REAL"),
+        ("fee_pct", "REAL"),
+    ],
+    "signal_shadow_outcomes": [
+        ("return_net_pct", "REAL"),
+        ("r_net", "REAL"),
+        ("fee_pct", "REAL"),
     ],
 }
 
@@ -377,6 +397,31 @@ def get_meta(conn: sqlite3.Connection, key: str, default: Any = None) -> Any:
     except (ValueError, TypeError):
         return default
 
+
+
+# --------------------------------------------------------------------------- #
+# ADR-0052 — frozen holdout
+# --------------------------------------------------------------------------- #
+HOLDOUT_KEY = "holdout_cutoff"
+
+
+def freeze_holdout(conn: sqlite3.Connection, cutoff_ts: int, *, note: str = "",
+                   force: bool = False) -> dict[str, Any]:
+    """Record the one timestamp that splits "data we looked at" from "data we
+    did not". Refuses to move an existing cutoff unless ``force`` — a holdout
+    that can be nudged after peeking is not a holdout."""
+    current = get_meta(conn, HOLDOUT_KEY)
+    if current and not force:
+        raise ValueError(f"holdout already frozen at {current.get('cutoff_ts')}; use force to move it")
+    value = {"cutoff_ts": int(cutoff_ts), "frozen_at": int(time.time()), "note": note,
+             "config_hash": CONFIG_HASH, "previous": current}
+    set_meta(conn, HOLDOUT_KEY, value)
+    conn.commit()
+    return value
+
+
+def holdout(conn: sqlite3.Connection) -> dict[str, Any] | None:
+    return get_meta(conn, HOLDOUT_KEY)
 
 # --------------------------------------------------------------------------- #
 # Writing
@@ -683,6 +728,11 @@ def simulate_long(df: pd.DataFrame, i: int, entry: float, atr: float,
         "timeout": not (hit_sl or hit_tp2),
         "r_multiple": round(realised, 4),
         "return_pct": round(realised_return_pct, 3),
+        # ADR-0052: the same trade after the round-trip fee. One R is the stop
+        # distance, so the fee in R units is fee% / stop%.
+        "return_net_pct": round(realised_return_pct - FEE_ROUND_TRIP_PCT, 3),
+        "r_net": round(realised - FEE_ROUND_TRIP_PCT / (stop_dist / entry * 100), 4),
+        "fee_pct": FEE_ROUND_TRIP_PCT,
         "bars_used": bars_used,
         "ambiguous": ambiguous,
         "exit_reason": exit_reason,
@@ -742,14 +792,16 @@ def resolve_symbol(conn: sqlite3.Connection, symbol: str, tf: str,
                    (signal_id, horizon_key, resolved_at, exit_ts, exit_price,
                     mfe_pct, mae_pct, hit_tp1, hit_sl, timeout, r_multiple,
                     return_pct, bars_used, ambiguous, hit_tp2, exit_reason,
-                    dataset_hash, dataset_rows, dataset_start, dataset_end)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    dataset_hash, dataset_rows, dataset_start, dataset_end,
+                    return_net_pct, r_net, fee_pct)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (row["id"], key, int(time.time()), out["exit_ts"], out["exit_price"],
                  out["mfe_pct"], out["mae_pct"], int(out["hit_tp1"]),
                  int(out["hit_sl"]), int(out["timeout"]), out["r_multiple"],
                  out["return_pct"], out["bars_used"], int(out["ambiguous"]),
                  int(out["hit_tp2"]), out["exit_reason"], dataset["hash"],
-                 dataset["rows"], dataset["start"], dataset["end"]),
+                 dataset["rows"], dataset["start"], dataset["end"],
+                 out["return_net_pct"], out["r_net"], out["fee_pct"]),
             )
             filled += 1
     # ADR-0051: shadow fills are counted separately so `filled` keeps meaning
@@ -799,12 +851,13 @@ def _resolve_shadow(conn: sqlite3.Connection, symbol: str, tf: str, df: pd.DataF
                     """INSERT OR REPLACE INTO signal_shadow_outcomes
                        (signal_id, horizon_key, risk_k, resolved_at, exit_ts, exit_price,
                         mfe_pct, mae_pct, hit_tp1, hit_sl, timeout, r_multiple, return_pct,
-                        bars_used, exit_reason, dataset_hash)
-                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                        bars_used, exit_reason, dataset_hash, return_net_pct, r_net, fee_pct)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                     (row["id"], key, k, int(time.time()), out["exit_ts"], out["exit_price"],
                      out["mfe_pct"], out["mae_pct"], int(out["hit_tp1"]), int(out["hit_sl"]),
                      int(out["timeout"]), out["r_multiple"], out["return_pct"],
-                     out["bars_used"], out["exit_reason"], dataset_hash),
+                     out["bars_used"], out["exit_reason"], dataset_hash,
+                     out["return_net_pct"], out["r_net"], out["fee_pct"]),
                 )
                 filled += 1
     return filled
