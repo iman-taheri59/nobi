@@ -91,7 +91,7 @@
 | نسخه‌بندی و انتشار | [`releases.md`](releases.md) | [`releases.en.md`](releases.en.md) |
 | چک‌لیست استقرار کنترل‌شده 2.1.10 | [`upgrade-2.1.10.md`](upgrade-2.1.10.md) | [`upgrade-2.1.10.en.md`](upgrade-2.1.10.en.md) |
 | تاریخچهٔ تغییرات | [`../CHANGELOG.md`](../CHANGELOG.md) | [`../CHANGELOG.en.md`](../CHANGELOG.en.md) |
-| ADR-0001 … ADR-0052 | [`adr/fa/`](adr/fa) | [`adr/en/`](adr/en) |
+| ADR-0001 … ADR-0053 | [`adr/fa/`](adr/fa) | [`adr/en/`](adr/en) |
 | سرور رایگان تست | [`ops/fa/`](ops/fa) | [`ops/en/`](ops/en) |
 | استقرار آروان | [`deploy-arvan.md`](deploy-arvan.md) | **در انتظار** |
 | راهنمای جامع استقرار آروان | [`deploy-arvan-cloud.md`](deploy-arvan-cloud.md) | **در انتظار** |

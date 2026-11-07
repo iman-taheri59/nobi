@@ -74,3 +74,28 @@ def test_journal_and_ta_engine_read_the_same_multiplier():
     import ta_engine
 
     assert journal.RISK_K == ta_engine.RISK_K
+
+
+def test_fx_shock_precedes_breadth_and_blocks_like_risk_off():
+    """The rial moving is a regime of its own, even when breadth looks healthy."""
+    healthy = ov(2.5, 70)
+    assert regime.assess(healthy, fx_premium_pct=6, fx_move_24h_pct=3)["state"] == "risk-on"
+    stretched = {**healthy, "premium_pct": 7.2}
+    r = regime.assess(stretched, fx_premium_pct=6, fx_move_24h_pct=3)
+    assert r["state"] == "fx-shock" and r["reasons"] == ["|premium|>=6"]
+    jumped = {**healthy, "usdt_irt_change_24h": -3.4}  # a negative jump counts too
+    assert regime.assess(jumped, fx_premium_pct=6, fx_move_24h_pct=3)["reasons"] == ["|usdt_irt_24h|>=3"]
+    # thin overview, but the premium is known: still a finding, not "unknown"
+    thin = {"ok": False, "premium_pct": 9.0}
+    assert regime.assess(thin, fx_premium_pct=6)["state"] == "fx-shock"
+    # under both modes it behaves exactly like risk-off
+    d, c, meta = regime.apply("LONG", 80.0, r, mode="shadow")
+    assert (d, c) == ("LONG", 80.0) and meta["regime_gate"]["would_block"] is True
+    d, c, meta = regime.apply("LONG", 80.0, r, mode="enforce")
+    assert (d, c, meta["regime_cap"]) == ("NEUTRAL", 67.0, 67.0)
+
+
+def test_fx_inputs_missing_do_not_trigger():
+    r = regime.assess({**ov(0.3, 50), "premium_pct": None, "usdt_irt_change_24h": "n/a"})
+    assert r["state"] == "neutral" and r["inputs"]["premium_pct"] is None
+    assert "fx_premium_pct" in regime.config()

@@ -228,7 +228,7 @@ python scripts/fetch_history.py --symbol BTCIRT --resolution 15 \
 ## مستندات
 
 - [`docs/README.md`](docs/README.md) — نقشهٔ مستندات (از کجا شروع کنم) · [English](docs/README.en.md)
-- [`docs/adr/`](docs/adr) — ۵۲ ADR دوزبانه؛ ADR-0019 توضیح می‌دهد چرا `nobitex-mobile.html` نسخهٔ دوم نیست و یک صفحهٔ ریسپانسیو بیشتر نداریم (قرارداد داده ADR-0014، مرز واحد ADR-0015)
+- [`docs/adr/`](docs/adr) — ۵۳ ADR دوزبانه؛ ADR-0019 توضیح می‌دهد چرا `nobitex-mobile.html` نسخهٔ دوم نیست و یک صفحهٔ ریسپانسیو بیشتر نداریم (قرارداد داده ADR-0014، مرز واحد ADR-0015)
 - [`docs/adr/README.md`](docs/adr/README.md) — کدام ADR پیاده شده و شاهدش کجاست
 - [`docs/releases.en.md`](docs/releases.en.md) — نسخه‌بندی و انتشار (انگلیسی) · [`docs/releases.md`](docs/releases.md) (فارسی)
 - [`docs/reviews/2026-10-20-live-path-verification-fa.md`](docs/reviews/2026-10-20-live-path-verification-fa.md)

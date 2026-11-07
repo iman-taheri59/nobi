@@ -13,6 +13,8 @@ What this module does
 ``assess()`` turns the existing market overview (A6: breadth and median 24 h
 move of the tracked universe) into one of four named states::
 
+    fx-shock   |premium_pct| >= fx_premium  OR  |USDT/IRT 24h move| >= fx_move
+               (the quote currency is moving, not the coins; checked first)
     risk-off   median_24h <= min_median  OR  pct_up <= min_breadth
     risk-on    median_24h >= +min_median AND pct_up >= 100 - min_breadth
     neutral    anything else with enough rows
@@ -45,7 +47,9 @@ import os
 from typing import Any
 
 MODES = ("off", "shadow", "enforce")
-STATES = ("risk-off", "neutral", "risk-on", "unknown")
+STATES = ("fx-shock", "risk-off", "neutral", "risk-on", "unknown")
+#: States in which a LONG is blocked (shadow: would_block; enforce: NEUTRAL).
+BLOCKING_STATES = frozenset({"risk-off", "fx-shock"})
 
 
 def _float_env(name: str, default: float) -> float:
@@ -63,6 +67,13 @@ def _mode_env() -> str:
 MODE: str = _mode_env()
 MIN_MEDIAN_24H: float = _float_env("NBX_REGIME_MIN_MEDIAN_24H", -2.0)
 MIN_BREADTH_PCT: float = _float_env("NBX_REGIME_MIN_BREADTH_PCT", 35.0)
+#: `fx-shock` (2026-11-07): the rial, not the coin, is moving. Either the
+#: implied USDT/IRT premium is stretched or the toman rate itself jumped. In
+#: that tape every IRT pair "trends" in TA terms while the coin does nothing,
+#: so a LONG is a currency bet the engine never meant to take. Precedes
+#: risk-off because breadth can look fine while the quote currency collapses.
+FX_PREMIUM_PCT: float = _float_env("NBX_REGIME_FX_PREMIUM_PCT", 6.0)
+FX_MOVE_24H_PCT: float = _float_env("NBX_REGIME_FX_MOVE_24H_PCT", 3.0)
 
 
 def config() -> dict[str, Any]:
@@ -70,6 +81,8 @@ def config() -> dict[str, Any]:
         "mode": MODE,
         "min_median_24h": MIN_MEDIAN_24H,
         "min_breadth_pct": MIN_BREADTH_PCT,
+        "fx_premium_pct": FX_PREMIUM_PCT,
+        "fx_move_24h_pct": FX_MOVE_24H_PCT,
         "adr": "ADR-0050",
     }
 
@@ -89,16 +102,34 @@ def assess(
     *,
     min_median_24h: float | None = None,
     min_breadth_pct: float | None = None,
+    fx_premium_pct: float | None = None,
+    fx_move_24h_pct: float | None = None,
 ) -> dict[str, Any]:
     """Classify one market-overview snapshot. Pure; never raises."""
     mm = MIN_MEDIAN_24H if min_median_24h is None else float(min_median_24h)
     mb = MIN_BREADTH_PCT if min_breadth_pct is None else float(min_breadth_pct)
+    fp = FX_PREMIUM_PCT if fx_premium_pct is None else float(fx_premium_pct)
+    fm = FX_MOVE_24H_PCT if fx_move_24h_pct is None else float(fx_move_24h_pct)
     ov = overview if isinstance(overview, dict) else {}
     median = _num((ov.get("change") or {}).get("median_24h"))
     pct_up = _num((ov.get("breadth") or {}).get("pct_up"))
     priced = ov.get("priced")
-    inputs = {"median_24h": median, "pct_up": pct_up, "priced": priced}
-    thresholds = {"min_median_24h": mm, "min_breadth_pct": mb}
+    premium = _num(ov.get("premium_pct"))
+    fx_move = _num(ov.get("usdt_irt_change_24h"))
+    inputs = {"median_24h": median, "pct_up": pct_up, "priced": priced,
+              "premium_pct": premium, "usdt_irt_change_24h": fx_move}
+    thresholds = {"min_median_24h": mm, "min_breadth_pct": mb,
+                  "fx_premium_pct": fp, "fx_move_24h_pct": fm}
+
+    # The FX check needs no breadth: a stretched premium is a finding even when
+    # the overview is thin. Missing FX inputs simply do not trigger it.
+    fx_reasons: list[str] = []
+    if premium is not None and abs(premium) >= fp:
+        fx_reasons.append(f"|premium|>={fp:g}")
+    if fx_move is not None and abs(fx_move) >= fm:
+        fx_reasons.append(f"|usdt_irt_24h|>={fm:g}")
+    if fx_reasons:
+        return {"state": "fx-shock", "reasons": fx_reasons, "inputs": inputs, "thresholds": thresholds}
 
     if not ov.get("ok") or median is None or pct_up is None:
         return {
@@ -143,7 +174,7 @@ def apply(
         return direction, composite, {}
     state = (regime or {}).get("state") or "unknown"
     is_long = (direction or "").upper() == "LONG"
-    would_block = is_long and state == "risk-off"
+    would_block = is_long and state in BLOCKING_STATES
     # 67 = VETO_CAP in main.py: one point below LONG_SCORE_MIN (68), the same
     # ceiling a fundamental veto uses, so a capped row can never re-qualify.
     meta: dict[str, Any] = {

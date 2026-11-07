@@ -249,6 +249,17 @@ class PaperBroker:
         self.equity_curve = [tuple(x) for x in raw.get("equity_curve", [])]
         self.positions = {k: Position(**v) for k, v in raw.get("positions", {}).items()}
         self.orders = [OrderEvent(**e) for e in raw.get("orders", [])]
+        # The kill switch is a latch, and a latch that a restart releases is a
+        # timer. The automatic triggers re-arm themselves from the persisted
+        # exit events, but a halt an operator armed by hand (or one armed from
+        # a reason the events no longer show) was lost with the process. It is
+        # stored now and restored into both places that read it.
+        if bool(raw.get("halted")):
+            self.halted = True
+            self.risk.halted = True
+            reasons = raw.get("halt_reasons") or []
+            if isinstance(reasons, list) and hasattr(self.risk, "trigger_reasons"):
+                self.risk.trigger_reasons = sorted(set(self.risk.trigger_reasons) | {str(r) for r in reasons})
         self._sync_open_heat()
 
     def load(self):
@@ -329,6 +340,8 @@ class PaperBroker:
             "equity_curve": [list(x) for x in self.equity_curve[-500:]],
             "positions": {k: v.__dict__ for k, v in self.positions.items()},
             "orders": [e.__dict__ for e in self.orders[-400:]],
+            "halted": bool(self.halted or getattr(self.risk, "halted", False)),
+            "halt_reasons": sorted(getattr(self.risk, "trigger_reasons", []) or []),
         }, ensure_ascii=False, indent=1)
         tmp = STATE_FILE.with_suffix(STATE_FILE.suffix + ".tmp")
         tmp.parent.mkdir(parents=True, exist_ok=True)

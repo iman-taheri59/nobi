@@ -1503,7 +1503,17 @@ async def rescan(tf: str = "15m", top: int = SCAN_TOP):
                 }
                 snap["fa_score"] = fa.score
                 snap["fa_fresh"] = fa.fresh
-                raw_composite, basis = _composite(snap["score"], snap["liquidity_score"], fa.score)
+                # A `fallback` profile is a hand-written number with no date
+                # (`as_of: unversioned-legacy-profile`). It is still shown, but
+                # it no longer buys 25 % of the verdict: the composite is built
+                # as if fundamentals were unavailable, and the basis says so.
+                # Vetoes still apply — they come from live inputs (premium).
+                fa_weighted = fa.evidence.get("profile") != "fallback"
+                snap["fa_weighted"] = fa_weighted
+                raw_composite, basis = _composite(
+                    snap["score"], snap["liquidity_score"], fa.score if fa_weighted else None
+                )
+
                 # Vetoes are not decoration: they cap the score and the verdict,
                 # and the caps travel with the row so the UI can explain them.
                 capped, new_dir, veto_meta = apply_vetoes(
@@ -4152,7 +4162,14 @@ def _overview_for_regime() -> dict | None:
         fx = 1.0 if sym.endswith("USDT") else (usdt_irt if sym.endswith("IRT") else None)
         enriched.append({**r, "fx_usd": fx})
     try:
-        return market_overview(enriched, premium_pct=_cached.get("premium_pct"))
+        ov = market_overview(enriched, premium_pct=_cached.get("premium_pct"))
+        # fx-shock input: the toman rate's own 24h move, straight from the
+        # USDTIRT ticker. Not part of market_overview() because the panel
+        # deliberately excludes the FX pair from breadth.
+        fx_row = next((r for r in rows if str(r.get("symbol") or "").upper() == "USDTIRT"), None)
+        if isinstance(ov, dict):
+            ov["usdt_irt_change_24h"] = regime._num(fx_row.get("change24")) if fx_row else None
+        return ov
     except Exception as e:  # the gate must never break a scan
         log.warning("regime overview failed: %s", e)
         return None
@@ -4609,6 +4626,8 @@ async def paper_halt(request: Request, flat: bool = Query(False)):
     broker = get_broker(EQUITY, client, risk)
     broker.halted = True
     risk.halted = True
+    risk.trigger_reasons = sorted(set(getattr(risk, "trigger_reasons", []) or []) | {"manual-halt"})
+    broker.save()  # the latch must outlive the process
     log.warning("paper trading halted by API request (flat=%s)", flat)
     audit_id = audit("paper.halt", detail={"flat": flat}, request=request)
     opened = sum(1 for p in broker.positions.values() if p.state != "CLOSED")
@@ -4636,7 +4655,9 @@ async def paper_resume(request: Request):
     was = broker.halted or risk.halted
     broker.halted = False
     risk.halted = False
+    risk.trigger_reasons = []
     broker.last_error = None
+    broker.save()
     log.warning("paper trading resumed by API request (was halted=%s)", was)
     audit_id = audit("paper.resume", detail={"was_halted": was}, request=request)
     tg = await notify.send(f"✅ Nobi: kill switch cleared (was halted={was})\naudit #{audit_id}")
