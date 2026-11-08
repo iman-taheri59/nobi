@@ -52,3 +52,6 @@ server/live_execution.db-wal
 server/live_execution.db-shm
 server/setup.token
 server/operations-audit.jsonl
+
+# pip cache created by the installer under the checkout
+.cache/

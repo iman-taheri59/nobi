@@ -1,0 +1,77 @@
+name: Deploy
+
+# Manual only. A push never deploys; a human presses the button and names the
+# tag they are about to put on the box. Stays that way until the 12 Nov decision
+# and after: production restarts are an explicit act, not a side effect.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to deploy (must already exist, e.g. v2.5.1)"
+        required: true
+      dry_run:
+        description: "Only show what would land (update_arvan.sh --check)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy ${{ inputs.tag }} to production
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag }}
+          fetch-depth: 0
+
+      - name: Tag must point at main
+        run: |
+          git fetch --no-tags origin main
+          if ! git merge-base --is-ancestor "${{ inputs.tag }}" origin/main; then
+            echo "::error::${{ inputs.tag }} is not on main"; exit 1
+          fi
+          test "$(cat VERSION)" = "${GITHUB_REF_NAME#v}" || true
+          echo "deploying $(git rev-parse --short HEAD) ($(cat VERSION))"
+
+      - name: SSH setup
+        env:
+          KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KH: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          test -n "$KEY" || { echo "::error::DEPLOY_SSH_KEY is empty"; exit 1; }
+          test -n "$KH"  || { echo "::error::DEPLOY_KNOWN_HOSTS is empty"; exit 1; }
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$KH"  > ~/.ssh/known_hosts  && chmod 644 ~/.ssh/known_hosts
+          printf 'Host prod\n  HostName %s\n  User deploy\n  IdentityFile ~/.ssh/id_ed25519\n  IdentitiesOnly yes\n  StrictHostKeyChecking yes\n  ConnectTimeout 15\n' "${{ secrets.DEPLOY_HOST }}" > ~/.ssh/config
+
+      - name: Reachability and current version
+        run: |
+          ssh prod 'hostname; cat /opt/nobi/VERSION; systemctl is-active nobi'
+
+      - name: Dry run
+        if: ${{ inputs.dry_run }}
+        run: ssh prod 'sudo -n bash /opt/nobi/scripts/update_arvan.sh --check'
+
+      - name: Update
+        if: ${{ !inputs.dry_run }}
+        run: ssh prod 'sudo -n bash /opt/nobi/scripts/update_arvan.sh --yes --backup --verify'
+
+      - name: Post-deploy proof
+        if: ${{ !inputs.dry_run }}
+        run: |
+          ssh prod 'curl -fsS http://127.0.0.1:8000/api/health' | python3 -c '
+          import json,sys; h=json.load(sys.stdin)
+          print("version", h["version"], "ok", h["ok"])
+          want="${{ inputs.tag }}".lstrip("v")
+          sys.exit(0 if h["version"]==want and h["ok"] else 1)'
+          ssh prod 'systemctl show nobi -p ActiveEnterTimestamp -p NRestarts'
