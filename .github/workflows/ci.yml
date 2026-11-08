@@ -120,6 +120,8 @@ jobs:
         run: npm run test:escaping
       - name: Viewer notice is independent of upstream health
         run: npm run test:readonly-banner
+      - name: Mobile bottom nav keeps named icons; timeframe chips render
+        run: npm run test:mobile-nav
       - name: Price alert bell roles, CSRF, races and standalone parity
         run: npm run test:price-alerts
       - name: signal detail expand and collapse

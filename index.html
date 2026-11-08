@@ -2446,7 +2446,12 @@ function refreshIcons(){
     svg.setAttribute('stroke-width','2');
     svg.setAttribute('stroke-linecap','round');
     svg.setAttribute('stroke-linejoin','round');
-    svg.setAttribute('class', cls);
+    // Keep the icon's name on the element the way lucide itself did
+    // (`class="lucide lucide-<name>"`) plus an explicit attribute: the mobile
+    // bottom nav derives its icons from the sidebar *after* this pass, and
+    // without the name it fell back to an anonymous circle (2.5.1).
+    svg.setAttribute('class', `lucide lucide-${name} ${cls}`.trim());
+    svg.setAttribute('data-icon', name);
     svg.innerHTML = paths;
     el.replaceWith(svg);
   });

@@ -174,6 +174,7 @@
             const i = b.querySelector('i[data-lucide]');
             if (i) return i.getAttribute('data-lucide');
             const svg = b.querySelector('svg');
+            if (svg && svg.getAttribute('data-icon')) return svg.getAttribute('data-icon');
             const cls = svg ? (svg.getAttribute('class') || '') : '';
             const m = cls.match(/lucide-([a-z0-9-]+)/);
             return m ? m[1] : 'circle';
