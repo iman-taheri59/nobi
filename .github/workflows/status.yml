@@ -15,6 +15,13 @@ on:
         description: "Also run scripts/journal_diagnostic.py (last 24h, with paper rejects + stop slip) and upload it"
         type: boolean
         default: true
+      since:
+        description: "Window start for the backfill reports (ISO, e.g. 2026-11-09T07:28:00Z). Empty = since the 2.5.2 deploy"
+        default: ""
+      backfills:
+        description: "Also run shadow_backfill (arms + stop slip) and pump_chase_backfill over the window, as markdown artifacts"
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -111,6 +118,31 @@ jobs:
                     else echo 'journal.db not readable by deploy and sudo -u nobi refused:'; ls -l \$DB \$PS; id; sudo -n -l 2>&1 | tail -5; fi" \
             | tee diagnostic.txt
 
+      - name: State files
+        run: |
+          ssh prod 'sudo -n -u nobi /usr/bin/ls -l --time-style=+%Y-%m-%dT%H:%M:%SZ /srv/nobi-data/ /srv/nobi-data/backups/ 2>&1 | grep -v "^total" | head -40; echo; sudo -n -u nobi /usr/bin/du -sh /srv/nobi-data 2>&1'
+
+      - name: Paper book
+        run: |
+          ssh prod 'sudo -n -u nobi /opt/nobi/.venv/bin/python /opt/nobi/scripts/paper_state_summary.py /srv/nobi-data/paper_state.json --events 20 2>&1' | tee paper_book.txt
+
+      - name: Holdout cutoff (ADR-0052)
+        run: |
+          ssh prod 'cd /opt/nobi && sudo -n -u nobi /opt/nobi/.venv/bin/python /opt/nobi/scripts/journal_holdout.py show --db /srv/nobi-data/journal.db 2>&1'
+
+      - name: Shadow arms + stop slip over the window (shadow_backfill)
+        if: ${{ inputs.backfills }}
+        run: |
+          SINCE="${{ inputs.since }}"; SINCE="${SINCE:-2026-11-09T07:28:00Z}"
+          echo "window since $SINCE"
+          ssh prod "cd /opt/nobi && sudo -n -u nobi /opt/nobi/.venv/bin/python /opt/nobi/scripts/shadow_backfill.py /srv/nobi-data/journal.db --since $SINCE --paper /srv/nobi-data/paper_state.json 2>&1" | tee shadow_backfill.md
+
+      - name: Chase-the-pump / depth over the window (pump_chase_backfill)
+        if: ${{ inputs.backfills }}
+        run: |
+          SINCE="${{ inputs.since }}"; SINCE="${SINCE:-2026-11-09T07:28:00Z}"
+          ssh prod "cd /opt/nobi && sudo -n -u nobi /opt/nobi/.venv/bin/python /opt/nobi/scripts/pump_chase_backfill.py /srv/nobi-data/journal.db --since $SINCE 2>&1" | tee pump_chase.md
+
       - name: Upload report
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
@@ -119,5 +151,8 @@ jobs:
           path: |
             health.json
             diagnostic.txt
+            paper_book.txt
+            shadow_backfill.md
+            pump_chase.md
           if-no-files-found: ignore
           retention-days: 14
