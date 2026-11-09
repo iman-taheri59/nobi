@@ -4,6 +4,7 @@
 
 ## 2.5.3 (in progress)
 
+- **Charts update without a page reload:** in backend mode the candle cache (`engine.candles`) was filled once and never refreshed; the overview chart, the last price under it and the signal-list sparklines stayed at minute one until a reload. Receipt time is now recorded per entry (`engine.candleAt`); the active symbol is refetched on the next scan once older than 45 s and repainted in place with `series.update` (only a symbol/timeframe switch calls `setData`); list rows refresh after 90 s. All answers come from the server cache; no extra load on Nobitex. Test: `npm run test:live-candles` (17 checks).
 - **Exchange probe in `check_deploy` like the service itself (lesson 4):** `httpx` with the same UA (urllib only if httpx is missing); when the probe is refused, a second opinion is taken from the local `/api/health`, and with `upstream.ok=true` and `stats.ok>0` the row is **ok** with "probe refused but service says…", not FAIL. On 9 Nov that 403 turned a completed update red while the service stood at 3483/0. Tests: `test_check_deploy_reads.py` (+2).
 - **"Post-deploy proof" always runs (lesson 5):** `if: !dry_run && !cancelled()` — a red `--verify` no longer hides the version proof.
 - **Release guard (lesson 3):** `release.yml` first checks that the tag is on `main` and that CI on that exact commit is **success** (via the API, `actions: read`); otherwise no Release is built. Tagging right after a merge (CI still running) is blocked too — wait for green, then tag.

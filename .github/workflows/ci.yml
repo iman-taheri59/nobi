@@ -128,6 +128,8 @@ jobs:
         run: npm run test:signal-detail
       - name: signal explorer card (levels, freshness, details toggle)
         run: npm run test:signal-card
+      - name: Charts refresh without a page reload
+        run: npm run test:live-candles
       - name: approval queue updates and rejection reasons
         run: npm run test:queue
       - name: lockfile tarballs match their versions
