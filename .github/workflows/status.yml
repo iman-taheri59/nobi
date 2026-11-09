@@ -94,16 +94,19 @@ jobs:
         run: python3 -m json.tool health.json
 
       - name: Last log lines (without httpx request noise)
+        continue-on-error: true
         run: |
           ssh prod "sudo -n journalctl -u nobi -n 2000 --no-pager -o short-iso 2>&1 | grep -v 'INFO:httpx:HTTP Request' | grep -v '\"GET /api/' | tail -n ${{ inputs.log_lines }}"
 
       - name: Last log lines (raw)
+        continue-on-error: true
         run: |
           # An unprivileged user gets "-- No entries --" for a system unit, not an
           # error, so sudo goes first and plain journalctl is the fallback.
           ssh prod "sudo -n journalctl -u nobi -n ${{ inputs.log_lines }} --no-pager -o short-iso 2>&1 || journalctl -u nobi -n ${{ inputs.log_lines }} --no-pager -o short-iso 2>&1 || true"
 
       - name: Daily diagnostic
+        continue-on-error: true
         if: ${{ inputs.diagnostic }}
         run: |
           SINCE="$(date -u -d '24 hours ago' +%Y-%m-%dT%H:%M:%SZ)"
@@ -119,18 +122,22 @@ jobs:
             | tee diagnostic.txt
 
       - name: State files
+        continue-on-error: true
         run: |
           ssh prod 'sudo -n -u nobi /usr/bin/ls -l --time-style=+%Y-%m-%dT%H:%M:%SZ /srv/nobi-data/ /srv/nobi-data/backups/ 2>&1 | grep -v "^total" | head -40; echo; sudo -n -u nobi /usr/bin/du -sh /srv/nobi-data 2>&1'
 
       - name: Paper book
+        continue-on-error: true
         run: |
           ssh prod 'sudo -n -u nobi /opt/nobi/.venv/bin/python /opt/nobi/scripts/paper_state_summary.py /srv/nobi-data/paper_state.json --events 20 2>&1' | tee paper_book.txt
 
       - name: Holdout cutoff (ADR-0052)
         run: |
-          ssh prod 'cd /opt/nobi && sudo -n -u nobi /opt/nobi/.venv/bin/python /opt/nobi/scripts/journal_holdout.py show --db /srv/nobi-data/journal.db 2>&1'
+          # `show` exits 1 while the cutoff is not frozen; that is information, not a failure.
+          ssh prod 'cd /opt/nobi && sudo -n -u nobi /opt/nobi/.venv/bin/python /opt/nobi/scripts/journal_holdout.py show --db /srv/nobi-data/journal.db 2>&1' || echo "::warning::holdout cutoff is not frozen (ADR-0052 cutoff: 2026-11-10T07:20:00Z)"
 
       - name: Shadow arms + stop slip over the window (shadow_backfill)
+        continue-on-error: true
         if: ${{ inputs.backfills }}
         run: |
           SINCE="${{ inputs.since }}"; SINCE="${SINCE:-2026-11-09T07:28:00Z}"
@@ -138,6 +145,7 @@ jobs:
           ssh prod "cd /opt/nobi && sudo -n -u nobi /opt/nobi/.venv/bin/python /opt/nobi/scripts/shadow_backfill.py /srv/nobi-data/journal.db --since $SINCE --paper /srv/nobi-data/paper_state.json 2>&1" | tee shadow_backfill.md
 
       - name: Chase-the-pump / depth over the window (pump_chase_backfill)
+        continue-on-error: true
         if: ${{ inputs.backfills }}
         run: |
           SINCE="${{ inputs.since }}"; SINCE="${SINCE:-2026-11-09T07:28:00Z}"
