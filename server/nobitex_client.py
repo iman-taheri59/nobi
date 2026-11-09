@@ -127,6 +127,10 @@ def is_outage(e: ClientError) -> bool:
 #: stop the noise and short enough that a pair that becomes public is picked up
 #: the same day.
 UDF_REFUSAL_TTL_S = float(os.getenv("NBX_UDF_REFUSAL_TTL_S", "21600"))
+#: 2.5.4 — how long the chart route may reuse a series that ends on the forming
+#: bar. One minute: the socket refreshes the same bar every ~10 s when a
+#: position is open; without one, this is the chart's clock.
+LIVE_CANDLE_TTL_S = float(os.getenv("NBX_LIVE_CANDLE_TTL_S", "60"))
 
 
 class UpstreamUnavailable(ClientError):
@@ -470,20 +474,36 @@ class NobitexClient:
         return rows
 
     async def get_candles_ex(
-        self, symbol: str, tf: str = "15m", count: int = 260
+        self, symbol: str, tf: str = "15m", count: int = 260, *, forming: bool = False
     ) -> tuple[list[dict], str]:
         """Return ``(rows, source)`` where source is ``live`` or ``cache``.
 
         If neither the exchange nor the cache can answer, raise
         `UpstreamUnavailable`. There is deliberately no third branch: a
         generated candle series looks exactly like a traded one on screen.
+
+        ``forming=False`` (the scan, the journal, every backtest): the request
+        ends on the start of the current bar, so the exchange answers with
+        closed bars only, and the answer is cached for the cache-wide TTL. This
+        is what every signal is scored on and it does not change here.
+
+        ``forming=True`` (the chart route only, 2.5.4): the request ends *now*,
+        so the exchange includes the bar that is still forming, and the answer
+        lives in its own cache namespace for `LIVE_CANDLE_TTL_S`. Before this
+        the chart was served the closed-bar series from a 30-minute cache: the
+        last candle on screen was 15–30 minutes old all day (9 Nov, 22:39
+        local: last bar 22:15), however often the browser asked.
         """
         tf_s = {"1m": 60, "5m": 300, "15m": 900, "1h": 3600, "4h": 14400, "D": 86400}[tf]
         res = {"15m": "15", "1h": "60", "4h": "240", "D": "D"}.get(tf, str(tf_s // 60 if tf_s >= 60 else 1))
-        now = (int(time.time()) // tf_s) * tf_s
+        wall = int(time.time())
+        now = (wall // tf_s) * tf_s
         from_ts = now - count * tf_s
+        cache_res = res + "-forming" if forming else res
+        ttl = LIVE_CANDLE_TTL_S if forming else None
+        to_req = wall if forming else now
         # use cache when present
-        cached = CANDLE_CACHE.load(symbol.upper(), res, from_ts, now)
+        cached = CANDLE_CACHE.load(symbol.upper(), cache_res, from_ts, now, ttl=ttl)
         if cached:
             return cached, "cache"
         until = self._udf_refused.get(symbol.upper(), 0.0)
@@ -497,14 +517,14 @@ class NobitexClient:
             )
         if not self._is_circuit_open():
             try:
-                raw = await self.get_udf_history(symbol, res, from_ts, now, count=count)
+                raw = await self.get_udf_history(symbol, res, from_ts, to_req, count=count)
                 if raw and raw.get("s") == "ok" and raw.get("c"):
                     rows = [
                         {"t": raw["t"][i], "o": raw["o"][i], "h": raw["h"][i], "l": raw["l"][i], "c": raw["c"][i], "v": raw["v"][i]}
                         for i in range(len(raw["t"]))
                     ]
                     rows.sort(key=lambda r: r["t"])
-                    CANDLE_CACHE.store(symbol.upper(), res, from_ts, now, rows, synthetic=False)
+                    CANDLE_CACHE.store(symbol.upper(), cache_res, from_ts, now, rows, synthetic=False)
                     self._udf_refused.pop(symbol.upper(), None)
                     self.degraded_mode = False
                     return rows, "live"
