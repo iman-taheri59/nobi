@@ -567,6 +567,17 @@ class PaperBroker:
         return {**out, "executable": True, "blocked_by": None}
 
     # --------- order lifecycle ----------
+    def record_refusal(self, symbol: str, side: str, reason: str, *, source: str = "QUEUE",
+                       qty: float = 0.0, price: float = 0.0, extra: dict | None = None) -> None:
+        """2.5.2 — a refusal decided *before* the broker (queue clock, stale
+        scan, moved price) used to leave no trace in the paper book, so the
+        daily count of "approvals that never became orders" missed exactly the
+        cases the queue work was about. Same `reject` event shape, same file."""
+        safe = {k: v for k, v in (extra or {}).items() if isinstance(v, (str, int, float, bool, type(None), dict, list))}
+        self.orders.append(OrderEvent(time.time(), "reject", symbol, side, qty, price,
+                                      {"reason": reason, "source": source, "pre_broker": True, **safe}))
+        self.save()
+
     async def place_limit(self, symbol: str, side: str, qty: float, price: float | None = None,
                           stop: float | None = None, tp1: float | None = None,
                           tp2: float | None = None, source="SEMI", *,
@@ -576,15 +587,15 @@ class PaperBroker:
         self.refresh_risk_triggers()
         if self.halted or getattr(self.risk, "halted", False):
             self.last_error = "halted: kill switch is armed"
-            self.orders.append(OrderEvent(time.time(), "reject", symbol, side, qty, price or 0, {"reason": "halted"}))
+            self.orders.append(OrderEvent(time.time(), "reject", symbol, side, qty, price or 0, {"reason": "halted", "source": source}))
             return None
         if len([p for p in self.positions.values() if p.state != "CLOSED"]) >= self.concurrent_limit:
             self.last_error = f"concurrent-cap: already {self.concurrent_limit} open positions"
-            self.orders.append(OrderEvent(time.time(), "reject", symbol, side, qty, price or 0, {"reason": "concurrent-cap"}))
+            self.orders.append(OrderEvent(time.time(), "reject", symbol, side, qty, price or 0, {"reason": "concurrent-cap", "source": source}))
             return None
         if not self.cash:
             self.last_error = "no-cash: paper account is empty"
-            self.orders.append(OrderEvent(time.time(), "reject", symbol, side, qty, price or 0, {"reason": "no-cash"}))
+            self.orders.append(OrderEvent(time.time(), "reject", symbol, side, qty, price or 0, {"reason": "no-cash", "source": source}))
             return None
 
         # One shared quote path for preview and submit: same book walk, slip,
@@ -598,12 +609,12 @@ class PaperBroker:
         if reason == "no-depth":
             self.last_error = "no-depth: orderbook has no liquidity"
             self.orders.append(OrderEvent(time.time(), "reject", symbol, side, qty,
-                                          mid_at_submit, {"reason": "no-depth"}))
+                                          mid_at_submit, {"reason": "no-depth", "source": source}))
             return None
         if reason == "precision":
             self.last_error = f"precision: {symbol} qty rounds to zero at the amount step"
             self.orders.append(OrderEvent(time.time(), "reject", symbol, side, qty, fill_price,
-                                          {"reason": "precision"}))
+                                          {"reason": "precision", "source": source}))
             return None
         stop_px = float(quote["stop"])
         tp1_px = float(quote["tp1"])
@@ -631,7 +642,7 @@ class PaperBroker:
         rate = await self._quote_rate(symbol)
         if rate <= 0:
             self.last_error = "no-fx-rate: USDTIRT price unavailable for IRT-quoted pair"
-            self.orders.append(OrderEvent(time.time(), "reject", symbol, side, qty, fill_price, {"reason": "no-fx-rate"}))
+            self.orders.append(OrderEvent(time.time(), "reject", symbol, side, qty, fill_price, {"reason": "no-fx-rate", "source": source}))
             return None
         notional_usd = notional / rate
         fee_usd = fee / rate
@@ -646,7 +657,7 @@ class PaperBroker:
             self.last_error = (
                 f"single-asset-cap: notional ${notional_usd:,.2f} exceeds 25% of equity (${cap:,.2f})"
             )
-            self.orders.append(OrderEvent(time.time(), "reject", symbol, side, qty, fill_price, {"reason": "single-asset-cap"}))
+            self.orders.append(OrderEvent(time.time(), "reject", symbol, side, qty, fill_price, {"reason": "single-asset-cap", "source": source}))
             return None
 
         # Per-trade risk + portfolio heat + cash buffer gates (ADR-0008).
@@ -693,7 +704,7 @@ class PaperBroker:
         if reason:
             self.last_error = reason
             self.orders.append(OrderEvent(time.time(), "reject", symbol, side, qty, fill_price,
-                                          {"reason": reason}))
+                                          {"reason": reason, "source": source}))
             return None
 
         # take position

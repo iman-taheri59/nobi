@@ -19,6 +19,7 @@ from __future__ import annotations
 # (notify.TOKEN, security.API_TOKEN, ws_execution.WS_URL are all
 # read at import time, so a later load would be a silent no-op)
 import asyncio
+import contextlib
 import base64
 import json
 import logging
@@ -4299,6 +4300,13 @@ async def paper_order(payload: dict):
     if str(body.get("source") or "").upper() == "QUEUE":
         queue_context = _queue_order_context(body)
         if not queue_context.get("ok"):
+            # 2.5.2 — leave the refusal in the paper book too (item 7: how many
+            # approvals never became orders, by reason). Never raises.
+            with contextlib.suppress(Exception):
+                get_broker(EQUITY, client, risk).record_refusal(
+                    str(body.get("symbol") or "").upper(), str(body.get("side") or "buy").lower(),
+                    str(queue_context.get("error") or "queue-refused"),
+                    extra={k: queue_context.get(k) for k in ("scan_age_s", "max_scan_age_s") if k in queue_context})
             return queue_context
     side = (body.get("side") or "buy").lower()
     symbol = (body.get("symbol") or "").upper()
@@ -4337,6 +4345,10 @@ async def paper_order(payload: dict):
             sig = (_cached["signals_by_tf"].get(queue_context["tf"]) or {}).get(symbol) or {}
             drift = await _queue_drift(symbol, sig, broker)
             if drift.get("exceeded"):
+                with contextlib.suppress(Exception):
+                    broker.record_refusal(symbol, side, "queue-price-moved", qty=qty, price=float(drift.get("mid") or 0.0),
+                                          extra={"drift_pct": drift.get("drift_pct"), "drift_atr": drift.get("drift_atr"),
+                                                 "drift_reason": drift.get("reason")})
                 return {"ok": False, "blocked": True, "error": "queue-price-moved", "drift": drift}
 
             def guard() -> str | None:
@@ -5292,6 +5304,11 @@ def gate_write(tf: str) -> int:
     return n
 
 
+#: 2.5.2 — advisory thin-depth label (item 10). p10 of `depth_usd` over scanned
+#: rows (pump-chase backfill, 2026-11-08). A label, not a gate.
+DEPTH_WARN_USD = max(1.0, float(os.getenv("NBX_DEPTH_WARN_USD", "562")))
+
+
 def gates_block(ranked: list[dict], tf: str) -> dict:
     """ADR-0022 stage 1 — the gates' verdicts, on rows the ranking already has.
 
@@ -5346,6 +5363,16 @@ def gates_block(ranked: list[dict], tf: str) -> dict:
             }
         )
     out = gates.evaluate(rows)
+    # 2.5.2 (item 10) — an *advisory* depth label, separate from the shadow gate
+    # (`min_depth_usd` is still None; nothing is applied). The threshold is the
+    # p10 of depth over every scanned row in the 2026-11-08 pump-chase backfill
+    # (562 USD): below it the H1 R̄ of LONGs was −0.83 vs −0.25 overall. The
+    # card and the queue show a yellow label; the gate stays shadow.
+    out["depth_warn"] = {"usd": DEPTH_WARN_USD, "applied": False,
+                         "basis": "p10(depth_usd) over scanned rows, docs/analysis/pump-chase-backfill-2026-11-08"}
+    for sym, v in (out.get("verdicts") or {}).items():
+        d = (v.get("inputs") or {}).get("depth_usd")
+        v["depth_thin"] = (d < DEPTH_WARN_USD) if isinstance(d, (int, float)) and math.isfinite(d) else None
     # How much of the list could actually be judged, so the card can say "no book
     # has been read for these yet" instead of implying the market is clean.
     out["inputs"] = {

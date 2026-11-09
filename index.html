@@ -5763,6 +5763,19 @@ function queueAgeText(q){
   const span = m>=1 ? fmtNum(m)+(LANG==='fa'?' دقیقه':' min') : fmtNum(Math.floor(age))+(LANG==='fa'?' ثانیه':' s');
   return (LANG==='fa'?'اسکن ':'scanned ')+span+(LANG==='fa'?' پیش':' ago');
 }
+/* item 10 — same advisory label as the signal card (`signalDepthWarn` in
+ * nbx-app.js), read straight from `live.gates` so the queue does not depend on
+ * the app bundle's load order. */
+function queueDepthWarn(q){
+  const g=window.live && live.gates, v=g && g.verdicts && Object.prototype.hasOwnProperty.call(g.verdicts,q.sym) ? g.verdicts[q.sym] : null;
+  if(!v || v.depth_thin!==true) return null;
+  const depth=v.inputs && typeof v.inputs.depth_usd==='number' ? v.inputs.depth_usd : null;
+  const limit=g.depth_warn && typeof g.depth_warn.usd==='number' ? g.depth_warn.usd : null;
+  return {
+    text:(LANG==='fa'?'عمق کم':'thin book')+(depth!==null?': '+fmtNum(Math.round(depth))+' $':'')+(limit!==null?(LANG==='fa'?' (کمتر از ':' (under ')+fmtNum(Math.round(limit))+' $)':''),
+    title:LANG==='fa'?'عمق دفتر سفارش زیر دهک اول اسکن‌ها؛ برچسب اطلاع‌رسانی است، گیت سایه است و سفارشی را نمی‌بندد.':'Order-book depth below the first decile of scanned rows; advisory only — the gate is shadow and blocks nothing.',
+  };
+}
 function queueChipText(q){
   const bits=[];
   if(queueAgeText(q)) bits.push(queueAgeText(q));
@@ -6095,6 +6108,7 @@ function renderQueue(){
           ${q.dir==='long'?`<span class="chip text-emerald-300">${t('sg.long')}</span>`:`<span class="chip text-red-300">${LANG==='fa'?'فروش':'Sell'}</span>`}
         </div>
         <span data-qrank class="text-[10px] text-zinc-500 num">${t('perf.rank')} ${fmtNum(q.rank)} · ${q.ts}</span>
+        ${(()=>{const d=queueDepthWarn(q); return d?`<span data-qdepth class="chip num text-amber-300 border-amber-300/40" title="${escText(d.title)}">${escText(d.text)}</span>`:'';})()}
         <span data-qage="${q.id}" class="chip num ${queueStale(q)?'text-amber-300 border-amber-300/40 bg-amber-300/[.08]':'text-zinc-500 border-white/10'} ${queueChipText(q)?'':'hidden'}">${escText(queueChipText(q)||'')}</span>
         <select data-symmode="${q.sym}" class="qMode bg-white/[.04] border border-white/10 rounded-md text-[10px] px-1.5 py-1 text-zinc-300">
           ${MODES.map(m=>`<option value="${m}" ${modeOf(q.sym)===m?'selected':''}>${t('dk.'+m)}</option>`).join('')}
@@ -6190,6 +6204,10 @@ function paintQueueRow(q){
   const app=row.querySelector('.qApp'); if(app) app.disabled=pending || unknown || queueRemaining(q)<=0 || execBlocked || stale || !!(e && e.blocked);
   const rescanBtn=row.querySelector('.qRescan'); if(rescanBtn){ rescanBtn.classList.toggle('hidden',!stale); rescanBtn.disabled=pending||queueRescanBusy; }
   const ageChip=row.querySelector('[data-qage]');
+  // item 10 — the depth label follows the latest gates block even when the row DOM is reused
+  { const dw=queueDepthWarn(q); let dc=row.querySelector('[data-qdepth]');
+    if(dw && !dc && ageChip){ dc=document.createElement('span'); dc.dataset.qdepth='1'; dc.className='chip num text-amber-300 border-amber-300/40'; ageChip.parentNode.insertBefore(dc, ageChip); }
+    if(dc){ if(dw){ dc.textContent=dw.text; dc.title=dw.title; } else dc.remove(); } }
   if(ageChip){ const txt=queueChipText(q); ageChip.classList.toggle('hidden',!txt);
     ageChip.textContent=txt||'';
     ageChip.className=`chip num ${stale?'text-amber-300 border-amber-300/40 bg-amber-300/[.08]':'text-zinc-500 border-white/10'}${txt?'':' hidden'}`; }

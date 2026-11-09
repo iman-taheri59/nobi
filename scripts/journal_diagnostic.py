@@ -65,12 +65,77 @@ def parse_since(text: str | None) -> int | None:
     return int(dt.timestamp())
 
 
+def reject_counts(orders: list[dict], *, since: float | None = None) -> dict:
+    """Same shape as server/diagnostics.reject_counts; duplicated so the script
+    stays runnable on a copy of the state file without the server on sys.path."""
+    by_reason: dict[str, int] = {}
+    by_source: dict[str, int] = {}
+    by_rs: dict[str, dict[str, int]] = {}
+    by_day: dict[str, int] = {}
+    total = 0
+    for ev in orders:
+        if not isinstance(ev, dict) or ev.get("kind") != "reject":
+            continue
+        try:
+            ts = float(ev.get("ts"))
+        except (TypeError, ValueError):
+            continue
+        if since is not None and ts < since:
+            continue
+        extra = ev.get("extra") if isinstance(ev.get("extra"), dict) else {}
+        reason = str(extra.get("reason") or "?")
+        source = str(extra.get("source") or "?").upper()
+        total += 1
+        by_reason[reason] = by_reason.get(reason, 0) + 1
+        by_source[source] = by_source.get(source, 0) + 1
+        by_rs.setdefault(reason, {})
+        by_rs[reason][source] = by_rs[reason].get(source, 0) + 1
+        day = datetime.fromtimestamp(ts, UTC).strftime("%Y-%m-%d")
+        by_day[day] = by_day.get(day, 0) + 1
+    order = lambda d: dict(sorted(d.items(), key=lambda kv: (-kv[1], kv[0])))
+    return {"total": total, "by_reason": order(by_reason), "by_source": order(by_source),
+            "by_reason_source": {k: order(v) for k, v in by_rs.items()}, "by_day": dict(sorted(by_day.items()))}
+
+
+def print_paper_rejects(path: str, since: int | None) -> None:
+    import json as _pj
+    try:
+        with open(path, encoding="utf-8") as fh:
+            state = _pj.load(fh)
+    except (OSError, ValueError) as e:
+        print(f"\n6) paper rejects: cannot read {path}: {e}")
+        return
+    orders = state.get("orders") or []
+    c = reject_counts(orders, since=since)
+    kept = len(orders)
+    print(f"\n6) paper rejects by reason × source (item 7) — {c['total']} reject(s)"
+          f"{' since ' + datetime.fromtimestamp(since, UTC).strftime('%Y-%m-%d %H:%MZ') if since else ''};"
+          f" the file keeps the last {kept} event(s) only, older rejects are gone")
+    if not c["total"]:
+        print("  none")
+        return
+    sources = list(c["by_source"])
+    print(f"  {'reason':28s} {'total':>5s}  " + " ".join(f"{src:>7s}" for src in sources))
+    for reason, n in c["by_reason"].items():
+        row = c["by_reason_source"].get(reason, {})
+        print(f"  {reason:28s} {n:5d}  " + " ".join(f"{row.get(src, 0):7d}" for src in sources))
+    queue_total = c["by_source"].get("QUEUE", 0)
+    pre = sum(1 for ev in orders if isinstance(ev, dict) and ev.get("kind") == "reject"
+              and (ev.get("extra") or {}).get("source") == "QUEUE" and (ev.get("extra") or {}).get("pre_broker")
+              and (since is None or float(ev.get("ts") or 0) >= since))
+    print(f"  approvals that never became orders: {queue_total} (of which {pre} refused before the broker: "
+          f"queue clock / stale scan / moved price)")
+    print("  by day: " + ", ".join(f"{d} {n}" for d, n in c["by_day"].items()))
+    print("  read: '?' source = events written before 2.5.2; counts are from the state file's rolling window, not a ledger.")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("db")
     ap.add_argument("--since", help="ISO time; ignore signals before it")
     ap.add_argument("--hash", action="append", default=[], help="config_hash to include (repeatable)")
     ap.add_argument("--tf", default="15m")
+    ap.add_argument("--paper", help="copy of paper_state.json: adds section 6, rejects by reason × source (2.5.2, item 7)")
     args = ap.parse_args()
 
     conn = sqlite3.connect(f"file:{args.db}?mode=ro", uri=True)
@@ -243,6 +308,9 @@ def main() -> int:
             print(f"  {name:10s} {len(a['r2']):7d} {_f(a['r2']):>8s} {_p(a['sl2']):>6s}   "
                   f"{len(a['r3']):7d} {_f(a['r3']):>8s} {_p(a['sl3']):>6s}")
         print("  read: same bars, same entry/ATR; an arm 'wins' only with ≥500 LONGs and non-overlapping 95% CIs.")
+
+    if args.paper:
+        print_paper_rejects(args.paper, since)
 
     print("\nsection 1/2/4 returns are gross; R̄net (section 3) deducts the round-trip fee assumption recorded per row; the clean window may be short — read with the date range in mind.")
     return 0

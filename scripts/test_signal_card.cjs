@@ -84,6 +84,22 @@ for(const file of ['index.html','nobitex-mobile.html'])for(const lang of ['fa','
   const noRR=[...d.querySelectorAll('[data-sig-sym="BTCIRT"] .sig-lv b')].map(b=>b.textContent.trim());
   ok(noRR[1].includes('960'));eq(noRR[2],'—');eq(noRR[3],'—');
   ok(d.querySelector('[data-sig-sym="BTCIRT"] .sig-foot').textContent.includes(lang==='fa'?'نردبان':'ladder'));
+  // 2.5.2 item 10 — advisory thin-depth label beside the freshness line.
+  ok(!d.querySelector('[data-sig-sym="BTCIRT"] [data-sig-depth]'),'deep book (5400 $): no label');
+  live.gates={mode:'shadow',applied:false,depth_warn:{usd:562,applied:false},verdicts:{
+    BTCIRT:{code:'ok',depth_thin:true,inputs:{spread_bps:12,depth_usd:410}},
+    TONIRT:{code:'no-book',depth_thin:null,inputs:{}}}};
+  fx.renderSignalsLive();
+  const dw=d.querySelector('[data-sig-sym="BTCIRT"] [data-sig-depth]');
+  ok(dw,'thin book gets the label');ok(dw.className.includes('amber'),'label is yellow');
+  ok(/410|۴۱۰/.test(dw.textContent)&&/562|۵۶۲/.test(dw.textContent),'label names depth and threshold: '+dw.textContent);
+  ok(dw.closest('[data-sig-fresh]'),'label sits on the freshness line');
+  ok(/(سفارشی را نمی‌بندد|blocks nothing)/.test(dw.title),'title says it is advisory');
+  ok(!d.querySelector('[data-sig-sym="TONIRT"] [data-sig-depth]'),'unknown depth: no label, no invented number');
+  eq([...d.querySelectorAll('[data-sig-sym]')].map(n=>n.dataset.sigSym)[0],'BTCIRT','order unchanged by the label');
+  // an older server without depth_thin: nothing shown
+  live.gates={mode:'shadow',applied:false,verdicts:{BTCIRT:{code:'ok',inputs:{spread_bps:12,depth_usd:100}}}};
+  fx.renderSignalsLive();ok(!d.querySelector('[data-sig-depth]'),'old server: no label');
   ok(!errors.some(x=>/Uncaught|ReferenceError|SyntaxError/.test(x)),errors.join('\n'));
  }finally{dom.window.close();}
 }

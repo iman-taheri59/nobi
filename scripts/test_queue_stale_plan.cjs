@@ -125,6 +125,15 @@ async function verify(file) {
     assert.equal(rescans, 1, 'rescan asks the server once with refresh=true');
     assert.equal(placed, 0);
 
+    // item 10 — thin-depth chip in the queue row, from the same gates block
+    w.live.gates = { mode: 'shadow', applied: false, depth_warn: { usd: 562, applied: false },
+      verdicts: { DOGEIRT: { code: 'ok', depth_thin: true, inputs: { depth_usd: 300 } }, TRXIRT: { code: 'ok', depth_thin: false, inputs: { depth_usd: 4000 } } } };
+    await w.refreshQueue();
+    assert.ok(row('DOGEIRT').querySelector('[data-qdepth]'), 'thin book chip on the queue row');
+    assert.match(row('DOGEIRT').querySelector('[data-qdepth]').textContent, /300|۳۰۰/);
+    assert.equal(row('TRXIRT').querySelector('[data-qdepth]'), null);
+    assert.equal(btn('TRXIRT').disabled, false, 'depth label never locks approval');
+
     // a server-side refusal with queue-signal-stale locks the row instead of dismissing the candle
     const trx = byId('TRXIRT');
     trx.approval.stale = false; trx.approval.scan_age_s = 50;

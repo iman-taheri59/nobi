@@ -138,6 +138,35 @@ async def check_journal(ctx: Ctx) -> Result:
                   "stage": stage["stage"], "msi_status": verdict["status"], "read_only": True})
 
 
+def reject_counts(orders: list[dict[str, Any]], *, since: float | None = None) -> dict[str, Any]:
+    """Count `reject` events by reason and by source (QUEUE/AUTO/SEMI/MANUAL).
+
+    Pure and shared with `scripts/journal_diagnostic.py --paper`. A reject
+    without a `source` (events written before 2.5.2) is counted under "?".
+    Sorted most-frequent first so the head of the dict is the headline.
+    """
+    by_reason: dict[str, int] = {}
+    by_source: dict[str, int] = {}
+    by_reason_source: dict[str, dict[str, int]] = {}
+    total = 0
+    for ev in orders:
+        if not isinstance(ev, dict) or ev.get("kind") != "reject":
+            continue
+        ts = _num(ev.get("ts"))
+        if since is not None and (ts is None or ts < since):
+            continue
+        extra = ev.get("extra") if isinstance(ev.get("extra"), dict) else {}
+        reason = str(extra.get("reason") or "?")
+        source = str(extra.get("source") or "?").upper()
+        total += 1
+        by_reason[reason] = by_reason.get(reason, 0) + 1
+        by_source[source] = by_source.get(source, 0) + 1
+        by_reason_source.setdefault(reason, {})[source] = by_reason_source.setdefault(reason, {}).get(source, 0) + 1
+    order = lambda d: dict(sorted(d.items(), key=lambda kv: (-kv[1], kv[0])))
+    return {"total": total, "by_reason": order(by_reason), "by_source": order(by_source),
+            "by_reason_source": {k: order(v) for k, v in by_reason_source.items()}}
+
+
 async def check_paper(ctx: Ctx) -> Result:
     """The paper account must hold finite money. NaN equity breaks every cap."""
     if ctx.paper_state is None:
@@ -150,8 +179,15 @@ async def check_paper(ctx: Ctx) -> Result:
                             f"{st.get('cash')!r}", "a NaN account makes every risk cap test false")
     if eq <= 0:
         return Result(FAIL, f"equity is {eq:g}", "the account is empty — every order will be refused")
-    return Result(OK, f"equity {eq:,.0f} USD, cash {cash:,.0f}, {len(positions)} position(s)",
-                  data={"equity": eq, "cash": cash, "positions": len(positions)})
+    # 2.5.2 (item 7) — rejects in the last 24 h by reason, so the daily look at
+    # this check also says how many approvals never became orders.
+    rejects = reject_counts(st.get("orders") or [], since=time.time() - 86400)
+    tail = ""
+    if rejects["total"]:
+        top = ", ".join(f"{k} {v}" for k, v in list(rejects["by_reason"].items())[:4])
+        tail = f"; rejects 24h: {rejects['total']} ({top})"
+    return Result(OK, f"equity {eq:,.0f} USD, cash {cash:,.0f}, {len(positions)} position(s){tail}",
+                  data={"equity": eq, "cash": cash, "positions": len(positions), "rejects_24h": rejects})
 
 
 async def check_risk(ctx: Ctx) -> Result:

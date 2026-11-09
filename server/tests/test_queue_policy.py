@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import json
 import time
 
 import pytest
@@ -315,7 +316,10 @@ def test_queue_cannot_fall_back_to_unapproved_default_targets(wired, field, miss
         body[field] = None
     result = TestClient(main.app).post("/api/paper/order", json=body).json()
     assert not result["ok"] and result["error"] == "queue-plan-levels-required"
-    assert not broker.positions and not broker.orders and broker.cash == 100000
+    # 2.5.2 — the refusal itself is recorded (item 7); nothing else may change.
+    assert not broker.positions and broker.cash == 100000
+    assert [e.kind for e in broker.orders] == ["reject"]
+    assert broker.orders[0].extra["reason"] == "queue-plan-levels-required" and broker.orders[0].extra["pre_broker"]
 
 
 # ---- 2.5.2: a plan whose scan is too old is shown with its age but not placeable
@@ -435,3 +439,49 @@ def test_signals_refresh_flag_forces_a_bounded_background_rescan(monkeypatch):
     monkeypatch.setitem(main._cached, "refreshing", {})
     monkeypatch.setitem(main._cached, "signals_ts", {"15m": time.time() - 2})
     assert client.get("/api/signals?tf=15m&refresh=true").json()["refreshing"] is False
+
+
+# ---- 2.5.2 item 7: refusals leave a trace in the paper book, counted by reason
+
+
+def test_pre_broker_queue_refusals_are_recorded_as_rejects_with_source(wired, monkeypatch):
+    now, feed, broker = wired
+    import diagnostics
+    # 1) stale scan → refused before the broker, recorded
+    monkeypatch.setitem(main._cached, "signals_ts", {"15m": now[0] - main.QUEUE_SCAN_MAX_AGE_S - 1})
+    out = TestClient(main.app).post("/api/paper/order", json=payload()).json()
+    assert out["error"] == "queue-signal-stale"
+    # 2) moved price → refused before place_limit, recorded with drift
+    monkeypatch.setitem(main._cached, "signals_ts", {"15m": now[0] - 5})
+
+    async def moved(symbol):
+        return {"bids": [["103", "1000"]], "asks": [["103.02", "1000"]], "lastTradePrice": "103"}
+
+    feed.get_orderbook = moved
+    out = TestClient(main.app).post("/api/paper/order", json=payload()).json()
+    assert out["error"] == "queue-price-moved"
+    rejects = [e for e in broker.orders if e.kind == "reject"]
+    assert [e.extra["reason"] for e in rejects] == ["queue-signal-stale", "queue-price-moved"]
+    assert all(e.extra["source"] == "QUEUE" and e.extra["pre_broker"] is True for e in rejects)
+    assert rejects[1].extra["drift_pct"] == pytest.approx(3.01, abs=0.01)
+    assert not broker.positions
+    # 3) the same events, counted the way the daily diagnostic reads them
+    state = json.loads((paper_trading.STATE_FILE).read_text(encoding="utf-8"))
+    counts = diagnostics.reject_counts(state["orders"])
+    assert counts["total"] == 2 and counts["by_source"] == {"QUEUE": 2}
+    assert counts["by_reason"] == {"queue-price-moved": 1, "queue-signal-stale": 1}
+    assert counts["by_reason_source"]["queue-signal-stale"] == {"QUEUE": 1}
+    # a window excludes old events; a reject without source counts under "?"
+    assert diagnostics.reject_counts(state["orders"], since=now[0] + 10 ** 6)["total"] == 0
+    legacy = [{"kind": "reject", "ts": 1.0, "extra": {"reason": "halted"}}]
+    assert diagnostics.reject_counts(legacy)["by_source"] == {"?": 1}
+
+
+def test_broker_rejects_now_carry_their_source(wired):
+    _now, _feed, broker = wired
+    broker.halted = True
+    body = {**payload(), "source": "SEMI"}
+    body.pop("approval")
+    assert TestClient(main.app).post("/api/paper/order", json=body).json().get("ok") is not True
+    ev = [e for e in broker.orders if e.kind == "reject"][-1]
+    assert ev.extra == {"reason": "halted", "source": "SEMI"}

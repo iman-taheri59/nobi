@@ -869,6 +869,19 @@
     }
     return { text: faText('تازگی نامشخص', 'freshness unknown'), stale: null, known: false };
   }
+  /* 2.5.2 (item 10) — yellow depth label beside the freshness line. Reads the
+     server's advisory `depth_thin` (p10 = 562 USD by default); the shadow gate
+     is untouched and this never hides or reorders a row. */
+  function signalDepthWarn(symbol) {
+    const g = live.gates, v = g && g.verdicts && Object.prototype.hasOwnProperty.call(g.verdicts, symbol) ? g.verdicts[symbol] : null;
+    if (!v || v.depth_thin !== true) return null;
+    const depth = v.inputs && typeof v.inputs.depth_usd === 'number' ? v.inputs.depth_usd : null;
+    const limit = g.depth_warn && typeof g.depth_warn.usd === 'number' ? g.depth_warn.usd : null;
+    return {
+      text: faText('عمق کم', 'thin book') + (depth !== null ? ': ' + faNum(Math.round(depth)) + ' $' : '') + (limit !== null ? faText(' (کمتر از ', ' (under ') + faNum(Math.round(limit)) + ' $)' : ''),
+      title: faText('عمق دفتر سفارش زیر دهک اول اسکن‌ها؛ برچسب اطلاع‌رسانی است، گیت سایه است و سفارشی را نمی‌بندد.', 'Order-book depth below the first decile of scanned rows; advisory only — the gate is shadow and blocks nothing.'),
+    };
+  }
   function signalRowHtml(s, i) {
     const composite = faNumber(s.composite) ? s.composite : null;
     const col = composite === null ? 'zinc' : composite >= 60 ? 'emerald' : composite >= 45 ? 'amber' : 'red';
@@ -882,6 +895,7 @@
     const symLabel = LANG === 'fa' ? s.symbol.replace('IRT', '/تومان') : s.symbol;
     const lv = signalLevels(s);
     const fr = signalFreshness(s.symbol);
+    const depthWarn = signalDepthWarn(s.symbol);
     const open = sigEvidenceOpen.has(s.symbol);
     const vetoTitle = s.direction_raw && s.direction_raw !== s.direction
       ? esc(LANG === 'fa'
@@ -960,7 +974,7 @@
           </div>
           <div class="sig-tail">
             ${ladder}
-            <div class="text-[9px] leading-4 ${fr.stale === true ? 'text-amber-300' : 'text-zinc-500'} ${ladder ? 'mt-0.5' : ''}" data-sig-fresh>${esc(fr.text)}${fr.stale === true ? ' · ' + faText('کهنه', 'stale') : ''}</div>
+            <div class="text-[9px] leading-4 ${fr.stale === true ? 'text-amber-300' : 'text-zinc-500'} ${ladder ? 'mt-0.5' : ''}" data-sig-fresh>${esc(fr.text)}${fr.stale === true ? ' · ' + faText('کهنه', 'stale') : ''}${depthWarn ? ` · <span data-sig-depth class="text-amber-300" title="${esc(depthWarn.title)}">${esc(depthWarn.text)}</span>` : ''}</div>
           </div>
         </div>
         <div class="sig-foot">
@@ -2067,6 +2081,7 @@
 
   window.NBX_APP = {
     signalLevels,
+    signalDepthWarn,
     refreshDisplay() {
       if(paperSnapshot) paintPaperState(...paperSnapshot);
       if(typeof window.renderMarketOverview === 'function') window.renderMarketOverview();
