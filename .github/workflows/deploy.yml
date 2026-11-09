@@ -67,7 +67,9 @@ jobs:
         run: ssh prod 'sudo -n bash /opt/nobi/scripts/update_arvan.sh --yes --backup --verify'
 
       - name: Post-deploy proof
-        if: ${{ !inputs.dry_run }}
+        # Runs even when --verify went red (9 Nov: a probe-only 403 hid the fact
+        # that the update had completed and the new version was serving).
+        if: ${{ !inputs.dry_run && !cancelled() }}
         run: |
           ssh prod 'curl -fsS http://127.0.0.1:8000/api/health' | python3 -c '
           import json,sys; h=json.load(sys.stdin)
