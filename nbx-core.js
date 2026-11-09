@@ -2140,7 +2140,14 @@
       const sym = normSymbol(symbol);
       const engine = NBX.core && NBX.core.engine;
       const existing = engine && (engine.candles[sym + ':' + tf] || engine.candles[sym]);
-      if (existing && existing.length >= 200) return existing;
+      if (existing && existing.length >= 200) {
+        // 2.5.4: the chart series now ends on the bar that is still forming.
+        // A backtest is closed bars only, like the server's — drop the live one.
+        const tfSec = { '15m': 900, '1h': 3600, '4h': 14400, D: 86400 }[tf] || 900;
+        const last = existing[existing.length - 1];
+        const closed = last && Number(last.t) + tfSec > Date.now() / 1000 ? existing.slice(0, -1) : existing;
+        return closed.length >= 200 ? closed : [];
+      }
       // Nothing local to run on: the caller decides how to tell the user.
       return [];
     }
