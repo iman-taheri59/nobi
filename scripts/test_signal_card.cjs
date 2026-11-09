@@ -61,6 +61,13 @@ for(const file of ['index.html','nobitex-mobile.html'])for(const lang of ['fa','
   fx.renderSignalsLive();eq(d.querySelector('[data-sig-sym="BTCIRT"] [data-sig-evidence]').hasAttribute('hidden'),false,'open state survives a repaint');
   d.querySelector('[data-sig-sym="BTCIRT"] [data-sig-details]').click();
   eq(d.querySelector('[data-sig-sym="BTCIRT"] [data-sig-evidence]').hasAttribute('hidden'),true);
+  // Row click opens the candle panel with the same model levels drawn on it.
+  w.toggleSignalDetail(d.querySelector('[data-sig-sym="BTCIRT"]'));await turn();const panel=d.querySelector('#sigList .sig-detail');ok(panel,'row click opens candle panel');
+  eq(panel.querySelectorAll('[data-level]').length,3,'stop + two targets drawn');
+  ok(panel.querySelector('[data-level="stop"]').textContent.includes('960'));ok(panel.querySelector('[data-level="tp2"]').textContent.includes('1,080'));
+  ok(panel.querySelector('[data-crosshair]') && panel.querySelector('[data-candle-tip]'),'crosshair + tooltip scaffolding present');
+  ok(w.__candleHover && w.__candleHover.BTCIRT && w.__candleHover.BTCIRT.bars.length===30,'hover geometry stored for this symbol');
+  panel.querySelector('[data-close-detail]').click();
   // NEUTRAL: stop shown (model), targets refused with a reason.
   const eth=[...d.querySelectorAll('[data-sig-sym="ETHIRT"] .sig-lv b')].map(b=>b.textContent.trim());
   ok(eth[1].includes('960'));eq(eth[2],'—');eq(eth[3],'—');
@@ -69,8 +76,11 @@ for(const file of ['index.html','nobitex-mobile.html'])for(const lang of ['fa','
   // No price / no ATR: dashes, no ladder, no invented numbers.
   const ton=d.querySelector('[data-sig-sym="TONIRT"]');
   eq([...ton.querySelectorAll('.sig-lv b')].map(b=>b.textContent.trim()).join(''),'————');ok(!ton.querySelector('.sig-ladder'));
-  // No R:R ladder from the server → targets stay "—" (no private 1.5/2.5 copy).
+  // A transient failure of the risk read keeps the last published ladder…
   live.risk=null;fx.renderSignalsLive();
+  ok([...d.querySelectorAll('[data-sig-sym="BTCIRT"] .sig-lv b')][2].textContent.includes('1,048'),'last good ladder survives a failed risk read');
+  // …but with no ladder ever published, targets stay "—" (no private 1.5/2.5 copy).
+  live.rrLevels=null;fx.renderSignalsLive();
   const noRR=[...d.querySelectorAll('[data-sig-sym="BTCIRT"] .sig-lv b')].map(b=>b.textContent.trim());
   ok(noRR[1].includes('960'));eq(noRR[2],'—');eq(noRR[3],'—');
   ok(d.querySelector('[data-sig-sym="BTCIRT"] .sig-foot').textContent.includes(lang==='fa'?'نردبان':'ladder'));

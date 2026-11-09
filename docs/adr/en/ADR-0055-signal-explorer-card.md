@@ -18,6 +18,8 @@ The explorer row had turned into an audit receipt: score, the full shadow-gate v
 4. **Evidence behind "Details"** (`data-sig-evidence`, button with `aria-expanded`): the four weighted TA component bars (0.4/0.25/0.15/0.2), RSI/ADX/ATR%/%B, the neutral cached price curve (same `spark()` contract: neutral colour, selected timeframe only), the shadow-gate text with spread/depth, FA provenance, liquidity (the "turnover proxy" wording only here, with "from 24h volume; not book depth"). The block is in the DOM (tests and screen readers see it) and merely `hidden`. Open state is kept in `sigEvidenceOpen` so periodic repaints do not close it. Clicking the row itself still opens the candle chart.
 5. **Layout by the card's own width** (container queries in `dashboard.css`): < 560px stacked (levels one per line, full-width ladder); ≥ 560px a four-column level table under the identity line; ≥ 960px one full line. Reason: with the sidebar open a 1024px screen gives the list ~700px and a viewport media query lied.
 
+6. **Row candle chart:** the same `signalLevels` (via `NBX_APP`) draws the dashed stop/target lines on the chart — one source for the row's number and the chart's line. Crosshair/tooltip on mouse and touch (`bindCandleHover`), no fetch, nothing recomputed; a narrower canvas on phones. The last published ladder is kept in `live.rrLevels`.
+
 ## Consequences
 
 - Scan rows are never mutated (`Object.freeze` in the test); ordering and scores unchanged.

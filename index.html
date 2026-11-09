@@ -2743,8 +2743,23 @@ function candleChart(symbol){
     return `<div class="h-40 flex items-center justify-center text-[11px] text-zinc-600">${t('sg.noCandles')}</div>`;
   }
   const bars = rows.slice(-120);
-  const W = 1000, H = 320, padL = 8, padR = 64, padT = 10, padB = 18;
-  const hi = Math.max(...bars.map(b => +b.h)), lo = Math.min(...bars.map(b => +b.l));
+  // The svg is stretched to the box (preserveAspectRatio none), so a 1000-unit
+  // canvas on a 360px phone squeezes every label to a third. Narrow screens get
+  // a canvas close to their own aspect so text stays legible.
+  const narrow = (window.innerWidth || 1000) < 640;
+  const W = narrow ? 540 : 1000, H = narrow ? 270 : 320, padL = 8, padR = narrow ? 74 : 96, padT = 10, padB = 18;
+  // 2.5.2 (ADR-0055) — the same model levels the row prints, drawn on the price:
+  // stop = close − 2×ATR of the scan, targets from the server's R:R ladder. The
+  // y-range is widened so a level never falls off the canvas.
+  const sig = (window.live && Array.isArray(live.ranked)) ? live.ranked.find(x => x && x.symbol === symbol) : null;
+  const lv = sig && window.NBX_APP && typeof NBX_APP.signalLevels === 'function' ? NBX_APP.signalLevels(sig) : null;
+  const levelList = lv ? [
+    ['stop', lv.stop, '#f87171', LANG === 'fa' ? 'حد ضرر' : 'Stop'],
+    ['tp1', lv.tp1, '#34d399', LANG === 'fa' ? 'هدف ۱' : 'T1'],
+    ['tp2', lv.tp2, '#34d399', LANG === 'fa' ? 'هدف ۲' : 'T2'],
+  ].filter(([, v]) => typeof v === 'number' && Number.isFinite(v)) : [];
+  let hi = Math.max(...bars.map(b => +b.h)), lo = Math.min(...bars.map(b => +b.l));
+  for (const [, v] of levelList) { if (v > hi) hi = v; if (v < lo) lo = v; }
   const span = (hi - lo) || 1;
   const innerW = W - padL - padR, innerH = H - padT - padB;
   const y = v => padT + innerH - ((+v - lo) / span) * innerH;
@@ -2761,29 +2776,129 @@ function candleChart(symbol){
             <rect x="${(x - Math.max(1, bw * 0.32)).toFixed(1)}" y="${t.toFixed(1)}" width="${Math.max(1.2, bw * 0.64).toFixed(1)}" height="${hgt.toFixed(1)}" fill="${c}" opacity=".85"/>`;
   }).join('');
 
-  // grid + price labels on the right
+  const axisDigits = (v) => { const n = Math.abs(v); return n > 0 && n < 1 ? Math.min(20, Math.max(6, Math.ceil(-Math.log10(n)) + 4)) : n >= 1000 && ['IRT', 'IRR'].includes(quoteUnit(symbol)) ? 0 : 2; };
+  const bareAxis = (v) => fmtNum(v, axisDigits(v));
+  // grid + price labels on the right (unit is named once in the header strip)
   const grid = [0, 0.25, 0.5, 0.75, 1].map(f => {
     const v = lo + span * f, yy = y(v);
     return `<line x1="${padL}" y1="${yy.toFixed(1)}" x2="${W - padR}" y2="${yy.toFixed(1)}" stroke="rgba(255,255,255,.05)" stroke-width="1"/>
-            <text x="${W - padR + 6}" y="${(yy + 3.5).toFixed(1)}" fill="#71717a" font-size="10" font-family="ui-monospace,monospace">${fmtMarketPrice(v, symbol)}</text>`;
+            <text x="${W - padR + 6}" y="${(yy + 3.5).toFixed(1)}" fill="#71717a" font-size="10" font-family="ui-monospace,monospace">${bareAxis(v)}</text>`;
+  }).join('');
+
+  // model levels: dashed line across the plot, name at the left end, price on the axis
+  const levels = levelList.map(([key, v, color, name]) => {
+    const yy = y(v), ty = Math.max(padT + 9, yy - 3);
+    return `<g data-level="${key}">
+      <line x1="${padL}" y1="${yy.toFixed(1)}" x2="${W - padR}" y2="${yy.toFixed(1)}" stroke="${color}" stroke-width="1" stroke-dasharray="6 4" opacity=".8"/>
+      <text x="${padL + 4}" y="${ty.toFixed(1)}" fill="${color}" font-size="10" font-weight="700">${name}</text>
+      <rect x="${W - padR + 2}" y="${(yy - 7).toFixed(1)}" width="${padR - 4}" height="14" rx="3" fill="${color}" opacity=".9"/>
+      <text x="${W - padR + 6}" y="${(yy + 3.5).toFixed(1)}" fill="#0b0b0f" font-size="10" font-weight="700" font-family="ui-monospace,monospace">${bareAxis(v)}</text>
+    </g>`;
   }).join('');
 
   const first = bars[0].t, last = bars[bars.length - 1].t;
   const label = (ts) => new Date(ts * 1000).toLocaleString(dateLocale(), { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 
-  return `<div class="relative">
+  // Hover state: the geometry the crosshair needs, kept beside the markup so
+  // the handler does not recompute the chart.
+  window.__candleHover = window.__candleHover || {};
+  window.__candleHover[symbol] = { bars, W, H, padL, padR, padT, padB, bw, lo, span, tf };
+
+  const levelNote = levelList.length
+    ? `<span class="text-zinc-500">${LANG === 'fa' ? 'خط‌چین: سطوح مدل (سفارش نیست)' : 'dashed: model levels (not an order)'}</span>` : '';
+  return `<div class="relative" data-candle-wrap="${symbol}">
     <div class="flex items-center gap-2 flex-wrap mb-2 text-[10px] text-zinc-500">
       <span class="chip num">${tfLabel(tf)}</span>
+      <span class="chip num">${unitLabel(quoteUnit(symbol))}</span>
       <span class="num">${fmtNum(bars.length)} ${t('sg.candles')}</span>
       <span class="num">${label(first)} → ${label(last)}</span>
+      ${levelNote}
       <span class="chip ${synth ? 'text-zinc-400 border-zinc-400/20' : 'text-emerald-300 border-emerald-300/30'} ms-auto">${synth ? t('sg.synthetic') : t('sg.liveData')}</span>
     </div>
-    <svg viewBox="0 0 ${W} ${H}" class="w-full h-48 sm:h-64" preserveAspectRatio="none" role="img" aria-label="${symbol}">
-      ${grid}${body}
-    </svg>
+    <div class="relative" data-candle-plot>
+      <svg viewBox="0 0 ${W} ${H}" class="w-full h-48 sm:h-64 touch-none" preserveAspectRatio="none" role="img" aria-label="${symbol}" data-candle-svg="${symbol}" direction="ltr" style="direction:ltr">
+        ${grid}${levels}${body}
+        <g data-crosshair style="display:none" pointer-events="none">
+          <rect data-ch-band x="0" y="${padT}" width="${bw.toFixed(1)}" height="${innerH}" fill="rgba(255,255,255,.06)"/>
+          <line data-ch-v x1="0" y1="${padT}" x2="0" y2="${padT + innerH}" stroke="rgba(255,255,255,.35)" stroke-width="1" stroke-dasharray="3 3"/>
+          <line data-ch-h x1="${padL}" y1="0" x2="${W - padR}" y2="0" stroke="rgba(255,255,255,.35)" stroke-width="1" stroke-dasharray="3 3"/>
+        </g>
+      </svg>
+      ${narrow
+        ? `<div data-candle-tip data-tip-static="1" class="hidden mt-1 px-1 text-[10px] leading-4 num text-zinc-300"></div>`
+        : `<div data-candle-tip class="hidden absolute top-1 glass px-2 py-1 text-[10px] leading-4 pointer-events-none num" style="min-width:150px;background:rgba(9,9,11,.92);z-index:5"></div>`}
+    </div>
     ${synth ? `<div class="text-[10px] text-amber-300/80 leading-5 mt-1">${t('sg.syntheticNote')}</div>` : ''}
   </div>`;
 }
+
+/* Crosshair + tooltip for the signal candle chart (2.5.2). Pointer events only;
+ * nothing is fetched and nothing in the chart is recomputed. */
+function bindCandleHover(scope){
+  const svg = scope && scope.querySelector('[data-candle-svg]');
+  if (!svg) return;
+  const symbol = svg.dataset.candleSvg;
+  const g = window.__candleHover && window.__candleHover[symbol];
+  const tip = scope.querySelector('[data-candle-tip]');
+  const cross = svg.querySelector('[data-crosshair]');
+  if (!g || !tip || !cross) return;
+  const band = cross.querySelector('[data-ch-band]'), vl = cross.querySelector('[data-ch-v]'), hl = cross.querySelector('[data-ch-h]');
+  const innerH = g.H - g.padT - g.padB;
+  const yOf = v => g.padT + innerH - ((+v - g.lo) / g.span) * innerH;
+  const hide = () => { cross.style.display = 'none'; tip.classList.add('hidden'); };
+  const show = (ev) => {
+    const r = svg.getBoundingClientRect();
+    if (!r.width || !r.height) return;
+    const pt = ev.touches ? ev.touches[0] : ev;
+    const xs = (pt.clientX - r.left) / r.width * g.W;
+    const ys = (pt.clientY - r.top) / r.height * g.H;
+    const i = Math.floor((xs - g.padL) / g.bw);
+    if (i < 0 || i >= g.bars.length) { hide(); return; }
+    const b = g.bars[i];
+    const x0 = g.padL + i * g.bw, xc = x0 + g.bw / 2;
+    cross.style.display = '';
+    band.setAttribute('x', x0.toFixed(1));
+    vl.setAttribute('x1', xc.toFixed(1)); vl.setAttribute('x2', xc.toFixed(1));
+    const yc = Math.max(g.padT, Math.min(g.padT + innerH, ys));
+    hl.setAttribute('y1', yc.toFixed(1)); hl.setAttribute('y2', yc.toFixed(1));
+    const chg = +b.o ? ((+b.c - +b.o) / +b.o) * 100 : null;
+    const when = new Date(b.t * 1000).toLocaleString(dateLocale(), { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    const cursorPrice = g.lo + ((g.padT + innerH - yc) / innerH) * g.span;
+    const up = +b.c >= +b.o;
+    const dg = (v) => { const n = Math.abs(+v); return n > 0 && n < 1 ? Math.min(20, Math.max(6, Math.ceil(-Math.log10(n)) + 4)) : n >= 1000 && ['IRT', 'IRR'].includes(quoteUnit(symbol)) ? 0 : 2; };
+    if (tip.dataset.tipStatic) {
+      // Phone: one wrapped line under the plot instead of a box over it.
+      const cell = (k, v, cls) => `<span class="text-zinc-500">${k}</span> <span class="${cls || ''}">${v}</span>`;
+      tip.innerHTML = `<div class="flex flex-wrap gap-x-3 gap-y-0.5">
+        <span class="text-zinc-400">${escText(when)}</span>
+        ${cell(LANG === 'fa' ? 'باز' : 'O', fmtNum(b.o, dg(b.o)))}${cell(LANG === 'fa' ? 'بیشینه' : 'H', fmtNum(b.h, dg(b.h)))}${cell(LANG === 'fa' ? 'کمینه' : 'L', fmtNum(b.l, dg(b.l)))}
+        ${cell(LANG === 'fa' ? 'بسته' : 'C', fmtNum(b.c, dg(b.c)) + (chg === null ? '' : ' ' + PC(chg, 2)), up ? 'text-emerald-300' : 'text-red-300')}
+      </div>`;
+      tip.classList.remove('hidden');
+      return;
+    }
+    tip.innerHTML = `<div class="text-zinc-400">${escText(when)}</div>
+      <div class="grid grid-cols-2 gap-x-3">
+        <span class="text-zinc-500">${LANG === 'fa' ? 'باز' : 'O'}</span><span>${fmtMarketPrice(b.o, symbol)}</span>
+        <span class="text-zinc-500">${LANG === 'fa' ? 'بیشینه' : 'H'}</span><span>${fmtMarketPrice(b.h, symbol)}</span>
+        <span class="text-zinc-500">${LANG === 'fa' ? 'کمینه' : 'L'}</span><span>${fmtMarketPrice(b.l, symbol)}</span>
+        <span class="text-zinc-500">${LANG === 'fa' ? 'بسته' : 'C'}</span><span class="${up ? 'text-emerald-300' : 'text-red-300'}">${fmtMarketPrice(b.c, symbol)}${chg === null ? '' : ' ' + PC(chg, 2)}</span>
+      </div>
+      <div class="text-zinc-500 border-t border-white/10 mt-1 pt-0.5">${LANG === 'fa' ? 'نشانگر' : 'cursor'}: ${fmtMarketPrice(cursorPrice, symbol)}</div>`;
+    tip.classList.remove('hidden');
+    // keep the box on the side away from the cursor
+    const leftHalf = (pt.clientX - r.left) < r.width / 2;
+    tip.style.left = leftHalf ? 'auto' : '6px';
+    tip.style.right = leftHalf ? '6px' : 'auto';
+  };
+  svg.addEventListener('mousemove', show);
+  svg.addEventListener('mouseleave', hide);
+  svg.addEventListener('touchstart', show, { passive: true });
+  svg.addEventListener('touchmove', show, { passive: true });
+  // The finger lifting keeps the reading on screen; a tap anywhere else clears it.
+  document.addEventListener('touchstart', (ev) => { if (!svg.contains(ev.target)) hide(); }, { passive: true });
+}
+window.bindCandleHover = bindCandleHover;
 
 /* ================= ATR percentile strip (1.0.22) =================
  * "ATR sits at the 12th percentile" is a rank with no shape: a reader cannot tell
@@ -2949,6 +3064,7 @@ function toggleSignalDetail(row){
   box.querySelector('[data-close-detail]').onclick = () => {
     box.remove(); row.classList.remove('is-open');
   };
+  bindCandleHover(box);
   animateBars(box);
   refreshIcons();
   // 1.0.22 — one pair is open, so one measurement is asked for: the ATR rank the

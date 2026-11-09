@@ -834,9 +834,12 @@
     const r = s.risk || {};
     const dist = typeof r.stopDistance === 'number' && Number.isFinite(r.stopDistance) && r.stopDistance > 0 ? r.stopDistance
       : typeof r.atr === 'number' && Number.isFinite(r.atr) && r.atr > 0 ? r.atr * 2 : null;
+    // The ladder the server last published. A transient failure of the risk
+    // read must not blank the targets, so the last good copy is kept.
     const caps = live.risk && live.risk.caps;
-    const rr = caps && Array.isArray(caps.rrLevels) && caps.rrLevels.length >= 2
-      && caps.rrLevels.every((x) => typeof x === 'number' && Number.isFinite(x) && x > 0) ? caps.rrLevels : null;
+    const valid = (a) => Array.isArray(a) && a.length >= 2 && a.every((x) => typeof x === 'number' && Number.isFinite(x) && x > 0);
+    if (caps && valid(caps.rrLevels)) live.rrLevels = caps.rrLevels.slice();
+    const rr = valid(live.rrLevels) ? live.rrLevels : null;
     const long = s.direction === 'LONG';
     const stop = px !== null && dist !== null ? px - dist : null;
     const tp1 = long && stop !== null && rr ? px + dist * rr[0] : null;
@@ -2063,6 +2066,7 @@
   }
 
   window.NBX_APP = {
+    signalLevels,
     refreshDisplay() {
       if(paperSnapshot) paintPaperState(...paperSnapshot);
       if(typeof window.renderMarketOverview === 'function') window.renderMarketOverview();
