@@ -33,10 +33,13 @@ jobs:
           # Lesson 3 (9 Nov): a red main was tagged once. Ask the API for the CI
           # conclusion on this exact commit; anything but success blocks the release.
           sha="$(git rev-parse HEAD)"
-          conclusion="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${sha}&per_page=1" --jq '.workflow_runs[0].conclusion // "none"')"
-          echo "ci on ${sha:0:7}: ${conclusion}"
-          if [ "$conclusion" != "success" ]; then
-            echo "::error::CI on ${sha:0:7} is '${conclusion}', not success — fix main, re-tag"; exit 1
+          # Any completed, successful run of ci.yml on this sha counts; the
+          # newest run alone does not (10 Nov: it was the tag's own build).
+          runs="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${sha}&per_page=20" --jq '[.workflow_runs[] | "\(.event)/\(.head_branch)=\(.conclusion // "running")"] | join(" ")')"
+          green="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${sha}&status=success&per_page=1" --jq '.total_count')"
+          echo "ci on ${sha:0:7}: ${runs:-no runs}; successful: ${green}"
+          if [ "${green:-0}" -lt 1 ]; then
+            echo "::error::no successful CI run on ${sha:0:7} — wait for main's CI to go green, or fix main and re-tag"; exit 1
           fi
       # jsdom 30 pulls undici 8, which needs zlib.createZstdDecompress.
       # That only exists on Node >= 22.22.2; 24 is the supported LTS.
