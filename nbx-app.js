@@ -554,6 +554,46 @@
     }
   }
 
+  /* ---------- candle cache freshness (2.5.3) ----------
+   * `engine.candles` is keyed `SYM:tf`; `engine.candleAt` keeps the receipt
+   * time of each entry so both the overview and the sparklines can tell a
+   * cached copy from a current one. Server answers come from its own cache,
+   * so refetching every scan costs Nobitex nothing. */
+  const CANDLE_STALE_MS = 45_000;        // big chart: once per scan at most
+  const SPARK_STALE_MS = 90_000;         // list rows: the old throttle, now a freshness rule
+  function storeCandles(sym, tf, rows, source) {
+    const eng = NBX.core.engine;
+    eng.candles[sym] = rows;
+    eng.candles[sym + ':' + tf] = rows;
+    eng.candleAt = eng.candleAt || {};
+    eng.candleAt[sym + ':' + tf] = Date.now();
+    // remember where it came from: the honesty rules elsewhere in the
+    // dashboard depend on never calling synthetic data "live".
+    eng.candleSource = eng.candleSource || {};
+    eng.candleSource[sym] = source || null;
+  }
+  function candlesStale(key, maxAgeMs) {
+    const at = NBX.core.engine.candleAt && NBX.core.engine.candleAt[key];
+    return !at || Date.now() - at > maxAgeMs;
+  }
+  // Repaint without a jump: same symbol/timeframe and the new window still
+  // contains the bar we painted last → update() only the live bar and at most
+  // one newly closed bar (the server sends a sliding window, so the oldest
+  // bar dropping off is normal). Anything else — symbol or timeframe switch,
+  // a gap, a rewritten history — is a setData.
+  let paintedKey = null, paintedLast = null;
+  function paintSeries(key, bars) {
+    const last = bars[bars.length - 1].time;
+    const tail = paintedLast === null ? [] : bars.filter((b) => b.time >= paintedLast);
+    const incremental = paintedKey === key && tail.length >= 1 && tail.length <= 2 && tail[0].time === paintedLast;
+    if (incremental) {
+      tail.forEach((b) => candleSeries.update(b));
+    } else {
+      candleSeries.setData(bars);
+    }
+    paintedKey = key; paintedLast = last;
+  }
+
   async function updateOverviewFromLive() {
     const engine = NBX.core.engine;
     const ranked = engine.rankSignals();
@@ -562,18 +602,17 @@
     if (top) live.activeSymbol = top.symbol;
 
     try {
-      let rows = engine.candles[live.activeSymbol + ':' + live.timeframe] || engine.candles[live.activeSymbol];
-      if ((!rows || !rows.length) && NBX.core.api && typeof NBX.core.api.getBackendCandles === 'function') {
+      const key = live.activeSymbol + ':' + live.timeframe;
+      let rows = engine.candles[key] || engine.candles[live.activeSymbol];
+      // 2.5.3: the cache was only ever filled, never refreshed — in backend
+      // mode nothing else touches `engine.candles`, so the big chart (and the
+      // last price under it) showed the candles of the first minute until the
+      // page was reloaded. Refetch when the copy is older than CANDLE_STALE_MS.
+      if ((!rows || !rows.length || candlesStale(key, CANDLE_STALE_MS)) && NBX.core.api && typeof NBX.core.api.getBackendCandles === 'function') {
         const cRes = await NBX.core.api.getBackendCandles(live.activeSymbol, live.timeframe);
-        if (cRes && Array.isArray(cRes.rows)) {
+        if (cRes && Array.isArray(cRes.rows) && cRes.rows.length) {
           rows = cRes.rows;
-          engine.candles[live.activeSymbol] = rows;
-          engine.candles[live.activeSymbol + ':' + live.timeframe] = rows;
-          // Record provenance on this path too. Otherwise the same synthetic
-          // data painted one colour here and another in the list, purely
-          // because a different function fetched it.
-          engine.candleSource = engine.candleSource || {};
-          engine.candleSource[live.activeSymbol] = cRes.source || null;
+          storeCandles(live.activeSymbol, live.timeframe, rows, cRes.source);
         }
       }
       if (rows && rows.length && typeof candleSeries !== 'undefined' && candleSeries) {
@@ -581,7 +620,7 @@
         // (synthetic generators and exchange payloads both do), which makes
         // lightweight-charts throw and blanks the whole overview.
         const bars = (typeof window.seriesBars === 'function' ? window.seriesBars(rows) : []);
-        if (bars.length) candleSeries.setData(bars);
+        if (bars.length) paintSeries(key, bars);
         lastCandle = { time: rows[rows.length - 1].t, open: rows[rows.length - 1].o, high: rows[rows.length - 1].h, low: rows[rows.length - 1].l, close: rows[rows.length - 1].c };
         if ($('lastPrice')) $('lastPrice').textContent = fmtPrice(lastCandle.close, live.activeSymbol);
         // Depth comes from its own route; a last-trade price is not a book.
@@ -622,13 +661,14 @@
     const api = NBX.core && NBX.core.api;
     if (!api || typeof api.getBackendCandles !== 'function') return 0;
     const list = [...new Set((symbols || []).filter(Boolean))];
+    // 2.5.3: a row whose candles are older than SPARK_STALE_MS is as good as
+    // missing — before, a filled cache was never refetched and the list
+    // charts froze at page load. The old 90 s gate becomes a per-symbol age.
     const missing = list.filter((s) => {
       const rows = sparkRows(s, tf);
-      return !rows || rows.length < 8;
+      return !rows || rows.length < 8 || force || candlesStale(s + ':' + tf, SPARK_STALE_MS);
     });
     if (!missing.length || sparkState.inflight) return 0;
-    const fresh = sparkState.tf === tf && Date.now() - sparkState.at < 90_000;
-    if (fresh && !force) return 0;
 
     sparkState.inflight = true;
     sparkState.tf = tf;
@@ -641,12 +681,7 @@
         try {
           const r = await api.getBackendCandles(sym, tf);
           if (r && Array.isArray(r.rows) && r.rows.length >= 8) {
-            // remember where it came from: the honesty rules elsewhere in the
-            // dashboard depend on never calling synthetic data "live".
-            NBX.core.engine.candles[sym] = r.rows;
-            NBX.core.engine.candles[sym + ':' + tf] = r.rows;
-            NBX.core.engine.candleSource = NBX.core.engine.candleSource || {};
-            NBX.core.engine.candleSource[sym] = r.source || null;
+            storeCandles(sym, tf, r.rows, r.source);
             fetched++;
           }
         } catch (e) { /* one symbol must not stop the rest */ }
@@ -2080,6 +2115,7 @@
   }
 
   window.NBX_APP = {
+    _candles: { updateOverviewFromLive, prefetchSparkCandles, candlesStale, storeCandles },
     signalLevels,
     signalDepthWarn,
     refreshDisplay() {
