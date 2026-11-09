@@ -2,7 +2,9 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
-## 2.5.2 (in progress)
+## 2.5.2
+
+_Tagged 10 November 2026; production deploy via the "Deploy" Actions workflow with tag `v2.5.2`. Every trading-adjacent item is record-only or restrictive — no change to scores, thresholds, stop k or enforcement (ADR-0054)._
 
 - **Performance table: the real outcome per horizon instead of a tick:** the H1/H2/H3 columns showed "✓" for `R > 0` at the horizon's end, which readers took for "target hit" — a +0.1R timeout and a TP2 looked the same. `summary()` now returns per-horizon objects `o1/o2/o3 = {kind, r, tp1, tp2, sl, ambiguous}` (`kind` from the resolver's `exit_reason`: `tp2` · `tp1_trail` · `tp1_timeout` · `timeout` · `stop` · `ambiguous`; derived from the flags for rows written before `exit_reason` existed) plus `r1` (H1 model R). The table shows a named chip with R ("Target 2 +1.60R", "Timeout +0.12R", "Stop −1.00R"), an "H1 model R" column next to "H2 model R", headers now read "+1 hour / +1 day / +7 days", and a one-line legend sits under the table title. The boolean `h1/h2/h3` stay for compatibility and the page falls back to the tick against an older server. Tests: `test_review_phase9_regressions.py` (+11), `test_review_phase9.cjs`.
 - **`journal_resolve` no longer asks for `USDTIRT` candles:** the scan never scores that pair (`NOT_A_TA_SYMBOL`), yet the journal resolver spent one 403 request on it every five minutes and logged an `info` line. The same set is now skipped at the top of the `journal_resolve` loop.
