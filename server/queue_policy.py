@@ -55,6 +55,41 @@ def scan_provenance(scanned_at: Any, max_scan_age: float | None, *, now: float) 
             "stale_reason": "scan-too-old" if stale else None}
 
 
+def price_drift(plan_entry: Any, mid: Any, atr: Any, *, pct_limit: float, atr_limit: float) -> dict:
+    """How far the market has moved from the price the plan was built on.
+
+    2.5.2 — a fresh scan does not make a plan current: between two scans a thin
+    pair can move 3 % and the row still says "enter at 100". Both yardsticks
+    are reported, whichever trips first locks (`exceeded`): a flat market makes
+    0.5×ATR smaller than 1.5 %, and that is exactly when it must speak. Signed
+    `drift_pct` keeps the direction (minus = fell toward the stop); the lock
+    uses the absolute value. A missing mid is "unknown", not fine: `exceeded`
+    is True with reason `mid-unavailable`.
+    """
+    try:
+        entry = float(plan_entry)
+        px = float(mid)
+    except (TypeError, ValueError, OverflowError):
+        entry, px = float("nan"), float("nan")
+    out: dict[str, Any] = {"mid": None, "drift_pct": None, "drift_atr": None,
+                           "limit_pct": pct_limit, "limit_atr": atr_limit, "exceeded": True, "reason": "mid-unavailable"}
+    if not (math.isfinite(entry) and entry > 0 and math.isfinite(px) and px > 0):
+        return out
+    pct = (px - entry) / entry * 100.0
+    out.update({"mid": px, "drift_pct": round(pct, 3)})
+    try:
+        a = float(atr)
+    except (TypeError, ValueError, OverflowError):
+        a = float("nan")
+    in_atr = (px - entry) / a if math.isfinite(a) and a > 0 else None
+    out["drift_atr"] = round(in_atr, 3) if in_atr is not None else None
+    by_pct = abs(pct) > pct_limit
+    by_atr = in_atr is not None and abs(in_atr) > atr_limit
+    out["exceeded"] = by_pct or by_atr
+    out["reason"] = "price-moved-pct" if by_pct else ("price-moved-atr" if by_atr else None)
+    return out
+
+
 def describe(
     symbol: str, tf: str, signal: dict | None, bar: Any, *, now: float | None = None,
     scanned_at: Any = None, max_scan_age: float | None = None,

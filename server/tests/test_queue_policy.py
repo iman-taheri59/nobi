@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import time
 
 import pytest
 from fastapi.testclient import TestClient
@@ -370,3 +371,67 @@ def test_scan_going_stale_during_book_fetch_is_refused_by_the_guard(wired, monke
     out = TestClient(main.app).post("/api/paper/order", json=body).json()
     assert out.get("error") == "queue-signal-stale" or "queue-signal-stale" in str(out)
     assert not broker.positions
+
+
+# ---- 2.5.2: the market moved away from the plan entry ------------------------
+
+
+def test_fresh_plan_reports_drift_within_limits(wired):
+    data = TestClient(main.app).get("/api/risk/plan?symbol=BTCUSDT&tf=15m&approval=true").json()
+    d = data["drift"]
+    assert d["exceeded"] is False and d["reason"] is None
+    assert d["mid"] == 100.0 and d["drift_pct"] == 0.0
+    assert d["limit_pct"] == main.QUEUE_DRIFT_PCT and d["limit_atr"] == main.QUEUE_DRIFT_ATR
+
+
+@pytest.mark.parametrize("ask,bid,reason", [
+    ("102.01", "101.99", "price-moved-pct"),   # +2.0 % > 1.5 %
+    ("97.99", "97.99", "price-moved-pct"),     # −2.0 % (fell toward the stop)
+])
+def test_moved_market_is_previewed_as_drifted_and_refused_at_placement(wired, ask, bid, reason):
+    _now, feed, broker = wired
+
+    async def moved(symbol):
+        return {"bids": [[bid, "1000"]], "asks": [[ask, "1000"]], "lastTradePrice": ask}
+
+    feed.get_orderbook = moved
+    data = TestClient(main.app).get("/api/risk/plan?symbol=BTCUSDT&tf=15m&approval=true").json()
+    assert "size_quote" in data, "preview still shown"
+    assert data["drift"]["exceeded"] is True and data["drift"]["reason"] == reason
+    out = TestClient(main.app).post("/api/paper/order", json=payload()).json()
+    assert out["error"] == "queue-price-moved" and out["blocked"] is True
+    assert out["drift"]["reason"] == reason
+    assert not broker.positions
+
+
+def test_atr_yardstick_trips_before_the_percent_one_in_a_flat_market():
+    # ATR 1 on a price of 100: 0.6 % is nothing in % terms but 0.6×ATR.
+    d = queue_policy.price_drift(100, 100.6, 1.0, pct_limit=1.5, atr_limit=0.5)
+    assert d["exceeded"] is True and d["reason"] == "price-moved-atr" and d["drift_atr"] == 0.6
+    d = queue_policy.price_drift(100, 100.4, 1.0, pct_limit=1.5, atr_limit=0.5)
+    assert d["exceeded"] is False
+    # No ATR: only the % yardstick applies; no mid: locked, not invented.
+    assert queue_policy.price_drift(100, 101, None, pct_limit=1.5, atr_limit=0.5)["exceeded"] is False
+    assert queue_policy.price_drift(100, None, 1.0, pct_limit=1.5, atr_limit=0.5)["reason"] == "mid-unavailable"
+
+
+def test_signals_refresh_flag_forces_a_bounded_background_rescan(monkeypatch):
+    calls = []
+
+    async def fake_rescan(tf):
+        calls.append(tf)
+
+    monkeypatch.setattr(main, "rescan", fake_rescan)
+    monkeypatch.setattr(main, "_spawn", lambda coro: __import__("asyncio").get_event_loop().create_task(coro))
+    monkeypatch.setitem(main._cached, "signals_by_tf", {"15m": {"BTCUSDT": copy.deepcopy(SIGNAL)}})
+    monkeypatch.setitem(main._cached, "refreshing", {})
+    client = TestClient(main.app)
+    # inside the TTL, cache 30 s old: plain GET does nothing, refresh=true rescans
+    monkeypatch.setitem(main._cached, "signals_ts", {"15m": time.time() - 30})
+    assert client.get("/api/signals?tf=15m").json()["refreshing"] is False
+    r = client.get("/api/signals?tf=15m&refresh=true").json()
+    assert r["refreshing"] is True
+    # too young (< SIGNALS_FORCE_MIN_AGE_S): the button cannot hammer the exchange
+    monkeypatch.setitem(main._cached, "refreshing", {})
+    monkeypatch.setitem(main._cached, "signals_ts", {"15m": time.time() - 2})
+    assert client.get("/api/signals?tf=15m&refresh=true").json()["refreshing"] is False

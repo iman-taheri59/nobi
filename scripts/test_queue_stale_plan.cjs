@@ -33,15 +33,23 @@ async function verify(file) {
     const plans = {
       TRXIRT:  { scan_age_s: 50,  max_scan_age_s: 300, stale: false, stale_reason: null },
       DOGEIRT: { scan_age_s: 400, max_scan_age_s: 300, stale: true,  stale_reason: 'scan-too-old' },
-      POLIRT:  { scan_age_s: null, max_scan_age_s: 300, stale: true, stale_reason: 'scan-clock-unavailable' },
       SYNIRT:  {},                                    // 2.5.1 server: no scan fields at all
       BLURIRT: { scan_age_s: 280, max_scan_age_s: 300, stale: false, stale_reason: null }, // goes stale 21 s later
     };
+    // drift (second yardstick): fresh scan, but the market moved
+    const drifts = {
+      ETHIRT: { mid: 102.2, drift_pct: 2.2, drift_atr: 1.1, limit_pct: 1.5, limit_atr: 0.5, exceeded: true, reason: 'price-moved-pct' },
+      TRXIRT: { mid: 100.1, drift_pct: 0.1, drift_atr: 0.05, limit_pct: 1.5, limit_atr: 0.5, exceeded: false, reason: null },
+    };
+    plans.ETHIRT = { scan_age_s: 10, max_scan_age_s: 300, stale: false, stale_reason: null };
     const symbols = Object.keys(plans);
+    let rescans = 0;
     core.api.getBackendRiskPlan = async (symbol) => ({ action: 'buy', entry: 100, stop: 95,
       tp1: 106, tp2: 110, size_quote: 1000, risk_pct: 0.5, blocked: false,
+      ...(drifts[symbol] ? { drift: drifts[symbol] } : {}),
       approval: { ok: true, score: 80, symbol, tf: '15m', bar_open: sourceBar,
         expires_at: sourceBar + 1800, server_now: serverNow, signal_key: 'a'.repeat(64), ...plans[symbol] } });
+    core.api.getBackendSignals = async (tf, refresh) => { if (refresh) rescans++; return { scored: [], refreshing: false, age_s: 3 }; };
     core.api.postPaperOrder = async () => { placed++; return { ok: false, error: 'queue-signal-stale', blocked: true, scan_age_s: 401 }; };
     core.api.postExecMode = () => { throw Error('must not change execution mode'); };
     w.live = { timeframe: '15m', ranked: symbols.map(symbol => ({ symbol, direction: 'LONG', composite: 80 })) };
@@ -71,9 +79,13 @@ async function verify(file) {
     assert.match(row('DOGEIRT').querySelector('[data-qexec]').textContent, /(5 min|۵ دقیقه)/);
     assert.equal(w.eval(`queueRemaining(queue.find(q => q.sym === 'DOGEIRT'))`), 800, 'candle TTL untouched by staleness');
 
-    // unknown scan clock: fail closed, says so
-    assert.equal(btn('POLIRT').disabled, true);
-    assert.match(chip('POLIRT').textContent, /(unknown|نامعلوم)/);
+    // unknown scan clock: fail closed, says so (swap one row's plan and refresh)
+    plans.DOGEIRT = { scan_age_s: null, max_scan_age_s: 300, stale: true, stale_reason: 'scan-clock-unavailable' };
+    await w.refreshQueue();
+    assert.equal(btn('DOGEIRT').disabled, true);
+    assert.match(chip('DOGEIRT').textContent, /(unknown|نامعلوم)/);
+    plans.DOGEIRT = { scan_age_s: 400, max_scan_age_s: 300, stale: true, stale_reason: 'scan-too-old' };
+    await w.refreshQueue();
 
     // old server: nothing to show, nothing locked
     assert.ok(chip('SYNIRT').classList.contains('hidden'));
@@ -93,6 +105,25 @@ async function verify(file) {
     assert.equal(btn('BLURIRT').disabled, true, 'a row goes stale between refreshes');
     assert.match(chip('BLURIRT').textContent, /(stale|کهنه)/);
     assert.equal(btn('TRXIRT').disabled, false);
+
+    // drift: fresh scan but price moved → amber chip names the move, locked, rescan button visible
+    assert.equal(w.queueStale(byId('ETHIRT')), true);
+    assert.equal(btn('ETHIRT').disabled, true);
+    assert.match(chip('ETHIRT').textContent, /(stale|کهنه)/);
+    assert.match(chip('ETHIRT').textContent, /(2[.,٫]20?|۲٫۲۰)/);
+    assert.match(chip('ETHIRT').textContent, /ATR/);
+    assert.match(row('ETHIRT').querySelector('[data-qexec]').textContent, /(1[.,٫]5|۱٫۵)/);
+    assert.ok(!row('ETHIRT').querySelector('.qRescan').classList.contains('hidden'), 'rescan offered on a stale row');
+    assert.ok(row('TRXIRT').querySelector('.qRescan').classList.contains('hidden'), 'no rescan button on a fresh row');
+    assert.ok(!/stale|کهنه|ATR/.test(chip('TRXIRT').textContent), 'fresh drift within limits adds nothing to the chip');
+    w.resolveQ(byId('ETHIRT').id, true);
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(placed, 0, 'drifted approval refused locally');
+    // rescan button → forced refresh request, nothing placed
+    row('ETHIRT').querySelector('.qRescan').click();
+    for (let i = 0; i < 8; i++) await new Promise(resolve => setImmediate(resolve));
+    assert.equal(rescans, 1, 'rescan asks the server once with refresh=true');
+    assert.equal(placed, 0);
 
     // a server-side refusal with queue-signal-stale locks the row instead of dismissing the candle
     const trx = byId('TRXIRT');

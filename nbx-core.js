@@ -1542,8 +1542,10 @@
       }
     }
 
-    async getBackendSignals(tf) {
-      const r = await this.get(cfg.pythonApi + '/signals?tf=' + encodeURIComponent(tf), 1);
+    async getBackendSignals(tf, refresh = false) {
+      // 2.5.2 — `refresh=true` is the queue's «rescan» button; the server
+      // bounds how often it may actually trigger a rescan.
+      const r = await this.get(cfg.pythonApi + '/signals?tf=' + encodeURIComponent(tf) + (refresh ? '&refresh=true' : ''), 1);
       if (r && r.scored) return r;
       throw new NBXError('DATA', 'bad backend signals');
     }

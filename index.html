@@ -5737,11 +5737,24 @@ function queueScanAge(q){
   const elapsed = Math.max(0, (performance.now()-q.clockPerf)/1000, (Date.now()-q.clockWall)/1000);
   return a.scan_age_s + elapsed;
 }
-function queueStale(q){
+function queueScanStale(q){
   const a=q.approval; if(!a || a.stale===undefined) return false;
   if(a.stale===true) return true;
   const age=queueScanAge(q);
   return Number.isFinite(a.max_scan_age_s) && age!=null && age > a.max_scan_age_s;
+}
+/* Second yardstick: the market moved away from the plan entry (1.5 % or
+ * 0.5×ATR, whichever first — server-decided, `plan.drift`). A fresh scan does
+ * not make a plan current when a thin pair moved 3 % since. */
+function queueDriftStale(q){ return !!(q.drift && q.drift.exceeded===true); }
+function queueStale(q){ return queueScanStale(q) || queueDriftStale(q); }
+function queueDriftText(q){
+  const d=q.drift; if(!d) return null;
+  if(d.reason==='mid-unavailable' || !Number.isFinite(d.drift_pct)) return LANG==='fa'?'قیمت فعلی نامعلوم':'current price unknown';
+  const sign=d.drift_pct>0?'+':d.drift_pct<0?'−':'';
+  const pct=sign+fmtNum(Math.abs(d.drift_pct),2)+(LANG==='fa'?'٪':'%');
+  const atr=Number.isFinite(d.drift_atr)?` (${sign}${fmtNum(Math.abs(d.drift_atr),2)}×ATR)`:'';
+  return (LANG==='fa'?'قیمت ':'price ')+pct+atr+(LANG==='fa'?' از پلن':' from plan');
 }
 function queueAgeText(q){
   const age=queueScanAge(q);
@@ -5750,11 +5763,49 @@ function queueAgeText(q){
   const span = m>=1 ? fmtNum(m)+(LANG==='fa'?' دقیقه':' min') : fmtNum(Math.floor(age))+(LANG==='fa'?' ثانیه':' s');
   return (LANG==='fa'?'اسکن ':'scanned ')+span+(LANG==='fa'?' پیش':' ago');
 }
+function queueChipText(q){
+  const bits=[];
+  if(queueAgeText(q)) bits.push(queueAgeText(q));
+  if(queueDriftStale(q)) bits.push(queueDriftText(q));
+  if(!bits.length) return null;
+  return (queueStale(q)?(LANG==='fa'?'کهنه · ':'stale · '):'')+bits.join(' · ');
+}
 function queueStaleText(q){
-  const lim=q.approval && Number.isFinite(q.approval.max_scan_age_s) ? fmtNum(Math.round(q.approval.max_scan_age_s/60)) : null;
+  const parts=[];
+  if(queueScanStale(q)){
+    const lim=q.approval && Number.isFinite(q.approval.max_scan_age_s) ? fmtNum(Math.round(q.approval.max_scan_age_s/60)) : null;
+    parts.push((queueAgeText(q)||(LANG==='fa'?'زمان اسکن نامعلوم':'scan time unknown'))+(lim?(LANG==='fa'?` (بیش از ${lim} دقیقه)`:` (over ${lim} min)`):''));
+  }
+  if(queueDriftStale(q)){
+    const d=q.drift, lp=Number.isFinite(d.limit_pct)?fmtNum(d.limit_pct,1):null, la=Number.isFinite(d.limit_atr)?fmtNum(d.limit_atr,1):null;
+    const lim=lp&&la?(LANG==='fa'?` (حد ${lp}٪ یا ${la}×ATR)`:` (limit ${lp}% or ${la}×ATR)`):'';
+    parts.push(queueDriftText(q)+lim);
+  }
   return LANG==='fa'
-    ? `پلن کهنه است: ${queueAgeText(q)||'زمان اسکن نامعلوم'}${lim?` (بیش از ${lim} دقیقه)`:''}. تأیید تا اسکن تازه قفل است؛ سرور هم چنین سفارشی را رد می‌کند.`
-    : `Stale plan: ${queueAgeText(q)||'scan time unknown'}${lim?` (over ${lim} min)`:''}. Approval is locked until a fresh scan; the server refuses it too.`;
+    ? `پلن کهنه است: ${parts.join(' · ')}. تأیید تا اسکن تازه قفل است؛ سرور هم چنین سفارشی را رد می‌کند.`
+    : `Stale plan: ${parts.join(' · ')}. Approval is locked until a fresh scan; the server refuses it too.`;
+}
+/* «Rescan»: ask the server for a forced rescan (bounded server-side), wait for
+ * it to land, then run the page's normal scan so `live.ranked` and the queue
+ * are rebuilt from it. Never places or edits anything. */
+let queueRescanBusy=false;
+async function rescanQueue(){
+  if(queueRescanBusy) return;
+  const api=window.NBX && NBX.core && NBX.core.api, tf=(window.live && live.timeframe)||'15m';
+  if(!api || !api.getBackendSignals){ toast(LANG==='fa'?'سرور در دسترس نیست':'Server unreachable','', 'err'); return; }
+  queueRescanBusy=true; document.querySelectorAll('.qRescan').forEach(b=>{ b.disabled=true; });
+  try{
+    let r=await api.getBackendSignals(tf, true);
+    const t0=Date.now();
+    while(r && r.refreshing && Date.now()-t0<30000){
+      await new Promise(res=>setTimeout(res,1500));
+      r=await api.getBackendSignals(tf, false);
+    }
+    if(window.NBX_APP && NBX_APP.scanNow) await NBX_APP.scanNow(); else refreshQueue();
+    audit.unshift({t:new Date().toLocaleTimeString(dateLocale()),a:'human',act:{fa:'بازاسکن صف',en:'Queue rescan'},sym:'—',d:{fa:`سن اسکن ${fmtNum(Math.round((r&&r.age_s)||0))} ثانیه`,en:`scan age ${Math.round((r&&r.age_s)||0)} s`}});
+    renderAudit();
+  }catch(e){ toast(LANG==='fa'?'بازاسکن انجام نشد':'Rescan failed','', 'err'); }
+  finally{ queueRescanBusy=false; document.querySelectorAll('.qRescan').forEach(b=>{ b.disabled=false; }); }
 }
 
 
@@ -5779,6 +5830,17 @@ async function refreshQueue(){
       // Never extend its remaining validity by replacing its elapsed clocks.
       const timing = queueRemaining(old)<=queueRemaining(fresh) ? old : fresh;
       const clocks = {approval:timing.approval, clockPerf:timing.clockPerf, clockWall:timing.clockWall};
+      if(timing===old && fresh.approval){
+        // 2.5.2 — keep the *older* deadline clocks, but take the *newer* scan
+        // provenance: a rescan that happened since must be able to unlock (or
+        // lock) the row. The age is rebased onto the kept clocks so it still
+        // advances from the right origin; the TTL is untouched.
+        const shift=Math.max(0,(fresh.clockPerf-old.clockPerf)/1000);
+        const a={...old.approval};
+        for(const k of ['stale','stale_reason','max_scan_age_s','scanned_at']) if(k in fresh.approval) a[k]=fresh.approval[k];
+        if('scan_age_s' in fresh.approval) a.scan_age_s=Number.isFinite(fresh.approval.scan_age_s)?Math.max(0,fresh.approval.scan_age_s-shift):fresh.approval.scan_age_s;
+        clocks.approval=a;
+      }
       invalidateQueuePreview(old);
       Object.assign(old, fresh, clocks);
       old.ttl=queueRemaining(old);
@@ -5875,6 +5937,7 @@ async function refreshQueue(){
       sizeQ: +plan.size_quote,
       execution: plan.execution || null,
       execPerf: plan.execution ? performance.now() : null,
+      drift: plan.drift && typeof plan.drift==='object' ? plan.drift : null,
       ttl,
       state: ttl > 0 ? 'pending' : 'expired',
     });
@@ -6032,7 +6095,7 @@ function renderQueue(){
           ${q.dir==='long'?`<span class="chip text-emerald-300">${t('sg.long')}</span>`:`<span class="chip text-red-300">${LANG==='fa'?'فروش':'Sell'}</span>`}
         </div>
         <span data-qrank class="text-[10px] text-zinc-500 num">${t('perf.rank')} ${fmtNum(q.rank)} · ${q.ts}</span>
-        <span data-qage="${q.id}" class="chip num ${queueStale(q)?'text-amber-300 border-amber-300/40 bg-amber-300/[.08]':'text-zinc-500 border-white/10'} ${queueAgeText(q)?'':'hidden'}">${queueStale(q)?(LANG==='fa'?'کهنه · ':'stale · '):''}${escText(queueAgeText(q)||'')}</span>
+        <span data-qage="${q.id}" class="chip num ${queueStale(q)?'text-amber-300 border-amber-300/40 bg-amber-300/[.08]':'text-zinc-500 border-white/10'} ${queueChipText(q)?'':'hidden'}">${escText(queueChipText(q)||'')}</span>
         <select data-symmode="${q.sym}" class="qMode bg-white/[.04] border border-white/10 rounded-md text-[10px] px-1.5 py-1 text-zinc-300">
           ${MODES.map(m=>`<option value="${m}" ${modeOf(q.sym)===m?'selected':''}>${t('dk.'+m)}</option>`).join('')}
         </select>
@@ -6067,6 +6130,7 @@ function renderQueue(){
         <div class="flex gap-2 ms-auto w-full sm:w-auto">
           <button data-edit="${q.id}" class="qEditBtn flex-1 sm:flex-none px-3 py-2 rounded-xl text-[11px] font-bold bg-white/5 border border-white/10 text-amber-200/90">${t('dk.edit')}</button>
           <button data-reject="${q.id}" class="qRej flex-1 sm:flex-none px-3.5 py-2 rounded-xl text-[11px] font-bold bg-white/5 border border-white/10 text-zinc-300">${t('dk.reject')}</button>
+          <button data-rescan="${q.id}" class="qRescan ${queueStale(q)?'':'hidden'} flex-1 sm:flex-none px-3 py-2 rounded-xl text-[11px] font-bold bg-amber-300/10 border border-amber-300/40 text-amber-200">${LANG==='fa'?'بازاسکن':'Rescan'}</button>
           <button data-approve="${q.id}" ${queueStale(q)?'disabled':''} class="qApp flex-1 sm:flex-none px-3.5 py-2 rounded-xl text-[11px] font-bold bg-emerald-400/15 border border-emerald-300/40 text-emerald-300 disabled:opacity-40">${icon('check','w-3.5 h-3.5')} ${t('dk.approve')}</button>
         </div>
       </div>
@@ -6075,6 +6139,7 @@ function renderQueue(){
 
   reconcileQueueRows(markup, pend);
   document.querySelectorAll('.qApp').forEach(b=> b.onclick = ()=> resolveQ(b.dataset.approve, true));
+  document.querySelectorAll('.qRescan').forEach(b=> b.onclick = ()=> rescanQueue());
   document.querySelectorAll('.qRej').forEach(b=> b.onclick = ()=> resolveQ(b.dataset.reject, false));
   // The per-symbol mode the hint promises is edited here; it is saved on the
   // server, so the executor and this table cannot disagree.
@@ -6123,9 +6188,10 @@ function paintQueueRow(q){
   const execBlocked=queueExecutionBlocked(q), stale=queueStale(q);
   row.querySelectorAll('button,input,select').forEach(n=>{ n.disabled=pending; });
   const app=row.querySelector('.qApp'); if(app) app.disabled=pending || unknown || queueRemaining(q)<=0 || execBlocked || stale || !!(e && e.blocked);
+  const rescanBtn=row.querySelector('.qRescan'); if(rescanBtn){ rescanBtn.classList.toggle('hidden',!stale); rescanBtn.disabled=pending||queueRescanBusy; }
   const ageChip=row.querySelector('[data-qage]');
-  if(ageChip){ const txt=queueAgeText(q); ageChip.classList.toggle('hidden',!txt);
-    ageChip.textContent=(stale?(LANG==='fa'?'کهنه · ':'stale · '):'')+(txt||'');
+  if(ageChip){ const txt=queueChipText(q); ageChip.classList.toggle('hidden',!txt);
+    ageChip.textContent=txt||'';
     ageChip.className=`chip num ${stale?'text-amber-300 border-amber-300/40 bg-amber-300/[.08]':'text-zinc-500 border-white/10'}${txt?'':' hidden'}`; }
   const risk=row.querySelector('[data-qrisk]'), gate=row.querySelector('[data-qgate]');
   const r=e ? e.risk : q.risk;
@@ -6266,6 +6332,13 @@ function resolveQ(id, approve){
       const unknown=!r || r.ok!==false || !!r.outcome_unknown || !!r.network_error;
       const reason=unknown?(LANG==='fa'?'نتیجهٔ ارسال نامشخص است؛ خودکار تکرار نکنید و سفارش‌ها را بررسی کنید.':'Submission outcome unknown; do not automatically retry; inspect Orders.'):
         String(r.error||r.message||'server-declined');
+      if(!unknown && r.error==='queue-price-moved'){
+        if(r.drift && typeof r.drift==='object') q.drift=r.drift; else q.drift={exceeded:true, reason:'mid-unavailable'};
+        paintQueueRow(q);
+        audit.unshift({t:new Date().toLocaleTimeString(dateLocale()),a:'human',act:{fa:'رد سرور: قیمت از پلن دور شده',en:'Server refusal: price moved from plan'},sym:q.sym,d:{fa:queueStaleText(q),en:queueStaleText(q)}});
+        renderAudit(); toast(LANG==='fa'?'قیمت از پلن دور شده':'Price moved from plan', queueStaleText(q), 'warn');
+        return;
+      }
       if(!unknown && r.error==='queue-signal-stale'){
         // Not a decision on the candle: the next scan may unlock the same
         // plan. Mark it stale locally and leave it in place, locked.

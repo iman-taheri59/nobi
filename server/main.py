@@ -1642,9 +1642,19 @@ async def _bg_rescan(tf: str) -> None:
         _cached["refreshing"][tf] = False
 
 
+#: 2.5.2 — the queue's «rescan» button may force a rescan, but not more often
+#: than this; the button is for a moved market, not for hammering the exchange.
+SIGNALS_FORCE_MIN_AGE_S = max(5.0, float(os.getenv("NBX_SIGNALS_FORCE_MIN_AGE_S", "20")))
+
+
 @app.get("/api/signals")
-async def signals(tf: str = Query("15m", pattern="^(15m|1h|4h|D)$")):
+async def signals(tf: str = Query("15m", pattern="^(15m|1h|4h|D)$"), refresh: bool = False):
     """Ranked signals for one timeframe.
+
+    `refresh=true` (the queue's «rescan» button) starts a background rescan even
+    inside the TTL, provided the cache is at least `SIGNALS_FORCE_MIN_AGE_S` old
+    and no rescan is running. The reply is still the current cache, with
+    `refreshing: true`; the caller polls until it flips back.
 
     The cache has a TTL; when it expires the previous answer is still served
     (marked `stale: true`) while a background refresh runs. This keeps the
@@ -1661,7 +1671,8 @@ async def signals(tf: str = Query("15m", pattern="^(15m|1h|4h|D)$")):
         await rescan(tf)
         age = time.time() - _cached["signals_ts"].get(tf, time.time())
         stale = False
-    elif stale and not _cached["refreshing"].get(tf):
+    elif (stale or (refresh and age is not None and age >= SIGNALS_FORCE_MIN_AGE_S)) \
+            and not _cached["refreshing"].get(tf):
         _cached["refreshing"][tf] = True
         _spawn(_bg_rescan(tf))
 
@@ -3452,6 +3463,24 @@ async def fa(symbol: str):
 #: healthy page keeps this under ~150 s; five minutes means two missed polls.
 #: Never below `SIGNALS_TTL_S`, or every plan would be born stale.
 QUEUE_SCAN_MAX_AGE_S = max(float(SIGNALS_TTL_S), float(os.getenv("NBX_QUEUE_SCAN_MAX_AGE_S", "300")))
+#: 2.5.2 — how far the market may sit from the plan's entry before the row is
+#: locked: 1.5 % or 0.5×ATR, whichever trips first.
+QUEUE_DRIFT_PCT = max(0.1, float(os.getenv("NBX_QUEUE_DRIFT_PCT", "1.5")))
+QUEUE_DRIFT_ATR = max(0.05, float(os.getenv("NBX_QUEUE_DRIFT_ATR", "0.5")))
+
+
+async def _queue_drift(symbol: str, signal: dict, broker: Any, mid: Any = None) -> dict:
+    """Drift of the current mid from the plan entry (`lastClose`), in % and ATR."""
+    if mid is None:
+        try:
+            mid = await broker._mid_price(symbol)
+        except Exception as e:  # unknown mid locks; it never invents a price
+            log.info("queue drift: no mid for %s (%s)", symbol, e)
+            mid = None
+    return queue_policy.price_drift(
+        signal.get("lastClose"), mid, (signal.get("risk") or {}).get("atr"),
+        pct_limit=QUEUE_DRIFT_PCT, atr_limit=QUEUE_DRIFT_ATR,
+    )
 
 
 def _queue_context(symbol: str, tf: str, side: str = "buy") -> dict:
@@ -3558,10 +3587,14 @@ async def risk_plan(
             stop=plan.stop, tp1=plan.tp1, tp2=plan.tp2,
         )
         execution["plan_entry"] = float(s["lastClose"])
+    drift = None
+    if approval and execution is not None:
+        drift = await _queue_drift(symbol, s, broker, mid=execution.get("mid_at_submit"))
     return {
         "symbol": symbol.upper(),
         "side": side,
         **plan.__dict__,
+        **({"drift": drift} if drift is not None else {}),
         "quote": "IRT" if symbol.upper().endswith("IRT") else "USDT",
         "fx_rate": rate.toman_per_usdt,
         "fx": rate.to_dict(),
@@ -4298,6 +4331,13 @@ async def paper_order(payload: dict):
         price = (body.get("price") and float(body["price"])) or None
         queue_options: dict[str, Any] = {}
         if queue_context:
+            # 2.5.2 — the market must still be where the plan was built. The
+            # preview showed this number; placing on a moved price is refused
+            # here with the same yardsticks, not silently re-priced.
+            sig = (_cached["signals_by_tf"].get(queue_context["tf"]) or {}).get(symbol) or {}
+            drift = await _queue_drift(symbol, sig, broker)
+            if drift.get("exceeded"):
+                return {"ok": False, "blocked": True, "error": "queue-price-moved", "drift": drift}
 
             def guard() -> str | None:
                 latest = _queue_order_context(body)
