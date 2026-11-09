@@ -50,7 +50,14 @@ def test_release_workflow_requires_validation_before_publishing():
     workflow = yaml.load((ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
     assert list(workflow["on"]) == ["push"]
     assert "tags" in workflow["on"]["push"]
-    assert workflow["permissions"] == {"contents": "read"}
+    # 2.5.3: `actions: read` lets the guard ask for the CI conclusion of the
+    # tagged commit; still no write anywhere at workflow level.
+    assert workflow["permissions"] == {"contents": "read", "actions": "read"}
+    validate = workflow["jobs"]["validate"]
+    guard = validate["steps"][1]
+    assert guard["name"].startswith("Tag must point at main")
+    assert "merge-base --is-ancestor HEAD origin/main" in guard["run"]
+    assert 'conclusion" != "success"' in guard["run"]
     publish = workflow["jobs"]["publish"]
     assert publish["needs"] == "validate"
     assert publish["permissions"] == {"contents": "write"}

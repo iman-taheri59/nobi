@@ -2,6 +2,12 @@
 
 [English](CHANGELOG.en.md) · **فارسی**
 
+## 2.5.3 (در دست کار)
+
+- **probe صرافی در `check_deploy` مثل خود سرویس (درس ۴):** `httpx` با همان UA (urllib فقط اگر httpx نباشد)؛ اگر probe رد شد، نظر دوم از `/api/health` محلی گرفته می‌شود و با `upstream.ok=true` و `stats.ok>0` سطر **ok** با متن «probe refused but service says…» می‌شود، نه FAIL. ۹ نوامبر همین 403 یک update کامل را قرمز کرده بود در حالی که سرویس ۳۴۸۳/۰ داشت. تست‌ها: `test_check_deploy_reads.py` (+۲).
+- **«Post-deploy proof» همیشه اجرا می‌شود (درس ۵):** `if: !dry_run && !cancelled()` — قرمزیِ `--verify` دیگر اثبات نسخه را پنهان نمی‌کند.
+- **گارد Release (درس ۳):** `release.yml` قبل از هر چیز بررسی می‌کند تگ روی `main` باشد و CI همان commit **success** باشد (از API، با `actions: read`)؛ در غیر این صورت Release ساخته نمی‌شود. تگ‌زدن بلافاصله بعد از merge (CI هنوز در حال اجرا) هم مسدود می‌شود — صبر کنید سبز شود، بعد تگ.
+
 ## 2.5.2
 
 _تگ و استقرار production ۹ نوامبر ۲۰۲۶ (~07:27Z، `a8635f5` → `55bb9ea`)؛ استقرار از طریق Actions «Deploy» با تگ `v2.5.2`. همهٔ بندهای معاملاتی فقط ثبت/محدودکننده‌اند — بدون تغییر امتیاز، آستانه، k استاپ یا enforce (ADR-0054)._

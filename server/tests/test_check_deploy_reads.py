@@ -209,19 +209,12 @@ def test_exchange_probe_speaks_like_the_service(monkeypatch):
     """
     seen = {}
 
-    class Reply(io.BytesIO):
-        def __enter__(self):
-            return self
+    def fake_fetch(url, ua, timeout=12):
+        seen["url"] = url
+        seen["ua"] = ua
+        return {"status": "ok", "bids": [[1, 2]]}
 
-        def __exit__(self, *exc):
-            self.close()
-
-    def fake_urlopen(request, timeout=0):
-        seen["url"] = request.full_url
-        seen["ua"] = request.get_header("User-agent")
-        return Reply(json.dumps({"status": "ok", "bids": [[1, 2]]}).encode())
-
-    monkeypatch.setattr(check_deploy.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(check_deploy, "_fetch_json", fake_fetch)
     monkeypatch.setenv("NBX_UA", "capoy-preflight")
     row = check_deploy.check_exchange()
     assert row["status"] == "ok", row
@@ -231,3 +224,22 @@ def test_exchange_probe_speaks_like_the_service(monkeypatch):
     monkeypatch.delenv("NBX_UA")
     check_deploy.check_exchange()
     assert seen["ua"] == "TraderBot/nobi"
+
+
+def test_exchange_probe_refused_but_service_fine_is_ok(monkeypatch):
+    """9 Nov 2026: the probe got 403 while the service had 3483/0 — must not fail the update."""
+    def refused(url, ua, timeout=12):
+        raise RuntimeError("HTTP 403 Forbidden")
+    monkeypatch.setattr(check_deploy, "_fetch_json", refused)
+    monkeypatch.setattr(check_deploy, "_service_says_upstream_ok", lambda: (True, "service says upstream.ok=True, stats 3483/0"))
+    row = check_deploy.check_exchange()
+    assert row["status"] == "ok" and "probe refused" in row["detail"] and "3483/0" in row["detail"]
+
+
+def test_exchange_probe_refused_and_service_silent_is_fail(monkeypatch):
+    def refused(url, ua, timeout=12):
+        raise RuntimeError("HTTP 403 Forbidden")
+    monkeypatch.setattr(check_deploy, "_fetch_json", refused)
+    monkeypatch.setattr(check_deploy, "_service_says_upstream_ok", lambda: (False, "local /api/health unavailable (URLError)"))
+    row = check_deploy.check_exchange()
+    assert row["status"] == "fail" and "403" in row["detail"] and "outbound HTTPS" in row["hint"]

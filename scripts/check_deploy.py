@@ -355,26 +355,69 @@ def _service_user_agent() -> str:
         return name if name.startswith("TraderBot/") else f"TraderBot/{name}"
 
 
-def check_exchange() -> dict:
-    # Same route and same agent as the service, so a FAIL here is about the
-    # network between this host and the exchange, not about the probe.
-    url = "https://apiv2.nobitex.ir/v3/orderbook/USDTIRT"
-    request = urllib.request.Request(
-        url, headers={"User-Agent": _service_user_agent(), "Accept": "application/json"},
-    )
+EXCHANGE_URL = "https://apiv2.nobitex.ir/v3/orderbook/USDTIRT"
+LOCAL_HEALTH = os.getenv("NBX_LOCAL_HEALTH", "http://127.0.0.1:8000/api/health")
+
+
+def _fetch_json(url: str, ua: str, timeout: float = 12) -> dict:
+    """GET JSON the way the service does: httpx first (same TLS stack as
+    `nobitex_client`), urllib only if httpx is not importable here.
+
+    9 Nov 2026: urllib with the *correct* User-Agent was still refused with 403
+    on the production host while the service (httpx) had 3483/3483 successes.
+    The edge discriminates on more than the agent string, so the probe must use
+    the same client or it measures itself, not the network.
+    """
     try:
-        with urllib.request.urlopen(request, timeout=12) as r:
-            body = json.loads(r.read().decode("utf-8"))
+        import httpx
+    except ImportError:
+        request = urllib.request.Request(url, headers={"User-Agent": ua, "Accept": "application/json"})
+        with urllib.request.urlopen(request, timeout=timeout) as r:
+            return json.loads(r.read().decode("utf-8"))
+    with httpx.Client(timeout=timeout, headers={"User-Agent": ua, "Accept": "application/json"}) as c:
+        r = c.get(url)
+        r.raise_for_status()
+        return r.json()
+
+
+def _service_says_upstream_ok() -> tuple[bool, str]:
+    """Second opinion from the running service's own counters."""
+    try:
+        request = urllib.request.Request(LOCAL_HEALTH, headers={"Accept": "application/json"})
+        with urllib.request.urlopen(request, timeout=5) as r:
+            h = json.loads(r.read().decode("utf-8"))
+    except Exception as e:
+        return False, f"local /api/health unavailable ({type(e).__name__})"
+    up = (h.get("upstream") or {}).get("ok")
+    st = h.get("stats") or {}
+    ok_n, fail_n = st.get("ok"), st.get("fail")
+    detail = f"service says upstream.ok={up}, stats {ok_n}/{fail_n}"
+    return bool(up) and isinstance(ok_n, int) and ok_n > 0, detail
+
+
+def check_exchange() -> dict:
+    # Same route and same client as the service, so a FAIL here is about the
+    # network between this host and the exchange, not about the probe.
+    try:
+        body = _fetch_json(EXCHANGE_URL, _service_user_agent())
         if body.get("status") != "ok":
             return _row(FAIL, "exchange", f"Nobitex answered with status={body.get('status')!r}",
                         "the bot cannot price anything without the exchange")
         bids = body.get("bids") or []
         return _row(OK, "exchange", f"USDTIRT book answered, {len(bids)} bid level(s)")
-    except (urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError) as e:
-        return _row(FAIL, "exchange", f"{type(e).__name__}: {str(e)[:120]}",
-                    "check outbound HTTPS from this server; ArvanCloud's default "
-                    "firewall already allows all outbound. Compare with the running "
-                    "service: /api/health -> stats.ok/fail and upstream.ok")
+    except Exception as e:
+        probe = f"{type(e).__name__}: {str(e)[:100]}"
+    # The probe failed. Before calling the network broken, ask the service that
+    # has been talking to the exchange for hours. If it is fine, the probe is
+    # the odd one out and must not turn a finished update red.
+    fine, detail = _service_says_upstream_ok()
+    if fine:
+        return _row(OK, "exchange", f"probe refused ({probe}) but {detail}",
+                    "")
+    return _row(FAIL, "exchange", f"{probe}; {detail}",
+                "check outbound HTTPS from this server; ArvanCloud's default "
+                "firewall already allows all outbound. Compare with the running "
+                "service: /api/health -> stats.ok/fail and upstream.ok")
 
 
 def classify_bind(addr: str) -> str:

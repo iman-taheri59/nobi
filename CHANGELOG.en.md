@@ -2,6 +2,12 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 2.5.3 (in progress)
+
+- **Exchange probe in `check_deploy` like the service itself (lesson 4):** `httpx` with the same UA (urllib only if httpx is missing); when the probe is refused, a second opinion is taken from the local `/api/health`, and with `upstream.ok=true` and `stats.ok>0` the row is **ok** with "probe refused but service says…", not FAIL. On 9 Nov that 403 turned a completed update red while the service stood at 3483/0. Tests: `test_check_deploy_reads.py` (+2).
+- **"Post-deploy proof" always runs (lesson 5):** `if: !dry_run && !cancelled()` — a red `--verify` no longer hides the version proof.
+- **Release guard (lesson 3):** `release.yml` first checks that the tag is on `main` and that CI on that exact commit is **success** (via the API, `actions: read`); otherwise no Release is built. Tagging right after a merge (CI still running) is blocked too — wait for green, then tag.
+
 ## 2.5.2
 
 _Tagged and deployed to production 9 November 2026 (~07:27Z, `a8635f5` → `55bb9ea`); deploy via the "Deploy" Actions workflow with tag `v2.5.2`. Every trading-adjacent item is record-only or restrictive — no change to scores, thresholds, stop k or enforcement (ADR-0054)._
