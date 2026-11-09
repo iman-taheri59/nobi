@@ -86,7 +86,11 @@ jobs:
       - name: /api/health (full)
         run: python3 -m json.tool health.json
 
-      - name: Last log lines
+      - name: Last log lines (without httpx request noise)
+        run: |
+          ssh prod "sudo -n journalctl -u nobi -n 2000 --no-pager -o short-iso 2>&1 | grep -v 'INFO:httpx:HTTP Request' | grep -v '\"GET /api/' | tail -n ${{ inputs.log_lines }}"
+
+      - name: Last log lines (raw)
         run: |
           # An unprivileged user gets "-- No entries --" for a system unit, not an
           # error, so sudo goes first and plain journalctl is the fallback.

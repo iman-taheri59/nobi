@@ -86,3 +86,15 @@ def test_reader_skips_legacy_and_non_stop_closes():
     assert s["pct"]["mean"] == pytest.approx(0.15) and s["pct"]["worse_share"] == 0.5
     assert s["r"]["mean"] == pytest.approx(0.025)
     assert set(s["by_reason"]) == {"sl-hit", "trail"}
+
+
+def test_section7_prints_even_with_zero_rejects(tmp_path, capsys):
+    """Day-1 soak 2.5.2: with 0 rejects section 6 returned early and section 7 never printed."""
+    now = time.time()
+    state = {"orders": [{"kind": "close", "ts": now, "extra": {"reason": "sl-hit", "stop_slip_pct": 0.4, "stop_slip_r": 0.1}}]}
+    f = tmp_path / "paper.json"
+    f.write_text(json.dumps(state), encoding="utf-8")
+    jd.print_paper_rejects(str(f), None)
+    out = capsys.readouterr().out
+    assert "6) paper rejects" in out and "none" in out
+    assert "7) stop slippage" in out and "n=1" in out

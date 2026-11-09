@@ -178,6 +178,7 @@ def print_paper_rejects(path: str, since: int | None) -> None:
           f" the file keeps the last {kept} event(s) only, older rejects are gone")
     if not c["total"]:
         print("  none")
+        print_stop_slip(orders, since)   # section 7 does not depend on section 6 having rows
         return
     sources = list(c["by_source"])
     print(f"  {'reason':28s} {'total':>5s}  " + " ".join(f"{src:>7s}" for src in sources))
