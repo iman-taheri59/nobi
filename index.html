@@ -832,14 +832,15 @@
           </div>
         </div>
         <div class="glass p-4 sm:p-5 lg:col-span-2">
-          <div class="font-bold text-[13px] sm:text-sm mb-3" data-i18n="perf.table"></div>
+          <div class="font-bold text-[13px] sm:text-sm mb-1" data-i18n="perf.table"></div>
+          <p class="text-[10px] text-zinc-500 leading-5 mb-3" data-i18n="perf.ocLegend"></p>
           <div class="table-scroll">
-            <table class="w-full min-w-[880px]">
+            <table class="w-full min-w-[960px]">
               <thead><tr>
                 <th data-i18n="col.time"></th><th data-i18n="col.symbol"></th><th data-i18n="perf.dir"></th>
                 <th data-i18n="perf.score"></th><th data-i18n="perf.rank"></th>
                 <th data-i18n="perf.h1"></th><th data-i18n="perf.h2"></th><th data-i18n="perf.h3"></th>
-                <th data-i18n="perf.r"></th><th data-i18n="perf.status"></th>
+                <th data-i18n="perf.r1"></th><th data-i18n="perf.r"></th><th data-i18n="perf.status"></th>
               </tr></thead>
               <tbody id="perfBody"></tbody>
             </table>
@@ -1661,7 +1662,7 @@ const T = {
     'perf.sub1':'از میان {n} نتیجهٔ H2 برای LONG غیر VOID','perf.sub2':'میانگین R به‌ازای سیگنال','perf.sub3':'ΣR+ / |ΣR−| · H2','perf.sub4':'میانگین Spearman درون‌نمادی؛ ≥۱۵ نمونه/نماد','perf.sub5':'در بازه انتخابی','perf.sub6':'درصد LONG معتبر با نتیجهٔ H2',
     'perf.cal':'منحنی درستی‌سنجی','perf.calSub':"محور افقی: امتیاز مرکب ۰ تا ۱۰۰؛ عمودی: سهم نتایج مثبت H2 از ۰ تا ۱۰۰٪",
     'perf.horizon':'نتیجه به‌ازای افق پایش','perf.faml':"گروه‌بندی توصیفی خانوادهٔ غالب",'perf.family':'خانواده','perf.avgR':'میانگین R','perf.share':'سهم',
-    'perf.table':'برش سیگنال‌ها؛ حل‌شده‌ها اول','perf.dir':'جهت','perf.score':'امتیاز','perf.rank':'رتبه','perf.h1':'H1 (+۱س)','perf.h2':'H2 (+۱ر)','perf.h3':'H3 (+۷ر)','perf.r':'R مدل H2','perf.status':'وضعیت',
+    'perf.table':'برش سیگنال‌ها؛ حل‌شده‌ها اول','perf.dir':'جهت','perf.score':'امتیاز','perf.rank':'رتبه','perf.h1':'H1 (+۱ ساعت)','perf.h2':'H2 (+۱ روز)','perf.h3':'H3 (+۷ روز)','perf.r1':'R مدل H1','perf.r':'R مدل H2','perf.ocLegend':'نتیجهٔ هر افق: هدف ۲ · هدف ۱ سپس سربه‌سر · هدف ۱ سپس پایان مهلت · پایان مهلت (R در پایان) · حد ضرر · مبهم (استاپ و هدف در یک کندل؛ محافظه‌کارانه = استاپ). R مدل OHLC ناخالص است.','perf.status':'وضعیت',
     'perf.stResolved':'نتیجه‌رسیده','perf.stInP':'در جریان','perf.stPend':'در انتظار','perf.stVoid':'ابطال',
     'perf.noCal':'داده‌ی کافی برای منحنی درستی‌سنجی نیست','perf.noCalSub':'پس از رسیدن افق H2 سیگنال‌ها پر می‌شود',
     'perf.empty':"در این فیلتر ردیفی پیدا نشد",'perf.emptySub':"خطای دریافت با نبود ردیف متفاوت است؛ برای مشاهدهٔ گزارش نیازی به بازسازی تاریخچه نیست.",
@@ -1974,7 +1975,7 @@ const T = {
     'perf.sub1':'of {n} resolved non-VOID LONG H2 outcomes','perf.sub2':'average R per signal','perf.sub3':'ΣR+ / |ΣR−| · H2','perf.sub4':'mean per-symbol Spearman; ≥15 samples/symbol','perf.sub5':'in selected period','perf.sub6':'% eligible LONG with H2 outcomes',
     'perf.cal':'Calibration Curve','perf.calSub':"X: composite score 0–100; Y: fraction of positive H2 outcomes 0–100%",
     'perf.horizon':'Outcome by monitoring horizon','perf.faml':"Descriptive dominant-family groups",'perf.family':'Family','perf.avgR':'Avg R','perf.share':'Share',
-    'perf.table':'Signal slice; resolved first','perf.dir':'Direction','perf.score':'Score','perf.rank':'Rank','perf.h1':'H1 (+1h)','perf.h2':'H2 (+1d)','perf.h3':'H3 (+7d)','perf.r':'H2 model R','perf.status':'Status',
+    'perf.table':'Signal slice; resolved first','perf.dir':'Direction','perf.score':'Score','perf.rank':'Rank','perf.h1':'H1 (+1 hour)','perf.h2':'H2 (+1 day)','perf.h3':'H3 (+7 days)','perf.r1':'H1 model R','perf.r':'H2 model R','perf.ocLegend':'Outcome per horizon: target 2 · target 1 then breakeven · target 1 then timeout · timeout (R at horizon end) · stop · ambiguous (stop and target inside one candle; resolved as stop). Model R is gross OHLC.','perf.status':'Status',
     'perf.stResolved':'Resolved','perf.stInP':'In progress','perf.stPend':'Pending','perf.stVoid':'Void',
     'perf.noCal':'Not enough data for a calibration curve','perf.noCalSub':'Fills in as H2 horizons resolve',
     'perf.empty':"No rows for this filter",'perf.emptySub':"Read failure is different from no rows; viewing the report does not require a historical backfill.",
@@ -3930,7 +3931,31 @@ function stBadge(st, reason){
   const [k,c] = pick;
   return `<span class="chip text-${c}-300" title="${escText(reason || '')}">${t(k)}</span>`;
 }
+/* 2.5.2 — the cell names what happened inside the horizon. A tick used to mean
+ * "R > 0 at the horizon's end", which readers took for "target hit"; a +0.1R
+ * timeout and a TP2 were indistinguishable. Accepts the new outcome object
+ * (`{kind, r}`) and still degrades to the old boolean for older servers. */
+const OUTCOME_KINDS = {
+  tp2:         { fa: 'هدف ۲',             en: 'Target 2',        cls: 'text-emerald-300 border-emerald-300/40' },
+  tp1_trail:   { fa: 'هدف ۱ → سربه‌سر',   en: 'T1 → breakeven',  cls: 'text-emerald-300/80 border-emerald-300/25' },
+  tp1_timeout: { fa: 'هدف ۱ → مهلت',      en: 'T1 → timeout',    cls: 'text-emerald-300/80 border-emerald-300/25' },
+  timeout:     { fa: 'پایان مهلت',        en: 'Timeout',         cls: 'text-zinc-300' },
+  stop:        { fa: 'حد ضرر',            en: 'Stop',            cls: 'text-red-300 border-red-300/40' },
+  ambiguous:   { fa: 'مبهم',              en: 'Ambiguous',       cls: 'text-amber-300 border-amber-300/40' },
+};
 function outcomeCell(v){
+  if (v && typeof v === 'object' && !Array.isArray(v) && typeof v.kind === 'string') {
+    const k = OUTCOME_KINDS[v.kind];
+    if (!k) return '<span class="num text-zinc-600">—</span>';
+    const r = pNumber(v.r);
+    let cls = k.cls;
+    // Timeout takes its colour from the sign of the modelled R.
+    if (v.kind === 'timeout' && r !== null) cls = r > 0 ? 'text-emerald-300/70' : r < 0 ? 'text-red-300/70' : 'text-zinc-300';
+    const rTxt = r === null ? '' : ` <b class="num">${(r > 0 ? '+' : '') + fmtNum(r, 2)}R</b>`;
+    const title = v.kind === 'ambiguous'
+      ? (LANG === 'fa' ? 'استاپ و هدف در یک کندل؛ محافظه‌کارانه = استاپ' : 'stop and target inside one candle; resolved as stop') : '';
+    return `<span class="chip text-[9px] whitespace-nowrap ${cls}"${title ? ` title="${escText(title)}"` : ''}>${escText(LANG === 'fa' ? k.fa : k.en)}${rTxt}</span>`;
+  }
   if (typeof v !== 'boolean') return '<span class="num text-zinc-600">—</span>';
   return v ? '<span class="num text-emerald-400 font-bold">✓</span>' : '<span class="num text-red-400 font-bold">✗</span>';
 }
@@ -3962,7 +3987,7 @@ function renderPerf(){
   }
   const chip=byId('perfOrigin');
   if(chip){chip.textContent=ready?(perfMeta.origin || t('perf.allOrigins')):perfStateText();chip.className='chip text-[10px] text-zinc-400';}
-  const empty = key => `<tr><td colspan="10" class="text-[11px] text-zinc-500">${escText(ready?t(key):perfStateText())}</td></tr>`;
+  const empty = key => `<tr><td colspan="11" class="text-[11px] text-zinc-500">${escText(ready?t(key):perfStateText())}</td></tr>`;
   const k=perfKpi, pct=v=>pNumber(v)===null?'—':PC(v*100,1,false);
   // A read can succeed while no horizon has resolved yet: `k.hit` is null and a
   // bare "—" is exactly the blank panel the probe reports as a bug. Say why.
@@ -3982,7 +4007,7 @@ function renderPerf(){
     const long=s.dir==='long';
     const oc=v=>long?outcomeCell(v):`<span class="text-zinc-500" title="${t('perf.na')}">N/A</span>`;
     const id=Number.isInteger(s.id)&&s.id>0?s.id:'';
-    return `<tr data-sig="${id}" class="cursor-pointer"><td class="num">${escText(fmtWhen(s.ts))}</td><td class="font-bold">${window.coinIcon(s.sym,20)}${escText(s.sym)}</td><td>${dirTxt(s.dir)}</td><td class="num">${pFmt(s.score,1)}</td><td class="num">${pFmt(s.rank)}</td><td>${oc(s.h1)}</td><td>${oc(s.h2)}</td><td>${oc(s.h3)}</td><td class="num">${long&&pNumber(s.r)!==null?pFmt(s.r,2)+'R':'—'}</td><td>${stBadge(s.st,s.void_reason)} <span class="text-[9px] text-zinc-500">${escText(s.source||'unknown')} / ${escText(s.origin||'unknown')}</span></td></tr>`;
+    return `<tr data-sig="${id}" class="cursor-pointer"><td class="num">${escText(fmtWhen(s.ts))}</td><td class="font-bold">${window.coinIcon(s.sym,20)}${escText(s.sym)}</td><td>${dirTxt(s.dir)}</td><td class="num">${pFmt(s.score,1)}</td><td class="num">${pFmt(s.rank)}</td><td>${oc(s.o1&&typeof s.o1==='object'?s.o1:s.h1)}</td><td>${oc(s.o2&&typeof s.o2==='object'?s.o2:s.h2)}</td><td>${oc(s.o3&&typeof s.o3==='object'?s.o3:s.h3)}</td><td class="num">${long&&pNumber(s.r1)!==null?pFmt(s.r1,2)+'R':'—'}</td><td class="num">${long&&pNumber(s.r)!==null?pFmt(s.r,2)+'R':'—'}</td><td>${stBadge(s.st,s.void_reason)} <span class="text-[9px] text-zinc-500">${escText(s.source||'unknown')} / ${escText(s.origin||'unknown')}</span></td></tr>`;
   }).join('');
   const warn=byId('perfWarn');
   if(warn){warn.classList.toggle('hidden',!ready);warn.textContent=ready?t('perf.sourceLimit'):'';}
@@ -4391,7 +4416,7 @@ async function toggleSignalRow(tr){
 
   const detail = document.createElement('tr');
   detail.className = 'sig-detail';
-  detail.innerHTML = `<td colspan="10" class="bg-white/[.02] border-b border-white/5 p-3">${t('perf.loading')}</td>`;
+  detail.innerHTML = `<td colspan="11" class="bg-white/[.02] border-b border-white/5 p-3">${t('perf.loading')}</td>`;
   tr.after(detail);
 
   const api = window.NBX && NBX.core && NBX.core.api;

@@ -1409,6 +1409,41 @@ def summary(conn: sqlite3.Connection, *, tf: str | None = None,
                 f"SELECT * FROM signal_outcomes WHERE signal_id IN ({marks})", ids):
             outcomes.setdefault(o["signal_id"], {})[o["horizon_key"]] = o
 
+    def _outcome_view(row: sqlite3.Row | None) -> dict | None:
+        """What actually happened inside the horizon, for the table cell.
+
+        2.5.2 — the cell used to show ``r_multiple > 0`` as a tick, which reads
+        as "target hit" and is not: a +0.1R timeout and a TP2 looked the same.
+        ``kind`` is derived from the resolver's ``exit_reason`` when stored,
+        otherwise from the flags of rows written before that column existed.
+        """
+        if row is None:
+            return None
+        keys = row.keys()
+        reason = row["exit_reason"] if "exit_reason" in keys else None
+        tp1 = bool(row["hit_tp1"]) if row["hit_tp1"] is not None else False
+        tp2 = bool(row["hit_tp2"]) if "hit_tp2" in keys and row["hit_tp2"] is not None else False
+        sl = bool(row["hit_sl"]) if row["hit_sl"] is not None else False
+        if reason is None:
+            reason = "tp2" if tp2 else ("trail" if (sl and tp1) else ("stop" if sl else "timeout"))
+        if reason.startswith("ambiguous"):
+            kind = "ambiguous"
+        elif reason == "tp2":
+            kind = "tp2"
+        elif reason == "trail":
+            kind = "tp1_trail"
+        elif reason == "stop":
+            kind = "stop"
+        else:
+            kind = "tp1_timeout" if tp1 else "timeout"
+        r_val = row["r_multiple"]
+        return {
+            "kind": kind,
+            "r": round(float(r_val), 3) if r_val is not None else None,
+            "tp1": tp1, "tp2": tp2, "sl": sl,
+            "ambiguous": bool(row["ambiguous"]) if "ambiguous" in keys and row["ambiguous"] is not None else False,
+        }
+
     view = []
     for r in rows:
         o = outcomes.get(r["id"], {})
@@ -1430,6 +1465,11 @@ def summary(conn: sqlite3.Connection, *, tf: str | None = None,
             "h2": (float(o["H2"]["r_multiple"]) > 0 if "H2" in o and r["direction"] == "LONG" else None),
             "h3": (float(o["H3"]["r_multiple"]) > 0 if "H3" in o and r["direction"] == "LONG" else None),
             "r": (round(float(r2["r_multiple"]), 3) if r2 else None),
+            # 2.5.2 — the real outcome per horizon (kind + model R), LONG only.
+            "o1": _outcome_view(o.get("H1")) if r["direction"] == "LONG" else None,
+            "o2": _outcome_view(o.get("H2")) if r["direction"] == "LONG" else None,
+            "o3": _outcome_view(o.get("H3")) if r["direction"] == "LONG" else None,
+            "r1": (round(float(o["H1"]["r_multiple"]), 3) if "H1" in o and r["direction"] == "LONG" and o["H1"]["r_multiple"] is not None else None),
             "st": status, "source": r["source"], "void_reason": r["void_reason"],
             "origin": r["origin"],
         })

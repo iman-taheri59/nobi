@@ -6,7 +6,8 @@ const tick=()=>new Promise(r=>setImmediate(r));
 const later=()=>{let resolve,reject;const promise=new Promise((a,b)=>{resolve=a;reject=b;});return {promise,resolve,reject};};
 function payload(extra={}){return {stage_read_only:true,kpi:{hit:null,exp:null,vpf:null,ic:null,sig:1,res:0,void:0,issued:3},vpf_state:'undefined',
  horizons:[{k:'H1',n:1,hit:1,avgr:1,sources:{synthetic:1}},{k:'H2',n:0,hit:null,avgr:null,sources:{}},{k:'H3',n:0,hit:null,avgr:null,sources:{}}],
- families:[],calibration:[],signals:[{id:1,ts:1700000000,sym:'XUSDT',dir:'long',score:70,rank:1,h1:true,h2:null,h3:null,r:null,st:'inprogress',source:'synthetic',origin:'live'}],
+ families:[],calibration:[],signals:[{id:1,ts:1700000000,sym:'XUSDT',dir:'long',score:70,rank:1,h1:true,h2:null,h3:null,r:null,st:'inprogress',source:'synthetic',origin:'live'},
+  {id:2,ts:1700000001,sym:'YUSDT',dir:'long',score:60,rank:2,h1:true,h2:true,h3:false,o1:{kind:'timeout',r:0.12},o2:{kind:'tp2',r:1.6},o3:{kind:'ambiguous',r:-1},r1:0.12,r:1.6,st:'resolved',source:'live',origin:'live'}],
  msi:{status:'insufficient',ratio:null,realized:{n:0,ic:null},baseline:{n:0,ic:null,source:'journal-history'}},generated_at:'2026-10-29T10:00:00Z',...extra};}
 (async()=>{
 for(const file of ['index.html','nobitex-mobile.html'])for(const lang of ['fa','en']){
@@ -45,7 +46,13 @@ for(const file of ['index.html','nobitex-mobile.html'])for(const lang of ['fa','
   // KPI must say so instead of printing a bare em-dash (the probe's blank-panel bug).
   eq(txt('pHit'),lang==='fa'?'آمار کارایی ثبت نشده است':'Performance data not recorded');
   ok(txt('hzCards').includes('synthetic: 1'),'H1 provenance remains visible without H2');
-  ok(txt('famBody').includes(t('perf.familyEmpty')));ok(txt('perfBody').includes('XUSDT'));eq(d.querySelectorAll('#perfBody td')[5].textContent,'✓');
+  ok(txt('famBody').includes(t('perf.familyEmpty')));ok(txt('perfBody').includes('XUSDT'));eq(d.querySelectorAll('#perfBody td')[5].textContent,'✓','older servers without outcome objects keep the boolean tick');
+  // 2.5.2 — with the outcome object, the cell names what happened, not R>0.
+  const yrow=[...d.querySelectorAll('#perfBody tr')].find(tr=>tr.textContent.includes('YUSDT'));const ytd=yrow.querySelectorAll('td');
+  ok(ytd[5].textContent.includes(lang==='fa'?'پایان مهلت':'Timeout')&&ytd[5].textContent.includes('0.12R')&&!ytd[5].textContent.includes('✓'),'a +0.12R timeout is not a tick: '+ytd[5].textContent);
+  ok(ytd[6].textContent.includes(lang==='fa'?'هدف ۲':'Target 2'));ok(ytd[7].textContent.includes(lang==='fa'?'مبهم':'Ambiguous'));
+  ok(ytd[8].textContent.includes('0.12')&&ytd[9].textContent.includes('1.6'),'H1 and H2 model R columns');
+  ok(d.querySelector('[data-i18n="perf.h2"]').textContent.includes(lang==='fa'?'روز':'day'),'H2 header says day, not an abbreviation');
   ok(txt('msiBadge').includes(t('msi.insufficient')),'historical MSI is not hidden by current exchange outage');
   ok(txt('stageWhy').includes(t('perf.stageStored')));ok(txt('perfReadStatus').includes('2026-10-29'));
   eq(writes,0);eq(network,0);
@@ -66,7 +73,7 @@ for(const file of ['index.html','nobitex-mobile.html'])for(const lang of ['fa','
   const trs=d.querySelectorAll('#perfBody tr');ok(trs[0].textContent.includes(evil));eq(trs[0].dataset.sig,'');
   eq(trs[0].children[2].textContent,t('sg.neutral'));eq(trs[1].children[2].textContent,t('sg.exit'));
   for(const tr of [trs[0],trs[1]])for(const idx of [5,6,7])eq(tr.children[idx].textContent,'N/A');
-  eq(trs[0].children[8].textContent,'—');eq(trs[2].children[5].textContent,'—');eq(trs[2].children[6].textContent,'—');eq(trs[2].children[7].textContent,'✗');eq(trs[2].children[9].querySelector('span[title]').title,evil);
+  eq(trs[0].children[8].textContent,'—');eq(trs[2].children[5].textContent,'—');eq(trs[2].children[6].textContent,'—');eq(trs[2].children[7].textContent,'✗');eq(trs[2].children[10].querySelector('span[title]').title,evil);
   // Numeric axis is proportional, 100% stays inside; each bucket exposes n; no ideal diagonal.
   api.getJournalSummary=async()=>payload({calibration:[[90,1,3],[20,0,2],[50,0.5,7],[null,0.5,1],[70,2,1]],vpf_state:'no_losses'});
   await w.loadPerf();const circles=d.querySelectorAll('#calChart circle');eq(circles.length,3);eq(circles[0].dataset.score,'20');eq(circles[1].dataset.score,'50');eq(circles[2].dataset.score,'90');

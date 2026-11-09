@@ -231,3 +231,48 @@ def test_resolver_does_not_rewrite_old_exit_labels(tmp_path):
     J.resolve_symbol(c,"XUSDT","15m",candles_to_df(bars))
     assert dict(c.execute("SELECT * FROM signal_outcomes WHERE signal_id=?",(sid,)).fetchone()) == before
     c.close()
+
+
+# ---- 2.5.2: the performance table names the real outcome per horizon -------
+def _outcome_full(c, sid, key, *, r, tp1=0, tp2=0, sl=0, reason=None, ambiguous=0):
+    c.execute("""INSERT INTO signal_outcomes(signal_id,horizon_key,r_multiple,return_pct,exit_ts,
+                 hit_tp1,hit_tp2,hit_sl,exit_reason,ambiguous) VALUES(?,?,?,?,?,?,?,?,?,?)""",
+              (sid, key, r, r, 123, tp1, tp2, sl, reason, ambiguous))
+    c.commit()
+
+
+@pytest.mark.parametrize("case, expected", [
+    (dict(r=2.0, tp1=1, tp2=1, reason="tp2"), "tp2"),
+    (dict(r=0.6, tp1=1, sl=1, reason="trail"), "tp1_trail"),
+    (dict(r=0.9, tp1=1, reason="timeout"), "tp1_timeout"),
+    (dict(r=0.1, reason="timeout"), "timeout"),
+    (dict(r=-1.0, sl=1, reason="stop"), "stop"),
+    (dict(r=-1.0, sl=1, tp1=1, reason="ambiguous-stop", ambiguous=1), "ambiguous"),
+    # Rows written before `exit_reason` existed: derived from the flags.
+    (dict(r=2.0, tp1=1, tp2=1), "tp2"),
+    (dict(r=0.6, tp1=1, sl=1), "tp1_trail"),
+    (dict(r=-1.0, sl=1), "stop"),
+    (dict(r=0.3), "timeout"),
+])
+def test_summary_outcome_kind_per_horizon(tmp_path, case, expected):
+    c = J.connect(tmp_path / "private.db")
+    sid = seed(c, 1700000000, direction="LONG")
+    _outcome_full(c, sid, "H1", **case)
+    v = J.summary(c)["signals"][0]
+    assert v["o1"]["kind"] == expected
+    assert v["o1"]["r"] == pytest.approx(case["r"])
+    assert v["r1"] == pytest.approx(case["r"])
+    # A positive-R timeout is still *not* a tick that means "target hit":
+    # the boolean stays for older pages, the kind tells the truth.
+    assert v["h1"] == (case["r"] > 0)
+    assert v["o2"] is None and v["o3"] is None
+    c.close()
+
+
+def test_summary_outcome_view_is_none_for_non_long(tmp_path):
+    c = J.connect(tmp_path / "private.db")
+    sid = seed(c, 1700000000, direction="EXIT")
+    _outcome_full(c, sid, "H1", r=1.0, tp1=1, reason="timeout")
+    v = J.summary(c)["signals"][0]
+    assert v["o1"] is None and v["r1"] is None
+    c.close()
