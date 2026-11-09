@@ -2,7 +2,9 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
-## 2.5.3 (in progress)
+## 2.5.3
+
+_Tagged 10 Nov 2026 (day 2 of the 2.5.2 soak); production via the "Deploy" Action with tag `v2.5.3`. **No change to trading logic, risk, shadow arms or the holdout** — dashboard (live refresh) and deploy/release tooling only, so soak days 1 and 2 count as one series._
 
 - **The other pages refresh with the scan too:** Performance, Signal intelligence, Orders, Risk audit and the Desk allocation were read only when their tab was opened (Performance only the first time). Every scan now re-reads the **visible** page once its copy is older than its window (Orders 30 s, audit 60 s, performance/intelligence/allocation 120 s). Never for a hidden tab or a hidden browser window, never while the user is typing in a field of that page, and on Signal intelligence never while a detail panel is open. Test: `npm run test:page-refresh` (20 checks).
 - **Charts update without a page reload:** in backend mode the candle cache (`engine.candles`) was filled once and never refreshed; the overview chart, the last price under it and the signal-list sparklines stayed at minute one until a reload. Receipt time is now recorded per entry (`engine.candleAt`); the active symbol is refetched on the next scan once older than 45 s and repainted in place with `series.update` (only a symbol/timeframe switch calls `setData`); list rows refresh after 90 s. All answers come from the server cache; no extra load on Nobitex. Test: `npm run test:live-candles` (17 checks).
