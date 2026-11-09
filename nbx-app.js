@@ -663,6 +663,18 @@
     if (!list || list.dataset.bound === '1') return;
     list.dataset.bound = '1';
     list.addEventListener('click', (ev) => {
+      const det = ev.target.closest('[data-sig-details]');
+      if (det) {
+        const row = det.closest('.sig-row');
+        const box = row && row.querySelector('[data-sig-evidence]');
+        if (!row || !box) return;
+        const show = box.hasAttribute('hidden');
+        if (show) { box.removeAttribute('hidden'); sigEvidenceOpen.add(row.dataset.sigSym); }
+        else { box.setAttribute('hidden', ''); sigEvidenceOpen.delete(row.dataset.sigSym); }
+        det.setAttribute('aria-expanded', show ? 'true' : 'false');
+        det.textContent = show ? faText('بستن جزئیات', 'Hide details') : faText('جزئیات', 'Details');
+        return;
+      }
       if (ev.target.closest('[data-close-detail], a, button')) return;
       const row = ev.target.closest('.sig-row');
       if (row && typeof window.toggleSignalDetail === 'function') window.toggleSignalDetail(row);
@@ -807,6 +819,183 @@
     }
   };
 
+
+  /* ---- 2.5.2 signal card (ADR-0055) ------------------------------------
+     The row answers the beginner's five questions in order — which coin, buy
+     or not, how strong, where is the stop, where are the targets — and keeps
+     the engineering evidence (gate verdict, spread/depth, FA provenance, the
+     four component bars, RSI/ADX/ATR) behind a "Details" button. Levels are
+     *model* levels computed from the scan's own ATR and the server's published
+     R:R ladder; they are not an order and the card says so. */
+  const sigEvidenceOpen = new Set();
+  function signalLevels(s) {
+    const px = typeof s.lastClose === 'number' && Number.isFinite(s.lastClose) && s.lastClose > 0 ? s.lastClose
+      : typeof s.last === 'number' && Number.isFinite(s.last) && s.last > 0 ? s.last : null;
+    const r = s.risk || {};
+    const dist = typeof r.stopDistance === 'number' && Number.isFinite(r.stopDistance) && r.stopDistance > 0 ? r.stopDistance
+      : typeof r.atr === 'number' && Number.isFinite(r.atr) && r.atr > 0 ? r.atr * 2 : null;
+    const caps = live.risk && live.risk.caps;
+    const rr = caps && Array.isArray(caps.rrLevels) && caps.rrLevels.length >= 2
+      && caps.rrLevels.every((x) => typeof x === 'number' && Number.isFinite(x) && x > 0) ? caps.rrLevels : null;
+    const long = s.direction === 'LONG';
+    const stop = px !== null && dist !== null ? px - dist : null;
+    const tp1 = long && stop !== null && rr ? px + dist * rr[0] : null;
+    const tp2 = long && stop !== null && rr ? px + dist * rr[rr.length - 1] : null;
+    const pct = (v) => (px && v !== null ? ((v - px) / px) * 100 : null);
+    return { px, dist, rr, long, stop, tp1, tp2, stopPct: pct(stop), tp1Pct: pct(tp1), tp2Pct: pct(tp2) };
+  }
+  function signalFreshness(symbol) {
+    const eng = NBX.core && NBX.core.engine;
+    const rows = eng && (eng.candles[symbol + ':' + live.timeframe] || null);
+    const last = rows && rows.length ? rows[rows.length - 1] : null;
+    let t = last && typeof last.t === 'number' ? last.t : last && typeof last.time === 'number' ? last.time : null;
+    if (t !== null) {
+      if (t > 1e11) t = t / 1000;
+      const age = Math.max(0, Math.round(Date.now() / 1000 - t));
+      const txt = age < 90 ? faText('کمتر از ۲ دقیقه پیش', 'under 2 min ago')
+        : age < 3600 ? faText(faNum(Math.round(age / 60)) + ' دقیقه پیش', Math.round(age / 60) + ' min ago')
+        : faText(faNum(Math.round(age / 360) / 10, 1) + ' ساعت پیش', (Math.round(age / 360) / 10) + ' h ago');
+      const tfSec = { '1m': 60, '5m': 300, '15m': 900, '30m': 1800, '1h': 3600, '4h': 14400, '1d': 86400 }[live.timeframe] || 900;
+      // A finished candle is by construction up to one bar old; "stale" starts
+      // at two missed bars, the same rule the server's freshness block uses.
+      return { text: faText('کندل آخر: ', 'last candle: ') + txt, stale: age > tfSec * 2.5, known: true };
+    }
+    const snap = live.signalSnapshot;
+    if (snap && typeof snap.age === 'number') {
+      return { text: faText('سن اسکن: ', 'scan age: ') + faNum(snap.age) + faText(' ثانیه', ' s'), stale: snap.stale === true, known: true };
+    }
+    return { text: faText('تازگی نامشخص', 'freshness unknown'), stale: null, known: false };
+  }
+  function signalRowHtml(s, i) {
+    const composite = faNumber(s.composite) ? s.composite : null;
+    const col = composite === null ? 'zinc' : composite >= 60 ? 'emerald' : composite >= 45 ? 'amber' : 'red';
+    const vetoes = Array.isArray(s.fa && s.fa.vetoes) ? s.fa.vetoes.filter((v) => typeof v === 'string').slice(0, 32) : [];
+    const comp = s.components || {};
+    const diag = s.diagnostics || {};
+    const dirCls = s.direction === 'LONG' ? 'text-emerald-300 border-emerald-300/40' : s.direction === 'EXIT' ? 'text-red-300 border-red-300/40' : 'text-zinc-300';
+    const dotCls = s.direction === 'LONG' ? 'bg-emerald-400' : s.direction === 'EXIT' ? 'bg-red-400' : 'bg-zinc-400';
+    const faState = signalFaState(s);
+    const gateText = signalGateRow(s.symbol);
+    const symLabel = LANG === 'fa' ? s.symbol.replace('IRT', '/تومان') : s.symbol;
+    const lv = signalLevels(s);
+    const fr = signalFreshness(s.symbol);
+    const open = sigEvidenceOpen.has(s.symbol);
+    const vetoTitle = s.direction_raw && s.direction_raw !== s.direction
+      ? esc(LANG === 'fa'
+        ? `${s.direction_raw} بود؛ وتوی فاندامنتال (${vetoes.join('، ')}) سقف ${faNum(+s.veto_cap)} گذاشت`
+        : `was ${s.direction_raw}; a fundamental veto (${vetoes.join(', ')}) capped it at ${+s.veto_cap}`)
+      : '';
+    const price = (v) => (v === null ? '—' : fmtPrice(v, s.symbol));
+    // Stop/targets: same digits as the price, but the unit is printed once (on
+    // the price) so four "Toman" words do not crowd the line.
+    const bare = (v) => {
+      if (v === null) return '—';
+      const n = Math.abs(v);
+      const q = typeof window.NBXDisplay.quote === 'function' ? window.NBXDisplay.quote(s.symbol) : null;
+      const d = n > 0 && n < 1 ? Math.min(20, Math.max(6, Math.ceil(-Math.log10(n)) + 4)) : n >= 1000 && (q === 'IRT' || q === 'IRR') ? 0 : 2;
+      return '\u2066' + faNum(v, d) + '\u2069';
+    };
+    const pctTag = (v, cls) => (v === null ? '' : `<i class="${cls}">${window.NBXDisplay.percent(v, 1, true)}</i>`);
+    const noLevelWhy = lv.px === null ? faText('قیمت پایانی در اسکن نیست', 'no close price in scan')
+      : lv.dist === null ? faText('ATR در اسکن نیست', 'no ATR in scan')
+      : !lv.long ? faText('هدف فقط برای سیگنال خرید', 'targets only for a Long signal')
+      : !lv.rr ? faText('نردبان R:R از سرور خوانده نشد', 'R:R ladder not read from server') : '';
+    // Ladder: stop at the start, price, TP1, TP2 — positions proportional to
+    // the actual distances so a far TP2 *looks* far.
+    let ladder = '';
+    if (lv.stop !== null && lv.px !== null) {
+      const top = lv.tp2 !== null ? lv.tp2 : lv.px + lv.dist;
+      const span = top - lv.stop || 1;
+      const pos = (v) => clamp(((v - lv.stop) / span) * 100, 0, 100);
+      const pPx = pos(lv.px);
+      const pin = (v, label, rowCls) => {
+        if (v === null) return '';
+        const p = pos(v);
+        const edge = p < 8 ? ' edge-start' : p > 92 ? ' edge-end' : '';
+        return `<span class="pin" style="inset-inline-start:${p.toFixed(1)}%"></span><span class="tag ${rowCls}${edge}" style="inset-inline-start:${p.toFixed(1)}%">${label}</span>`;
+      };
+      const dirCss = document.documentElement.dir === 'rtl' ? '270deg' : '90deg';
+      ladder = `<div class="sig-ladder" aria-hidden="true">
+        <div class="bar" style="background:linear-gradient(${dirCss},#f87171 0 ${pPx.toFixed(1)}%,${lv.long ? '#34d399' : 'rgba(255,255,255,.14)'} ${pPx.toFixed(1)}%)"></div>
+        ${pin(lv.stop, faText('حد ضرر', 'stop'), 'dn')}${pin(lv.px, faText('قیمت', 'price'), 'up')}${pin(lv.tp1, faText('هدف ۱', 'T1'), 'dn')}${pin(lv.tp2, faText('هدف ۲', 'T2'), 'up')}
+      </div>`;
+    }
+    const compBar = (key, label, w) => {
+      const v = typeof comp[key] === 'number' && Number.isFinite(comp[key]) ? clamp(comp[key], 0, 100) : null;
+      return `<div class="sig-comp"><span class="text-zinc-400">${label} <span class="text-zinc-600 num">×${faNum(w, 2)}</span></span>
+        <div class="nbx-mini-hbar"><i style="width:${v === null ? 0 : v}%"></i></div><b class="num text-end">${v === null ? '—' : faNum(v, 0)}</b></div>`;
+    };
+    const diagChip = (label, v, d) => `<span class="chip">${label} <b class="num">${typeof v === 'number' && Number.isFinite(v) ? faNum(v, d) : '—'}</b></span>`;
+    const atrPct = s.risk && typeof s.risk.stopPct === 'number' && Number.isFinite(s.risk.stopPct) ? s.risk.stopPct / 2 : null;
+    return `
+      <div data-sig-sym="${esc(s.symbol)}" data-sig-idx="${i}" tabindex="0" role="button"
+           class="sig-row glass p-3.5 sm:p-4 cursor-pointer">
+        <div class="sig-head">
+          <div class="sig-id">
+            <div class="sig-rank num ${i < 3 ? 'text-emerald-300' : 'text-zinc-500'}">${faNum(i + 1)}</div>
+            <div class="min-w-0">
+              <div class="font-bold text-[13px] sm:text-sm truncate">${window.coinIcon(s.symbol)}${esc(symLabel)}</div>
+              <div class="flex items-center gap-1 mt-0.5">
+                <span class="chip ${dirCls}"${vetoTitle ? ` title="${vetoTitle}"` : ''}><span class="dot ${dotCls}"></span> ${esc(window.NBXDisplay.label(s.direction))}</span>
+                ${vetoTitle ? `<span class="chip text-[9px] text-amber-300 border-amber-300/30">${LANG === 'fa' ? 'وتو' : 'veto'}</span>` : ''}
+                <span class="chip ${s.regime === 'TREND' ? 'text-emerald-300' : 'text-zinc-500'}" title="${esc(faText('رژیم بازار از ADX', 'Market regime from ADX'))}">${esc(window.NBXDisplay.label(s.regime || ''))}</span>
+              </div>
+            </div>
+          </div>
+          <div class="sig-score" title="${esc(inFa('sg.score'))}">
+            <b class="num text-${col}-300">${composite === null ? '—' : faNum(composite, 0)}</b>
+            <div class="min-w-0">
+              <div class="text-[10px] text-zinc-500 leading-3">${esc(inFa('sg.score'))}</div>
+              <div class="nbx-mini-hbar mt-1"><i style="width:${composite === null ? 0 : clamp(composite, 0, 100)}%"></i></div>
+            </div>
+          </div>
+          <div class="sig-levels num">
+            <div class="sig-lv"><small>${faText('قیمت', 'Price')}</small><b>${price(lv.px)}</b></div>
+            <div class="sig-lv"><small>${faText('حد ضرر', 'Stop')}</small><b class="text-red-300">${bare(lv.stop)}${pctTag(lv.stopPct, 'text-red-300/80')}</b></div>
+            <div class="sig-lv" title="${esc(noLevelWhy)}"><small>${faText('هدف ۱', 'Target 1')}</small><b class="text-emerald-300">${bare(lv.tp1)}${pctTag(lv.tp1Pct, 'text-emerald-300/80')}</b></div>
+            <div class="sig-lv" title="${esc(noLevelWhy)}"><small>${faText('هدف ۲', 'Target 2')}</small><b class="text-emerald-300">${bare(lv.tp2)}${pctTag(lv.tp2Pct, 'text-emerald-300/80')}</b></div>
+          </div>
+          <div class="sig-tail">
+            ${ladder}
+            <div class="text-[9px] leading-4 ${fr.stale === true ? 'text-amber-300' : 'text-zinc-500'} ${ladder ? 'mt-0.5' : ''}" data-sig-fresh>${esc(fr.text)}${fr.stale === true ? ' · ' + faText('کهنه', 'stale') : ''}</div>
+          </div>
+        </div>
+        <div class="sig-foot">
+          <span class="sig-note">${lv.rr && lv.long
+            ? faText(`سطوح مدل: حد ضرر ۲×ATR، هدف‌ها ${faNum(lv.rr[0], 1)}R و ${faNum(lv.rr[lv.rr.length - 1], 1)}R — سفارش نیست.`, `Model levels: stop 2×ATR, targets ${lv.rr[0]}R and ${lv.rr[lv.rr.length - 1]}R — not an order.`)
+            : faText('حد ضرر مدل = ۲×ATR؛ سفارش نیست.', 'Model stop = 2×ATR; not an order.')}${noLevelWhy && !(lv.tp1 !== null) ? ' ' + esc(noLevelWhy) + '.' : ''}</span>
+          <span class="text-zinc-600 hidden sm:inline">${t('sg.expand')}</span>
+          <button type="button" class="sig-details-btn" data-sig-details aria-expanded="${open ? 'true' : 'false'}">${open ? faText('بستن جزئیات', 'Hide details') : faText('جزئیات', 'Details')}</button>
+        </div>
+        <div class="sig-evidence" data-sig-evidence${open ? '' : ' hidden'}>
+          <div>
+            <div class="text-[10px] font-bold text-zinc-300 mb-1.5">${faText('مؤلفه‌های امتیاز تکنیکال', 'Technical score components')} <span class="num text-zinc-500">${faNumber(s.score) ? faNum(s.score, 0) : "—"}/${faNum(100)}</span></div>
+            ${compBar('trend', window.NBXDisplay.label('trend'), 0.4)}
+            ${compBar('momentum', window.NBXDisplay.label('momentum'), 0.25)}
+            ${compBar('volume', faText('حجم', 'Volume'), 0.15)}
+            ${compBar('structure', faText('ساختار', 'Structure'), 0.2)}
+            <div class="sig-diag mt-2 text-[10px]">
+              ${diagChip('RSI', diag.rsi, 1)}${diagChip('ADX', diag.adx, 1)}${diagChip('ATR%', atrPct, 2)}${diagChip('%B', diag.pctB, 2)}
+            </div>
+            <div class="mt-2">
+              <div class="text-[9px] text-zinc-500 mb-0.5">${faText('منحنی قیمت کش‌شده (۶۰ کندل آخر، رنگ خنثی)', 'Cached price curve (last 60 candles, neutral colour)')}</div>
+              ${typeof spark === 'function' ? spark(false, s.symbol, { big: false, neutral: true, strictTF: true }) : ''}
+            </div>
+          </div>
+          <div class="flex flex-col gap-1.5 text-[10px]">
+            <div class="text-[10px] font-bold text-zinc-300">${faText('شواهد اجرا و منشأ داده', 'Execution evidence & data provenance')}</div>
+            <p data-signal-gate class="text-zinc-400 leading-5 m-0">${esc(gateText)}</p>
+            <div class="flex flex-wrap items-center gap-1.5">
+              <span class="chip" data-signal-fa="${faState}" title="${esc(s.composite_basis || '')}">${inFa('sg.faN')} <b class="num">${faNumber(s.fa_score) ? faNum(Math.round(s.fa_score)) : '—'}</b> · ${esc(signalFaLabel(faState))}</span>
+              <span class="chip" data-signal-liquidity title="${esc(faText('امتیاز نقدشوندگی از حجم معاملات ۲۴ساعته؛ عمق دفتر نیست', 'Liquidity score from 24h traded volume; not order-book depth'))}">${faText('نقدشوندگی', 'Liquidity')} <b class="num">${faNumber(s.liquidity_score) ? faNum(s.liquidity_score) : '—'}</b> <span class="text-zinc-500">(${inFa('sg.liq')})</span></span>
+              ${s.composite_basis && s.composite_basis !== 'ta+fa+liq'
+                ? `<span class="chip text-[9px] text-amber-300 border-amber-300/30" title="${esc(inFa('sg.basisTitle'))}">${inFa('sg.basisNoFa')}</span>` : ''}
+            </div>
+          </div>
+        </div>
+      </div>`;
+  }
+
   function renderSignalsLive() {
     const list = $('sigList');
     if (!list) return;
@@ -881,65 +1070,7 @@
     const hidden = Math.max(0, ranked.length - SIG_ROW_LIMIT);
     const shown = live.showAll ? ranked : ranked.slice(0, SIG_ROW_LIMIT);
     list.innerHTML = shown
-      .map((s, i) => {
-        const composite=faNumber(s.composite)?s.composite:null;
-        const col = composite===null?'zinc':composite >= 60 ? 'emerald' : composite >= 45 ? 'amber' : 'red';
-        const vetoes=Array.isArray(s.fa && s.fa.vetoes)?s.fa.vetoes.filter(v=>typeof v==='string').slice(0,32):[];
-        const comp = s.components || {};
-        const dir = s.direction === 'LONG' ? 'text-emerald-300' : s.direction === 'EXIT' ? 'text-red-300' : 'text-zinc-300';
-        const faState=signalFaState(s);
-        const gateText=signalGateRow(s.symbol);
-        const symLabel = LANG === 'fa' ? s.symbol.replace('IRT', '/تومان') : s.symbol;
-        return `
-      <div data-sig-sym="${esc(s.symbol)}" data-sig-idx="${i}" tabindex="0" role="button"
-           class="sig-row glass p-3.5 sm:p-4 flex flex-col md:flex-row md:items-center gap-3 sm:gap-4 cursor-pointer">
-        <div class="flex items-center gap-3 md:w-44 shrink-0">
-          <div class="w-8 h-8 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center font-extrabold text-sm num ${
-            i < 3 ? 'text-emerald-300' : 'text-zinc-500'
-          }">${faNum(i + 1)}</div>
-          <div class="min-w-0"><div class="font-bold text-[13px] sm:text-sm">${window.coinIcon(s.symbol)}${esc(symLabel)}</div>
-            <span class="chip ${dir}"${
-          s.direction_raw && s.direction_raw !== s.direction
-            ? ` title="${esc(LANG === 'fa'
-                ? `${s.direction_raw} بود؛ وتوی فاندامنتال (${vetoes.join('، ')}) سقف ${faNum(+s.veto_cap)} گذاشت`
-                : `was ${s.direction_raw}; a fundamental veto (${vetoes.join(', ')}) capped it at ${+s.veto_cap}`)}"`
-            : ''
-        }><span class="dot ${
-          s.direction === 'LONG' ? 'bg-emerald-400' : s.direction === 'EXIT' ? 'bg-red-400' : 'bg-zinc-400'
-        }"></span> ${esc(window.NBXDisplay.label(s.direction))}</span>${
-          s.direction_raw && s.direction_raw !== s.direction
-            ? `<span class="chip text-[9px] text-amber-300 border-amber-300/30 ms-1">${LANG === 'fa' ? 'وتو' : 'veto'}</span>`
-            : ''
-        }
-          </div>
-          <span class="text-[10px] text-zinc-500 ms-auto md:hidden">${esc(window.NBXDisplay.label(s.regime || ''))}</span>
-        </div>
-        <div class="flex-1 min-w-0">
-          <div class="flex items-center gap-2 sm:gap-3 mb-1.5">
-            <span class="text-[10px] text-zinc-500 hidden sm:block w-24">${inFa('sg.score')}</span>
-            <div class="nbx-mini-hbar flex-1"><i style="width:${composite===null?0:clamp(composite,0,100)}%"></i></div>
-            <span class="num font-extrabold text-${col}-300 w-8 text-start">${composite===null?'—':faNum(composite,0)}</span>
-            ${s.composite_basis && s.composite_basis !== 'ta+fa+liq'
-              ? `<span class="chip text-[9px] text-amber-300 border-amber-300/30" title="${esc(inFa('sg.basisTitle'))}">${inFa('sg.basisNoFa')}</span>`
-              : ''}
-          </div>
-          <p data-signal-gate class="text-[10px] text-zinc-400 leading-5">${esc(gateText)}</p>
-          <div class="flex flex-wrap items-center gap-1.5 text-[10px]">
-            <span class="chip">${LANG==='fa'?'تکنیکال':'TA'} <b class="num">${faNumber(s.score)?faNum(s.score,0):'—'}</b></span>
-            <span class="chip" data-signal-fa="${faState}" title="${esc(s.composite_basis || '')}">${inFa('sg.faN')} <b class="num">${faNumber(s.fa_score) ? faNum(Math.round(s.fa_score)) : '—'}</b> · ${esc(signalFaLabel(faState))}</span>
-            <span class="chip" data-signal-liquidity>${inFa('sg.liq')} <b class="num">${faNumber(s.liquidity_score)?faNum(s.liquidity_score):'—'}</b></span>
-            <span class="chip">${window.NBXDisplay.label('trend')} <b class="num">${faNum(+(comp.trend || 0))}</b></span>
-            <span class="chip">${window.NBXDisplay.label('momentum')} <b class="num">${faNum(+(comp.momentum || 0))}</b></span>
-            <span class="chip ${s.regime === 'TREND' ? 'text-emerald-300' : 'text-zinc-500'}">${esc(window.NBXDisplay.label(s.regime || ''))}</span>
-            ${s.risk && s.risk.stopPct ? `<span class="chip">${window.NBXDisplay.label('stop')} <b class="num">${window.NBXDisplay.percent(s.risk.stopPct, 2, false)}</b></span>` : ''}
-          </div>
-        </div>
-        <div class="w-full md:w-48 lg:w-60 xl:w-72 2xl:w-80 shrink-0">
-          ${typeof spark === 'function' ? spark(false, s.symbol, {big: true, neutral:true, strictTF:true}) : ''}
-          <div class="text-[9px] text-zinc-600 text-center mt-0.5">${t('sg.expand')}</div>
-        </div>
-      </div>`;
-      })
+      .map((s, i) => signalRowHtml(s, i))
       .join('')
       + (hidden
         ? `<button type="button" class="w-full glass p-2.5 text-[11px] font-bold text-zinc-300 hover:text-white"

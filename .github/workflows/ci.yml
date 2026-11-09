@@ -126,6 +126,8 @@ jobs:
         run: npm run test:price-alerts
       - name: signal detail expand and collapse
         run: npm run test:signal-detail
+      - name: signal explorer card (levels, freshness, details toggle)
+        run: npm run test:signal-card
       - name: approval queue updates and rejection reasons
         run: npm run test:queue
       - name: lockfile tarballs match their versions

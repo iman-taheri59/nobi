@@ -179,3 +179,80 @@
   #userChip { max-width: 100%; }
   #userName { min-width: 0; }
 }
+
+/* ---------- 2.5.2 — Signal explorer card (ADR-0055) ----------
+ * One row = one decision line: symbol · direction · score · regime · price ·
+ * stop · target 1 · target 2 · freshness. Technical evidence (gate, spread,
+ * depth, FA provenance, component bars, RSI/ADX/ATR) sits behind "Details".
+ * Desktop: a fixed-column grid so numbers line up like a table. Mobile: the
+ * identity line on top, then a 2×2 price ladder, then the level bar. */
+.sig-row { display: block; }
+.sig-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px 12px;
+  align-items: center;
+}
+.sig-id { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.sig-rank {
+  width: 26px; height: 26px; flex: none;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 8px; background: rgba(255,255,255,.05);
+  border: 1px solid rgba(255,255,255,.1); font-weight: 800; font-size: 12px;
+}
+.sig-score { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.sig-score b { font-size: 20px; line-height: 1; font-weight: 900; }
+.sig-score .nbx-mini-hbar { width: 64px; }
+.sig-levels { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; margin-top: 10px; grid-column: 1 / -1; }
+.sig-tail { min-width: 0; grid-column: 1 / -1; }
+.sig-lv { min-width: 0; display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.sig-lv small { font-size: 10px; color: #a1a1aa; line-height: 1.4; flex: none; }
+.sig-lv b { font-size: 12px; font-weight: 800; line-height: 1.5; min-width: 0; text-align: end; overflow-wrap: anywhere; }
+.sig-lv i { font-style: normal; font-size: 10px; margin-inline-start: 5px; font-weight: 600; white-space: nowrap; }
+.sig-ladder { position: relative; height: 32px; margin-top: 10px; overflow: hidden; }
+.sig-ladder .bar { position: absolute; inset-inline: 0; top: 14px; height: 4px; border-radius: 999px; }
+.sig-ladder .pin { position: absolute; top: 9px; width: 2px; height: 14px; transform: translateX(-50%); background: rgba(255,255,255,.6); }
+.sig-ladder .tag { position: absolute; transform: translateX(-50%); font-size: 9px; line-height: 1; color: #a1a1aa; white-space: nowrap; }
+.sig-ladder .tag.up { top: 0; }
+.sig-ladder .tag.dn { top: 23px; }
+.sig-ladder .tag.edge-start { transform: none; }
+.sig-ladder .tag.edge-end { transform: translateX(-100%); }
+[dir="rtl"] .sig-ladder .tag.edge-end { transform: translateX(100%); }
+[dir="rtl"] .sig-ladder .tag.edge-start { transform: none; }
+.sig-foot {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px;
+  margin-top: 8px; font-size: 10px; color: #a1a1aa;
+}
+.sig-foot .sig-details-btn {
+  margin-inline-start: auto; font-weight: 700; color: #d4d4d8;
+  border: 1px solid rgba(255,255,255,.14); border-radius: 8px; padding: 4px 10px;
+}
+.sig-foot .sig-details-btn:hover { color: #fff; border-color: rgba(255,255,255,.3); }
+.sig-evidence {
+  margin-top: 10px; padding-top: 10px; border-top: 1px dashed rgba(255,255,255,.1);
+  display: grid; grid-template-columns: minmax(0,1fr); gap: 10px;
+}
+.sig-evidence[hidden] { display: none; }
+.sig-comp { display: grid; grid-template-columns: 100px minmax(0,1fr) 30px; gap: 8px; align-items: center; font-size: 10px; }
+.sig-comp + .sig-comp { margin-top: 5px; }
+.sig-diag { display: flex; flex-wrap: wrap; gap: 6px; }
+.sig-note { font-size: 10px; line-height: 1.7; color: #a1a1aa; }
+/* Layout follows the card's own width (container query), not the viewport:
+ * with the sidebar open a 1024px screen gives the list ~700px. */
+.sig-row { container-type: inline-size; }
+@container (min-width: 560px) {
+  .sig-head { grid-template-columns: 168px 100px minmax(0, 1fr); gap: 10px 14px; }
+  .sig-levels { grid-template-columns: minmax(0, 1.5fr) repeat(3, minmax(0, 1fr)); gap: 4px 12px; margin-top: 4px; }
+  .sig-lv { display: block; }
+  .sig-lv small { display: block; }
+  .sig-lv b { display: block; text-align: start; }
+  .sig-lv i { display: block; margin: 0; }
+  .sig-tail { grid-column: 3; grid-row: 1; }
+  .sig-ladder { margin-top: 0; }
+  .sig-evidence { grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); }
+}
+@container (min-width: 960px) {
+  .sig-head { grid-template-columns: 200px 116px minmax(0, 1fr) 210px; gap: 12px 16px; }
+  .sig-levels { grid-column: auto; margin-top: 0; }
+  .sig-tail { grid-column: 4; }
+}

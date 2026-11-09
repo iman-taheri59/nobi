@@ -2,6 +2,10 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 2.5.2 (in progress)
+
+- **Signal explorer card redesign (ADR-0055):** the default row now follows a beginner's questions in order: symbol, direction, composite score, regime, **price, stop, target 1, target 2** (with distance %), and **freshness** (age of that symbol's last cached candle; scan age when no candle is cached), plus a "level ladder" that draws the real distances of stop and targets. Levels are *model* levels (stop = 2×ATR of the scan; targets = the R:R ladder the server publishes at `/api/risk/state` → `caps.rrLevels`) and the card says "not an order"; without the server ladder targets stay "—" instead of a private 1.5/2.5 copy; no targets for non-LONG rows. The engineering evidence — shadow-gate verdict with spread/depth, FA provenance, liquidity (the "turnover proxy" wording lives only here), four weighted TA component bars, RSI/ADX/ATR%/%B and the neutral cached price curve — moved behind a **"Details"** button (`aria-expanded`; open state survives repaints). Clicking the row itself still opens the candle chart. Layout follows the card's own width via container queries (mobile: stacked; ~560px: four-column level table; ~960px: one full line like the guide's old schematic). New jsdom test `scripts/test_signal_card.cjs` (CI and release): level maths, refused targets without ladder/ATR/LONG, freshness, Details toggle, scan rows never mutated. No change to scores, ordering, server or policy.
+
 ## 2.5.1
 
 _Tagged and deployed 8 November 2026 after a clean three-day soak (0 restarts, 0 real upstream errors, 842 scan cycles)._
