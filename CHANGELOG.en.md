@@ -4,7 +4,7 @@
 
 ## 2.5.3
 
-_Tagged 10 Nov 2026 (day 2 of the 2.5.2 soak); production via the "Deploy" Action with tag `v2.5.3`. **No change to trading logic, risk, shadow arms or the holdout** — dashboard (live refresh) and deploy/release tooling only, so soak days 1 and 2 count as one series._
+_Tagged and deployed 9 Nov 2026 17:50Z (end of day 1 of the 2.5.2 soak); production via the "Deploy" Action with tag `v2.5.3`. **No change to trading logic, risk, shadow arms or the holdout** — dashboard (live refresh) and deploy/release tooling only, so soak days 1 and 2 count as one series._
 
 - **Release guard, fixed after its first real run (10 Nov):** the tag push re-triggered `ci.yml`, and the guard looked at "the newest run on this commit", which was still running → the first `v2.5.3` tag was refused correctly but for the wrong reason. `ci.yml` no longer runs on tags and the guard counts "at least one successful run on this sha". The failure mode stayed safe: no Release was built.
 - **The other pages refresh with the scan too:** Performance, Signal intelligence, Orders, Risk audit and the Desk allocation were read only when their tab was opened (Performance only the first time). Every scan now re-reads the **visible** page once its copy is older than its window (Orders 30 s, audit 60 s, performance/intelligence/allocation 120 s). Never for a hidden tab or a hidden browser window, never while the user is typing in a field of that page, and on Signal intelligence never while a detail panel is open. Test: `npm run test:page-refresh` (20 checks).
