@@ -124,7 +124,7 @@ jobs:
       - name: State files
         continue-on-error: true
         run: |
-          ssh prod 'sudo -n -u nobi /usr/bin/ls -l --time-style=+%Y-%m-%dT%H:%M:%SZ /srv/nobi-data/ /srv/nobi-data/backups/ 2>&1 | grep -v "^total" | head -40; echo; sudo -n -u nobi /usr/bin/du -sh /srv/nobi-data 2>&1'
+          ssh prod 'sudo -n -u nobi /usr/bin/ls -l --time-style=+%Y-%m-%dT%H:%M:%SZ /srv/nobi-data/ /srv/nobi-data/backup/ 2>&1 | grep -v "^total" | head -40; echo; sudo -n -u nobi /usr/bin/du -sh /srv/nobi-data 2>&1'
 
       - name: Paper book
         continue-on-error: true

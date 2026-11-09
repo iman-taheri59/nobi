@@ -4,7 +4,7 @@
 # analysis scripts run as the service user (they open journal.db read-only and
 # never write paper_state.json). No restart, no update, no shell.
 deploy ALL=(root) NOPASSWD: /usr/bin/journalctl -u nobi *
-deploy ALL=(nobi) NOPASSWD: /usr/bin/ls -l --time-style=+%Y-%m-%dT%H\:%M\:%SZ /srv/nobi-data/ /srv/nobi-data/backups/
+deploy ALL=(nobi) NOPASSWD: /usr/bin/ls -l --time-style=+%Y-%m-%dT%H\:%M\:%SZ /srv/nobi-data/ /srv/nobi-data/backup/
 deploy ALL=(nobi) NOPASSWD: /usr/bin/du -sh /srv/nobi-data
 deploy ALL=(nobi) NOPASSWD: /opt/nobi/.venv/bin/python /opt/nobi/scripts/journal_diagnostic.py *
 deploy ALL=(nobi) NOPASSWD: /opt/nobi/.venv/bin/python /opt/nobi/scripts/paper_state_summary.py *
