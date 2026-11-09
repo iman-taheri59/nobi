@@ -3447,13 +3447,21 @@ async def fa(symbol: str):
     }
 
 
+#: 2.5.2 — how old the scan behind an approvable plan may be. The dashboard
+#: polls `/api/signals` every two minutes and that poll triggers the rescan, so a
+#: healthy page keeps this under ~150 s; five minutes means two missed polls.
+#: Never below `SIGNALS_TTL_S`, or every plan would be born stale.
+QUEUE_SCAN_MAX_AGE_S = max(float(SIGNALS_TTL_S), float(os.getenv("NBX_QUEUE_SCAN_MAX_AGE_S", "300")))
+
+
 def _queue_context(symbol: str, tf: str, side: str = "buy") -> dict:
     """Strict TF and scan provenance, never the chart cache or last-scanned TF."""
     if side != "buy" or EXEC_MODE.mode_for(symbol) != "semi":
         return {"ok": False, "blocked": True, "error": "queue-mode-or-side-changed"}
     snap = (_cached.get("signals_by_tf", {}).get(tf) or {}).get(symbol)
     bar = (_cached.get("signals_bars", {}).get(tf) or {}).get(symbol)
-    return queue_policy.describe(symbol, tf, snap, bar)
+    scanned_at = (_cached.get("signals_ts", {}) or {}).get(tf)
+    return queue_policy.describe(symbol, tf, snap, bar, scanned_at=scanned_at, max_scan_age=QUEUE_SCAN_MAX_AGE_S)
 
 
 def _queue_order_context(body: dict) -> dict:
@@ -3469,6 +3477,12 @@ def _queue_order_context(body: dict) -> dict:
         return current
     if proposal.get("signal_key") != current["signal_key"]:
         return {"ok": False, "error": "queue-signal-changed"}
+    if current.get("stale"):
+        # The preview still shows this plan (with its age) so the operator sees
+        # why the button is locked; placing on it is refused here and again by
+        # the guard just before the fill.
+        return {"ok": False, "blocked": True, "error": "queue-signal-stale",
+                "scan_age_s": current.get("scan_age_s"), "max_scan_age_s": current.get("max_scan_age_s")}
     # An explicit limit price could turn an old preview into a fabricated fill.
     if body.get("price") is not None or body.get("qty"):
         return {"ok": False, "error": "queue-quote-sizing-required"}

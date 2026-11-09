@@ -67,6 +67,8 @@ def wired(tmp_path, monkeypatch):
     monkeypatch.setitem(main._cached, "signals", {"BTCUSDT": {**SIGNAL, "lastClose": 999}})
     monkeypatch.setitem(main._cached, "signals_by_tf", {"15m": {"BTCUSDT": copy.deepcopy(SIGNAL)}})
     monkeypatch.setitem(main._cached, "signals_bars", {"15m": {"BTCUSDT": BAR}})
+    # 2.5.2 — the queue also checks how old the *scan* is; a real scan stamps it.
+    monkeypatch.setitem(main._cached, "signals_ts", {"15m": BAR + 950})
     monkeypatch.setattr(paper_trading, "STATE_FILE", tmp_path / "paper.json")
     monkeypatch.setattr(paper_trading, "hot_mid_hook", None)
     monkeypatch.setattr(paper_trading, "market_closed_hook", None)
@@ -313,3 +315,58 @@ def test_queue_cannot_fall_back_to_unapproved_default_targets(wired, field, miss
     result = TestClient(main.app).post("/api/paper/order", json=body).json()
     assert not result["ok"] and result["error"] == "queue-plan-levels-required"
     assert not broker.positions and not broker.orders and broker.cash == 100000
+
+
+# ---- 2.5.2: a plan whose scan is too old is shown with its age but not placeable
+
+
+def test_queue_plan_reports_scan_age_and_fresh_plan_is_not_stale(wired):
+    data = TestClient(main.app).get("/api/risk/plan?symbol=BTCUSDT&tf=15m&approval=true").json()
+    ctx = data["approval"]
+    assert ctx["stale"] is False and ctx["stale_reason"] is None
+    assert ctx["scan_age_s"] == 50.0 and ctx["scanned_at"] == BAR + 950
+    assert ctx["max_scan_age_s"] == main.QUEUE_SCAN_MAX_AGE_S >= main.SIGNALS_TTL_S
+
+
+def test_stale_scan_plan_is_previewed_with_age_but_refused_at_placement(wired, monkeypatch):
+    now, _, broker = wired
+    now[0] = BAR + 950 + main.QUEUE_SCAN_MAX_AGE_S + 1          # still inside the candle window
+    assert now[0] < BAR + 1800
+    data = TestClient(main.app).get("/api/risk/plan?symbol=BTCUSDT&tf=15m&approval=true").json()
+    assert data.get("ok") is not False and "size_quote" in data, "the preview is still shown, with its age"
+    ctx = data["approval"]
+    assert ctx["stale"] is True and ctx["stale_reason"] == "scan-too-old"
+    assert ctx["scan_age_s"] == pytest.approx(main.QUEUE_SCAN_MAX_AGE_S + 1, abs=0.2)
+    body = payload()
+    out = TestClient(main.app).post("/api/paper/order", json=body).json()
+    assert out["error"] == "queue-signal-stale" and out["blocked"] is True
+    assert out["scan_age_s"] == ctx["scan_age_s"]
+    assert not broker.positions, "nothing was placed"
+    # A fresh scan of the same candle (same signal_key) unlocks it.
+    monkeypatch.setitem(main._cached, "signals_ts", {"15m": now[0] - 10})
+    assert main._queue_context("BTCUSDT", "15m")["stale"] is False
+    assert main._queue_order_context(body)["ok"] is True
+
+
+def test_missing_scan_clock_fails_closed(wired, monkeypatch):
+    monkeypatch.setitem(main._cached, "signals_ts", {})
+    ctx = main._queue_context("BTCUSDT", "15m")
+    assert ctx["ok"] is True and ctx["stale"] is True and ctx["stale_reason"] == "scan-clock-unavailable"
+    assert ctx["scan_age_s"] is None
+    assert main._queue_order_context(payload())["error"] == "queue-signal-stale"
+
+
+def test_scan_going_stale_during_book_fetch_is_refused_by_the_guard(wired, monkeypatch):
+    now, feed, broker = wired
+    body = payload()
+
+    class LateFeed:
+        async def get_orderbook(self, symbol):
+            # The scan clock does not move; the wall clock does, past the budget.
+            now[0] = BAR + 950 + main.QUEUE_SCAN_MAX_AGE_S + 1
+            return await feed.get_orderbook(symbol)
+
+    broker.client = LateFeed()
+    out = TestClient(main.app).post("/api/paper/order", json=body).json()
+    assert out.get("error") == "queue-signal-stale" or "queue-signal-stale" in str(out)
+    assert not broker.positions

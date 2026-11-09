@@ -30,8 +30,34 @@ def closed_rows(rows: list[dict], tf: str, *, now: float | None = None) -> list[
     return sorted(out, key=lambda row: float(row["t"]))
 
 
+def scan_provenance(scanned_at: Any, max_scan_age: float | None, *, now: float) -> dict:
+    """How old the scan behind a queue plan is, and whether that is too old.
+
+    2.5.2 — the candle window (`expires_at`) says the *source bar* is still the
+    latest closed one; it says nothing about whether anybody has re-scored it
+    since. When the dashboard stops polling (hidden tab, lost network) the scan
+    stops too, and a 15m plan could sit approvable for up to thirty minutes on
+    a score nobody refreshed. The automatic path already refuses that
+    (`_auto_signal_refusal`); the human path showed it as fresh.
+
+    Missing/invalid provenance is stale (fail closed), not "unknown but fine".
+    """
+    try:
+        at = float(scanned_at)
+    except (TypeError, ValueError, OverflowError):
+        at = float("nan")
+    if not math.isfinite(at) or at <= 0 or at > now + 5:
+        return {"scanned_at": None, "scan_age_s": None, "max_scan_age_s": max_scan_age, "stale": True,
+                "stale_reason": "scan-clock-unavailable"}
+    age = max(0.0, now - at)
+    stale = max_scan_age is not None and age > max_scan_age
+    return {"scanned_at": at, "scan_age_s": round(age, 1), "max_scan_age_s": max_scan_age, "stale": stale,
+            "stale_reason": "scan-too-old" if stale else None}
+
+
 def describe(
-    symbol: str, tf: str, signal: dict | None, bar: Any, *, now: float | None = None
+    symbol: str, tf: str, signal: dict | None, bar: Any, *, now: float | None = None,
+    scanned_at: Any = None, max_scan_age: float | None = None,
 ) -> dict:
     stamp = time.time() if now is None else now
     step = TF_SECONDS.get(tf)
@@ -90,6 +116,7 @@ def describe(
         "server_now": stamp,
         "signal_key": digest,
         "score": signal.get("composite"),
+        **scan_provenance(scanned_at, max_scan_age, now=stamp),
     }
 
 
