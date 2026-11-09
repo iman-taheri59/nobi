@@ -45,5 +45,5 @@
     "jsdom": "^30.1.3",
     "tailwindcss": "^4.3.3"
   },
-  "version": "2.5.3"
+  "version": "2.5.4"
 }
