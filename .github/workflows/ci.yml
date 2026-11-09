@@ -13,8 +13,8 @@
 name: ci
 
 on:
-  push:
-    branches: [main]
+  push:            # every branch: the ruleset on main needs check runs on the PR head,
+                   # and the pull_request event did not fire for PAT-opened PRs (9 Nov)
   pull_request:
   workflow_dispatch:
 
