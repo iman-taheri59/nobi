@@ -99,11 +99,12 @@ jobs:
           # Read-only: the script opens the journal with sqlite in read mode and
           # only reads paper_state.json. Try the service user first (stderr kept,
           # so a script error is not mistaken for a permission problem).
-          ssh prod "cd /opt/nobi && R='.venv/bin/python scripts/journal_diagnostic.py /srv/nobi-data/journal.db --since $SINCE --paper /srv/nobi-data/paper_state.json';
-                    if sudo -n -u nobi true 2>/dev/null; then sudo -n -u nobi bash -c \"\$R\" 2>&1;
-                    elif sudo -n true 2>/dev/null; then sudo -n bash -c \"\$R\" 2>&1;
-                    elif [ -r /srv/nobi-data/journal.db ]; then bash -c \"\$R\" 2>&1;
-                    else echo 'journal.db not readable by the deploy user and sudo -n is not available'; ls -l /srv/nobi-data/journal.db /srv/nobi-data/paper_state.json; id; sudo -n -l 2>&1 | tail -5; fi" \
+          # Invoked as an explicit path (no bash -c wrapper) so it matches a narrow
+          # sudoers rule: deploy ALL=(nobi) NOPASSWD: /opt/nobi/.venv/bin/python /opt/nobi/scripts/journal_diagnostic.py *
+          ssh prod "PY=/opt/nobi/.venv/bin/python; S=/opt/nobi/scripts/journal_diagnostic.py; DB=/srv/nobi-data/journal.db; PS=/srv/nobi-data/paper_state.json;
+                    if sudo -n -u nobi \$PY \$S \$DB --since $SINCE --paper \$PS 2>&1; then :;
+                    elif [ -r \$DB ]; then \$PY \$S \$DB --since $SINCE --paper \$PS 2>&1;
+                    else echo 'journal.db not readable by deploy and sudo -u nobi refused:'; ls -l \$DB \$PS; id; sudo -n -l 2>&1 | tail -5; fi" \
             | tee diagnostic.txt
 
       - name: Upload report
