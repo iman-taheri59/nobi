@@ -3,7 +3,7 @@
 [فارسی](../fa/ADR-0054-کهنگی-پلن-در-صف-و-بازوی-نه-تعقیب.md) · **English**
 
 **Status:** accepted — code on `main` for 2.5.2; the lock applies only to the human queue path, the arm is record-only
-**Date:** 2026-11-10
+**Date:** 2026-11-09
 **Related:** ADR-0022 (shadow gate), ADR-0052 (fees in R, frozen holdout), ADR-0055 (signal card), chase-the-pump backfill `fda10bf` (`scripts/pump_chase_backfill.py`), checklist `docs/releases/2.5.2-checklist.md` items 6 and 8
 
 ## Context

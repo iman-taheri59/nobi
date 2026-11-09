@@ -1,0 +1,110 @@
+name: Status
+
+# Read-only report from the production box, on demand. Nothing here writes,
+# restarts, or needs the update script: health, unit state, the last log lines,
+# and (optionally) the daily journal diagnostic as an artifact. Uses the same
+# `production` environment as Deploy, so the same approval gate applies — no
+# workflow reaches the server without a human pressing the button.
+on:
+  workflow_dispatch:
+    inputs:
+      log_lines:
+        description: "journalctl lines to show"
+        default: "80"
+      diagnostic:
+        description: "Also run scripts/journal_diagnostic.py (last 24h, with paper rejects + stop slip) and upload it"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-production   # never overlap with a deploy on the same box
+  cancel-in-progress: false
+
+jobs:
+  status:
+    name: Production status
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    steps:
+      - name: SSH setup
+        env:
+          KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KH: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          test -n "$KEY" || { echo "::error::DEPLOY_SSH_KEY is empty"; exit 1; }
+          test -n "$KH"  || { echo "::error::DEPLOY_KNOWN_HOSTS is empty"; exit 1; }
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$KH"  > ~/.ssh/known_hosts  && chmod 644 ~/.ssh/known_hosts
+          printf 'Host prod\n  HostName %s\n  User deploy\n  IdentityFile ~/.ssh/id_ed25519\n  IdentitiesOnly yes\n  StrictHostKeyChecking yes\n  ConnectTimeout 15\n' "${{ secrets.DEPLOY_HOST }}" > ~/.ssh/config
+
+      - name: Version and unit
+        run: |
+          ssh prod 'hostname; echo "VERSION  $(cat /opt/nobi/VERSION)"; echo "commit   $(git -C /opt/nobi rev-parse --short HEAD) $(git -C /opt/nobi describe --tags --always 2>/dev/null)";
+                    systemctl show nobi -p ActiveState -p SubState -p ActiveEnterTimestamp -p NRestarts -p MainPID;
+                    uptime; df -h /srv/nobi-data | tail -1'
+
+      - name: /api/health (summary)
+        run: |
+          ssh prod 'curl -fsS --max-time 10 http://127.0.0.1:8000/api/health' > health.json
+          python3 - <<'PY'
+          import json
+          h = json.load(open("health.json"))
+          def g(*ks, d=None):
+              cur = h
+              for k in ks:
+                  if not isinstance(cur, dict): return d
+                  cur = cur.get(k)
+              return d if cur is None else cur
+          import time
+          sl = h.get("scan_loop") or {}
+          age = (time.time() - sl["last_completed_at"]) if sl.get("last_completed_at") else None
+          rows = [
+              ("version", h.get("version")), ("build", h.get("build")), ("ok", h.get("ok")),
+              ("upstream.ok", g("upstream", "ok")), ("upstream.checked_at", g("upstream", "checked_at")),
+              ("stats.ok / fail / total", f'{g("stats","ok")} / {g("stats","fail")} / {g("stats","total")}'),
+              ("stats.success_rate", g("stats", "success_rate")),
+              ("scan_loop.last_ok", sl.get("last_ok")), ("scan_loop.runs", sl.get("runs")),
+              ("scan_loop.last_scored", sl.get("last_scored")),
+              ("scan_loop.last_completed (s ago)", None if age is None else round(age)),
+              ("scan_loop.error", sl.get("error")),
+              ("market_regime.state", g("market_regime", "state")),
+              ("mode", h.get("mode")),
+          ]
+          w = max(len(k) for k, _ in rows)
+          for k, v in rows:
+              print(f"  {k:<{w}}  {v}")
+          bad = [k for k, v in rows if k in ("ok", "upstream.ok", "scan_loop.last_ok") and v is False]
+          if bad:
+              print(f"::warning::health reports {', '.join(bad)} = false")
+          PY
+
+      - name: /api/health (full)
+        run: python3 -m json.tool health.json
+
+      - name: Last log lines
+        run: |
+          ssh prod "journalctl -u nobi -n ${{ inputs.log_lines }} --no-pager -o short-iso 2>/dev/null || sudo -n journalctl -u nobi -n ${{ inputs.log_lines }} --no-pager -o short-iso 2>/dev/null || echo 'journalctl not readable by the deploy user'"
+
+      - name: Daily diagnostic
+        if: ${{ inputs.diagnostic }}
+        run: |
+          SINCE="$(date -u -d '24 hours ago' +%Y-%m-%dT%H:%M:%SZ)"
+          ssh prod "cd /opt/nobi && R='.venv/bin/python scripts/journal_diagnostic.py /srv/nobi-data/journal.db --since $SINCE --paper /srv/nobi-data/paper_state.json';
+                    if [ -r /srv/nobi-data/journal.db ]; then \$R; else sudo -n -u nobi bash -c \"\$R\" 2>/dev/null || echo 'journal.db not readable by the deploy user (and no sudo -u nobi)'; fi" \
+            | tee diagnostic.txt
+
+      - name: Upload report
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-status-${{ github.run_id }}
+          path: |
+            health.json
+            diagnostic.txt
+          if-no-files-found: ignore
+          retention-days: 14
