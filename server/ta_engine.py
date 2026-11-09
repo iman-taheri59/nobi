@@ -192,6 +192,7 @@ def ta_score(
     score = round(float(max(0, min(100, score))), 1)
     direction = direction_for(score, long_min, neutral_min)
     atr_val = float(atr_i.iat[i])
+    run4h_pct, run4h_atr = run_up(df, 4 * 3600, atr_val)
     out = {
         "score": score,
         "direction": direction,
@@ -203,10 +204,47 @@ def ta_score(
             "adx": round(float(adx.iat[i]), 1) if not np.isnan(adx.iat[i]) else None,
             "pctB": round(float(pb), 3) if not np.isnan(pb) else None,
             "hist": round(float(hist.iat[i]), 5),
+            # 2.5.2 (item 8) — how far price ran over the previous 4 h, in % and
+            # in ATRs. The pump-chase backfill measured this after the fact from
+            # the journal's own price series; recording it at issue lets the
+            # E_nochase arm judge the same bar the live verdict judged.
+            "run4h_pct": run4h_pct,
+            "run4h_atr": run4h_atr,
         },
         "lastClose": float(close.iat[i]),
     }
     return out
+
+
+def run_up(df: pd.DataFrame, seconds: int, atr_val: float) -> tuple[float | None, float | None]:
+    """(pct, in ATRs) change from the close `seconds` before the last bar's open.
+
+    Uses the bar time stamps, not a bar count, so it is right on every
+    timeframe. The reference bar is the latest one whose open is at or before
+    `t_last - seconds`; with no such bar (short history) both are None. ATR
+    zero/NaN gives a % figure but no ATR figure — never a division by zero.
+    """
+    if "t" not in df.columns or len(df) < 2:
+        return None, None
+    try:
+        t = df["t"]
+        if pd.api.types.is_datetime64_any_dtype(t):
+            # unit-safe (pandas may store [ns] or [us]): go through POSIX seconds
+            ts = (pd.DatetimeIndex(t).tz_convert("UTC") - pd.Timestamp(0, tz="UTC")).total_seconds().to_numpy()
+        else:
+            ts = t.astype(float).to_numpy()
+    except (TypeError, ValueError, AttributeError):
+        return None, None
+    target = ts[-1] - seconds
+    idx = np.searchsorted(ts, target, side="right") - 1
+    if idx < 0:
+        return None, None
+    then, now = float(df["c"].iat[int(idx)]), float(df["c"].iat[-1])
+    if not (np.isfinite(then) and then > 0 and np.isfinite(now)):
+        return None, None
+    pct = round((now / then - 1) * 100, 3)
+    in_atr = round((now - then) / atr_val, 3) if np.isfinite(atr_val) and atr_val > 0 else None
+    return pct, in_atr
 
 
 

@@ -20,7 +20,7 @@ def test_arms_are_declared_and_read_only():
     before = dict(s)
     arms = shadow_arms.score(s, "neutral")
     assert s == before
-    assert set(arms) == {"B_fa_liq", "C_gate", "D_comp"}
+    assert set(arms) == {"B_fa_liq", "C_gate", "D_comp", "E_nochase"}
     # FA/liq heavy arm promotes what the live TA-led verdict did not
     assert arms["B_fa_liq"]["composite"] == pytest.approx(78.0)
     assert arms["B_fa_liq"]["direction"] == "LONG"
@@ -99,3 +99,60 @@ def test_shadow_outcomes_cover_shadow_only_longs_and_alt_k(tmp_path, monkeypatch
     n_before = conn.execute("SELECT COUNT(*) FROM signal_shadow_outcomes").fetchone()[0]
     assert sum(journal.resolve_symbol(conn, s, "15m", df) for s in ("AAAUSDT", "BBBUSDT")) == 0
     assert conn.execute("SELECT COUNT(*) FROM signal_shadow_outcomes").fetchone()[0] == n_before
+
+
+# ---- 2.5.2 item 8: E_nochase --------------------------------------------------
+
+
+def _long(diag):
+    return {**snap(80, 60, 60, direction="LONG"), "composite": 75.0, "diagnostics": diag}
+
+
+@pytest.mark.parametrize("diag,expect,chase", [
+    ({"run4h_atr": 2.0, "pctB": 0.5}, "NEUTRAL", True),     # run-up at the 2×ATR edge refuses
+    ({"run4h_atr": 1.99, "pctB": 0.99}, "LONG", False),      # just under both: live LONG stands
+    ({"run4h_atr": 0.3, "pctB": 1.0}, "NEUTRAL", True),      # %B at the band refuses
+    ({"run4h_atr": -1.5, "pctB": 0.2}, "LONG", False),       # a fall is not a chase
+    ({"run4h_atr": None, "pctB": 1.2}, "NEUTRAL", True),     # one input missing, the other decides
+    ({"pctB": 0.4}, "LONG", False),                          # run-up unknown, %B fine
+    ({}, "LONG", None),                                      # no inputs: equals the live row, says so
+])
+def test_e_nochase_refuses_chased_longs_only(diag, expect, chase):
+    arms = shadow_arms.score(_long(diag), "neutral")
+    e = arms["E_nochase"]
+    assert e["direction"] == expect and e["chase"] is chase
+    assert e["composite"] == 75.0, "the arm never rescored; it only refused"
+    assert e["run4h_atr"] == diag.get("run4h_atr") and e["pctB"] == diag.get("pctB")
+
+
+def test_e_nochase_never_promotes_and_leaves_other_arms_alone():
+    s = {**snap(50, 90, 90, direction="NEUTRAL"), "diagnostics": {"run4h_atr": 0.0, "pctB": 0.1}}
+    arms = shadow_arms.score(s, "neutral")
+    assert arms["E_nochase"]["direction"] == "NEUTRAL" and arms["E_nochase"]["chase"] is False
+    assert arms["B_fa_liq"]["direction"] == "LONG"  # unchanged from the earlier test
+    ex = {**snap(80, 60, 60, direction="EXIT"), "diagnostics": {"run4h_atr": 5.0, "pctB": 1.5}}
+    assert shadow_arms.score(ex, "neutral")["E_nochase"]["direction"] == "EXIT"
+    assert shadow_arms.config()["version"] == 2 and "E_nochase" in shadow_arms.config()["arms"]
+
+
+def test_run_up_is_measured_by_time_not_bar_count():
+    import numpy as np
+    import pandas as pd
+    import ta_engine
+    t0 = 1_793_000_000
+    # 15m bars: 20 bars, price +3 over the last 16 bars (4 h), ATR 1.5
+    rows = [{"t": t0 + i * 900, "o": 100, "h": 101, "l": 99, "c": 100 + (max(0, i - 3)) * (3 / 16), "v": 1} for i in range(20)]
+    df = ta_engine.candles_to_df(rows)
+    pct, in_atr = ta_engine.run_up(df, 4 * 3600, 1.5)
+    assert in_atr == pytest.approx(2.0, abs=0.01) and pct == pytest.approx(3.0, abs=0.01)
+    # 1h bars: the same clock span is 4 bars back
+    rows_h = [{"t": t0 + i * 3600, "o": 1, "h": 1, "l": 1, "c": 10 + i, "v": 1} for i in range(10)]
+    pct_h, atr_h = ta_engine.run_up(ta_engine.candles_to_df(rows_h), 4 * 3600, 2.0)
+    assert atr_h == pytest.approx(2.0) and pct_h == pytest.approx(4 / 15 * 100, abs=0.01)
+    # too short a history, or a zero ATR, never invents a number
+    assert ta_engine.run_up(ta_engine.candles_to_df(rows_h[:3]), 4 * 3600, 2.0) == (None, None)
+    assert ta_engine.run_up(df, 4 * 3600, 0.0)[1] is None
+    # ta_score carries both in diagnostics
+    big = [{"t": t0 + i * 900, "o": 100, "h": 101, "l": 99, "c": 100 + i * 0.01, "v": 1} for i in range(80)]
+    d = ta_engine.ta_score(ta_engine.candles_to_df(big))["diagnostics"]
+    assert "run4h_pct" in d and "run4h_atr" in d and d["run4h_pct"] == pytest.approx(0.16 / (100 + 0.63) * 100, abs=0.01)

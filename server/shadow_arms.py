@@ -18,6 +18,11 @@ is part of the engine config hash and cannot drift between restarts:
 * ``C_gate`` — the live verdict with the ADR-0050 regime gate enforced.
 * ``D_comp`` — the live weights but LONG decided by the composite, not by the
   TA score alone (isolates the threshold rule from the weights).
+* ``E_nochase`` (2.5.2) — the live verdict, but a LONG is refused when the
+  bar is a chase: price ran ``≥ 2×ATR`` over the previous 4 h or Bollinger
+  ``%B ≥ 1.0`` at issue. The 2026-11-08 pump-chase backfill found those
+  LONGs carried the negative 1h/4h tail; this arm records the same rule
+  live so it can be judged on bars it never saw.
 
 A severe FA veto overrides every arm, as it does the live row.
 """
@@ -34,8 +39,27 @@ ARMS: dict[str, dict[str, Any]] = {
     "B_fa_liq": {"weights": (0.30, 0.40, 0.30), "rule": "composite"},
     "C_gate": {"weights": None, "rule": "live+regime"},
     "D_comp": {"weights": (0.55, 0.25, 0.20), "rule": "composite"},
+    "E_nochase": {"weights": None, "rule": "live+nochase"},
 }
-VERSION = 1
+VERSION = 2
+
+#: Chase thresholds, fixed here for the same reason the arm set is.
+CHASE_RUN4H_ATR = 2.0
+CHASE_PCTB = 1.0
+
+
+def chase(snap: dict[str, Any]) -> tuple[bool | None, dict[str, Any]]:
+    """Is this bar a chase? ``(verdict, inputs)``; ``None`` when neither input exists."""
+    diag = snap.get("diagnostics") or {}
+    run = diag.get("run4h_atr")
+    pb = diag.get("pctB")
+    run_f = float(run) if isinstance(run, (int, float)) else None
+    pb_f = float(pb) if isinstance(pb, (int, float)) else None
+    inputs = {"run4h_atr": run_f, "pctB": pb_f}
+    if run_f is None and pb_f is None:
+        return None, inputs
+    hit = (run_f is not None and run_f >= CHASE_RUN4H_ATR) or (pb_f is not None and pb_f >= CHASE_PCTB)
+    return hit, inputs
 
 
 def enabled() -> bool:
@@ -68,6 +92,17 @@ def score(snap: dict[str, Any], regime_state: str | None) -> dict[str, Any]:
     severe = bool(snap.get("veto_severe"))
     out: dict[str, Any] = {}
     for name, spec in ARMS.items():
+        if spec["rule"] == "live+nochase":
+            is_chase, inputs = chase(snap)
+            # Unknown inputs cannot refuse: the arm then equals the live row and
+            # says so (`chase: None`), instead of inventing a cautious verdict.
+            out[name] = {
+                "composite": snap.get("composite"),
+                "direction": "NEUTRAL" if (live_dir == "LONG" and is_chase) else live_dir,
+                "chase": is_chase,
+                **inputs,
+            }
+            continue
         if spec["rule"] == "live+regime":
             blocked = live_dir == "LONG" and regime_state == "risk-off"
             out[name] = {

@@ -97,6 +97,69 @@ def reject_counts(orders: list[dict], *, since: float | None = None) -> dict:
             "by_reason_source": {k: order(v) for k, v in by_rs.items()}, "by_day": dict(sorted(by_day.items()))}
 
 
+def stop_slip_stats(orders: list[dict], *, since: float | None = None) -> dict:
+    """Stop slippage from paper `close`/`partial` events with a stop reason.
+
+    Reads `stop_slip_pct` / `stop_slip_r` written by the broker since 2.5.2;
+    older close events (no field) are counted in `legacy` and skipped.
+    """
+    pct: list[float] = []
+    rr: list[float] = []
+    legacy = 0
+    by_reason: dict[str, list[float]] = {}
+    for ev in orders:
+        if not isinstance(ev, dict) or ev.get("kind") not in ("close", "partial"):
+            continue
+        extra = ev.get("extra") if isinstance(ev.get("extra"), dict) else {}
+        if extra.get("reason") not in ("sl-hit", "trail"):
+            continue
+        try:
+            ts = float(ev.get("ts"))
+        except (TypeError, ValueError):
+            continue
+        if since is not None and ts < since:
+            continue
+        p = extra.get("stop_slip_pct")
+        if not isinstance(p, (int, float)):
+            legacy += 1
+            continue
+        pct.append(float(p))
+        by_reason.setdefault(str(extra.get("reason")), []).append(float(p))
+        r = extra.get("stop_slip_r")
+        if isinstance(r, (int, float)):
+            rr.append(float(r))
+
+    def q(v: list[float], f: float) -> float | None:
+        if not v:
+            return None
+        v = sorted(v)
+        k = min(len(v) - 1, max(0, int(round(f * (len(v) - 1)))))
+        return v[k]
+
+    return {"n": len(pct), "legacy": legacy,
+            "pct": {"mean": st.mean(pct) if pct else None, "median": q(pct, 0.5), "p90": q(pct, 0.9),
+                    "worse_share": (sum(1 for x in pct if x > 0) / len(pct)) if pct else None},
+            "r": {"mean": st.mean(rr) if rr else None, "median": q(rr, 0.5), "p90": q(rr, 0.9)},
+            "by_reason": {k: {"n": len(v), "mean": st.mean(v)} for k, v in by_reason.items()}}
+
+
+def print_stop_slip(orders: list[dict], since: int | None) -> None:
+    c = stop_slip_stats(orders, since=since)
+    print(f"\n7) stop slippage (item 9): exit fill vs model stop on sl-hit/trail closes — n={c['n']}"
+          + (f", {c['legacy']} older close(s) without the field skipped" if c["legacy"] else ""))
+    if not c["n"]:
+        print("  none")
+        return
+    p, r = c["pct"], c["r"]
+    f = lambda x, d=3: "—" if x is None else f"{x:+.{d}f}"
+    print(f"  in % of stop:  mean {f(p['mean'])}  median {f(p['median'])}  p90 {f(p['p90'])}  "
+          f"worse-than-stop share {100 * p['worse_share']:.0f}%")
+    print(f"  in R (entry→stop): mean {f(r['mean'])}  median {f(r['median'])}  p90 {f(r['p90'])}")
+    for k, v in c["by_reason"].items():
+        print(f"  {k:8s} n={v['n']:3d}  mean {v['mean']:+.3f}%")
+    print("  read: positive = filled past the stop (a 1 R plan lost 1+slip R); add mean R to every stop-rate × 1 R in sections 3/5 to see the realised cost.")
+
+
 def print_paper_rejects(path: str, since: int | None) -> None:
     import json as _pj
     try:
@@ -127,6 +190,7 @@ def print_paper_rejects(path: str, since: int | None) -> None:
           f"queue clock / stale scan / moved price)")
     print("  by day: " + ", ".join(f"{d} {n}" for d, n in c["by_day"].items()))
     print("  read: '?' source = events written before 2.5.2; counts are from the state file's rolling window, not a ledger.")
+    print_stop_slip(orders, since)
 
 
 def main() -> int:

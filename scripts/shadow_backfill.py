@@ -97,6 +97,9 @@ def load(db: Path, tf: str, since: int = 0, until: int | None = None) -> list[di
             "score": r["ta_score"], "fa_score": r["fa_score"], "liquidity_score": r["liquidity_score"],
             "composite": r["composite"], "entry": float(r["entry"]), "stop": r["stop"], "atr": r["atr"],
             "veto_severe": feat.get("veto_severe"), "cycle": r["scan_cycle_id"],
+            # 2.5.2 (item 8): what E_nochase reads. Rows written before 2.5.2 have
+            # pctB but no run4h_atr; the arm then judges on %B alone.
+            "diagnostics": {k: (feat.get("diagnostics") or {}).get(k) for k in ("pctB", "run4h_atr")},
             "contract": r["price_contract"] or "legacy",
         })
     outcomes = {}
@@ -158,7 +161,7 @@ def membership_groups(rows: list[dict]) -> dict[str, str]:
 def arm_directions(r: dict) -> dict[str, tuple[str, float | None]]:
     scored = shadow_arms.score(r, None)
     out = {"live": (r["direction"], r["composite"])}
-    for arm in ("B_fa_liq", "D_comp"):
+    for arm in ("B_fa_liq", "D_comp", "E_nochase"):
         out[arm] = (scored[arm]["direction"], scored[arm]["composite"])
     out["TA_only"] = ("LONG" if (r["score"] or 0) >= shadow_arms.LONG_MIN and not r["veto_severe"] else "NEUTRAL", r["score"])
     # Baselines: every row (the universe itself) and the live EXIT rows. An arm
@@ -174,7 +177,7 @@ def mean(v: list[float]) -> float:
 
 def evaluate(rows: list[dict]) -> dict:
     groups = membership_groups(rows)
-    arms = ("live", "D_comp", "B_fa_liq", "TA_only", "ALL_rows", "live_EXIT")
+    arms = ("live", "E_nochase", "D_comp", "B_fa_liq", "TA_only", "ALL_rows", "live_EXIT")
     def _fresh() -> dict[str, Any]:
         return {"long": 0, "fwd": {h: [] for h in HORIZONS}, "ic_x": {h: [] for h in HORIZONS},
                 "ic_y": {h: [] for h in HORIZONS}, "by_group": defaultdict(lambda: {h: [] for h in HORIZONS})}
@@ -182,7 +185,7 @@ def evaluate(rows: list[dict]) -> dict:
     overlap: dict[tuple[str, ...], int] = defaultdict(int)
     for r in rows:
         dirs = arm_directions(r)
-        key = tuple(a for a in arms[:4] if dirs[a][0] == "LONG")
+        key = tuple(a for a in arms[:5] if dirs[a][0] == "LONG")
         overlap[key] += 1
         for a in arms:
             d, comp = dirs[a]
@@ -255,6 +258,16 @@ def to_markdown(rep: dict, db: str) -> str:
         L.append(f"| {a} | {s['long']} | {s['long_share_pct']}% | {f['1h']['mean_pct']} | {f['1h']['net_pct']} | "
                  f"{f['4h']['mean_pct']} | {f['24h']['mean_pct']} | {f['24h']['net_pct']} | {f['24h']['hit_rate_pct']}% | "
                  f"{s['ic']['1h']} | {s['ic']['24h']} |")
+    slip = rep.get("stop_slip")
+    if slip is not None:
+        L += ["", "## realised stop slippage (paper book, sl-hit/trail closes)", ""]
+        if slip.get("error") or not slip.get("n"):
+            L.append("no usable close events" + (f" ({slip['error']})" if slip.get("error") else ""))
+        else:
+            p, r = slip["pct"], slip["r"]
+            L.append(f"n **{slip['n']}** · mean {p['mean']:+.3f}% / median {p['median']:+.3f}% / p90 {p['p90']:+.3f}% of the stop · "
+                     f"in R: mean {r['mean']:+.3f} · worse-than-stop share {100 * p['worse_share']:.0f}%")
+            L.append("read: every stop in the arms above cost 1 R + this slip, not 1 R; the arm table is model R, this line is the realised correction.")
     L += ["", "## LONG overlap between arms", ""]
     for k, n in rep["overlap"].items():
         L.append(f"- `{k}`: {n}")
@@ -310,6 +323,21 @@ def day_filter(rows: list[dict], a) -> tuple[list[dict], str]:
     return out, f"{label} · {a.tz}"
 
 
+def paper_stop_slip(path: str, since: float | None) -> dict:
+    """Realised stop slippage from the paper book (same reader as journal_diagnostic)."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("journal_diagnostic", Path(__file__).with_name("journal_diagnostic.py"))
+    jd = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(jd)
+    try:
+        with open(path, encoding="utf-8") as fh:
+            orders = (json.load(fh) or {}).get("orders") or []
+    except (OSError, ValueError) as e:
+        return {"error": str(e), "n": 0}
+    return jd.stop_slip_stats(orders, since=since)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("db", type=Path)
@@ -319,12 +347,15 @@ def main() -> int:
     ap.add_argument("--since", help="ISO-8601 UTC lower bound on signal ts, e.g. 2026-11-05T07:19:52Z")
     ap.add_argument("--until", help="ISO-8601 UTC upper bound (exclusive)")
     add_day_args(ap)
+    ap.add_argument("--paper", help="copy of paper_state.json: adds the realised stop-slippage block (2.5.2, item 9)")
     a = ap.parse_args()
     rows = load(a.db, a.tf, since=_epoch(a.since) if a.since else 0, until=_epoch(a.until) if a.until else None)
     rows, day_label = day_filter(rows, a)
     attach_forward_returns(rows)
     rep = evaluate(rows)
     rep["day_filter"] = day_label
+    if a.paper:
+        rep["stop_slip"] = paper_stop_slip(a.paper, _epoch(a.since) if a.since else None)
     md = to_markdown(rep, a.db.name)
     if a.md:
         a.md.write_text(md, encoding="utf-8")

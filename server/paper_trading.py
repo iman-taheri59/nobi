@@ -77,6 +77,25 @@ def _execution_plan_error(side: str, entry: float, stop: float, tp1: float,
     return None, rr
 
 
+def stop_slip(side: str, entry: float, stop: float, exit_px: float) -> dict[str, float | None]:
+    """How much worse than the model stop the exit actually filled.
+
+    Positive = worse than the stop (the usual case: the book was walked past
+    it), negative = better. `stop_slip_pct` is relative to the stop price,
+    `stop_slip_r` relative to the entry→stop distance (the R the plan risked),
+    so a 0.3 R slip on a 1 R stop means the trade lost 1.3 R. Recorded on
+    every close, meaningful for `sl-hit`/`trail`; the reader filters.
+    """
+    out: dict[str, float | None] = {"stop_model": stop, "stop_slip_pct": None, "stop_slip_r": None}
+    if not (math.isfinite(stop) and stop > 0 and math.isfinite(exit_px) and exit_px > 0):
+        return out
+    adverse = (stop - exit_px) if side == "buy" else (exit_px - stop)
+    out["stop_slip_pct"] = round(adverse / stop * 100, 4)
+    dist = abs(entry - stop) if math.isfinite(entry) else 0.0
+    out["stop_slip_r"] = round(adverse / dist, 4) if dist > 0 else None
+    return out
+
+
 @dataclass
 class Position:
     id: str
@@ -819,7 +838,10 @@ class PaperBroker:
                                       {"reason": reason, "pnl": pnl_net, "fee": fee_out,
                                        "risk": pos.risk_usd, "clientOrderId": pos.client_order_id,
                                        "requested_exit_qty": open_qty,
-                                       "remaining_open": pos.filled_qty}))
+                                       "remaining_open": pos.filled_qty,
+                                       # 2.5.2 (item 9) — the model stop the exit was measured
+                                       # against, and how far the real fill landed past it.
+                                       **stop_slip(pos.side, float(pos.entry_price), float(pos.stop), float(spx))}))
         self.save()
 
     async def evaluate_positions(self):
