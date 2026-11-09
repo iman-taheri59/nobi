@@ -130,6 +130,8 @@ jobs:
         run: npm run test:signal-card
       - name: Charts refresh without a page reload
         run: npm run test:live-candles
+      - name: Visible pages refresh with the scan
+        run: npm run test:page-refresh
       - name: approval queue updates and rejection reasons
         run: npm run test:queue
       - name: lockfile tarballs match their versions

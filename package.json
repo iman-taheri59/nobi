@@ -20,6 +20,7 @@
     "test:signal-detail": "node scripts/test_signal_detail.cjs",
     "test:signal-card": "node scripts/test_signal_card.cjs",
     "test:live-candles": "node scripts/test_live_candles.cjs",
+    "test:page-refresh": "node scripts/test_page_refresh.cjs",
     "test:queue": "node scripts/test_approval_queue.cjs && node scripts/test_queue_deadline.cjs && node scripts/test_queue_stale_plan.cjs && node scripts/test_queue_execution.cjs && node scripts/test_queue_filtered.cjs",
     "test:review-phase1": "node scripts/test_review_phase1.cjs",
     "test:review-phase2": "node scripts/test_review_phase2.cjs",

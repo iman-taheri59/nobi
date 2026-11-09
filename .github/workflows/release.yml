@@ -78,6 +78,7 @@ jobs:
       - run: npm run test:signal-detail
       - run: npm run test:signal-card
       - run: npm run test:live-candles
+      - run: npm run test:page-refresh
       - run: npm run test:queue
       - run: npm run test:lock
       - run: python scripts/check_preflight_parity.py
