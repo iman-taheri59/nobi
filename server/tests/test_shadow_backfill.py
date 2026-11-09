@@ -57,3 +57,41 @@ def test_arms_rescored_and_seam_ignored(tmp_path):
     assert rep["k3_bound"]["stopped_at_k2_H2"] == 1 and rep["k3_bound"]["would_survive_k3"] == 1
     md = sb.to_markdown(rep, "journal.db")
     assert "| D_comp | 4 |" in md
+
+
+# ---- 2.5.2: day-of-week slice (Asia/Tehran; Sat–Wed vs Thu–Fri) -------------
+class _Args:
+    def __init__(self, **kw):
+        self.weekdays_only = kw.get("weekdays_only", False)
+        self.weekend_only = kw.get("weekend_only", False)
+        self.days = kw.get("days")
+        self.tz = kw.get("tz", "Asia/Tehran")
+
+
+def test_day_filter_splits_iranian_week_without_mutating_rows():
+    # 2026-11-05 is a Thursday, 2026-11-07 a Saturday (UTC). 20:30 UTC on a
+    # Wednesday is already Thursday 00:00 in Tehran (+3:30) — the slice must
+    # follow the venue's clock, not UTC.
+    import datetime as dt
+    def ts(y, m, d, hh=12, mm=0):
+        return int(dt.datetime(y, m, d, hh, mm, tzinfo=dt.timezone.utc).timestamp())
+    rows = [
+        {"ts": ts(2026, 11, 5), "k": "thu"},        # Thursday noon UTC -> Thu in Tehran
+        {"ts": ts(2026, 11, 6), "k": "fri"},        # Friday
+        {"ts": ts(2026, 11, 7), "k": "sat"},        # Saturday
+        {"ts": ts(2026, 11, 4, 20, 45), "k": "wed-late"},  # Wed 20:45Z = Thu 00:15 Tehran
+    ]
+    frozen = json.dumps(rows)
+    wk, label = sb.day_filter(rows, _Args(weekdays_only=True))
+    assert [r["k"] for r in wk] == ["sat"] and "Sat–Wed" in label and "Asia/Tehran" in label
+    we, _ = sb.day_filter(rows, _Args(weekend_only=True))
+    assert [r["k"] for r in we] == ["thu", "fri", "wed-late"]
+    custom, label = sb.day_filter(rows, _Args(days="6,7"))      # global weekend: Sat, Sun
+    assert [r["k"] for r in custom] == ["sat"] and "days 6,7" in label
+    utc_cut, _ = sb.day_filter(rows, _Args(weekdays_only=True, tz="UTC"))
+    assert [r["k"] for r in utc_cut] == ["sat", "wed-late"], "in UTC the late-Wednesday row is still a weekday"
+    none, label = sb.day_filter(rows, _Args())
+    assert none is rows and label == "all days"
+    assert json.dumps(rows) == frozen
+    with pytest.raises(SystemExit):
+        sb.day_filter(rows, _Args(days="0,8"))

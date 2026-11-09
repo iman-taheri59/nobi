@@ -241,6 +241,11 @@ async def journal_resolve(tf: str = "15m", symbols: list[str] | None = None) -> 
     try:
         syms = symbols or [r["symbol"] for r in _cached["universe"][:SCAN_TOP]]
         for sym in syms:
+            # 2.5.2 — the scan never scores these (no public candles), so the
+            # journal has nothing to resolve for them; asking cost one refused
+            # request per cycle and an `info` line nobody needed.
+            if sym in NOT_A_TA_SYMBOL:
+                continue
             try:
                 rows, _src = await client.get_candles_ex(sym, tf, 1200)
             except UpstreamUnavailable as e:

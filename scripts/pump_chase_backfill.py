@@ -121,6 +121,43 @@ def bucket(rows: list[dict], key, edges: list[float], labels: list[str]) -> dict
     return out
 
 
+# ---- day-of-week slice (2.5.2) -----------------------------------------------
+# Iranian venue: the working week is Saturday–Wednesday; Thursday/Friday is the
+# weekend, when Toman flow thins out and pumps behave differently. ISO weekday
+# numbers in Asia/Tehran (1=Mon … 7=Sun): weekdays = {6,7,1,2,3}, weekend = {4,5}.
+# `--days 6,7` would select the *global* crypto weekend instead.
+IR_WEEKDAYS = frozenset({6, 7, 1, 2, 3})
+IR_WEEKEND = frozenset({4, 5})
+
+
+def add_day_args(ap) -> None:
+    g = ap.add_mutually_exclusive_group()
+    g.add_argument("--weekdays-only", action="store_true", help="keep Sat–Wed signals (Asia/Tehran)")
+    g.add_argument("--weekend-only", action="store_true", help="keep Thu–Fri signals (Asia/Tehran)")
+    g.add_argument("--days", help="comma-separated ISO weekdays to keep, 1=Mon … 7=Sun (Asia/Tehran)")
+    ap.add_argument("--tz", default="Asia/Tehran", help="time zone for the day filter (default Asia/Tehran)")
+
+
+def day_filter(rows: list[dict], a) -> tuple[list[dict], str]:
+    """Return (rows, label). Pure: no row is modified."""
+    from zoneinfo import ZoneInfo
+    from datetime import datetime, timezone
+    if a.weekdays_only:
+        keep, label = IR_WEEKDAYS, "weekdays (Sat–Wed)"
+    elif a.weekend_only:
+        keep, label = IR_WEEKEND, "weekend (Thu–Fri)"
+    elif a.days:
+        keep = frozenset(int(x) for x in a.days.split(",") if x.strip())
+        if not keep or any(d < 1 or d > 7 for d in keep):
+            raise SystemExit("--days must be ISO weekdays 1..7")
+        label = "days " + ",".join(str(d) for d in sorted(keep))
+    else:
+        return rows, "all days"
+    tz = ZoneInfo(a.tz)
+    out = [r for r in rows if datetime.fromtimestamp(int(r["ts"]), tz=timezone.utc).astimezone(tz).isoweekday() in keep]
+    return out, f"{label} · {a.tz}"
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("db", type=Path)
@@ -128,10 +165,12 @@ def main() -> int:
     ap.add_argument("--since")
     ap.add_argument("--md", type=Path)
     ap.add_argument("--exclude", default="", help="comma-separated symbols to drop (e.g. a single pump that dominates 24h)")
+    add_day_args(ap)
     a = ap.parse_args()
     since = _epoch(a.since) if a.since else 0
 
     rows = load(a.db, a.tf, since=since)
+    rows, day_label = day_filter(rows, a)
     if a.exclude:
         drop = {x.strip().upper() for x in a.exclude.split(",") if x.strip()}
         rows = [r for r in rows if r["symbol"].upper() not in drop]
@@ -155,7 +194,7 @@ def main() -> int:
     longs = [r for r in rows if r["direction"] == "LONG"]
 
     rep = {
-        "rows": len(rows), "longs": len(longs),
+        "rows": len(rows), "longs": len(longs), "day_filter": day_label,
         "base": summarise(longs)["all"],
         "run_atr": bucket(longs, lambda r: r["run_atr"], [0, 1, 2, 3], ["<0 (down)", "0–1 ATR", "1–2 ATR", "2–3 ATR", "≥3 ATR"]),
         "back_4h_pct": bucket(longs, lambda r: r["back"].get("4h"), [0, 3, 6, 10], ["<0%", "0–3%", "3–6%", "6–10%", "≥10%"]),
@@ -193,7 +232,7 @@ def fmt(s: dict) -> str:
 
 def render(rep: dict, db: str, since: str | None) -> str:
     L = [f"# Chase / depth backfill — `{db}`" + (f" since {since}" if since else ""), ""]
-    L.append(f"rows {rep['rows']} · live LONGs **{rep['longs']}** · depth rows {rep['depth_rows']}")
+    L.append(f"rows {rep['rows']} · live LONGs **{rep['longs']}** · depth rows {rep['depth_rows']} · days: {rep.get('day_filter', 'all days')}")
     L.append("")
     hdr = "| bucket | n | 1h % | 4h % | 24h % (n) | H1 stop | H1 R̄ |\n|---|---|---|---|---|---|---|"
     L += ["## baseline (all live LONGs)", hdr, f"| all | {fmt(rep['base'])} |", ""]

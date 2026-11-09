@@ -266,10 +266,16 @@ class NobitexClient:
             latency = (time.perf_counter() - t0) * 1000
             self._emit_stats(resp.is_success, latency)
             if resp.status_code in (401, 403):
+                # 2.5.2 — this client sends no credentials (public endpoints
+                # only), so a 401/403 cannot be an API-key problem. Naming it
+                # "AUTH" sent operators to check keys that were never used. It
+                # is a refusal: the pair/endpoint is not public, or the source
+                # IP is blocked (WAF / geo).
                 raise ClientError(
-                    "AUTH", f"Nobitex rejected request with {resp.status_code} — "
-                    f"{safe_request_context(path)} (cause not determined)",
-                    {"status": resp.status_code},
+                    "BLOCKED", f"Nobitex refused a public request with {resp.status_code} — "
+                    f"{safe_request_context(path)} (no API key was sent; the pair/endpoint is "
+                    f"not public or this IP is blocked)",
+                    {"status": resp.status_code, "public": True},
                 )
             if resp.status_code == 429:
                 # The docs ship `backOff` (seconds) and `limit` with the error;

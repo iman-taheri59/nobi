@@ -246,8 +246,8 @@ def evaluate(rows: list[dict]) -> dict:
 
 def to_markdown(rep: dict, db: str) -> str:
     L = [f"# Shadow arms — retrospective on `{db}`", "",
-         f"rows (15m, live, non-void): **{rep['rows']}** · horizons from the journal's own price series "
-         f"(±{TOLERANCE_S // 60} min) · fee round trip {FEE_RT_PCT}%", "",
+         f"rows (15m, live, non-void): **{rep['rows']}** · days: {rep.get('day_filter', 'all days')} · "
+         f"horizons from the journal's own price series (±{TOLERANCE_S // 60} min) · fee round trip {FEE_RT_PCT}%", "",
          "| arm | LONGs | share | 1h mean | 1h net | 4h mean | 24h mean | 24h net | hit 24h | IC 1h | IC 24h |",
          "|---|---|---|---|---|---|---|---|---|---|---|"]
     for a, s in rep["arms"].items():
@@ -273,6 +273,43 @@ def to_markdown(rep: dict, db: str) -> str:
     return "\n".join(L)
 
 
+# ---- day-of-week slice (2.5.2) -----------------------------------------------
+# Iranian venue: the working week is Saturday–Wednesday; Thursday/Friday is the
+# weekend, when Toman flow thins out and pumps behave differently. ISO weekday
+# numbers in Asia/Tehran (1=Mon … 7=Sun): weekdays = {6,7,1,2,3}, weekend = {4,5}.
+# `--days 6,7` would select the *global* crypto weekend instead.
+IR_WEEKDAYS = frozenset({6, 7, 1, 2, 3})
+IR_WEEKEND = frozenset({4, 5})
+
+
+def add_day_args(ap) -> None:
+    g = ap.add_mutually_exclusive_group()
+    g.add_argument("--weekdays-only", action="store_true", help="keep Sat–Wed signals (Asia/Tehran)")
+    g.add_argument("--weekend-only", action="store_true", help="keep Thu–Fri signals (Asia/Tehran)")
+    g.add_argument("--days", help="comma-separated ISO weekdays to keep, 1=Mon … 7=Sun (Asia/Tehran)")
+    ap.add_argument("--tz", default="Asia/Tehran", help="time zone for the day filter (default Asia/Tehran)")
+
+
+def day_filter(rows: list[dict], a) -> tuple[list[dict], str]:
+    """Return (rows, label). Pure: no row is modified."""
+    from zoneinfo import ZoneInfo
+    from datetime import datetime, timezone
+    if a.weekdays_only:
+        keep, label = IR_WEEKDAYS, "weekdays (Sat–Wed)"
+    elif a.weekend_only:
+        keep, label = IR_WEEKEND, "weekend (Thu–Fri)"
+    elif a.days:
+        keep = frozenset(int(x) for x in a.days.split(",") if x.strip())
+        if not keep or any(d < 1 or d > 7 for d in keep):
+            raise SystemExit("--days must be ISO weekdays 1..7")
+        label = "days " + ",".join(str(d) for d in sorted(keep))
+    else:
+        return rows, "all days"
+    tz = ZoneInfo(a.tz)
+    out = [r for r in rows if datetime.fromtimestamp(int(r["ts"]), tz=timezone.utc).astimezone(tz).isoweekday() in keep]
+    return out, f"{label} · {a.tz}"
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("db", type=Path)
@@ -281,10 +318,13 @@ def main() -> int:
     ap.add_argument("--json", action="store_true", help="print JSON instead of Markdown")
     ap.add_argument("--since", help="ISO-8601 UTC lower bound on signal ts, e.g. 2026-11-05T07:19:52Z")
     ap.add_argument("--until", help="ISO-8601 UTC upper bound (exclusive)")
+    add_day_args(ap)
     a = ap.parse_args()
     rows = load(a.db, a.tf, since=_epoch(a.since) if a.since else 0, until=_epoch(a.until) if a.until else None)
+    rows, day_label = day_filter(rows, a)
     attach_forward_returns(rows)
     rep = evaluate(rows)
+    rep["day_filter"] = day_label
     md = to_markdown(rep, a.db.name)
     if a.md:
         a.md.write_text(md, encoding="utf-8")
