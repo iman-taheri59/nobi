@@ -29,7 +29,10 @@ from collections import defaultdict
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from shadow_backfill import _epoch, attach_forward_returns, load, mean  # noqa: E402
+import contextlib
+from datetime import UTC
+
+from shadow_backfill import _epoch, attach_forward_returns, load, mean
 
 LOOKBACKS = {"1h": 3600, "4h": 4 * 3600}
 TOL = 20 * 60
@@ -140,8 +143,8 @@ def add_day_args(ap) -> None:
 
 def day_filter(rows: list[dict], a) -> tuple[list[dict], str]:
     """Return (rows, label). Pure: no row is modified."""
+    from datetime import datetime
     from zoneinfo import ZoneInfo
-    from datetime import datetime, timezone
     if a.weekdays_only:
         keep, label = IR_WEEKDAYS, "weekdays (Sat–Wed)"
     elif a.weekend_only:
@@ -154,7 +157,7 @@ def day_filter(rows: list[dict], a) -> tuple[list[dict], str]:
     else:
         return rows, "all days"
     tz = ZoneInfo(a.tz)
-    out = [r for r in rows if datetime.fromtimestamp(int(r["ts"]), tz=timezone.utc).astimezone(tz).isoweekday() in keep]
+    out = [r for r in rows if datetime.fromtimestamp(int(r["ts"]), tz=UTC).astimezone(tz).isoweekday() in keep]
     return out, f"{label} · {a.tz}"
 
 
@@ -180,10 +183,8 @@ def main() -> int:
     for sid, feat in conn.execute(
         "SELECT id, features FROM signal_log WHERE timeframe=? AND ts>=? AND direction='LONG'", (a.tf, since)
     ):
-        try:
+        with contextlib.suppress(json.JSONDecodeError):
             pb[sid] = (json.loads(feat or "{}").get("diagnostics") or {}).get("pctB")
-        except json.JSONDecodeError:
-            pass
     conn.close()
     for r in rows:
         r["pctB"] = pb.get(r["id"])

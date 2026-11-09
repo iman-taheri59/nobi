@@ -242,17 +242,17 @@ def _outcome_full(c, sid, key, *, r, tp1=0, tp2=0, sl=0, reason=None, ambiguous=
 
 
 @pytest.mark.parametrize("case, expected", [
-    (dict(r=2.0, tp1=1, tp2=1, reason="tp2"), "tp2"),
-    (dict(r=0.6, tp1=1, sl=1, reason="trail"), "tp1_trail"),
-    (dict(r=0.9, tp1=1, reason="timeout"), "tp1_timeout"),
-    (dict(r=0.1, reason="timeout"), "timeout"),
-    (dict(r=-1.0, sl=1, reason="stop"), "stop"),
-    (dict(r=-1.0, sl=1, tp1=1, reason="ambiguous-stop", ambiguous=1), "ambiguous"),
+    ({"r": 2.0, "tp1": 1, "tp2": 1, "reason": "tp2"}, "tp2"),
+    ({"r": 0.6, "tp1": 1, "sl": 1, "reason": "trail"}, "tp1_trail"),
+    ({"r": 0.9, "tp1": 1, "reason": "timeout"}, "tp1_timeout"),
+    ({"r": 0.1, "reason": "timeout"}, "timeout"),
+    ({"r": -1.0, "sl": 1, "reason": "stop"}, "stop"),
+    ({"r": -1.0, "sl": 1, "tp1": 1, "reason": "ambiguous-stop", "ambiguous": 1}, "ambiguous"),
     # Rows written before `exit_reason` existed: derived from the flags.
-    (dict(r=2.0, tp1=1, tp2=1), "tp2"),
-    (dict(r=0.6, tp1=1, sl=1), "tp1_trail"),
-    (dict(r=-1.0, sl=1), "stop"),
-    (dict(r=0.3), "timeout"),
+    ({"r": 2.0, "tp1": 1, "tp2": 1}, "tp2"),
+    ({"r": 0.6, "tp1": 1, "sl": 1}, "tp1_trail"),
+    ({"r": -1.0, "sl": 1}, "stop"),
+    ({"r": 0.3}, "timeout"),
 ])
 def test_summary_outcome_kind_per_horizon(tmp_path, case, expected):
     c = J.connect(tmp_path / "private.db")

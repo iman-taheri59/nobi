@@ -14,6 +14,7 @@ from paper_trading import stop_slip
 
 ROOT = Path(__file__).resolve().parents[2]
 _spec = importlib.util.spec_from_file_location("journal_diagnostic", ROOT / "scripts" / "journal_diagnostic.py")
+assert _spec is not None and _spec.loader is not None
 jd = importlib.util.module_from_spec(_spec)
 sys.modules["journal_diagnostic"] = jd
 _spec.loader.exec_module(jd)
@@ -53,7 +54,7 @@ async def _close_event_carries_the_slip(tmp_path, monkeypatch):
             return {"bids": [[str(p - 0.01), "1000"]], "asks": [[str(p + 0.01), "1000"]], "lastTradePrice": self.px}
 
     feed = Feed()
-    broker = paper_trading.PaperBroker(100_000, feed, RiskEngine(RiskConfig(equity=100_000)))
+    broker = paper_trading.PaperBroker(100_000, feed, RiskEngine(RiskConfig(equity=100_000)))  # type: ignore[arg-type]
 
     pos = await broker.place_limit("BTCUSDT", "buy", 10, stop=95, tp1=106, tp2=110, source="SEMI")
     assert pos is not None, broker.last_error

@@ -19,8 +19,8 @@ from __future__ import annotations
 # (notify.TOKEN, security.API_TOKEN, ws_execution.WS_URL are all
 # read at import time, so a later load would be a silent no-op)
 import asyncio
-import contextlib
 import base64
+import contextlib
 import json
 import logging
 import math
@@ -5370,7 +5370,7 @@ def gates_block(ranked: list[dict], tf: str) -> dict:
     # card and the queue show a yellow label; the gate stays shadow.
     out["depth_warn"] = {"usd": DEPTH_WARN_USD, "applied": False,
                          "basis": "p10(depth_usd) over scanned rows, docs/analysis/pump-chase-backfill-2026-11-08"}
-    for sym, v in (out.get("verdicts") or {}).items():
+    for _sym, v in (out.get("verdicts") or {}).items():
         d = (v.get("inputs") or {}).get("depth_usd")
         v["depth_thin"] = (d < DEPTH_WARN_USD) if isinstance(d, (int, float)) and math.isfinite(d) else None
     # How much of the list could actually be judged, so the card can say "no book

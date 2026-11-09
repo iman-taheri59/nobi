@@ -155,14 +155,16 @@ def reject_counts(orders: list[dict[str, Any]], *, since: float | None = None) -
         ts = _num(ev.get("ts"))
         if since is not None and (ts is None or ts < since):
             continue
-        extra = ev.get("extra") if isinstance(ev.get("extra"), dict) else {}
+        raw_extra = ev.get("extra")
+        extra: dict = raw_extra if isinstance(raw_extra, dict) else {}
         reason = str(extra.get("reason") or "?")
         source = str(extra.get("source") or "?").upper()
         total += 1
         by_reason[reason] = by_reason.get(reason, 0) + 1
         by_source[source] = by_source.get(source, 0) + 1
         by_reason_source.setdefault(reason, {})[source] = by_reason_source.setdefault(reason, {}).get(source, 0) + 1
-    order = lambda d: dict(sorted(d.items(), key=lambda kv: (-kv[1], kv[0])))
+    def order(d):
+        return dict(sorted(d.items(), key=lambda kv: (-kv[1], kv[0])))
     return {"total": total, "by_reason": order(by_reason), "by_source": order(by_source),
             "by_reason_source": {k: order(v) for k, v in by_reason_source.items()}}
 

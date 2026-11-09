@@ -2845,7 +2845,6 @@ function bindCandleHover(scope){
   if (!g || !tip || !cross) return;
   const band = cross.querySelector('[data-ch-band]'), vl = cross.querySelector('[data-ch-v]'), hl = cross.querySelector('[data-ch-h]');
   const innerH = g.H - g.padT - g.padB;
-  const yOf = v => g.padT + innerH - ((+v - g.lo) / g.span) * innerH;
   const hide = () => { cross.style.display = 'none'; tip.classList.add('hidden'); };
   const show = (ev) => {
     const r = svg.getBoundingClientRect();

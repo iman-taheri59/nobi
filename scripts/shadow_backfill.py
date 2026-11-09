@@ -305,8 +305,8 @@ def add_day_args(ap) -> None:
 
 def day_filter(rows: list[dict], a) -> tuple[list[dict], str]:
     """Return (rows, label). Pure: no row is modified."""
+    from datetime import datetime
     from zoneinfo import ZoneInfo
-    from datetime import datetime, timezone
     if a.weekdays_only:
         keep, label = IR_WEEKDAYS, "weekdays (Sat–Wed)"
     elif a.weekend_only:
@@ -319,7 +319,7 @@ def day_filter(rows: list[dict], a) -> tuple[list[dict], str]:
     else:
         return rows, "all days"
     tz = ZoneInfo(a.tz)
-    out = [r for r in rows if datetime.fromtimestamp(int(r["ts"]), tz=timezone.utc).astimezone(tz).isoweekday() in keep]
+    out = [r for r in rows if datetime.fromtimestamp(int(r["ts"]), tz=UTC).astimezone(tz).isoweekday() in keep]
     return out, f"{label} · {a.tz}"
 
 

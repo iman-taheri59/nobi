@@ -136,8 +136,6 @@ def test_e_nochase_never_promotes_and_leaves_other_arms_alone():
 
 
 def test_run_up_is_measured_by_time_not_bar_count():
-    import numpy as np
-    import pandas as pd
     import ta_engine
     t0 = 1_793_000_000
     # 15m bars: 20 bars, price +3 over the last 16 bars (4 h), ATR 1.5

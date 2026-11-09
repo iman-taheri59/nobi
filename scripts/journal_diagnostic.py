@@ -92,7 +92,8 @@ def reject_counts(orders: list[dict], *, since: float | None = None) -> dict:
         by_rs[reason][source] = by_rs[reason].get(source, 0) + 1
         day = datetime.fromtimestamp(ts, UTC).strftime("%Y-%m-%d")
         by_day[day] = by_day.get(day, 0) + 1
-    order = lambda d: dict(sorted(d.items(), key=lambda kv: (-kv[1], kv[0])))
+    def order(d):
+        return dict(sorted(d.items(), key=lambda kv: (-kv[1], kv[0])))
     return {"total": total, "by_reason": order(by_reason), "by_source": order(by_source),
             "by_reason_source": {k: order(v) for k, v in by_rs.items()}, "by_day": dict(sorted(by_day.items()))}
 
@@ -133,7 +134,7 @@ def stop_slip_stats(orders: list[dict], *, since: float | None = None) -> dict:
         if not v:
             return None
         v = sorted(v)
-        k = min(len(v) - 1, max(0, int(round(f * (len(v) - 1)))))
+        k = min(len(v) - 1, max(0, round(f * (len(v) - 1))))
         return v[k]
 
     return {"n": len(pct), "legacy": legacy,
@@ -151,7 +152,8 @@ def print_stop_slip(orders: list[dict], since: int | None) -> None:
         print("  none")
         return
     p, r = c["pct"], c["r"]
-    f = lambda x, d=3: "—" if x is None else f"{x:+.{d}f}"
+    def f(x: float | None, d: int = 3) -> str:
+        return "—" if x is None else f"{x:+.{d}f}"
     print(f"  in % of stop:  mean {f(p['mean'])}  median {f(p['median'])}  p90 {f(p['p90'])}  "
           f"worse-than-stop share {100 * p['worse_share']:.0f}%")
     print(f"  in R (entry→stop): mean {f(r['mean'])}  median {f(r['median'])}  p90 {f(r['p90'])}")

@@ -74,7 +74,7 @@ def test_day_filter_splits_iranian_week_without_mutating_rows():
     # follow the venue's clock, not UTC.
     import datetime as dt
     def ts(y, m, d, hh=12, mm=0):
-        return int(dt.datetime(y, m, d, hh, mm, tzinfo=dt.timezone.utc).timestamp())
+        return int(dt.datetime(y, m, d, hh, mm, tzinfo=dt.UTC).timestamp())
     rows = [
         {"ts": ts(2026, 11, 5), "k": "thu"},        # Thursday noon UTC -> Thu in Tehran
         {"ts": ts(2026, 11, 6), "k": "fri"},        # Friday
