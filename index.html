@@ -2554,15 +2554,20 @@ document.querySelectorAll('.navbtn').forEach(btn=>{
     closeSide();
     animateBars(pg);
     if(btn.dataset.tab==='backtest' && !inited.bt){ inited.bt=true; requestAnimationFrame(()=>setTimeout(drawBt,30)); }
-    if(btn.dataset.tab==='performance' && !inited.perf){ inited.perf=true; requestAnimationFrame(()=>setTimeout(async()=>{ await loadPerf(); drawCal(); loadBenchmark(); },30)); }
-    if(btn.dataset.tab==='performance' && inited.perf){ requestAnimationFrame(()=>setTimeout(()=>{ if(!bmState) loadBenchmark(); },30)); }
+    const tabNow = Date.now();
+    if(btn.dataset.tab==='performance' && !inited.perf){ inited.perf=true; pageRefreshAt.performance=tabNow; requestAnimationFrame(()=>setTimeout(async()=>{ await loadPerf(); drawCal(); loadBenchmark(); },30)); }
+    else if(btn.dataset.tab==='performance' && inited.perf){ requestAnimationFrame(()=>setTimeout(()=>{ if(!bmState) loadBenchmark(); pageRefreshTick(false); },30)); }
+    if(btn.dataset.tab==='desk') pageRefreshAt.desk=tabNow;
     if(btn.dataset.tab==='desk'){ requestAnimationFrame(()=>setTimeout(()=>{ runBookAlloc(false); loadExecMode(true).then(()=>refreshQueue()); },60)); }
     if(btn.dataset.tab==='overview'){ requestAnimationFrame(()=>setTimeout(()=>{ loadMarketOverview(); },60)); }
+    if(btn.dataset.tab==='intelligence') pageRefreshAt.intelligence=tabNow;
     if(btn.dataset.tab==='intelligence'){ requestAnimationFrame(()=>setTimeout(loadSignalIntelligence,30)); }
     // The order log is read when the page is shown: a stale table is better
     // than none, but the first look after a trade must be current.
+    if(btn.dataset.tab==='orders') pageRefreshAt.orders=tabNow;
     if(btn.dataset.tab==='orders'){ requestAnimationFrame(()=>setTimeout(()=>{ loadOrders(); },30)); }
     if(btn.dataset.tab==='fa' && window.NBX_APP && NBX_APP.refreshFundamentals){ NBX_APP.refreshFundamentals(); }
+    if(btn.dataset.tab==='risk') pageRefreshAt.risk=tabNow;
     if(btn.dataset.tab==='risk'){ requestAnimationFrame(()=>setTimeout(()=>{ loadAudit(); fillRiskSizing(); },30)); }
     if(btn.dataset.tab==='settings'){ requestAnimationFrame(()=>setTimeout(()=>{ loadSettings(); },30)); }
     if(btn.dataset.tab==='errors'){
@@ -3210,6 +3215,38 @@ window.addEventListener('nbx:scan', ()=>{
   try{ if (typeof sgRenderFresh === 'function') sgRenderFresh(sgFreshNow()); }catch(e){}
   try{ if (typeof sgRenderGates === 'function') sgRenderGates(sgGateNow()); }catch(e){}
 });
+/* 2.5.3 — pages that fetched on open and never again. Each scan now refreshes
+ * the page the user is looking at, once its copy is older than `every`, and
+ * only when nobody is typing in it (a refresh that wipes a half-written review
+ * or a filter is worse than a stale table). Hidden tabs and hidden browser
+ * windows are never refreshed: every entry below is a server round trip. */
+const PAGE_REFRESH = {
+  performance:  { every: 120_000, run: () => { if (inited.perf) loadPerf(); } },
+  intelligence: { every: 120_000, run: () => { const d = byId('siDetail'); if (d && !d.classList.contains('hidden')) return false; loadSignalIntelligence(); } },
+  orders:       { every:  30_000, run: () => loadOrders() },
+  risk:         { every:  60_000, run: () => loadAudit() },
+  desk:         { every: 120_000, run: () => runBookAlloc(true) },
+};
+const pageRefreshAt = {};
+function activeTab(){ const b = document.querySelector('.navbtn.active'); return b ? b.dataset.tab : null; }
+function pageBusy(tab){
+  const pg = byId('page-' + tab), el = document.activeElement;
+  return !!(pg && el && pg.contains(el) && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName));
+}
+function pageRefreshTick(force){
+  const tab = activeTab(), spec = PAGE_REFRESH[tab];
+  if (!spec || document.hidden) return false;
+  const pg = byId('page-' + tab);
+  if (!pg || pg.classList.contains('hidden')) return false;
+  if (!force && Date.now() - (pageRefreshAt[tab] || 0) < spec.every) return false;
+  if (pageBusy(tab)) return false;
+  let ran = true;
+  try { if (spec.run() === false) ran = false; } catch (e) { ran = false; }
+  if (ran) pageRefreshAt[tab] = Date.now();
+  return ran;
+}
+window.addEventListener('nbx:scan', () => { pageRefreshTick(false); });
+window.__pageRefresh = { tick: pageRefreshTick, at: pageRefreshAt, spec: PAGE_REFRESH };
 // Sizing is a server plan, not a second browser risk policy or FX guess.
 let rkSizingSeq=0, rkPlanSnapshot=null, rkSizeState='not-requested';
 function rkClear(){
