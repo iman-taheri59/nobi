@@ -46,7 +46,11 @@ class CandleCache:
     def _meta_path(self, fp: Path) -> Path:
         return fp.with_suffix(".meta.json")
 
-    def load(self, symbol: str, resolution: str, from_ts: int, to_ts: int) -> list[dict] | None:
+    def load(self, symbol: str, resolution: str, from_ts: int, to_ts: int,
+             ttl: float | None = None) -> list[dict] | None:
+        """`ttl` overrides the cache-wide TTL for this read (the chart route
+        passes a short one: a window that ends on the forming bar is current
+        for about a minute, not half an hour)."""
         fp = _key(symbol, resolution, from_ts, to_ts)
         if not fp.exists():
             self.misses += 1
@@ -63,7 +67,7 @@ class CandleCache:
             except Exception:
                 pass
         # reject stale cache beyond TTL
-        if (fp.stat().st_mtime + self.ttl) < __import__("time").time():
+        if (fp.stat().st_mtime + (self.ttl if ttl is None else ttl)) < __import__("time").time():
             self.misses += 1
             return None
         try:

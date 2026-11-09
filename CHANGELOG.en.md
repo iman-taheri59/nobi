@@ -2,6 +2,10 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 2.5.4 (in progress)
+
+- **The chart shows the forming candle — the real root of "the chart does not update":** the browser-side refresh in 2.5.3 was necessary but not sufficient. For `/api/candles` the server returned the same series the scan reads: requested up to the **start** of the current bar (`to` = floor) → the exchange sends closed bars only, and the answer was cached for 30 minutes. So the last candle on screen was always 15–30 minutes old, however often the browser asked (9 Nov 22:39 local: last bar 22:15). Now **only the chart route** asks with `forming=True`: `to` = now, the current bar is in the answer, kept in its own cache namespace with a 60 s TTL (`NBX_LIVE_CANDLE_TTL_S`). **The scan, the journal, backtests and the shadow arms still read closed bars only** — same 30-minute cache, no change to what signals are scored on (locked by `test_only_the_chart_route_asks_for_the_forming_bar`). Cost: at most ~13 UDF requests per minute while a dashboard is open. Tests: `test_candles_forming.py` (4).
+
 ## 2.5.3
 
 _Tagged and deployed 9 Nov 2026 17:50Z (end of day 1 of the 2.5.2 soak); production via the "Deploy" Action with tag `v2.5.3`. **No change to trading logic, risk, shadow arms or the holdout** — dashboard (live refresh) and deploy/release tooling only, so soak days 1 and 2 count as one series._

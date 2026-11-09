@@ -1740,7 +1740,9 @@ async def signals(tf: str = Query("15m", pattern="^(15m|1h|4h|D)$"), refresh: bo
 @app.get("/api/candles/{symbol}")
 async def candles(symbol: str, tf: str = Query("15m", pattern="^(15m|1h|4h|D)$"), count: int = 260):
     try:
-        rows, src = await client.get_candles_ex(symbol, tf, max(60, min(count, 2000)))
+        # The chart shows the bar the market is in, not the last
+        # one it closed. The scan never reads this route.
+        rows, src = await client.get_candles_ex(symbol, tf, max(60, min(count, 2000)), forming=True)
     except UpstreamUnavailable as e:
         return {
             **upstream_error("candles", str(e)),
