@@ -57,7 +57,7 @@ def test_release_workflow_requires_validation_before_publishing():
     guard = validate["steps"][1]
     assert guard["name"].startswith("Tag must point at main")
     assert "merge-base --is-ancestor HEAD origin/main" in guard["run"]
-    assert 'conclusion" != "success"' in guard["run"]
+    assert "status=success" in guard["run"] and '"${green:-0}" -lt 1' in guard["run"]
     publish = workflow["jobs"]["publish"]
     assert publish["needs"] == "validate"
     assert publish["permissions"] == {"contents": "write"}

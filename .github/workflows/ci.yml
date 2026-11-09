@@ -15,6 +15,9 @@ name: ci
 on:
   push:            # every branch: the ruleset on main needs check runs on the PR head,
                    # and the pull_request event did not fire for PAT-opened PRs (9 Nov)
+    branches: ['**']   # not tags: the Release guard reads the CI verdict of the
+                       # tagged commit, and a tag-triggered run of this same
+                       # workflow was the "newest run" it found (10 Nov, v2.5.3)
   pull_request:
   workflow_dispatch:
 
