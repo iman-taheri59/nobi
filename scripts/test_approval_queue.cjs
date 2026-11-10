@@ -55,6 +55,17 @@ async function run(file) {
     assert.equal(w.eval('queue.length'), 1, `${file}: new scan must fill a previously empty queue`);
     assert.deepEqual(calls.at(-1), ['BTCIRT', 'buy', '15m', true]);
     assert.equal(w.document.querySelectorAll('#queueList .qRow').length, 1);
+    // 2.5.5 — the card prints all three plan levels with their distance from
+    // the plan entry (100 → stop 95 = −5 %, tp1 106 = +6 %, tp2 110 = +10 %).
+    {
+      const row = w.document.querySelector('#queueList .qRow');
+      const txt = (sel) => (row.querySelector(sel) || { textContent: '' }).textContent;
+      assert.ok(txt('[data-qvalue="tp2"]').length > 1, `${file}: TP2 price must be printed on the card`);
+      const digits = (s) => s.replace(/[۰-۹]/g, (c) => '۰۱۲۳۴۵۶۷۸۹'.indexOf(c)).replace(/٫/g, '.').replace(/[^0-9.+\-−]/g, '');
+      assert.equal(digits(txt('[data-qpct="stop"]')).replace('−', '-'), '-5.00', `${file}: stop distance`);
+      assert.equal(digits(txt('[data-qpct="tp1"]')), '+6.00', `${file}: tp1 distance`);
+      assert.equal(digits(txt('[data-qpct="tp2"]')), '+10.00', `${file}: tp2 distance`);
+    }
     const count = calls.length;
     desk.classList.add('hidden');
     w.dispatchEvent(new w.CustomEvent('nbx:scan'));

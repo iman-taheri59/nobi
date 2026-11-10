@@ -6127,6 +6127,14 @@ function renderQueueHeader(){
 
   return pend;
 }
+/* Distance of a plan level from the plan's entry, signed, as the card prints it
+ * under the price. The entry is the server plan's price, not the live mid: the
+ * stop/targets were derived from it, so that is the only base the percentages
+ * are honest against. Edited values (editor open) use the same base. */
+function queueLevelPct(entry, v){
+  if(!Number.isFinite(entry)||entry<=0||!Number.isFinite(v)) return '';
+  return PC((v-entry)/entry*100, 2, true);
+}
 function renderQueue(){
   const pend=renderQueueHeader();
   renderQueueFiltered();
@@ -6176,10 +6184,11 @@ function renderQueue(){
         </select>
         <span data-qclock="${q.id}" class="ms-auto chip num ${q.ttl!=null && q.ttl<60?'text-red-300':'text-zinc-400'}">${icon('timer','w-3 h-3')} <span data-qttl="${q.id}">${q.ttl==null?'—':fmtNum(Math.max(0,q.ttl))+(LANG==='fa'?'ث':'s')}</span></span>
       </div>
-      <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] mb-3">
+      <div class="grid grid-cols-2 sm:grid-cols-5 gap-2 text-[11px] mb-3">
         <div class="rounded-lg bg-white/[.02] border border-white/5 p-2"><div class="text-zinc-500 text-[10px]">${t('dk.price')}</div><div class="num font-bold">${fmtMarketPrice(q.entry, q.sym)}</div></div>
-        <div class="rounded-lg bg-white/[.02] border border-white/5 p-2"><div class="text-zinc-500 text-[10px]">${t('col.stop')}</div><div data-qvalue="stop" class="num font-bold text-red-300">${fmtMarketPrice(q.stop, q.sym)}</div></div>
-        <div class="rounded-lg bg-white/[.02] border border-white/5 p-2"><div class="text-zinc-500 text-[10px]">${t('col.tp1')}</div><div data-qvalue="tp1" class="num font-bold text-emerald-300">${fmtMarketPrice(q.tp1, q.sym)}</div></div>
+        <div class="rounded-lg bg-white/[.02] border border-white/5 p-2"><div class="text-zinc-500 text-[10px]">${t('col.stop')}</div><div data-qvalue="stop" class="num font-bold text-red-300">${fmtMarketPrice(q.stop, q.sym)}</div><div data-qpct="stop" class="num text-[10px] text-zinc-500">${queueLevelPct(q.entry,q.stop)}</div></div>
+        <div class="rounded-lg bg-white/[.02] border border-white/5 p-2"><div class="text-zinc-500 text-[10px]">${t('col.tp1')}</div><div data-qvalue="tp1" class="num font-bold text-emerald-300">${fmtMarketPrice(q.tp1, q.sym)}</div><div data-qpct="tp1" class="num text-[10px] text-zinc-500">${queueLevelPct(q.entry,q.tp1)}</div></div>
+        <div class="rounded-lg bg-white/[.02] border border-white/5 p-2"><div class="text-zinc-500 text-[10px]">${t('col.tp2')}</div><div data-qvalue="tp2" class="num font-bold text-emerald-300">${fmtMarketPrice(q.tp2, q.sym)}</div><div data-qpct="tp2" class="num text-[10px] text-zinc-500">${queueLevelPct(q.entry,q.tp2)}</div></div>
         <div class="rounded-lg bg-white/[.02] border border-white/5 p-2"><div class="text-zinc-500 text-[10px]">${t('dk.riskPct')}</div><div data-qrisk="${q.id}" class="num font-bold text-zinc-400">${q.risk==null?'—':PC(q.risk,2,false)}</div></div>
       </div>
       <div data-qeditor="${q.id}" class="${q.edit&&q.edit.on?'':'hidden'} mt-2 mb-3 rounded-lg border border-amber-300/20 bg-amber-300/[.03] p-2.5">
@@ -6283,9 +6292,11 @@ function paintQueueRow(q){
   let note=row.querySelector('[data-qunknown]');
   if(unknown && !note){ note=document.createElement('div'); note.dataset.qunknown='1'; note.className='mt-2 text-[10px] text-amber-300'; row.appendChild(note); }
   if(note) note.textContent=gate.textContent;
-  for(const field of ['sizeQ','stop','tp1']){
+  for(const field of ['sizeQ','stop','tp1','tp2']){
     const n=row.querySelector(`[data-qvalue="${field}"]`), v=e?e[field]:q[field];
     if(n) n.textContent=Number.isFinite(v)?fmtMarketPrice(v,q.sym):'—';
+    const p=row.querySelector(`[data-qpct="${field}"]`);
+    if(p) p.textContent=queueLevelPct(q.entry,v);
   }
   const rr=row.querySelector('[data-qrr]'), values=e||q;
   const {data:execData}=queueExecution(q);
