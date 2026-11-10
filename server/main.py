@@ -573,7 +573,7 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(
     title="nobiTrader",
-    version="2.5.5",
+    version="2.5.6",
     lifespan=lifespan,
 )
 
@@ -1958,10 +1958,57 @@ async def _scan_loop() -> None:
     if not every:
         return
     tf = os.getenv("NBX_SCAN_LOOP_TF", "15m")
-    log.info("scan loop: every %d s on %s (the ledger no longer needs an open tab)", every, tf)
+    grace = scan_loop_grace_seconds()
+    log.info(
+        "scan loop: on %s, %d s after each bar closes (cap %d s; the ledger no longer needs an open tab)",
+        tf, grace, every,
+    )
     while True:
-        await asyncio.sleep(every)
+        # 2.5.6 — wait for the *bar*, not for a stopwatch. `sleep(every)` after a
+        # 35 s scan drifted the tick ~35 s later every cycle (11:15:27 → 11:31:04 →
+        # 11:46:39 …), so for part of each hour the scan ran just *before* a bar
+        # closed and judged the previous one — a card up to ~30 min behind the
+        # chart. Aligning to the close keeps the lag at `grace` + scan time.
+        await asyncio.sleep(scan_loop_delay(tf, every, grace))
         await _scan_loop_tick(tf)
+
+
+#: Seconds after a bar closes before the scheduled scan asks for it. The venue
+#: finalises the candle a few seconds after the boundary; asking too early reads
+#: a forming bar as closed. Not a preference: same floor/ceiling rule as the loop.
+SCAN_LOOP_GRACE_DEFAULT_S = 20
+
+
+def scan_loop_grace_seconds(value: str | None = None) -> int:
+    raw = os.getenv("NBX_SCAN_LOOP_GRACE_S") if value is None else value
+    if raw is None or str(raw).strip() == "":
+        return SCAN_LOOP_GRACE_DEFAULT_S
+    try:
+        n = int(str(raw).strip())
+    except (TypeError, ValueError):
+        raise ValueError(f"NBX_SCAN_LOOP_GRACE_S={raw!r} is not a whole number of seconds") from None
+    if n < 5 or n > 300:
+        raise ValueError(f"NBX_SCAN_LOOP_GRACE_S={n} must be between 5 and 300")
+    return n
+
+
+def scan_loop_delay(tf: str, every: int, grace: int, *, now: float | None = None) -> float:
+    """Seconds to sleep before the next scheduled scan.
+
+    Bar-aligned: the next `tf` boundary plus `grace`. If a scan would land less
+    than `SCAN_LOOP_MIN_S` away (e.g. the loop just ran at the boundary), the one
+    after that is chosen — never two scans of the same bar. `every` stays the cap
+    for timeframes the table does not know, so an unknown `NBX_SCAN_LOOP_TF`
+    degrades to the old fixed cadence instead of a tight loop.
+    """
+    step = signal_journal.TF_SECONDS.get(tf)
+    if not step:
+        return float(every)
+    stamp = time.time() if now is None else now
+    nxt = (math.floor(stamp / step) + 1) * step + grace
+    if nxt - stamp < SCAN_LOOP_MIN_S:
+        nxt += step
+    return max(float(SCAN_LOOP_MIN_S), nxt - stamp)
 
 
 async def gate_prefetch(ranked: list[dict], *, n: int | None = None, concurrency: int = 4) -> dict:

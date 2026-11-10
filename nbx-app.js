@@ -889,14 +889,20 @@
     let t = last && typeof last.t === 'number' ? last.t : last && typeof last.time === 'number' ? last.time : null;
     if (t !== null) {
       if (t > 1e11) t = t / 1000;
-      const age = Math.max(0, Math.round(Date.now() / 1000 - t));
-      const txt = age < 90 ? faText('کمتر از ۲ دقیقه پیش', 'under 2 min ago')
-        : age < 3600 ? faText(faNum(Math.round(age / 60)) + ' دقیقه پیش', Math.round(age / 60) + ' min ago')
-        : faText(faNum(Math.round(age / 360) / 10, 1) + ' ساعت پیش', (Math.round(age / 360) / 10) + ' h ago');
       const tfSec = { '1m': 60, '5m': 300, '15m': 900, '30m': 1800, '1h': 3600, '4h': 14400, '1d': 86400 }[live.timeframe] || 900;
-      // A finished candle is by construction up to one bar old; "stale" starts
-      // at two missed bars, the same rule the server's freshness block uses.
-      return { text: faText('کندل آخر: ', 'last candle: ') + txt, stale: age > tfSec * 2.5, known: true };
+      // 2.5.6 — age is counted from the bar's *close*, not its open stamp: a
+      // 15m bar stamped 19:45 is finished at 20:00, and "20 min ago" at 20:05
+      // read as a feed that was behind when it was the freshest closed bar.
+      // The bar's own clock time is printed so the card and the chart agree.
+      const age = Math.max(0, Math.round(Date.now() / 1000 - (t + tfSec)));
+      const txt = age < 90 ? faText('بسته‌شده کمتر از ۲ دقیقه پیش', 'closed under 2 min ago')
+        : age < 3600 ? faText('بسته‌شده ' + faNum(Math.round(age / 60)) + ' دقیقه پیش', 'closed ' + Math.round(age / 60) + ' min ago')
+        : faText('بسته‌شده ' + faNum(Math.round(age / 360) / 10, 1) + ' ساعت پیش', 'closed ' + (Math.round(age / 360) / 10) + ' h ago');
+      let clock = '';
+      try { clock = new Date(t * 1000).toLocaleTimeString(LANG === 'fa' ? 'fa-IR' : 'en-GB', { hour: '2-digit', minute: '2-digit' }); } catch (_) {}
+      // "stale" starts at two missed bars after the close, the same rule the
+      // server's freshness block uses.
+      return { text: faText('کندل ', 'bar ') + clock + ' · ' + txt, stale: age > tfSec * 2, known: true };
     }
     const snap = live.signalSnapshot;
     if (snap && typeof snap.age === 'number') {

@@ -242,3 +242,47 @@ def test_the_tool_only_ever_issues_get(monkeypatch):
     for _args, kw in calls:
         assert kw.get("method", "GET") == "GET"
         assert "data" not in kw or kw["data"] is None
+
+
+# --- 2.5.6: the loop waits for the bar, not for a stopwatch -------------------
+
+def test_delay_lands_grace_seconds_after_the_next_bar_close():
+    # 12:03:20 on 15m → next close 12:15:00 → +20 s grace = 12:15:20 → 720 s away
+    now = 1_700_000_000 - (1_700_000_000 % 900) + 200
+    assert main.scan_loop_delay("15m", 900, 20, now=now) == 720.0
+
+
+def test_delay_skips_a_bar_that_is_too_close_to_scan_twice():
+    # 5 s before the boundary: the next slot (boundary + 20 s) is only 25 s away,
+    # under the 60 s floor → the slot after that, 925 s away, is chosen.
+    now = 1_700_000_000 - (1_700_000_000 % 900) + 895
+    assert main.scan_loop_delay("15m", 900, 20, now=now) == 925.0
+
+
+def test_delay_right_after_a_tick_never_rescans_the_same_bar():
+    # The tick itself ran at boundary + 20 s and took 35 s: 12:00:55.
+    now = 1_700_000_000 - (1_700_000_000 % 900) + 55
+    d = main.scan_loop_delay("15m", 900, 20, now=now)
+    assert d == 865.0 and (now + d) % 900 == 20
+
+
+def test_consecutive_ticks_do_not_drift():
+    # Ten cycles, each scan taking 35 s: every tick still lands at boundary + 20 s.
+    now: float = 1_700_000_000 - (1_700_000_000 % 900) + 20
+    for _ in range(10):
+        now += 35                                   # the scan ran
+        now += main.scan_loop_delay("15m", 900, 20, now=now)
+        assert now % 900 == 20
+
+
+def test_unknown_timeframe_falls_back_to_the_fixed_cadence():
+    assert main.scan_loop_delay("7m", 900, 20, now=1_700_000_000) == 900.0
+
+
+def test_grace_is_bounded_like_the_interval(monkeypatch):
+    monkeypatch.delenv("NBX_SCAN_LOOP_GRACE_S", raising=False)
+    assert main.scan_loop_grace_seconds() == main.SCAN_LOOP_GRACE_DEFAULT_S
+    assert main.scan_loop_grace_seconds("45") == 45
+    for bad in ("2", "301", "soon", "-1"):
+        with pytest.raises(ValueError):
+            main.scan_loop_grace_seconds(bad)
