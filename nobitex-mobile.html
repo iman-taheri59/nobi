@@ -1333,6 +1333,10 @@ button[aria-busy="true"]::after, [role="button"][aria-busy="true"]::after, [role
             <option value="live" data-i18n="perf.originLive"></option>
             <option value="backfill" data-i18n="perf.originBackfill"></option>
           </select>
+          <select id="perfWindowSel" class="text-[10px] sm:text-[11px] bg-white/5 text-zinc-300 border border-white/10 rounded-lg px-2 py-1.5" data-i18n-title="perf.windowHelp">
+            <option value="all" data-i18n="perf.windowAll"></option>
+            <option value="holdout" data-i18n="perf.windowHoldout"></option>
+          </select>
           <button id="perfBackfill" type="button" class="text-[10px] sm:text-[11px] font-bold px-2.5 py-1.5 rounded-lg bg-violet-400/15 text-violet-200 border border-violet-300/30" data-i18n="perf.backfill"></button>
           <button id="perfExportCsv" type="button" class="text-[10px] sm:text-[11px] font-bold px-2.5 py-1.5 rounded-lg bg-white/5 text-zinc-300 border border-white/10" data-i18n="perf.exportCsv"></button>
           <button id="perfExportJson" type="button" class="text-[10px] sm:text-[11px] font-bold px-2.5 py-1.5 rounded-lg bg-white/5 text-zinc-300 border border-white/10" data-i18n="perf.exportJson"></button>
@@ -2420,6 +2424,11 @@ const T = {
     "perf.idle":"گزارش هنوز خوانده نشده است.",
     "perf.ready":"گزارش خوانده شد؛ زمان تولید سرور",
     "perf.filter":"فیلتر ثبت",
+    "perf.windowAll":"همهٔ بازه",
+    "perf.windowHoldout":"فقط holdout (بعد از cutoff)",
+    "perf.windowHelp":"holdout: فقط سیگنال‌هایی که بعد از نقطهٔ منجمدشدهٔ ADR-0052 صادر شده‌اند — داده‌ای که هنگام تنظیم دیده نشده",
+    "perf.holdoutFrom":"holdout از",
+    "perf.holdoutNone":"holdout منجمد نشده؛ همهٔ بازه نشان داده می‌شود",
     "perf.allOrigins":"همهٔ ثبت‌ها",
     "perf.sourceLimit":"منبع، مربوط به کندلِ ثبت سیگنال است؛ منشأ مستقل کندلِ حل نتیجه در schema فعلی ذخیره نمی‌شود. synthetic پژوهشی است و شاهد سودآوری بازار نیست.",
     "perf.familyEmpty":"نمونهٔ LONG غیر VOID با نتیجهٔ H2 برای خانواده‌ها موجود نیست؛ این به معنی خالی‌بودن کل ژورنال نیست.",
@@ -2733,6 +2742,11 @@ const T = {
     "perf.idle":"Report not read yet.",
     "perf.ready":"Report read; server generated at",
     "perf.filter":"Recording filter",
+    "perf.windowAll":"whole window",
+    "perf.windowHoldout":"holdout only (after cutoff)",
+    "perf.windowHelp":"holdout: only signals issued after the frozen ADR-0052 cutoff — data not seen while tuning",
+    "perf.holdoutFrom":"holdout from",
+    "perf.holdoutNone":"no holdout frozen; whole window shown",
     "perf.allOrigins":"all origins",
     "perf.sourceLimit":"Source describes candles at signal recording; separate outcome-resolution candle provenance is not stored in the current schema. Synthetic results are research, not evidence of market profitability.",
     "perf.familyEmpty":"No eligible non-VOID LONG H2 outcomes for family groups; this does not mean the whole journal is empty.",
@@ -4596,7 +4610,7 @@ function outcomeCell(v){
 const pNumber = v => typeof v === 'number' && Number.isFinite(v) ? v : null;
 const pFmt = (v, dec=0) => pNumber(v) === null ? '—' : fmtNum(v,dec);
 let calData = [];
-let perfMeta = { origins:{}, generated:null, loading:false, state:'idle', seq:0, origin:'' };
+let perfMeta = { origins:{}, generated:null, loading:false, state:'idle', seq:0, origin:'', window:'all', holdout:null };
 function perfStateText(){
   return t(perfMeta.state==='loading'?'perf.loading':perfMeta.state==='standalone'?'perf.requiresServer':perfMeta.state==='error'?'perf.readError':'perf.idle');
 }
@@ -4612,12 +4626,20 @@ function validPerf(d){
     ['horizons','families','calibration','signals'].every(k=>Array.isArray(d[k])) &&
     ['horizons','families','signals'].every(k=>d[k].every(x=>x&&typeof x==='object'&&!Array.isArray(x)));
 }
+function perfWindowText(){
+  // Say what the numbers cover. A holdout the server could not apply (nothing
+  // frozen yet) must read as "whole window", never as a clean split.
+  const h=perfMeta.holdout;
+  if(perfMeta.window!=='holdout')return '';
+  if(!h||!h.applied)return ' · '+t('perf.holdoutNone');
+  return ' · '+t('perf.holdoutFrom')+' '+fmtWhen(h.cutoff_ts);
+}
 function renderPerf(){
   const ready=perfMeta.state==='ready';
   const status=byId('perfReadStatus');
   if(status) {
     status.dataset.state=perfMeta.state;
-    status.textContent=ready ? `${t('perf.ready')}: ${perfMeta.generated || '—'} · ${t('perf.filter')}: ${perfMeta.origin || t('perf.allOrigins')}` : perfStateText();
+    status.textContent=ready ? `${t('perf.ready')}: ${perfMeta.generated || '—'} · ${t('perf.filter')}: ${perfMeta.origin || t('perf.allOrigins')}${perfWindowText()}` : perfStateText();
   }
   const chip=byId('perfOrigin');
   if(chip){chip.textContent=ready?(perfMeta.origin || t('perf.allOrigins')):perfStateText();chip.className='chip text-[10px] text-zinc-400';}
@@ -4660,21 +4682,22 @@ function drawCal(){
 async function loadPerf(days){
   const seq=++perfMeta.seq, api=window.NBX&&NBX.core&&NBX.core.api;
   const origin=(byId('perfOriginSel')||{}).value||'';
+  const windowSel=(byId('perfWindowSel')||{}).value||'all';
   const btn=byId('perfRefresh');
-  perfMeta.loading=true;perfMeta.state='loading';perfMeta.origin=origin;perfMeta.generated=null;
+  perfMeta.loading=true;perfMeta.state='loading';perfMeta.origin=origin;perfMeta.window=windowSel;perfMeta.holdout=null;perfMeta.generated=null;
   famRows.length=0;hzRows.length=0;perfSignals.length=0;calData=[];
   for(const k of Object.keys(perfKpi))perfKpi[k]=null;
   renderPerf();drawCal();renderMsi(null);renderStage(null);
   if(btn){btn.disabled=true;btn.classList.add('opacity-50');}
   try{
     if(!api||typeof api.getJournalSummary!=='function')throw Error('unavailable');
-    const d=await api.getJournalSummary({days:days||90,limit:60,origin:origin||undefined});
+    const d=await api.getJournalSummary({days:days||90,limit:60,origin:origin||undefined,window:windowSel==='holdout'?'holdout':undefined});
     if(seq!==perfMeta.seq)return;
     if(d&&d.standalone){perfMeta.state='standalone';return;}
     if(!validPerf(d))throw Error('invalid summary');
     for(const k of Object.keys(perfKpi))perfKpi[k]=d.kpi[k];
     famRows.push(...d.families);hzRows.push(...d.horizons);perfSignals.push(...d.signals);calData=d.calibration;
-    perfMeta.generated=d.generated_at||null;perfMeta.vpfState=d.vpf_state;perfMeta.state='ready';
+    perfMeta.generated=d.generated_at||null;perfMeta.vpfState=d.vpf_state;perfMeta.holdout=d.holdout||null;perfMeta.state='ready';
     renderPerf();drawCal();renderMsi(d.msi);
     // Authenticated common adapter; read-only GET, never lifecycle/backfill/baseline.
     let st=null;
@@ -4897,6 +4920,8 @@ const _perfRefreshBtn = byId('perfRefresh');
 if (_perfRefreshBtn) _perfRefreshBtn.addEventListener('click', () => loadPerf());
 const _perfOriginSel = byId('perfOriginSel');
 if (_perfOriginSel) _perfOriginSel.addEventListener('change', () => loadPerf());
+const _perfWindowSel = byId('perfWindowSel');
+if (_perfWindowSel) _perfWindowSel.addEventListener('change', () => loadPerf());
 const _perfBackfillBtn = byId('perfBackfill');
 if (_perfBackfillBtn) _perfBackfillBtn.addEventListener('click', backfillPerf);
 /* ============ Signal detail: price path + TP/SL (ADR-0012) ============ */
@@ -10356,7 +10381,7 @@ window.addEventListener('resize', resizeCharts);
     async getJournalSummary(opts) {
       const o = opts || {}, qs = new URLSearchParams();
       qs.set('days', String(o.days || 90)); qs.set('limit', String(o.limit || 60));
-      for (const k of ['tf', 'source', 'origin']) if (o[k]) qs.set(k, o[k]);
+      for (const k of ['tf', 'source', 'origin', 'window']) if (o[k]) qs.set(k, o[k]);
       if (this.standaloneMobile) return { ok: false, standalone: true, error: 'requires-server' };
       try {
         const r = await this.get(cfg.pythonApi + '/journal/summary?' + qs.toString(), 1);

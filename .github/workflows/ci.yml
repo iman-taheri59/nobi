@@ -135,6 +135,8 @@ jobs:
         run: npm run test:live-candles
       - name: Visible pages refresh with the scan
         run: npm run test:page-refresh
+      - name: Performance page holdout window
+        run: npm run test:perf-window
       - name: approval queue updates and rejection reasons
         run: npm run test:queue
       - name: lockfile tarballs match their versions

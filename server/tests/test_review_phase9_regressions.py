@@ -276,3 +276,34 @@ def test_summary_outcome_view_is_none_for_non_long(tmp_path):
     v = J.summary(c)["signals"][0]
     assert v["o1"] is None and v["r1"] is None
     c.close()
+
+
+def test_summary_holdout_window_applies_only_a_frozen_cutoff(tmp_path, monkeypatch):
+    """2.5.5 — the Performance page can show holdout rows only; without a frozen
+    cutoff it must say the whole window is shown instead of faking a split."""
+    db = tmp_path / "private.db"
+    c = J.connect(db)
+    before = seed(c, 1700000000)
+    after = seed(c, 1700000000 + 86400)
+    outcome(c, before, "H2", -1)
+    outcome(c, after, "H2", 1)
+    c.close()
+    monkeypatch.setattr(J, "DB_PATH", db)
+    client = TestClient(main.app)
+    # nothing frozen: holdout requested, not applied, numbers unchanged
+    r = client.get("/api/journal/summary?days=3650&window=holdout").json()
+    assert r["holdout"] == {"cutoff_ts": None, "frozen_at": None, "requested": "holdout", "applied": False}
+    assert r["kpi"]["res"] == 2
+    # freeze between the two rows: only the later one remains
+    c = J.connect(db)
+    J.freeze_holdout(c, 1700000000 + 3600, note="test")
+    c.close()
+    r = client.get("/api/journal/summary?days=3650&window=holdout").json()
+    assert r["holdout"]["applied"] is True and r["holdout"]["cutoff_ts"] == 1700000000 + 3600
+    assert r["kpi"]["res"] == 1 and r["kpi"]["hit"] == 1
+    assert [s["id"] for s in r["signals"]] == [after]
+    # default window still shows everything, and still reports the cutoff
+    r = client.get("/api/journal/summary?days=3650").json()
+    assert r["kpi"]["res"] == 2 and r["holdout"]["applied"] is False and r["holdout"]["cutoff_ts"] == 1700000000 + 3600
+    assert client.get("/api/journal/summary?window=bogus").status_code == 422
+    client.close()
