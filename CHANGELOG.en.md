@@ -2,6 +2,13 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 2.5.6
+
+_Tagged and deployed 10 Nov 2026 (soak day 2, evening); one server timing fix plus the dashboard freshness text. Scoring, gates, R:R, queue policy and the universe untouched (ADR-0057)._
+
+- **Scan loop locked to the bar close (ADR-0057):** `sleep(900)` after a 35 s scan drifted ~35 s per cycle, until the scan ran just before a bar closed and the signal card trailed the chart by up to ~30 min. The scan now runs at "next boundary + `NBX_SCAN_LOOP_GRACE_S`" (default 20 s, 5–300, a bad value is refused); never two scans of one bar; an unknown timeframe falls back to the fixed cadence. 6 new tests.
+- **Signal-card freshness counts from the bar close:** "bar 19:45 · closed 5 min ago" instead of "last candle: 20 min ago" (which counted from the bar open). "Stale" = two missed bars after the close.
+
 ## 2.5.5
 
 _Tagged and deployed 10 Nov 2026 (soak day 2); dashboard only, two read-only server fields and one proposed ADR. No change to scoring, gates, R:R, queue policy or the scan universe; the soak/holdout series is untouched._

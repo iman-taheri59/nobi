@@ -47,7 +47,11 @@ for(const file of ['index.html','nobitex-mobile.html'])for(const lang of ['fa','
   ok(lv[2].includes('1,048') && /\+4\.8[%٪]/.test(lv[2]),'TP1 = px + 1.2×dist: '+lv[2]);
   ok(lv[3].includes('1,080') && /\+8\.0[%٪]/.test(lv[3]),'TP2 = px + 2.0×dist: '+lv[3]);
   ok(btc.querySelector('.sig-ladder'),'ladder drawn when stop and price are known');
-  ok(btc.querySelector('[data-sig-fresh]').textContent.includes('15'),'per-symbol freshness from the cached last candle');
+  // 2.5.6 — age counts from the bar's close: the newest closed 15m bar (stamped
+  // now−900) finished just now, so it is "closed under 2 min ago", not "15 min ago".
+  {const f=btc.querySelector('[data-sig-fresh]').textContent;
+   ok(/بسته‌شده کمتر|closed under 2/.test(f),'freshness is measured from the bar close: '+f);
+   ok(/\d{2}:\d{2}|[۰-۹]{2}:[۰-۹]{2}/.test(f),'the bar clock time is printed: '+f);}
   // Evidence is present for tests/screen readers but hidden until asked for.
   const ev=btc.querySelector('[data-sig-evidence]');ok(ev.hasAttribute('hidden'));
   ok(ev.querySelector('[data-signal-gate]').textContent.includes('5,400'));
