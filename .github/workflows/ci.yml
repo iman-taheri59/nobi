@@ -137,6 +137,8 @@ jobs:
         run: npm run test:page-refresh
       - name: Performance page holdout window
         run: npm run test:perf-window
+      - name: Orders event timeline
+        run: npm run test:orders-timeline
       - name: approval queue updates and rejection reasons
         run: npm run test:queue
       - name: lockfile tarballs match their versions

@@ -3905,6 +3905,93 @@ function orderStateChip(state){
   const [c, fa] = map[state] || ['zinc', state];
   return `<span class="chip text-${c}-300"><span class="dot bg-${c}-400"></span>${escText(LANG==='fa'?fa:uiLabel(state))}</span>`;
 }
+/* --- Order row details: a readable event timeline instead of raw JSON ----
+ * Vocabulary is the broker's own (`OrderEvent.kind`, reject/close reasons from
+ * paper_trading.py). Anything the map does not know is printed verbatim in
+ * monospace — never hidden, never guessed. The raw payload stays reachable
+ * behind a nested "raw" toggle for audit. */
+const ORDER_EVENT_KINDS = {
+  submit:  ['indigo',  'ارسال سفارش',        'Order submitted'],
+  fill:    ['sky',     'پر شد (ورود)',        'Filled (entry)'],
+  tp1:     ['emerald', 'هدف ۱ — خروج بخشی',   'TP1 — partial exit'],
+  partial: ['amber',   'خروج بخشی',           'Partial exit'],
+  close:   ['zinc',    'بسته شد',             'Closed'],
+  reject:  ['red',     'رد شد',               'Rejected'],
+};
+const ORDER_REASONS = {
+  'sl-hit':        ['حد ضرر خورد',                         'stop-loss hit'],
+  'trail':         ['استاپ دنباله‌دار (بعد از هدف ۱)',     'trailing stop (after TP1)'],
+  'tp2-hit':       ['هدف ۲ خورد',                          'TP2 hit'],
+  'time-stop':     ['حد زمانی',                            'time stop'],
+  'halted':        ['معاملات متوقف است',                   'trading halted'],
+  'concurrent-cap':['سقف پوزیشن‌های هم‌زمان',              'concurrent-position cap'],
+  'single-asset-cap':['سقف سهم یک دارایی',                 'single-asset cap'],
+  'no-cash':       ['نقدینگی کافی نیست',                   'insufficient cash'],
+  'no-depth':      ['عمق دفتر کافی نیست',                  'not enough book depth'],
+  'no-fx-rate':    ['نرخ تبدیل در دسترس نیست',             'FX rate unavailable'],
+  'precision':     ['دقت/حداقل مقدار بازار',               'market precision / minimum'],
+  'revert-failed': ['برگشت ناموفق',                        'revert failed'],
+  'queue-proposal-already-used':['پیشنهاد صف قبلاً مصرف شده','queue proposal already used'],
+};
+const ORDER_META = {
+  record_kind: { 'entry':['ورود','entry'], 'rejected-attempt':['تلاش ردشده','rejected attempt'], 'retained-events-only':['فقط رویدادهای نگهداری‌شده','retained events only'] },
+  position_link: { 'clientOrderId':['پیوند با شناسهٔ سفارش','linked by clientOrderId'], 'unavailable':['بدون پیوند به پوزیشن','no position link'] },
+  pnl_usd_basis: { 'position-snapshot':['از وضعیت پوزیشن','from position snapshot'], 'retained-exit-events':['جمع رویدادهای خروج موجود','sum of retained exit events'] },
+};
+function orderReasonText(r){
+  if (r == null || r === '') return '';
+  const k = ORDER_REASONS[String(r)];
+  return k ? k[LANG==='fa'?0:1] : '';
+}
+function orderMetaText(group, v){
+  if (v == null) return '—';
+  const k = ORDER_META[group] && ORDER_META[group][String(v)];
+  return k ? escText(k[LANG==='fa'?0:1]) : `<code class="num">${escText(v)}</code>`;
+}
+function orderEventRow(ev, symbol){
+  if (!ev || typeof ev !== 'object') return '';
+  const [c, fa, en] = ORDER_EVENT_KINDS[ev.kind] || ['zinc', String(ev.kind ?? '?'), String(ev.kind ?? '?')];
+  const when = typeof ev.ts === 'number' && Number.isFinite(ev.ts) ? new Date(ev.ts*1000).toLocaleString(dateLocale()) : null;
+  const qty = ev.qty != null && Number.isFinite(Number(ev.qty)) && Number(ev.qty) > 0 ? fmtQty(Number(ev.qty), symbol) : null;
+  const px  = ev.price != null && Number.isFinite(Number(ev.price)) && Number(ev.price) > 0 ? fmtMarketPrice(Number(ev.price), symbol) : null;
+  const fee = ev.fee_quote != null && Number.isFinite(Number(ev.fee_quote)) ? fmtMarketPrice(Number(ev.fee_quote), symbol) : null;
+  const pnl = ev.pnl_usd != null && Number.isFinite(Number(ev.pnl_usd)) ? Number(ev.pnl_usd) : null;
+  const known = orderReasonText(ev.reason);
+  const reason = ev.reason == null || ev.reason === '' ? '' :
+    `<span class="text-zinc-400">${known ? escText(known) : ''} <code class="num text-zinc-500">${escText(ev.reason)}</code></span>`;
+  const amount = qty || px ? `<span class="num">${qty || ''}${qty && px ? (LANG==='fa' ? ' در ' : ' @ ') : ''}${px || ''}</span>` : '';
+  const money = [fee != null ? `<span class="num text-zinc-500">${LANG==='fa'?'کارمزد':'fee'} ${fee}</span>` : '',
+                 pnl != null ? `<span class="num font-bold ${pnl>0?'text-emerald-300':pnl<0?'text-red-300':'text-zinc-400'}">PnL ${fmtMoney(pnl,'USD')}</span>` : ''].filter(Boolean).join(' · ');
+  return `<li class="flex gap-2 items-start py-1 border-b border-white/5 last:border-0">
+      <span class="dot bg-${c}-400 mt-1.5 shrink-0"></span>
+      <div class="min-w-0 flex-1">
+        <div class="flex flex-wrap gap-x-2 items-baseline"><span class="font-bold text-${c}-300">${escText(LANG==='fa'?fa:en)}</span>${when?`<span class="num text-zinc-500">${escText(when)}</span>`:''}</div>
+        <div class="flex flex-wrap gap-x-2 text-zinc-300">${amount}${money?` · ${money}`:''}</div>
+        ${reason?`<div>${reason}</div>`:''}
+      </div></li>`;
+}
+function orderDetailsHtml(o, stamp){
+  const events = Array.isArray(o.event_details) ? o.event_details : [];
+  const closeKnown = orderReasonText(o.close_reason);
+  const closeTxt = o.close_reason == null ? '—' : `${closeKnown ? escText(closeKnown)+' ' : ''}<code class="num text-zinc-500">${escText(o.close_reason)}</code>`;
+  const kv = (label, value) => `<div class="flex justify-between gap-3 py-0.5 border-b border-white/5"><span class="text-zinc-500">${label}</span><span class="text-end">${value}</span></div>`;
+  const fa = LANG==='fa';
+  return `<details class="mt-1 text-[10px]"><summary class="cursor-pointer">${fa?'جزئیات رویدادهای موجود':'Retained event details'}${events.length?` <span class="num text-zinc-500">(${fmtNum(events.length)})</span>`:''}</summary>
+    <div class="mt-1.5 min-w-[17rem] max-w-md">
+      ${kv(fa?'نوع رکورد':'Record kind', orderMetaText('record_kind', o.record_kind||'unknown'))}
+      ${kv(fa?'پیوند پوزیشن':'Position link', orderMetaText('position_link', o.position_link||'unknown'))}
+      ${kv(fa?'وضعیت پوزیشن مرتبط':'Related position state', `<span data-ord-pos-state>${o.position_state==null?'—':orderStateChip(o.position_state)}</span><span class="sr-only">${fa?'وضعیت پوزیشن مرتبط':'Related position state'}: ${escText(o.position_state??'—')}</span>`)}
+      ${kv(fa?'خروج‌های موجود':'Retained exits', `<span class="num">${fmtQty(o.retained_exit_qty,o.symbol)}</span>`)}
+      ${kv(fa?'باقی‌مانده طبق وضعیت مدل':'Remaining per model state', `<span class="num">${fmtQty(o.remaining_open,o.symbol)}</span>`)}
+      ${kv(fa?'بسته‌شدن':'Closed at', `<span class="num">${stamp(o.closed_at_iso)}</span> · ${closeTxt}`)}
+      ${kv(fa?'کارمزد ورود (واحد مظنه)':'Entry fee (quote units)', `<span class="num">${fmtMarketPrice(o.fee,o.symbol)}</span>`)}
+      ${kv(fa?'PnL ثبت‌شده':'Recorded PnL', `<span class="num font-bold ${o.pnl_usd>0?'text-emerald-300':o.pnl_usd<0?'text-red-300':''}">${fmtMoney(o.pnl_usd,'USD')}</span> · ${orderMetaText('pnl_usd_basis', o.pnl_usd_basis||'unknown')}`)}
+    </div>
+    <div class="mt-2 font-bold text-zinc-400">${fa?'رویدادها':'Events'}</div>
+    ${events.length ? `<ul class="mt-0.5 min-w-[17rem] max-w-md">${events.map(ev=>orderEventRow(ev,o.symbol)).join('')}</ul>` : `<div class="text-zinc-500">${fa?'رویدادی نگهداری نشده است.':'No retained events.'}</div>`}
+    <details class="mt-1.5"><summary class="cursor-pointer text-zinc-500">${fa?'دادهٔ خام':'Raw data'}</summary><pre dir="ltr" class="whitespace-pre-wrap text-start text-zinc-500 max-h-56 overflow-auto">${escText(JSON.stringify(events,null,2))}</pre></details>
+  </details>`;
+}
 function renderOrders(){
   const body=byId('ordBody');if(!body)return;
   const status=byId('ordersStatus');
@@ -3918,10 +4005,10 @@ function renderOrders(){
     const stamp=iso=>iso?escText(new Date(iso).toLocaleString(dateLocale())):'—';
     const id=o.clientOrderId?`<details><summary class="cursor-pointer">${escText(String(o.clientOrderId).slice(-8))}</summary><span class="break-all">${escText(o.clientOrderId)}</span></details>`:'—';
     const slip=o.adverse_slip_bps==null?'—':(o.adverse_slip_bps>=0?'+':'')+fmtNum(o.adverse_slip_bps,1)+'bp';
-    const details=`<details class="mt-1 text-[10px]"><summary class="cursor-pointer">${LANG==='fa'?'جزئیات رویدادهای موجود':'Retained event details'}</summary><div>${escText(o.record_kind||'unknown')} · ${escText(o.position_link||'unknown')}</div><div>${LANG==='fa'?'وضعیت پوزیشن مرتبط':'Related position state'}: ${escText(o.position_state??'—')}</div><div>${LANG==='fa'?'خروج‌های موجود':'Retained exits'}: ${fmtQty(o.retained_exit_qty,o.symbol)}</div><div>${LANG==='fa'?'باقی‌مانده طبق وضعیت مدل':'Remaining per model state'}: ${fmtQty(o.remaining_open,o.symbol)}</div><div>${LANG==='fa'?'بسته‌شدن':'Closed at'}: ${stamp(o.closed_at_iso)} · ${escText(o.close_reason??'—')}</div><div>${LANG==='fa'?'کارمزد ورود، واحد مظنه':'Entry fee, quote units'}: ${fmtMarketPrice(o.fee,o.symbol)}</div><div>${LANG==='fa'?'PnL ثبت‌شده؛ نه محاسبهٔ خالص کامل':'Recorded PnL; not reconstructed fee-net result'}: ${fmtMoney(o.pnl_usd,'USD')} · ${escText(o.pnl_usd_basis??'unknown')}</div><pre class="whitespace-pre-wrap">${escText(JSON.stringify(o.event_details||[],null,2))}</pre></details>`;
+    const details=orderDetailsHtml(o, stamp);
     const type=['market','limit'].includes(o.type)?uiLabel(o.type):'—';
     const filled=o.entry_filled===undefined?null:o.entry_filled;
-    return `<tr><td class="num text-[10px]">${id}</td><td>${window.coinIcon(o.symbol,20)}${escText(o.symbol)}</td><td>${o.side==='buy'?t('sg.long'):o.side==='sell'?(LANG==='fa'?'فروش':'Sell'):'—'}</td><td>${type}</td><td class="num">${fmtMarketPrice(o.price,o.symbol)}</td><td class="num">${fmtQty(o.requested,o.symbol)}</td><td class="num">${fmtQty(filled,o.symbol)}<div>${o.filled_pct==null?'—':PC(o.filled_pct,1,false)}</div></td><td class="num">${slip}</td><td>${orderStateChip(o.state)}${o.reason?`<div class="text-red-300">${escText(o.reason)}</div>`:''}${details}</td><td class="num">${stamp(o.opened_at_iso)}<div class="text-[9px]">${o.opened_at_basis==='position-opened-at'?(LANG==='fa'?'زمان بازشدن در مدل':'Model opened at'):(LANG==='fa'?'اولین رویداد موجود':'First retained event')}</div></td></tr>`;
+    return `<tr><td class="num text-[10px]">${id}</td><td>${window.coinIcon(o.symbol,20)}${escText(o.symbol)}</td><td>${o.side==='buy'?t('sg.long'):o.side==='sell'?(LANG==='fa'?'فروش':'Sell'):'—'}</td><td>${type}</td><td class="num">${fmtMarketPrice(o.price,o.symbol)}</td><td class="num">${fmtQty(o.requested,o.symbol)}</td><td class="num">${fmtQty(filled,o.symbol)}<div>${o.filled_pct==null?'—':PC(o.filled_pct,1,false)}</div></td><td class="num">${slip}</td><td>${orderStateChip(o.state)}${o.reason?`<div class="text-red-300">${orderReasonText(o.reason)?escText(orderReasonText(o.reason))+' ':''}<code class="num text-[10px]">${escText(o.reason)}</code></div>`:''}${details}</td><td class="num">${stamp(o.opened_at_iso)}<div class="text-[9px]">${o.opened_at_basis==='position-opened-at'?(LANG==='fa'?'زمان بازشدن در مدل':'Model opened at'):(LANG==='fa'?'اولین رویداد موجود':'First retained event')}</div></td></tr>`;
   }).join('');
 }
 async function loadOrders(){
