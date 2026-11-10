@@ -2,7 +2,9 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
-## 2.5.5 (in progress)
+## 2.5.5
+
+_Tagged and deployed 10 Nov 2026 (soak day 2); dashboard only, two read-only server fields and one proposed ADR. No change to scoring, gates, R:R, queue policy or the scan universe; the soak/holdout series is untouched._
 
 - **Performance page: "holdout only" window:** a new selector next to the recording filter. `window=holdout` on `/api/journal/summary` counts only rows issued at or after the frozen ADR-0052 cutoff (KPIs, horizons, families, calibration, table — all of it). When no holdout is frozen the server answers `holdout.applied=false` and the page says "whole window" explicitly; no clean split is faked. The answer always carries `holdout.cutoff_ts`. Tests: `test_summary_holdout_window_applies_only_a_frozen_cutoff`, `npm run test:perf-window`.
 - **Approval-queue card: TP2 and level distances:** the card now shows price, stop, TP1, **TP2** and risk % side by side, each level with its distance from the plan entry (−5.00 % / +6.00 % / +10.00 %). The base is the server plan price, not the live mid, because the levels were derived from it; while editing, the percentages follow the edited value. Display only; `R:TP2` and the editor are unchanged.
