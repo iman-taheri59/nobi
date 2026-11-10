@@ -1846,7 +1846,7 @@
     async getJournalSummary(opts) {
       const o = opts || {}, qs = new URLSearchParams();
       qs.set('days', String(o.days || 90)); qs.set('limit', String(o.limit || 60));
-      for (const k of ['tf', 'source', 'origin']) if (o[k]) qs.set(k, o[k]);
+      for (const k of ['tf', 'source', 'origin', 'window']) if (o[k]) qs.set(k, o[k]);
       if (this.standaloneMobile) return { ok: false, standalone: true, error: 'requires-server' };
       try {
         const r = await this.get(cfg.pythonApi + '/journal/summary?' + qs.toString(), 1);

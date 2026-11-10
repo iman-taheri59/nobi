@@ -2151,23 +2151,41 @@ async def journal_summary(
     origin: str | None = Query(None, pattern="^(live|backfill)$"),
     days: int = Query(90, ge=1, le=3650),
     limit: int = Query(60, ge=1, le=500),
+    window: str = Query("all", pattern="^(all|holdout)$"),
 ):
     """Everything the Performance page needs, plus its own provenance.
 
     `origins` separates predictions the engine issued in real time (`live`)
     from rows reconstructed backwards for research (`backfill`); merging them
     silently would let a backfill flatter the hit-rate.
+
+    `window=holdout` (2.5.5) keeps only rows issued at or after the frozen
+    holdout cutoff (ADR-0052) — the data nobody looked at while tuning. When no
+    cutoff is frozen the answer is the full window and says so
+    (`holdout.applied=false`), rather than pretending a clean split exists.
     """
     conn = signal_journal.connect()
     try:
+        since = int(time.time()) - days * 86400
+        frozen = signal_journal.holdout(conn)
+        cutoff = int(frozen["cutoff_ts"]) if frozen and frozen.get("cutoff_ts") else None
+        applied = window == "holdout" and cutoff is not None
+        if cutoff is not None and applied:
+            since = max(since, cutoff)
         payload = signal_journal.summary(
             conn,
             tf=tf,
-            since=int(time.time()) - days * 86400,
+            since=since,
             source=source,
             origin=origin,
             limit=limit,
         )
+        payload["holdout"] = {
+            "cutoff_ts": cutoff,
+            "frozen_at": frozen.get("frozen_at") if frozen else None,
+            "requested": window,
+            "applied": applied,
+        }
         payload["origins"] = {
             r["origin"]: r["n"]
             for r in conn.execute("SELECT origin, COUNT(*) AS n FROM signal_log GROUP BY origin")

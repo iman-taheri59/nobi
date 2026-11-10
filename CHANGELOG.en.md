@@ -2,6 +2,10 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 2.5.5 (in progress)
+
+- **Performance page: "holdout only" window:** a new selector next to the recording filter. `window=holdout` on `/api/journal/summary` counts only rows issued at or after the frozen ADR-0052 cutoff (KPIs, horizons, families, calibration, table — all of it). When no holdout is frozen the server answers `holdout.applied=false` and the page says "whole window" explicitly; no clean split is faked. The answer always carries `holdout.cutoff_ts`. Tests: `test_summary_holdout_window_applies_only_a_frozen_cutoff`, `npm run test:perf-window`.
+
 ## 2.5.4
 
 _Tagged and deployed 9 Nov 2026 (evening of soak day 1); one read-only server route + dashboard. No change to what signals are scored on._
