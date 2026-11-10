@@ -51,9 +51,21 @@ const summary=(holdout)=>({ok:true,kpi:{sig:2,res:1,void:0,hit:1,vpf:null,avg:0.
   await w.toggleSignalRow(d.querySelector('#perfBody tr[data-sig="7"]'));
   const det=d.querySelector('#perfBody .sig-detail');ok(det,'detail opened');if(!det.querySelector('[data-path-legend]'))console.log('DETAIL:',det.textContent.slice(0,300));
   ok(det.querySelector('svg line[data-level="entry"]'),'entry level line drawn');
-  ok(det.querySelector('svg circle[fill="#34d399"]'),'TP1 exit dot is green');
+  ok(det.querySelector('svg circle[fill="#34d399"][data-kind="tp1_timeout"]'),'TP1-then-timeout dot is green');
+  ok(d.querySelector('#perfDotLegend [data-dot-legend]')&&d.querySelectorAll('#perfDotLegend .dot').length===5,'dot legend above the table, five colours');
+  ok(det.querySelector('[data-path-legend]').compareDocumentPosition(det.querySelector('svg'))&4,'legend sits above the chart');
+  // TP1 then stop → blue; stored exit_reason wins over flags; ambiguous → amber
+  await w.toggleSignalRow(d.querySelector('#perfBody tr[data-sig="7"]'));
+  w.NBX.core.api.getJournalSignal=async(id)=>({signal:{id,symbol:'BTCUSDT',entry:101234.5,stop:99000,tp1:104000,tp2:106000,atr:1100,components:{}},
+    path:[{t:1762760000,o:1,h:1,l:1,c:101234.5},{t:1762760900,o:1,h:1,l:1,c:104100},{t:1762761800,o:1,h:1,l:1,c:101300}],
+    entry_index:0,outcomes:{H2:{r_multiple:0.3,hit_tp1:1,hit_sl:1,exit_ts:1762761800}}});
+  await w.toggleSignalRow(d.querySelector('#perfBody tr[data-sig="8"]'));
+  const det2=d.querySelector('#perfBody .sig-detail');
+  ok(det2.querySelector('svg circle[fill="#38bdf8"][data-kind="tp1_trail"]'),'TP1-then-stop dot is blue');
+  eq(w.outcomeKindOf({hit_tp1:1,hit_sl:1,exit_reason:'ambiguous-same-bar'}),'ambiguous','exit_reason wins over flags');
+  eq(w.outcomeKindOf({hit_tp1:0,hit_sl:1}),'stop','plain stop → stop (red in OUTCOME_DOT)');
   const legend=det.querySelector('[data-path-legend]');ok(legend&&/H[2۲]/.test(legend.textContent),'legend explains the H2 exit dot: '+(legend&&legend.textContent));
-  ok(legend.textContent.includes(lang==='fa'?'سبز':'green'),'legend names the colours ('+lang+')');
+  ok(legend.textContent.includes(lang==='fa'?'سربه‌سر':'breakeven'),'legend names the blue case ('+lang+')');
   eq(errors.filter(e=>!/Not implemented|canvas|Network forbidden/.test(e)).length,0,'no jsdom errors '+errors.join('|'));
  }
  console.log(`PASS: performance holdout window — ${checks} checks`);
