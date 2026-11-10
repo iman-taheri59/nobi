@@ -46,12 +46,13 @@ for(const file of ['index.html','nobitex-mobile.html'])for(const lang of ['fa','
   // KPI must say so instead of printing a bare em-dash (the probe's blank-panel bug).
   eq(txt('pHit'),lang==='fa'?'آمار کارایی ثبت نشده است':'Performance data not recorded');
   ok(txt('hzCards').includes('synthetic: 1'),'H1 provenance remains visible without H2');
-  ok(txt('famBody').includes(t('perf.familyEmpty')));ok(txt('perfBody').includes('XUSDT'));eq(d.querySelectorAll('#perfBody td')[5].textContent,'✓','older servers without outcome objects keep the boolean tick');
+  ok(txt('famBody').includes(t('perf.familyEmpty')));ok(txt('perfBody').includes('XUSDT'));eq(d.querySelectorAll('#perfBody td')[6].textContent,'✓','older servers without outcome objects keep the boolean tick');
+  // 2.5.5 — column 3 is the entry price; H1/H2/H3 are 6/7/8, model R 9/10, status 11.
   // 2.5.2 — with the outcome object, the cell names what happened, not R>0.
   const yrow=[...d.querySelectorAll('#perfBody tr')].find(tr=>tr.textContent.includes('YUSDT'));const ytd=yrow.querySelectorAll('td');
-  ok(ytd[5].textContent.includes(lang==='fa'?'پایان مهلت':'Timeout')&&ytd[5].textContent.includes('0.12R')&&!ytd[5].textContent.includes('✓'),'a +0.12R timeout is not a tick: '+ytd[5].textContent);
-  ok(ytd[6].textContent.includes(lang==='fa'?'هدف ۲':'Target 2'));ok(ytd[7].textContent.includes(lang==='fa'?'مبهم':'Ambiguous'));
-  ok(ytd[8].textContent.includes('0.12')&&ytd[9].textContent.includes('1.6'),'H1 and H2 model R columns');
+  ok(ytd[6].textContent.includes(lang==='fa'?'پایان مهلت':'Timeout')&&ytd[6].textContent.includes('0.12R')&&!ytd[6].textContent.includes('✓'),'a +0.12R timeout is not a tick: '+ytd[6].textContent);
+  ok(ytd[7].textContent.includes(lang==='fa'?'هدف ۲':'Target 2'));ok(ytd[8].textContent.includes(lang==='fa'?'مبهم':'Ambiguous'));
+  ok(ytd[9].textContent.includes('0.12')&&ytd[10].textContent.includes('1.6'),'H1 and H2 model R columns');
   ok(d.querySelector('[data-i18n="perf.h2"]').textContent.includes(lang==='fa'?'روز':'day'),'H2 header says day, not an abbreviation');
   ok(txt('msiBadge').includes(t('msi.insufficient')),'historical MSI is not hidden by current exchange outage');
   ok(txt('stageWhy').includes(t('perf.stageStored')));ok(txt('perfReadStatus').includes('2026-10-29'));
@@ -72,8 +73,8 @@ for(const file of ['index.html','nobitex-mobile.html'])for(const lang of ['fa','
   await w.loadPerf();eq(d.querySelectorAll('#perfBody img').length,0);eq(d.querySelectorAll('#perfBody [onclick]').length,0);eq(w.pwned,undefined);
   const trs=d.querySelectorAll('#perfBody tr');ok(trs[0].textContent.includes(evil));eq(trs[0].dataset.sig,'');
   eq(trs[0].children[2].textContent,t('sg.neutral'));eq(trs[1].children[2].textContent,t('sg.exit'));
-  for(const tr of [trs[0],trs[1]])for(const idx of [5,6,7])eq(tr.children[idx].textContent,'N/A');
-  eq(trs[0].children[8].textContent,'—');eq(trs[2].children[5].textContent,'—');eq(trs[2].children[6].textContent,'—');eq(trs[2].children[7].textContent,'✗');eq(trs[2].children[10].querySelector('span[title]').title,evil);
+  for(const tr of [trs[0],trs[1]])for(const idx of [6,7,8])eq(tr.children[idx].textContent,'N/A');
+  eq(trs[0].children[9].textContent,'—');eq(trs[2].children[6].textContent,'—');eq(trs[2].children[7].textContent,'—');eq(trs[2].children[8].textContent,'✗');eq(trs[2].children[11].querySelector('span[title]').title,evil);
   // Numeric axis is proportional, 100% stays inside; each bucket exposes n; no ideal diagonal.
   api.getJournalSummary=async()=>payload({calibration:[[90,1,3],[20,0,2],[50,0.5,7],[null,0.5,1],[70,2,1]],vpf_state:'no_losses'});
   await w.loadPerf();const circles=d.querySelectorAll('#calChart circle');eq(circles.length,3);eq(circles[0].dataset.score,'20');eq(circles[1].dataset.score,'50');eq(circles[2].dataset.score,'90');
