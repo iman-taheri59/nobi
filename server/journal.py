@@ -1461,6 +1461,9 @@ def summary(conn: sqlite3.Connection, *, tf: str | None = None,
             "dir": {"LONG": "long", "EXIT": "exit", "NEUTRAL": "neutral"}.get(r["direction"], "unknown"),
             "score": round(float(r["composite"] or 0), 1),
             "rank": r["rank_in_cycle"],
+            # 2.5.5 — the stored plan levels, so the table can print the entry
+            # price without opening the row. Same numbers the detail shows.
+            "entry": r["entry"], "stop": r["stop"], "tp1": r["tp1"], "tp2": r["tp2"],
             "h1": (float(o["H1"]["r_multiple"]) > 0 if "H1" in o and r["direction"] == "LONG" else None),
             "h2": (float(o["H2"]["r_multiple"]) > 0 if "H2" in o and r["direction"] == "LONG" else None),
             "h3": (float(o["H3"]["r_multiple"]) > 0 if "H3" in o and r["direction"] == "LONG" else None),
