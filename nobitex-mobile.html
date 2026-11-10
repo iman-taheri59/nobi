@@ -1435,7 +1435,8 @@ button[aria-busy="true"]::after, [role="button"][aria-busy="true"]::after, [role
         </div>
         <div class="glass p-4 sm:p-5 lg:col-span-2">
           <div class="font-bold text-[13px] sm:text-sm mb-1" data-i18n="perf.table"></div>
-          <p class="text-[10px] text-zinc-500 leading-5 mb-3" data-i18n="perf.ocLegend"></p>
+          <p class="text-[10px] text-zinc-500 leading-5 mb-1" data-i18n="perf.ocLegend"></p>
+          <div id="perfDotLegend" class="mb-3"></div>
           <div class="table-scroll">
             <table class="w-full min-w-[1040px]">
               <thead><tr>
@@ -2264,7 +2265,7 @@ const T = {
     'perf.sub1':'از میان {n} نتیجهٔ H2 برای LONG غیر VOID','perf.sub2':'میانگین R به‌ازای سیگنال','perf.sub3':'ΣR+ / |ΣR−| · H2','perf.sub4':'میانگین Spearman درون‌نمادی؛ ≥۱۵ نمونه/نماد','perf.sub5':'در بازه انتخابی','perf.sub6':'درصد LONG معتبر با نتیجهٔ H2',
     'perf.cal':'منحنی درستی‌سنجی','perf.calSub':"محور افقی: امتیاز مرکب ۰ تا ۱۰۰؛ عمودی: سهم نتایج مثبت H2 از ۰ تا ۱۰۰٪",
     'perf.horizon':'نتیجه به‌ازای افق پایش','perf.faml':"گروه‌بندی توصیفی خانوادهٔ غالب",'perf.family':'خانواده','perf.avgR':'میانگین R','perf.share':'سهم',
-    'perf.table':'برش سیگنال‌ها؛ حل‌شده‌ها اول','perf.entryCol':'قیمت ورود','perf.pathLegend':'خط سفید = قیمت ورود (قیمت پایانی کندل سیگنال)؛ خط‌چین عمودی = کندل ورود؛ نقطهٔ انتهای مسیر = خروج افق H2 در مدل OHLC: سبز = هدف ۱ خورد، قرمز = حد ضرر خورد، خاکستری = پایان مهلت ۲۴ ساعته. مسیر ناخالص است؛ کارمزد در R مدل نیست.','perf.dir':'جهت','perf.score':'امتیاز','perf.rank':'رتبه','perf.h1':'H1 (+۱ ساعت)','perf.h2':'H2 (+۱ روز)','perf.h3':'H3 (+۷ روز)','perf.r1':'R مدل H1','perf.r':'R مدل H2','perf.ocLegend':'نتیجهٔ هر افق: هدف ۲ · هدف ۱ سپس سربه‌سر · هدف ۱ سپس پایان مهلت · پایان مهلت (R در پایان) · حد ضرر · مبهم (استاپ و هدف در یک کندل؛ محافظه‌کارانه = استاپ). R مدل OHLC ناخالص است.','perf.status':'وضعیت',
+    'perf.table':'برش سیگنال‌ها؛ حل‌شده‌ها اول','perf.entryCol':'قیمت ورود','perf.pathLegend':'خط سفید = قیمت ورود (قیمت پایانی کندل سیگنال)؛ خط‌چین عمودی = کندل ورود؛ نقطهٔ انتهای مسیر = خروج افق H2 (۲۴ ساعته) در مدل OHLC. مسیر ناخالص است؛ کارمزد در R مدل نیست.','perf.dir':'جهت','perf.score':'امتیاز','perf.rank':'رتبه','perf.h1':'H1 (+۱ ساعت)','perf.h2':'H2 (+۱ روز)','perf.h3':'H3 (+۷ روز)','perf.r1':'R مدل H1','perf.r':'R مدل H2','perf.ocLegend':'نتیجهٔ هر افق: هدف ۲ · هدف ۱ سپس سربه‌سر · هدف ۱ سپس پایان مهلت · پایان مهلت (R در پایان) · حد ضرر · مبهم (استاپ و هدف در یک کندل؛ محافظه‌کارانه = استاپ). R مدل OHLC ناخالص است.','perf.status':'وضعیت',
     'perf.stResolved':'نتیجه‌رسیده','perf.stInP':'در جریان','perf.stPend':'در انتظار','perf.stVoid':'ابطال',
     'perf.noCal':'داده‌ی کافی برای منحنی درستی‌سنجی نیست','perf.noCalSub':'پس از رسیدن افق H2 سیگنال‌ها پر می‌شود',
     'perf.empty':"در این فیلتر ردیفی پیدا نشد",'perf.emptySub':"خطای دریافت با نبود ردیف متفاوت است؛ برای مشاهدهٔ گزارش نیازی به بازسازی تاریخچه نیست.",
@@ -2582,7 +2583,7 @@ const T = {
     'perf.sub1':'of {n} resolved non-VOID LONG H2 outcomes','perf.sub2':'average R per signal','perf.sub3':'ΣR+ / |ΣR−| · H2','perf.sub4':'mean per-symbol Spearman; ≥15 samples/symbol','perf.sub5':'in selected period','perf.sub6':'% eligible LONG with H2 outcomes',
     'perf.cal':'Calibration Curve','perf.calSub':"X: composite score 0–100; Y: fraction of positive H2 outcomes 0–100%",
     'perf.horizon':'Outcome by monitoring horizon','perf.faml':"Descriptive dominant-family groups",'perf.family':'Family','perf.avgR':'Avg R','perf.share':'Share',
-    'perf.table':'Signal slice; resolved first','perf.entryCol':'Entry price','perf.pathLegend':'White line = entry price (close of the signal candle); vertical dashes = entry candle; the dot at the end of the path = the H2 exit in the OHLC model: green = TP1 hit, red = stop hit, grey = 24h timeout. The path is gross; fees are not in model R.','perf.dir':'Direction','perf.score':'Score','perf.rank':'Rank','perf.h1':'H1 (+1 hour)','perf.h2':'H2 (+1 day)','perf.h3':'H3 (+7 days)','perf.r1':'H1 model R','perf.r':'H2 model R','perf.ocLegend':'Outcome per horizon: target 2 · target 1 then breakeven · target 1 then timeout · timeout (R at horizon end) · stop · ambiguous (stop and target inside one candle; resolved as stop). Model R is gross OHLC.','perf.status':'Status',
+    'perf.table':'Signal slice; resolved first','perf.entryCol':'Entry price','perf.pathLegend':'White line = entry price (close of the signal candle); vertical dashes = entry candle; the dot at the end of the path = the H2 (24h) exit in the OHLC model. The path is gross; fees are not in model R.','perf.dir':'Direction','perf.score':'Score','perf.rank':'Rank','perf.h1':'H1 (+1 hour)','perf.h2':'H2 (+1 day)','perf.h3':'H3 (+7 days)','perf.r1':'H1 model R','perf.r':'H2 model R','perf.ocLegend':'Outcome per horizon: target 2 · target 1 then breakeven · target 1 then timeout · timeout (R at horizon end) · stop · ambiguous (stop and target inside one candle; resolved as stop). Model R is gross OHLC.','perf.status':'Status',
     'perf.stResolved':'Resolved','perf.stInP':'In progress','perf.stPend':'Pending','perf.stVoid':'Void',
     'perf.noCal':'Not enough data for a calibration curve','perf.noCalSub':'Fills in as H2 horizons resolve',
     'perf.empty':"No rows for this filter",'perf.emptySub':"Read failure is different from no rows; viewing the report does not require a historical backfill.",
@@ -4678,6 +4679,36 @@ const OUTCOME_KINDS = {
   stop:        { fa: 'حد ضرر',            en: 'Stop',            cls: 'text-red-300 border-red-300/40' },
   ambiguous:   { fa: 'مبهم',              en: 'Ambiguous',       cls: 'text-amber-300 border-amber-300/40' },
 };
+/* 2.5.5 — the exit dot on the price path uses the same vocabulary as the table
+ * chip. Kind is derived exactly like journal._outcome_view: stored exit_reason
+ * first, flags only for rows written before that column existed. */
+const OUTCOME_DOT = {
+  tp2: '#34d399', tp1_timeout: '#34d399', tp1_trail: '#38bdf8',
+  timeout: '#a1a1aa', stop: '#f87171', ambiguous: '#fbbf24',
+};
+function outcomeKindOf(x){
+  if (!x || typeof x !== 'object') return null;
+  if (typeof x.kind === 'string') return x.kind;
+  const tp1 = !!Number(x.hit_tp1), tp2 = !!Number(x.hit_tp2), sl = !!Number(x.hit_sl);
+  let reason = typeof x.exit_reason === 'string' ? x.exit_reason : null;
+  if (reason === null) reason = tp2 ? 'tp2' : (sl && tp1) ? 'trail' : sl ? 'stop' : 'timeout';
+  if (reason.startsWith('ambiguous')) return 'ambiguous';
+  if (reason === 'tp2') return 'tp2';
+  if (reason === 'trail') return 'tp1_trail';
+  if (reason === 'stop') return 'stop';
+  return tp1 ? 'tp1_timeout' : 'timeout';
+}
+function dotLegendHtml(extra){
+  const items = [
+    ['#34d399', LANG === 'fa' ? 'هدف ۲ یا هدف ۱ سپس پایان مهلت' : 'TP2, or TP1 then timeout'],
+    ['#38bdf8', LANG === 'fa' ? 'هدف ۱ سپس حد ضرر (سربه‌سر)' : 'TP1 then stop (breakeven)'],
+    ['#a1a1aa', LANG === 'fa' ? 'پایان مهلت بدون هدف' : 'timeout, no target'],
+    ['#f87171', LANG === 'fa' ? 'حد ضرر' : 'stop hit'],
+    ['#fbbf24', LANG === 'fa' ? 'مبهم (استاپ و هدف در یک کندل)' : 'ambiguous (stop and target in one candle)'],
+  ].map(([c, l]) => `<span class="inline-flex items-center gap-1 whitespace-nowrap"><span class="dot" style="background:${c}"></span>${escText(l)}</span>`).join('');
+  return `<div data-dot-legend class="flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-zinc-400 leading-5">${
+    `<span class="text-zinc-500">${LANG === 'fa' ? 'نقطهٔ خروج افق H2:' : 'H2 exit dot:'}</span>`}${items}${extra || ''}</div>`;
+}
 function outcomeCell(v){
   if (v && typeof v === 'object' && !Array.isArray(v) && typeof v.kind === 'string') {
     const k = OUTCOME_KINDS[v.kind];
@@ -4746,6 +4777,7 @@ function renderPerf(){
   byId('pVoid').textContent=ready?pFmt(k.void):'—';
   byId('famBody').innerHTML=!ready||!famRows.length?empty('perf.familyEmpty'):famRows.map(f=>`<tr><td>${escText(famLabel(f.n,LANG))}</td><td class="num">${pFmt(f.r,2)}R</td><td class="num">${pFmt(f.share,1)}%</td></tr>`).join('');
   byId('hzCards').innerHTML=!ready?`<p class="text-[11px]">${escText(perfStateText())}</p>`:hzRows.map(h=>`<div class="rounded-xl p-3 border border-white/5" data-perf-horizon="${escText(h.k)}"><div class="font-bold">${escText(h.k)} · ${pct(h.hit)}</div><div class="num text-[11px]">${t('perf.avgR')}: ${pFmt(h.avgr,2)}R · n=${pFmt(h.n)}</div><div data-horizon-sources class="text-[10px] text-zinc-500">${escText(perfSources(h.sources,h.n))}</div>${h.n===0?`<p class="text-[10px]">${t('perf.horizonEmpty')}</p>`:''}</div>`).join('');
+  const dl=byId('perfDotLegend'); if(dl) dl.innerHTML=dotLegendHtml();
   byId('perfBody').innerHTML=!ready||!perfSignals.length?empty('perf.empty'):perfSignals.map(s=>{
     const long=s.dir==='long';
     const oc=v=>long?outcomeCell(v):`<span class="text-zinc-500" title="${t('perf.na')}">N/A</span>`;
@@ -5060,7 +5092,7 @@ function pricePathSvg(d){
 
   const exitMark = exitIdx < 0 ? '' : `
     <circle cx="${x(exitIdx).toFixed(1)}" cy="${y(bars[exitIdx].c).toFixed(1)}" r="3.5"
-            fill="${Number(h2.hit_tp1) ? '#34d399' : Number(h2.hit_sl) ? '#f87171' : '#a1a1aa'}"
+            data-kind="${escText(outcomeKindOf(h2) || '')}" fill="${OUTCOME_DOT[outcomeKindOf(h2)] || '#a1a1aa'}"
             stroke="#09090b" stroke-width="1.5"/>`;
 
   return `<svg viewBox="0 0 ${W} ${H}" class="w-full h-auto" role="img"
@@ -5137,8 +5169,8 @@ function detailHtml(d){
 
   return `<div class="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4">
     <div class="lg:col-span-2">
+      ${hasPath ? `<div data-path-legend class="mb-1.5">${dotLegendHtml()}<div class="text-[10px] text-zinc-500 leading-5">${t('perf.pathLegend')}</div></div>` : ''}
       ${pathNote}${hasPath ? pricePathSvg(d) : levelBarsSvg(d)}
-      ${hasPath ? `<div data-path-legend class="text-[10px] text-zinc-500 leading-5 mt-1">${t('perf.pathLegend')}</div>` : ''}
       <div class="flex flex-wrap gap-3 text-[10px] mt-1">
         <span class="text-zinc-400">${t('perf.outcomes')}:</span>${oc}
       </div>
