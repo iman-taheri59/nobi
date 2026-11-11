@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const { JSDOM } = require('jsdom');
 
-for (const file of ['index.html', 'nobitex-mobile.html']) {
+for (const file of ['index.html']) {
   const html = fs.readFileSync(file, 'utf8');
   const code = html.match(/<script id="nbx-coin-icons">([\s\S]*?)<\/script>/)[1];
   const dom = new JSDOM('', { url: 'https://dashboard.test/' });

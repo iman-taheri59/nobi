@@ -2,7 +2,7 @@
 
 **فارسی** · [English](README.en.md)
 
-نسخهٔ کاری: **2.5.6**. راهنمای [نسخه‌بندی و انتشار GitHub](releases.md) ([English](releases.en.md)) و [تاریخچهٔ تغییرات](../CHANGELOG.md) ([English](../CHANGELOG.en.md)).
+نسخهٔ کاری: **2.5.7** (منتشر نشده؛ آخرین نسخهٔ مستقر 2.5.6). راهنمای [نسخه‌بندی و انتشار GitHub](releases.md) ([English](releases.en.md)) و [تاریخچهٔ تغییرات](../CHANGELOG.md) ([English](../CHANGELOG.en.md)).
 
 ## نقشهٔ مستندات
 
@@ -15,7 +15,7 @@
 | پشتیبان و بازیابی آفلاین ایمن را بررسی کنی | [`operations-recovery.md`](operations-recovery.md) · [English](operations-recovery.en.md) |
 | پروژه را راه بیندازی | [`../README.md`](../README.md) |
 | هشدار شرطی قیمت/پرمیوم و API آن را بفهمی | [`price-alerts.md`](price-alerts.md) · [English](price-alerts.en.md) |
-| بفهمی چرا معماری این‌طور است | [`adr/`](adr) — ۵۲ ADR، هر کدام فارسی و انگلیسی |
+| بفهمی چرا معماری این‌طور است | [`adr/`](adr) — ۵۸ ADR دوزبانه؛ ADR-0058 تصمیم فعلی صفحهٔ canonical ریسپانسیو را ثبت می‌کند |
 | ببینی کدام تصمیم واقعاً پیاده شده | [`adr/README.md`](adr/README.md) — جدول وضعیت با شاهد کد |
 | بدانی آخرین بار چه چیزی تأیید شد و چه چیزی نه | [`reviews/`](reviews) |
 | بدانی موتورهای تحلیل امروز چه چیزی را واقعاً محاسبه می‌کنند | [`analysis/`](analysis) — کاتالوگ + جدول «پیاده‌شده / فقط کاتالوگ»: [تکنیکال](analysis/technical-analysis-capabilities.md) ([English](analysis/technical-analysis-capabilities.en.md)) · [فاندامنتال](analysis/fundamental-analysis-capabilities.md) ([English](analysis/fundamental-analysis-capabilities.en.md)) |

@@ -818,7 +818,7 @@ class Probe:
 
             # Authenticated schema inventory and static asset fingerprints.
             self.get("schema", "/openapi.json", expected=(200,), summarizer=self.openapi_summary)
-            for path in ("/nbx-core.js", "/nbx-app.js", "/nobitex-mobile.html"):
+            for path in ("/index.html", "/nbx-core.js", "/nbx-app.js"):
                 resp = self.request("GET", path)
                 self.results.append({"section": "assets", "method": "GET", "path": path,
                                      "status": resp.status, "outcome": "ok" if resp.status == 200 else "error",

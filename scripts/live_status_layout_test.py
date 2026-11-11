@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Offline Chromium regression for the connection disclosure (source + standalone).
+"""Offline Chromium regression for the connection disclosure on the canonical responsive page.
 
 No backend/exchange: network requests outside the local source fixture are aborted.
 The exact private widget functions are evaluated with deterministic display data;
@@ -68,12 +68,12 @@ def main() -> int:
     args = parser.parse_args()
     from playwright.sync_api import sync_playwright
 
-    assert APP in (ROOT / "nobitex-mobile.html").read_text(encoding="utf-8"), "Rebuild standalone JS first"
+    assert '<script src="nbx-app.js"></script>' in (ROOT / "index.html").read_text(encoding="utf-8")
     cases = 0
     with sync_playwright() as pw:
         browser = pw.chromium.launch(**launch_args(args.channel, args.executable))
         try:
-            for source in ("index.html", "nobitex-mobile.html"):
+            for source in ("index.html",):
                 for direction in ("rtl", "ltr"):
                     for width in WIDTHS:
                         for height in (480, 768):
@@ -129,7 +129,7 @@ def main() -> int:
                                 nav_button = page.locator('#sidebar [data-tab="signals"]')
                                 assert nav_button.evaluate("e => {const r=e.getBoundingClientRect();return e.contains(document.elementFromPoint(r.left+r.width/2,r.top+r.height/2));}"), context
                                 page.locator("#menuClose").click()
-                            if args.screenshots and source == "nobitex-mobile.html" and height == 768 and width in (390, 1366):
+                            if args.screenshots and height == 768 and width in (390, 1366):
                                 args.screenshots.mkdir(parents=True, exist_ok=True)
                                 page.screenshot(path=str(args.screenshots / f"connection-{direction}-{width}.png"))
                             button.focus()
@@ -143,7 +143,7 @@ def main() -> int:
         finally:
             browser.close()
     print(json.dumps({"status": "PASS", "browser_layouts": cases,
-                      "source_and_standalone": True, "directions": ["rtl", "ltr"],
+                      "canonical_page": True, "directions": ["rtl", "ltr"],
                       "live_server_or_exchange": False}))
     return 0
 

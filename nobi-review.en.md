@@ -8,7 +8,7 @@
 - Scope: code review, existing tests, offline test execution, and reproduction of several defects without connecting to the exchange and without placing real orders.
 - Code-change status at the time of this review: no tracked repository file was modified; `git status --short` was empty.
 
-> English version of the Persian report `nobi-review.md`. This is a historical review of version `2.1.8`; later remediation is tracked in the changelog.
+> **Archival note:** This report and its references, including the mobile HTML artifact, describe only version `2.1.8` at commit `21eee89` on 2026-11-02; they do not reflect the current working branch. Later remediation is tracked in the changelog.
 
 ## Executive summary
 

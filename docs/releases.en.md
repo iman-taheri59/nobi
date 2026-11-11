@@ -2,7 +2,7 @@
 
 [فارسی](releases.md) · **English**
 
-The current version is **2.5.6**; check Releases for actual publication status. Publish it only after CI for that exact commit is green; check Releases for actual publication status.
+The working version is **2.5.7** and is not released yet; the last deployed version is 2.5.6. Publish only after CI for that exact commit is green and explicit approval is obtained. Check Releases for actual publication status.
 `VERSION` is the source of truth for the release number; the tag name is exactly `v`
 plus that number.
 
@@ -16,9 +16,10 @@ For the previous 2.0.0-to-2.0.1 upgrade path, review the [code-and-state upgrade
 - A backwards-compatible feature: MINOR, e.g. `1.0.1` to `1.1.0`.
 - A breaking change: MAJOR, e.g. `1.0.1` to `2.0.0`.
 - The number must be identical in `VERSION`, `server/main.py`, `package.json`, the two
-  package-version fields in `package-lock.json`, the web version chip and the
-  standalone output. Dependency and exchange-API versions have nothing to do with the
-  product version.
+  package-version fields in `package-lock.json`, and the fallback version chip in
+  `index.html`. After connecting, `nbx-app.js` replaces that chip with the backend
+  version reported by `/api/health`. There is no standalone HTML output. Dependency
+  and exchange-API versions have nothing to do with the product version.
 - An annotated tag is created on that same release commit. A published tag is never
   moved, deleted or force-pushed; the next fix gets a new version.
 - The product name in the documentation is `nobitrader`; the current spelling in the UI,
@@ -64,7 +65,7 @@ From the project root:
 ```sh
 npm ci --no-audit --no-fund
 npm run build
-python scripts/release_notes.py --tag v2.5.0
+python scripts/release_notes.py --tag v2.5.7
 python -m pytest -q server/tests
 npm run test:display
 npm run lint
@@ -85,12 +86,12 @@ the branch and annotated tag for the same commit together:
 The separately authorized **2.0.3** release is a staged exception: push only `main` first; after the required CI jobs succeed on that exact commit and branch drift is ruled out, create/push its annotated tag and verify Release. Installation and orders are not authorized. The combined push below is the general rule, not this release sequence.
 
 ```sh
-git tag -a v2.5.0 -m "nobitrader 2.5.0"
-git push origin main v2.5.0
+git tag -a v2.5.7 -m "nobitrader 2.5.7"
+git push origin main v2.5.7
 ```
 
 If a tag already exists, never recreate or move it. Inspect it with
-`git show v2.5.0 --no-patch`. Tag validation must succeed too; branch CI does not
+`git show v2.5.7 --no-patch`. Tag validation must succeed too; branch CI does not
 replace release validation. Publication does not authorize server installation.
 
 The explicitly approved two-stage exception for 2.0.1 (main, green CI, then
@@ -101,12 +102,12 @@ not authorize 2.0.2 or future publication. The published 2.0.1 tag is unchanged.
 
 `.github/workflows/release.yml` runs only when a version tag is pushed:
 
-1. build the standalone file and check that generated outputs are current;
-2. check the tag number, the product versions and the changelog notes, and run the
-   tests;
+1. build the local coin icons and compiled CSS, and check that `index.html` and CSS
+   are current;
+2. check the tag number, product versions and changelog notes, and run the tests;
 3. create the Release titled `nobitrader vX.Y.Z` with the body taken from that
    version's changelog section;
-4. attach `nobitrader-mobile.html`; GitHub also exposes the source archive of that tag.
+4. attach no separate HTML file; GitHub also exposes the source archive for the tag.
 
 Write permission is granted to the publish job only, using the temporary Actions
 `GITHUB_TOKEN`; no PAT is stored in the repository or the workflow. If a repository or
@@ -116,9 +117,8 @@ release; check the result in Actions and on the Releases page. This process does
 deploy to the ArvanCloud server.
 
 Publishing is idempotent: if the release for that tag already exists, the job updates
-its notes and re-uploads the mobile file with `gh release upload --clobber` instead of
-failing on "already exists". Both paths first verify that the tag points at the commit
-the run checked out.
+its notes with `gh release edit` instead of failing on "already exists". Both paths
+first verify that the tag points at the commit the run checked out.
 
 ## Legacy technical names
 

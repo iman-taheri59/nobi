@@ -15,8 +15,8 @@ Configuration
 ``NBX_API_TOKEN``       Shared secret. When set, every mutating request must
                         send ``X-API-Token: <token>`` (or a Bearer token).
 ``NBX_CORS_ORIGINS``    Comma separated allow-list. Empty = same-origin only.
-                        Use ``null`` to also allow ``file://`` (standalone
-                        mobile build).
+                        Use ``null`` only to allow a local ``file://`` page
+                        with its adjacent assets.
 ``NBX_RATE_LIMIT``      Mutating requests per minute per client (default 60).
 ``NBX_TRUSTED_PROXIES`` Comma separated IPs/CIDRs of reverse proxies whose
                         ``X-Forwarded-For`` may be believed (``127.0.0.1``,

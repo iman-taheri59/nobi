@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
-"""Prepare /tmp/page.html for the jsdom UI smoke test.
+"""Prepare a temporary JSDOM fixture from the canonical index.html.
 
-jsdom has no resource loader, so the page must be self-contained: drop the
-CDN <script> tags and inline the three local bundles.
-
-The output lands in the system temp dir (override with NBX_SMOKE_PAGE);
-`ui_smoke_test.js` reads the same place.
+JSDOM has no resource loader, so this test-only copy drops optional CDN scripts
+and inlines the three local modules. It is written to the system temp directory
+(override with NBX_SMOKE_PAGE), is never served or published, and is not a
+second product HTML artifact; `ui_smoke_test.js` reads the same path.
 
     python3 scripts/ui_smoke_prep.py
     node scripts/ui_smoke_test.js

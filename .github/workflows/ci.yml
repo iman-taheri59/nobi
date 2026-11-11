@@ -123,9 +123,9 @@ jobs:
         run: npm run test:escaping
       - name: Viewer notice is independent of upstream health
         run: npm run test:readonly-banner
-      - name: Mobile bottom nav keeps named icons; timeframe chips render
+      - name: Responsive bottom nav keeps named icons; timeframe chips render
         run: npm run test:mobile-nav
-      - name: Price alert bell roles, CSRF, races and standalone parity
+      - name: Price alert bell roles, CSRF and response races
         run: npm run test:price-alerts
       - name: signal detail expand and collapse
         run: npm run test:signal-detail
@@ -176,11 +176,10 @@ jobs:
         run: npm run test:review-phase13-integration
       - name: preflight parity — 28 cases × 10 gates
         run: python3 scripts/check_preflight_parity.py
-      - name: generated mobile file is current
+      - name: compiled utility CSS is current
         run: |
           npm run css
-          python3 scripts/build_standalone.py
-          git diff --exit-code -- nobitex-mobile.html
+          git diff --exit-code -- assets/css/tailwind.css
 
   ui:
     runs-on: ubuntu-latest

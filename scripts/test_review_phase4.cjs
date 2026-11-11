@@ -6,7 +6,7 @@ let checks=0;const eq=(a,b,m)=>{assert.equal(a,b,m);checks++;};const ok=(a,m)=>{
 const turn=()=>new Promise(r=>setImmediate(r));
 function deferred(){let resolve;const promise=new Promise(r=>{resolve=r;});return {promise,resolve};}
 (async()=>{
-for(const file of ['index.html','nobitex-mobile.html']) for(const lang of ['fa','en']){
+for(const file of ['index.html']) for(const lang of ['fa','en']){
  const html=fs.readFileSync(file,'utf8').replace(/<script id="nbx-inline-nbx-app-js">[\s\S]*?<\/script>/,'');
  const errors=[],timers=[],vc=new VirtualConsole();vc.on('jsdomError',e=>errors.push(e.message));
  const dom=new JSDOM(html,{url:'https://dashboard.test/',runScripts:'dangerously',pretendToBeVisual:true,virtualConsole:vc,

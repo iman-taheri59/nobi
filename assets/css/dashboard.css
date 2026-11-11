@@ -36,8 +36,8 @@
 }
 
 /* This widget has no Tailwind layout utilities. Keep its styles unlayered,
- * like the previous runtime-injected badge, so the standalone preflight cannot
- * reset its padding/borders depending on where component layers first appear.
+ * like the previous runtime-injected badge, so Tailwind preflight cannot reset
+ * its padding/borders depending on where component layers first appear.
  * Scope everything except the existing mobile safe-bottom reserve to the badge.
  */
 /* ---------- In-flow connection disclosure ---------- */

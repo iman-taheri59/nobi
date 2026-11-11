@@ -30,7 +30,7 @@ function load(file) {
 }
 
 (async () => {
-  for (const file of ['index.html', 'nobitex-mobile.html']) {
+  for (const file of ['index.html']) {
     const w = await load(file);
     const d = w.document;
     const tabs = [...d.querySelectorAll('#mobileBottomNav .mnav-btn')];

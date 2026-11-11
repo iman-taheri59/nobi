@@ -4,7 +4,7 @@ const {JSDOM,VirtualConsole}=require('jsdom');
 let checks=0;const eq=(a,b,msg)=>{assert.equal(a,b,msg);checks++;};const ok=(a,msg)=>{assert.ok(a,msg);checks++;};
 function deferred(){let resolve,reject;const promise=new Promise((r,j)=>{resolve=r;reject=j;});return {promise,resolve,reject};}
 (async()=>{
-for(const file of ['index.html','nobitex-mobile.html']){
+for(const file of ['index.html']){
  const raw=fs.readFileSync(file,'utf8'),html=raw.replace(/<script id="nbx-inline-nbx-app-js">[\s\S]*?<\/script>/,'');
  const errors=[],vc=new VirtualConsole();vc.on('jsdomError',e=>errors.push(e.message));
  const dom=new JSDOM(html,{url:'https://dashboard.test/',runScripts:'dangerously',pretendToBeVisual:true,virtualConsole:vc,

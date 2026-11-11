@@ -13,20 +13,13 @@ const head = require('node:child_process').execFileSync('git', ['show','HEAD:ind
 const strip = x => String(x).replace(/[\u2066-\u2069\u200e\u200f\u061c]/g, '');
 function deferred() { let resolve; const promise=new Promise(r=>{resolve=r;}); return {promise,resolve}; }
 (async()=>{
-for (const file of ['index.html','nobitex-mobile.html']) {
+for (const file of ['index.html']) {
   const errors=[];const vc=new VirtualConsole();vc.on('jsdomError',e=>errors.push(e.message));
   const html=fs.readFileSync(file,'utf8').replace(/<script id="nbx-inline-nbx-app-js">[\s\S]*?<\/script>/,'');
   const dom=new JSDOM(html, {url:'https://dashboard.test/',runScripts:'dangerously',pretendToBeVisual:true,virtualConsole:vc,
     beforeParse(w){w.setInterval=()=>0;w.scrollTo=()=>{};w.HTMLElement.prototype.scrollIntoView=()=>{};
       w.fetch=()=>{throw new Error('Unstubbed network forbidden');};}});
   const w=dom.window,d=w.document;
-  if(file==='nobitex-mobile.html') {
-    const raw=new JSDOM(fs.readFileSync(file,'utf8'));
-    eq(raw.window.document.getElementById('nbx-inline-nbx-core-js').textContent.trim(),core.trim(),'standalone core exact parity');
-    eq(raw.window.document.getElementById('nbx-inline-nbx-app-js').textContent.trim(),fs.readFileSync('nbx-app.js','utf8').trim(),'standalone app exact parity');
-    raw.window.close();
-  }
-
   eq(errors.length,0,'real inline dashboard boots offline');
   // The excluded pages are byte-identical DOM (including scripts' i18n repaint) to HEAD.
   const ref=new JSDOM(head);

@@ -21,7 +21,7 @@ function evaluate(code, dom, extra={}) {
     srcLine:esc,weightRows:()=>'',animateBars:()=>{},refreshIcons:()=>{},...extra};
   vm.createContext(ctx);vm.runInContext(code,ctx);return ctx;
 }
-for (const file of ['index.html','nobitex-mobile.html']) {
+for (const file of ['index.html']) {
   const dom=domFor(fs.readFileSync(file,'utf8')),doc=dom.window.document;
   const ids=[...doc.querySelectorAll('[id]')].map(n=>n.id);
   ok(new Set(ids).size===ids.length,`${file}: all IDs unique`);

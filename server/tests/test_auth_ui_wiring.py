@@ -9,8 +9,7 @@ It also pins the two properties that are easy to lose in a refactor:
 
 * the gate is `hidden` in the markup, so a visitor with JavaScript disabled
   never sees a form that cannot submit;
-* the gate ends up inside the built standalone file, because that is the page
-  the server actually serves.
+* `index.html` is the one responsive source served to both phone and desktop layouts.
 """
 from __future__ import annotations
 
@@ -23,7 +22,6 @@ ROOT = Path(__file__).resolve().parents[2]
 HTML = ROOT / "index.html"
 APP = ROOT / "nbx-app.js"
 CORE = ROOT / "nbx-core.js"
-STANDALONE = ROOT / "nobitex-mobile.html"
 
 #: Everything the sign-in code looks up by id.
 AUTH_IDS = {
@@ -69,13 +67,6 @@ def test_the_gate_starts_hidden(html: str) -> None:
     """No JavaScript, no form: a visible gate would be a dead end."""
     tag = re.search(r'<div id="authGate"[^>]*>', html)
     assert tag and "hidden" in tag.group(0)
-
-
-def test_the_gate_is_in_the_page_the_server_serves(html: str) -> None:
-    built = STANDALONE.read_text(encoding="utf-8")
-    assert 'id="authGate"' in built, "rebuild it: python scripts/build_standalone.py"
-    # The build must not have dropped the stylesheet that positions the gate.
-    assert ".auth-wrap" in built
 
 
 def test_the_csrf_header_is_sent_by_the_shared_helper() -> None:

@@ -2,14 +2,12 @@
 
 [فارسی](HANDOFF.md) · **English**
 
-> **State 2026-11-05 (supersedes the "last updated" block below; stages 30–32 are historical):**
-> released **2.5.0** (`dcac952`) on `capoy.ir`; `main` = `bc11fda`+docs. Stability soak from `2026-11-05T07:19:52Z` until at least `2026-11-10T07:19:52Z` — **no deploy/restart until it ends.**
-> Documentation entry points: [`reviews/README.en.md`](reviews/README.en.md) (finding status), [`ops/en/soak-2026-11.md`](ops/en/soak-2026-11.md) (soak log), [`roadmap/fa/capability-roadmap.md`](roadmap/fa/capability-roadmap.md) (roadmap status, fa).
-> Suggested next work: diagnose the negative journal IC on a copy of `journal.db` (stage 0), then real B3/B1.
+> **Current work state — 2026-11-03 (supersedes earlier version/deployment notes below):** active branch `2.5.7/remove-standalone-artifact`, based on `v2.5.6` (`1c2556b`). `2.5.7` is the working, unreleased version; `2.5.6` is the last deployed version. Under ADR-0058, `index.html` is the only responsive HTML page and `/` plus `/index.html` serve the same file; the standalone HTML output and builder are removed. No push, tag, Release, or deploy has been performed for this change.
+> The stage entries below are chronological implementation records; their build and release details apply to the snapshots recorded there, not to the current branch.
 
 
-**Last updated:** 2026-10-25 — stage 32 (drift scheduler hardening)
-**Working version:** 1.8.0 (unreleased; release only after green CI)
+**Historical snapshot:** 2026-10-25 — stage 32 (drift scheduler hardening)
+**Working version at that snapshot:** 1.8.0 (unreleased then; release only after green CI)
 
 ### Stage 32 state
 
@@ -119,7 +117,7 @@ mobile artifact: rebuilt for 1.6.0
 ## Stage 35 — Drift operator UI
 - Added bilingual PSI-bin chart, cohort population table, run CSV export, and scheduler controls.
 - Scheduler mutation uses the authenticated CSRF headers and remains server-enforced owner-only.
-- Standalone was regenerated; full Python and static/UI gates passed locally (`983 passed`).
+- Historical stage-35 state, before ADR-0058: standalone was regenerated; full Python and static/UI gates passed locally (`983 passed`).
 
 ## Stage 36 — cohort statistical evidence
 - Drift runs accept an allowlisted cohort mode and persist expectancy, win-rate, and PSI per comparable cohort.
@@ -133,8 +131,8 @@ mobile artifact: rebuilt for 1.6.0
 - Paper remains default; release requires full CI green.
 
 ## Stage 38 — A5 bell panel (local, after the 2.4.0 tag)
-- `nbx-alerts.js` provides bilingual rule/event management in canonical and standalone builds. GET occurs only on Owner/Operator open/refresh and mutations use the existing session/CSRF contract; Viewer/anonymous sessions make no alert request. `scripts/price_alerts_e2e_test.py` (40 checks, in CI) proves this against a scratch FastAPI + SQLite with three real logins, bell-only CRUD, crossing/replay/stale, `sent/failed/pending`, restart persistence, and zero trading mutations; FastAPI now serves `/nbx-alerts.js` in non-inline mode too.
+- At that stage, `nbx-alerts.js` provided bilingual rule/event management in both the canonical page and generated standalone HTML. Under ADR-0058 the standalone artifact is removed and `index.html` is the sole responsive page. GET occurs only on Owner/Operator open/refresh and mutations use the existing session/CSRF contract; Viewer/anonymous sessions make no alert request. `scripts/price_alerts_e2e_test.py` (40 checks, in CI) proves this against a scratch FastAPI + SQLite with three real logins, bell-only CRUD, crossing/replay/stale, `sent/failed/pending`, restart persistence, and zero trading mutations; FastAPI now serves `/nbx-alerts.js` in non-inline mode too.
 - Arming/freshness/crossing/delivery are explicit, the badge is only an enabled-rule count, and two-step deletion retains history. Identity changes and closing the panel invalidate late replies.
-- The offline DOM test passed 102 checks and offline Chromium passed 16 layouts across canonical/standalone and RTL/LTR; 61 selected backend contract tests also passed. No real network, order, deployment, or production-readiness claim occurred.
-- Final gate: `1808 passed, 1 warning`, Ruff/mypy over 168 files, 25 JS/DOM suites plus tick parity, 28×10 preflight parity, clean pip-audit, and `80 + 56 + 16` Chromium layouts passed. Two consecutive standalone builds produced the same SHA-256: `5e4e3c4d19b2f0bfc66dffb35cd7cce24dd6ec199120a5bcaf1b9d360bffc6f0`.
+- Historical pre-ADR-0058 validation: the offline DOM test passed 102 checks and Chromium passed 16 layouts across canonical/standalone and RTL/LTR; 61 selected backend contract tests also passed. These two-page checks are no longer current; ADR-0058 keeps responsive tests on `index.html` only. No real network, order, deployment, or production-readiness claim occurred.
+- Historical pre-ADR-0058 final gate: `1808 passed, 1 warning`, Ruff/mypy over 168 files, 25 JS/DOM suites plus tick parity, 28×10 preflight parity, clean pip-audit, and `80 + 56 + 16` Chromium layouts passed. The two-build SHA-256 check applied to the then-existing standalone output and is no longer part of CI.
 - Real soak, private contract tests, and independent security review remain prerequisites for real capital. Push and release are separate, permission-gated actions.

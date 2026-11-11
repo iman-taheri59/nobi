@@ -295,7 +295,7 @@
       </button>
     </div>
     <span class="hidden 2xl:inline-flex chip shrink-0"><span class="dot bg-emerald-400"></span> <span data-i18n="hdr.kill"></span></span>
-    <span id="buildChip" class="hidden lg:inline-flex chip num text-violet-300 border-violet-400/30 shrink-0" title="نسخه واقعی از /api/health">v2.5.6 · core</span>
+    <span id="buildChip" class="hidden lg:inline-flex chip num text-violet-300 border-violet-400/30 shrink-0" title="نسخه واقعی از /api/health">v2.5.7 · core</span>
     <div class="ms-auto flex items-center gap-1.5 shrink-0">
       <span class="hidden xl:inline-flex chip num" id="clock">--:--:--</span>
       <span id="apiChip" class="hidden 2xl:inline-flex chip num text-zinc-400 border-white/10" title=""><i data-lucide="wifi-off" class="w-3.5 h-3.5"></i> <span>API: —</span></span>
@@ -823,9 +823,10 @@
         </div>
       </div>
 
-      <!-- Attribution + recent signals table -->
-      <div class="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4">
-        <div class="glass p-4 sm:p-5">
+      <!-- Attribution + recent signals table: stack at every viewport so the
+           wide signal cut (and its chart detail) gets the full content width. -->
+      <div id="perfAttributionGrid" class="grid grid-cols-1 gap-3 sm:gap-4">
+        <div id="perfFamilyCard" class="glass p-4 sm:p-5">
           <div class="font-bold text-[13px] sm:text-sm mb-3" data-i18n="perf.faml"></div>
           <div class="overflow-x-auto">
             <table class="w-full min-w-[280px]">
@@ -835,7 +836,7 @@
             <p data-i18n="perf.familyLimit" class="text-[10px] text-zinc-500 mt-2 leading-5"></p>
           </div>
         </div>
-        <div class="glass p-4 sm:p-5 lg:col-span-2">
+        <div id="perfSignalSliceCard" class="glass p-4 sm:p-5">
           <div class="font-bold text-[13px] sm:text-sm mb-1" data-i18n="perf.table"></div>
           <p class="text-[10px] text-zinc-500 leading-5 mb-1" data-i18n="perf.ocLegend"></p>
           <div id="perfDotLegend" class="mb-3"></div>
@@ -4450,7 +4451,7 @@ const sigDetailCache = {};
 
 function fmtPx(v, sym){ return fmtMarketPrice(v, sym); }
 
-/* Inline SVG, no chart library: the panel must render in the standalone file
+/* Inline SVG, no chart library: the panel must render without an external chart library
    and in the jsdom smoke test, where CDN scripts never load. */
 function pricePathSvg(d){
   const bars = d.path || [];
@@ -4486,10 +4487,16 @@ function pricePathSvg(d){
     <text x="${W - padR + 4}" y="${(y(l.v) + 12).toFixed(1)}" fill="${l.c}" font-size="8"
           opacity=".7" font-family="ui-monospace,monospace">${fmtPx(l.v, d.signal.symbol)}</text>`).join('');
 
+  const entryX = ei == null ? null : x(ei);
+  // Keep the entry-bar label inside the SVG viewBox; centering it at the first
+  // candle used to clip the first half of "entry" at the left edge.
+  const entryAnchor = entryX == null ? 'middle' : entryX < W / 2 ? 'start' : 'end';
+  const entryLabelX = entryX == null ? 0 : entryAnchor === 'start'
+    ? Math.min(W - padR - 4, entryX + 4) : Math.max(padL + 4, entryX - 4);
   const entryMark = ei == null ? '' : `
-    <line x1="${x(ei).toFixed(1)}" y1="${padT}" x2="${x(ei).toFixed(1)}" y2="${H - padB}"
+    <line x1="${entryX.toFixed(1)}" y1="${padT}" x2="${entryX.toFixed(1)}" y2="${H - padB}"
           stroke="#71717a" stroke-width="1" stroke-dasharray="2 3" opacity=".8"/>
-    <text x="${x(ei).toFixed(1)}" y="${H - 4}" fill="#71717a" font-size="8" text-anchor="middle"
+    <text data-entry-label="1" x="${entryLabelX.toFixed(1)}" y="${H - 4}" fill="#71717a" font-size="8" text-anchor="${entryAnchor}"
           font-family="ui-monospace,monospace">${LANG === 'fa' ? 'ورود' : 'entry'}</text>`;
 
   const exitMark = exitIdx < 0 ? '' : `
@@ -4569,22 +4576,53 @@ function detailHtml(d){
     return `<div class="${good?'text-emerald-300':'text-red-300'}">${k} · ${good?'+':''}${fmtNum(x.r_multiple,2)}R · ${uiLabel(Number(x.hit_tp1)?'tp1':Number(x.hit_sl)?'sl':'timeout')}</div>`;
   }).join('');
 
-  return `<div class="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4">
-    <div class="lg:col-span-2">
+  // 2.5.7 — keep the chart on its own full-width row. The signal table lives
+  // inside a horizontal scroller and has a deliberate 1040px minimum width;
+  // nesting the old 3-column layout in its expanded <tr> made chart/details
+  // use the table's intrinsic width instead of the visible viewport, clipping
+  // them at desktop and at narrower breakpoints.
+  return `<div class="space-y-3 min-w-0">
+    <div data-path-chart class="w-full min-w-0 overflow-hidden">
       ${hasPath ? `<div data-path-legend class="mb-1.5">${dotLegendHtml()}<div class="text-[10px] text-zinc-500 leading-5">${t('perf.pathLegend')}</div></div>` : ''}
       ${pathNote}${hasPath ? pricePathSvg(d) : levelBarsSvg(d)}
       <div class="flex flex-wrap gap-3 text-[10px] mt-1">
         <span class="text-zinc-400">${t('perf.outcomes')}:</span>${oc}
       </div>
     </div>
-    <div class="space-y-1.5 text-[11px]">
-      <div class="font-bold text-[11px] mb-1">${t('perf.components')}</div>
-      ${componentBars(s.components)}
-      <div class="border-t border-white/5 my-2"></div>
-      ${rows}
+    <div data-path-meta class="grid grid-cols-1 sm:grid-cols-2 gap-3 min-w-0 text-[11px]">
+      <div class="space-y-1.5 min-w-0">
+        <div class="font-bold text-[11px] mb-1">${t('perf.components')}</div>
+        ${componentBars(s.components)}
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1.5 min-w-0">
+        ${rows}
+      </div>
     </div>
   </div>`;
 }
+
+function sizeSignalDetail(detail, tr){
+  const scroller = tr && tr.closest('.table-scroll');
+  const content = detail && detail.querySelector('[data-detail-content]');
+  if (!scroller || !content) return;
+  const width = Math.round(scroller.clientWidth || scroller.getBoundingClientRect().width || 0);
+  if (width > 0) {
+    content.style.width = `${width}px`;
+    content.style.maxWidth = `${width}px`;
+  } else {
+    content.style.removeProperty('width');
+    content.style.removeProperty('max-width');
+  }
+}
+
+// The detail row sits inside the wide, horizontally scrolling signal table.
+// Keep the expanded detail area sized to the visible viewport when the desktop grid changes.
+window.addEventListener('resize', () => {
+  document.querySelectorAll('#perfBody tr.sig-detail').forEach(detail => {
+    const tr = detail.previousElementSibling;
+    if (tr && tr.matches('tr[data-sig]')) sizeSignalDetail(detail, tr);
+  });
+}, { passive: true });
 
 async function toggleSignalRow(tr){
   const id = tr.getAttribute('data-sig');
@@ -4597,8 +4635,9 @@ async function toggleSignalRow(tr){
 
   const detail = document.createElement('tr');
   detail.className = 'sig-detail';
-  detail.innerHTML = `<td colspan="12" class="bg-white/[.02] border-b border-white/5 p-3">${t('perf.loading')}</td>`;
+  detail.innerHTML = `<td colspan="12" class="bg-white/[.02] border-b border-white/5 p-0"><div data-detail-content class="min-w-0 p-3">${t('perf.loading')}</div></td>`;
   tr.after(detail);
+  sizeSignalDetail(detail, tr);
 
   const api = window.NBX && NBX.core && NBX.core.api;
   if (!api || typeof api.getJournalSignal !== 'function') { detail.remove(); return; }
@@ -4606,11 +4645,11 @@ async function toggleSignalRow(tr){
     const d = sigDetailCache[id] || await api.getJournalSignal(id);
     if (d && d.signal) sigDetailCache[id] = d;
     if (!d || d.error) throw new Error((d && d.error) || 'unavailable');
-    detail.firstElementChild.innerHTML = detailHtml(d);
+    detail.querySelector('[data-detail-content]').innerHTML = detailHtml(d);
     animateBars(detail);
     refreshIcons();
   } catch (e) {
-    detail.firstElementChild.innerHTML =
+    detail.querySelector('[data-detail-content]').innerHTML =
       `<div class="text-[11px] text-red-300">${t('perf.detailErr')}: ${String((e && e.message) || e).slice(0,140)}</div>`;
   }
 }

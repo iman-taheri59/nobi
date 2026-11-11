@@ -17,7 +17,7 @@ const bars=(px,n=30)=>Array.from({length:n},(_,i)=>({t:nowS-900*(n-i),o:px,h:px*
 const row=(symbol,extra={})=>({symbol,score:74,composite:73,composite_basis:'ta+liq',direction:'LONG',regime:'TREND',liquidity_score:70,fa_score:null,fa:null,
   lastClose:1000,risk:{atr:20,stopDistance:40,stopPct:4},components:{trend:78,momentum:64,volume:52,structure:70},diagnostics:{rsi:61.2,adx:31.4,pctB:0.83,hist:0.001},...extra});
 (async()=>{
-for(const file of ['index.html','nobitex-mobile.html'])for(const lang of ['fa','en']){
+for(const file of ['index.html'])for(const lang of ['fa','en']){
  const html=fs.readFileSync(file,'utf8').replace(/<script id="nbx-inline-nbx-app-js">[\s\S]*?<\/script>/,'');
  const errors=[],vc=new VirtualConsole();vc.on('jsdomError',e=>errors.push(e.message));
  const dom=new JSDOM(html,{url:'https://dashboard.test/',runScripts:'dangerously',pretendToBeVisual:true,virtualConsole:vc,
@@ -107,5 +107,5 @@ for(const file of ['index.html','nobitex-mobile.html'])for(const lang of ['fa','
   ok(!errors.some(x=>/Uncaught|ReferenceError|SyntaxError/.test(x)),errors.join('\n'));
  }finally{dom.window.close();}
 }
-console.log(`Signal card: ${checks} checks PASS (canonical/mobile × FA/EN)`);
+console.log(`Signal card: ${checks} checks PASS (canonical index.html × FA/EN)`);
 })().catch(e=>{console.error(e);process.exit(1);});

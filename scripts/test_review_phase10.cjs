@@ -9,7 +9,7 @@ function data(extra={}){return {errors:[{id:1,ts:1700000000,level:'warning',sour
  storage:{backend:'sqlite',degraded:false,max_db:2000,max_memory:500,sqlite_readable:true},filters:{limit:200,level:null,q:null},generated_at:1700000000,...extra};}
 const diag=status=>({overall:status,counts:{ok:0,skip:0,fail:0,error:0,[status]:1},results:[{id:'fixture',fa:'آزمون',en:'fixture check',status,ms:1,detail:'fixture only'}]});
 (async()=>{
-for(const file of ['index.html','nobitex-mobile.html'])for(const lang of ['fa','en']){
+for(const file of ['index.html'])for(const lang of ['fa','en']){
  const html=fs.readFileSync(file,'utf8').replace(/<script id="nbx-inline-nbx-app-js">[\s\S]*?<\/script>/,'');
  const vc=new VirtualConsole(),errors=[];vc.on('jsdomError',e=>errors.push(e.message));let blocked=0;
  const dom=new JSDOM(html,{url:'https://dashboard.test/',runScripts:'dangerously',pretendToBeVisual:true,virtualConsole:vc,beforeParse(w){w.setInterval=()=>0;w.scrollTo=()=>{};w.HTMLElement.prototype.scrollIntoView=()=>{};w.fetch=()=>{blocked++;throw Error('Network forbidden');};}});
@@ -66,5 +66,5 @@ for(const file of ['index.html','nobitex-mobile.html'])for(const lang of ['fa','
   eq(writes,0,'no unrequested operational actions');eq(blocked,0);eq(errors.length,0,errors.join('\n'));
  }finally{dom.window.close();}
 }
-console.log(`Phase10 Error Log: ${checks} checks PASS (canonical/mobile × fa/en; mocked reads/explicit fake controls only).`);
+console.log(`Phase10 Error Log: ${checks} checks PASS (canonical index.html × fa/en; mocked reads/explicit fake controls only).`);
 })().catch(e=>{console.error(e);process.exitCode=1;});

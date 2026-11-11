@@ -33,7 +33,14 @@ def test_header_has_user_menu_instead_of_loose_buttons():
 
 
 def test_mobile_package_is_gone():
-    for needle in ("mobilePkgBtn", "openMobileModal", "/download/nobitex-mobile.html", "nobitex-trader-robat.zip"):
+    # These legacy strings are negative sentinels, not active UI routes or links.
+    forbidden = (
+        "mobilePkgBtn",
+        "openMobileModal",
+        "/download/nobitex-mobile.html",
+        "nobitex-trader-robat.zip",
+    )
+    for needle in forbidden:
         assert needle not in APP, needle
     main = (ROOT / "server" / "main.py").read_text(encoding="utf-8")
     assert "/download/" not in main

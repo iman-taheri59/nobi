@@ -80,7 +80,7 @@ function server(window) {
 }
 function bootstrap(file) {
   const dom = new JSDOM(fs.readFileSync(file, 'utf8'), {
-    url: file.endsWith('mobile.html') ? 'https://alerts-mobile.test/' : 'https://alerts.test/',
+    url: 'https://alerts.test/',
     runScripts: 'outside-only', pretendToBeVisual: true,
   });
   const { window } = dom;
@@ -225,11 +225,8 @@ async function mutationAndRaceCase() {
 
 (async () => {
   const index = fs.readFileSync('index.html', 'utf8');
-  check(index.includes('<script src="nbx-alerts.js"></script>'), 'canonical loads alert module');
-  const mobile = fs.readFileSync('nobitex-mobile.html', 'utf8');
-  const inline = mobile.match(/<script id="nbx-inline-nbx-alerts-js">\s*([\s\S]*?)\s*<\/script>/);
-  check(inline && inline[1].trim() === moduleCode.trim(), 'standalone inlines exact alert module');
-  for (const file of ['index.html', 'nobitex-mobile.html']) {
+  check(index.includes('<script src="nbx-alerts.js"></script>'), 'canonical page loads the alert module');
+  for (const file of ['index.html']) {
     const html = fs.readFileSync(file, 'utf8');
     for (const id of ['alertsBtn', 'alertsModal', 'alertsDialog', 'alertRuleForm', 'alertsRules', 'alertsEvents']) {
       check(html.includes(`id="${id}"`), `${file}: ${id} present`);
@@ -238,5 +235,5 @@ async function mutationAndRaceCase() {
     await ownerBasicCase(file);
   }
   await mutationAndRaceCase();
-  console.log(`Price alerts UI: ${checks} checks passed (canonical + standalone, no network/orders)`);
+  console.log(`Price alerts UI: ${checks} checks passed (canonical page, no network/orders)`);
 })().catch(error => { console.error(error); process.exitCode = 1; });

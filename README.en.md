@@ -2,12 +2,11 @@
 
 [فارسی](README.md) · **English**
 
-Current version: **2.5.6** · Check [Releases](https://github.com/iman-taheri59/nobi/releases) for publication status.
+Working version: **2.5.7** (unreleased; last deployed version: 2.5.6) · Check [Releases](https://github.com/iman-taheri59/nobi/releases) for publication status.
 **License:** MIT ([`LICENSE`](LICENSE)) · **Security reports:** [`SECURITY.md`](SECURITY.md) · **Contributing:** [`CONTRIBUTING.md`](CONTRIBUTING.md)
 
 See [versioning and GitHub releases](docs/releases.en.md) for the rules on bumping
-the version, tagging and shipping the mobile file, and the
-[changelog](CHANGELOG.en.md).
+the version and tagging a release, and the [changelog](CHANGELOG.en.md).
 
 A bilingual (Persian/English) dashboard with a technical-analysis engine, a
 fundamental engine, risk management, paper trading, walk-forward backtesting, a
@@ -61,26 +60,24 @@ are only reading; writes to state (paper order, emergency stop, backtest) are al
 from loopback and need `NBX_API_TOKEN` from a remote address. No secret is ever
 written from the browser.
 
-### 2) Single-file page on a phone
+### 2) Phone layout
 
-`nobitex-mobile.html` carries all the styling, icons and calculation engines and opens
-from `file://` too. **However**, it takes market data from the backend: without a
-reachable server the market panels say "the Nobitex server is unreachable" — not a
-substitute number. (The old README claim that "100% of the features work offline" was
-not true and has been removed.)
+`index.html` is the only dashboard page and is responsive on phones and desktops.
+Phones open the same server URL; local CSS and JavaScript are served by that app.
+No standalone HTML download or generated mobile page is built or published.
 
 ---
 
 ## Build
 
 ```bash
-npm install                 # tailwind + jsdom
-npm run css                 # builds assets/css/tailwind.css
-python scripts/build_standalone.py   # nobitex-mobile.html
+npm ci                      # CSS tooling and jsdom test dependencies
+npm run build                # local coin icons + assets/css/tailwind.css
 ```
 
-The single-file bundle is built from `index.html`; if you change the styles and forget
-`npm run css`, `build_standalone.py` warns that the CSS is behind the markup.
+Compiled CSS is tracked and its freshness is checked in CI. Markup and JavaScript
+changes are made directly in `index.html` and `nbx-*.js`; there is no second HTML
+file to regenerate.
 
 ---
 
@@ -119,7 +116,7 @@ line. What is deliberately **not** enabled, and why, is in ADR-0016 (line length
 directive on their own first line.
 
 CI has four jobs: `python` (ruff + mypy + pytest), `js` (eslint + broker and preflight
-parity + freshness of `nobitex-mobile.html`), `ui` (44 panels against the exchange
+parity + freshness of compiled CSS), `ui` (44 panels against the exchange
 fixture + a jsdom smoke test with 7 KPI cells, MSI card honesty and zero JS errors),
 and `windows (advisory)` — the same python gate on its other documented platform
 (`docs/run-windows.md`). It is advisory: a failure there is reported but, because
@@ -156,10 +153,9 @@ python scripts/probe_live.py --url http://127.0.0.1:8010
 ## Layout
 
 ```
-index.html              dashboard (single page, bilingual)
+index.html              responsive dashboard (the only HTML source, bilingual)
 nbx-core.js             TA/FA engines, API client, offline fallback
 nbx-app.js              scanning, signals, performance, desk
-nobitex-mobile.html     single-file bundle (generated, do not edit by hand)
 assets/css/             tailwind (src + built) and base styles
 server/                 FastAPI: main, ta/fa/risk/portfolio/benchmark,
                         market_overview, paper, backtest, journal, errorlog,
@@ -233,8 +229,9 @@ python scripts/fetch_history.py --symbol BTCIRT --resolution 15 \
 Start at the [documentation map](docs/README.en.md). The short version:
 
 - [`docs/README.md`](docs/README.md) — the map (Persian) · [`English`](docs/README.en.md)
-- [`docs/adr/`](docs/adr) — 20 ADRs, **each in Persian and English** (data honesty
-  ADR-0014, unit boundary ADR-0015, one page / one artifact ADR-0019)
+- [`docs/adr/`](docs/adr) — bilingual ADRs (data honesty ADR-0014, unit boundary
+  ADR-0015, and the current single responsive HTML source decision ADR-0058, which
+  supersedes ADR-0019)
 - [`docs/adr/README.md`](docs/adr/README.md) — which ADR is implemented, with the code
   that proves it
 - [`docs/releases.en.md`](docs/releases.en.md) — versioning and release process
@@ -248,10 +245,9 @@ images from our own server. The API states the source and fetch time of each par
 logo mapping for 50 coins is explicit, and unmatched symbols are not substituted
 automatically. [Guide and settings](docs/coin-metadata.md) (Persian).
 
-40 coin logos ship with the project locally, with no CDN request; the single-file
-mobile build carries the images inside itself. For symbols without a logo, the short
-letter form of the coin name is shown. The source and licence of the images are
-recorded in `assets/coins/README.md`.
+40 coin logos ship with the project locally, with no CDN request; they are embedded
+in the icon-data block in `index.html`. Symbols without a logo show a short text
+fallback. The source and licence of the images are recorded in `assets/coins/README.md`.
 
-- Rebuild: `npm run build`
-- Logo tests (web and mobile): `npm run test:icons`
+- Rebuild local icons and CSS: `npm run build`
+- Logo tests: `npm run test:icons`

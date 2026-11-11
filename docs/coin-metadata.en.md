@@ -48,9 +48,10 @@ Image display order:
 2. one of the 40 logos shipped with the project;
 3. the short letters of the symbol, without inventing a fake logo.
 
-In the offline mobile build only the last two steps exist. If the mobile file is
-connected to the server, using cached images also requires valid authentication for the
-image endpoint; failing that does not break either local fallback.
+When the canonical `index.html` is opened locally without the server, only the
+project-bundled logos and the symbol-letter fallback are available. The server-cache
+image endpoint requires valid authentication when used; failure does not break either
+local fallback.
 
 ## Settings
 

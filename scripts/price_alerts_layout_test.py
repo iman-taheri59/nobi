@@ -62,13 +62,12 @@ def main() -> int:
     args = parser.parse_args()
     from playwright.sync_api import sync_playwright
 
-    module = (ROOT / "nbx-alerts.js").read_text(encoding="utf-8")
-    assert module in (ROOT / "nobitex-mobile.html").read_text(encoding="utf-8"), "Rebuild standalone first"
+    assert '<script src="nbx-alerts.js"></script>' in (ROOT / "index.html").read_text(encoding="utf-8")
     cases = 0
     with sync_playwright() as pw:
         browser = pw.chromium.launch(**launch_args(args.channel, args.executable))
         try:
-            for source in ("index.html", "nobitex-mobile.html"):
+            for source in ("index.html",):
                 for language, direction in (("fa", "rtl"), ("en", "ltr")):
                     for width in WIDTHS:
                         height = 568 if width < 768 else 900
@@ -122,7 +121,7 @@ def main() -> int:
                         assert page.locator("#alertsEvents").inner_text().find("http-400") >= 0, context
                         assert page.locator("#alertsBadge").is_visible(), context
 
-                        if args.screenshots and source == "nobitex-mobile.html" and width in (390, 1366):
+                        if args.screenshots and width in (390, 1366):
                             args.screenshots.mkdir(parents=True, exist_ok=True)
                             page.screenshot(path=str(args.screenshots / f"alerts-{language}-{width}.png"))
 
@@ -145,7 +144,7 @@ def main() -> int:
         finally:
             browser.close()
     print(json.dumps({"status": "PASS", "browser_layouts": cases,
-                      "source_and_standalone": True, "directions": ["rtl", "ltr"],
+                      "canonical_page": True, "directions": ["rtl", "ltr"],
                       "viewer_zero_requests": True, "live_server_or_exchange": False}))
     return 0
 

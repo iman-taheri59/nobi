@@ -28,6 +28,8 @@ checks:           pass=10, warn=6, fail=1, info=2
 endpoint_outcomes: ok=73, unexpected=1
 ```
 
+> **یادداشت تاریخی:** این گزارش فقط snapshot پاسخ‌های probe از production نسخهٔ `2.1.8` در ۲۰۲۶-۱۱-۰۲ است؛ مسیرهایی مانند `/nobitex-mobile.html` وضعیت همان اجرای قدیمی را ثبت می‌کنند، نه routeهای شاخهٔ کاری فعلی.
+
 probe فقط `POST /api/auth/login` و `POST /api/auth/logout` را به‌عنوان mutation مجاز انجام داد؛ بقیه درخواست‌ها GET بودند. هیچ سفارش، تغییر تنظیمات، تغییر کاربر، backup/restore/restart یا اجرای diagnostics/devsuite انجام نشد. خروجی نیز فاقد رمز، مقدار کوکی، لاگ خام، نام کاربری، IP و user-agent است؛ اما معیارهای مالی/عملیاتی آن همچنان می‌تواند حساس باشد.
 
 ---

@@ -3,6 +3,8 @@
 [فارسی](upgrade-2.0.1.md) · **English**
 
 > Pre-release operational draft, not an installation command or permission to execute. The published version is still 2.0.0. No real 2.0.1 systemd upgrade/rollback has been run.
+>
+> **Historical scope note (ADR-0058):** References here to hashing a standalone HTML file belong only to the old 2.0.0→2.0.1 path; the working 2.5.7 branch has no standalone HTML output. Do not use this plan for a current release or deployment.
 
 ## Why the previous installer is insufficient
 

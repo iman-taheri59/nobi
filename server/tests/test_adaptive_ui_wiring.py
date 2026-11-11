@@ -1,4 +1,4 @@
-"""The threshold card is markup + inline JS in one file, and a rule it must not break (1.0.13).
+"""The threshold card is markup + inline JS in the canonical page, and a rule it must not break (1.0.13).
 
 `server/adaptive.py` measures what a fixed score threshold means on a timeframe and
 returns `applied: false`. The dashboard may show that measurement, and that is all it
@@ -15,8 +15,7 @@ There is no browser in CI, so these tests pin the wiring that only breaks in one
 * the refusal path renders words, never zeros — an unreachable venue has to look
   unreachable;
 * both languages carry the label, because the label is the safety property;
-* the page the server actually serves (`nobitex-mobile.html`) contains the card, since
-  `index.html` is not what a phone opens.
+* the one canonical responsive page contains the card for both phone and desktop layouts.
 
 Version 1.0.14 added the second half of the same rule. A measurement belongs to a pair
 (symbol, timeframe, feed), and the three controls sit next to the card. So the pair that
@@ -29,11 +28,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-import pytest
-
 ROOT = Path(__file__).resolve().parents[2]
 HTML = ROOT / "index.html"
-STANDALONE = ROOT / "nobitex-mobile.html"
 
 #: Ids the adaptive card's script looks up. Kept as a set so a rename in either
 #: file fails here instead of in someone's browser.
@@ -139,15 +135,6 @@ def test_the_measurement_never_runs_on_boot() -> None:
     assert "setTimeout(measure" in script
     boot = _page()[_page().index("async function start()"):] if "async function start()" in _page() else ""
     assert "adMeasureThresholds" not in boot
-
-
-def test_the_served_page_contains_the_card() -> None:
-    """A phone opens the generated artifact, not index.html."""
-    if not STANDALONE.is_file():
-        pytest.skip("the generated page is not in this checkout")
-    built = STANDALONE.read_text(encoding="utf-8")
-    for name in ("adCard", "adBtn", "adaptive/thresholds/"):
-        assert name in built, f"the built page is missing {name} — run: npm run build"
 
 
 #: 1.0.14 — the pair the numbers belong to.

@@ -1,4 +1,4 @@
-"""The release number must agree across backend and both dashboard builds."""
+"""The release number must agree across backend and the canonical dashboard source."""
 import json
 import re
 from pathlib import Path
@@ -23,12 +23,11 @@ def test_package_versions_match_release():
     assert lock["version"] == lock["packages"][""]["version"] == version
 
 
-def test_dashboard_versions_match_release():
+def test_dashboard_version_matches_release():
     version = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
-    for name in ("index.html", "nobitex-mobile.html"):
-        html = (ROOT / name).read_text(encoding="utf-8")
-        badge = re.search(r'<span id="buildChip"[^>]*>(.*?)</span>', html)
-        assert badge and badge.group(1) == f"v{version} · core"
+    html = (ROOT / "index.html").read_text(encoding="utf-8")
+    badge = re.search(r'<span id="buildChip"[^>]*>(.*?)</span>', html)
+    assert badge and badge.group(1) == f"v{version} · core"
 
 
 def test_the_release_number_stays_inside_its_ceiling():

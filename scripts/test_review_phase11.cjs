@@ -16,7 +16,7 @@ function fixture(selection,{n=1,groups=1,exporting=false}={}){
    pipeline:{available:true,scope:{since:f.since,as_of,symbol:null,timeframe:null,horizon:null,independent_ledgers:true},stages:[{id:'candidates_seen',count:259}],reasons:[{group:'market',code:'spread',count:5}]}};
 }
 (async()=>{
-for(const file of ['index.html','nobitex-mobile.html'])for(const lang of ['fa','en']){
+for(const file of ['index.html'])for(const lang of ['fa','en']){
  const html=fs.readFileSync(file,'utf8').replace(/<script id="nbx-inline-nbx-app-js">[\s\S]*?<\/script>/,'');
  const errors=[],vc=new VirtualConsole();vc.on('jsdomError',e=>errors.push(e.message));let blocked=0;
  const dom=new JSDOM(html,{url:'https://dashboard.test/',runScripts:'dangerously',pretendToBeVisual:true,virtualConsole:vc,beforeParse(w){w.setInterval=()=>0;w.scrollTo=()=>{};w.HTMLElement.prototype.scrollIntoView=()=>{};w.fetch=()=>{blocked++;throw Error('Network forbidden');};}});
@@ -87,5 +87,5 @@ for(const file of ['index.html','nobitex-mobile.html'])for(const lang of ['fa','
   eq(blocked,2,'no real network after mocked fixture setup');
  }finally{w.close();}
 }
-console.log(`Phase11 Signal Intelligence: ${checks} checks PASS (canonical/mobile × fa/en; mocked readonly evidence/export).`);
+console.log(`Phase11 Signal Intelligence: ${checks} checks PASS (canonical index.html × fa/en; mocked readonly evidence/export).`);
 })().catch(e=>{console.error(e);process.exitCode=1;});

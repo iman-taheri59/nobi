@@ -28,6 +28,8 @@ checks:           pass=10, warn=6, fail=1, info=2
 endpoint_outcomes: ok=73, unexpected=1
 ```
 
+> **Historical note:** This report records only the production probe snapshot for version `2.1.8` on 2026-11-02. Paths such as `/nobitex-mobile.html` reflect that old execution, not routes on the current working branch.
+
 The probe performed only `POST /api/auth/login` and `POST /api/auth/logout` as allowed mutations; all other requests were GETs. No order, settings change, user change, backup/restore/restart, or diagnostics/devsuite execution occurred. The output also contains no password, cookie value, raw log, username, IP, or user-agent; however, its financial/operational metrics may still be sensitive.
 
 > English version of the Persian report `capoy-owner-probe-analysis.md`. This analysis describes the live `2.1.8` probe state. The cookie/header, global drift, and approval-queue fixes were implemented locally in `2.1.9`; deployment is still required for them to affect `capoy.ir`.

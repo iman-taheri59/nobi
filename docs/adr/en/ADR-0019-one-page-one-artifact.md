@@ -2,7 +2,8 @@
 
 [فارسی](../fa/ADR-0019-یک-صفحه-یک-آرتیفکت.md) · **English**
 
-- **Status:** Accepted and implemented
+- **Status at decision time:** Accepted and implemented
+- **Current status:** Superseded by ADR-0058 on 2026-11-03; the text below preserves the historical decision.
 - **Date:** 2026-10-22
 - **Decision owner:** the operator (a direct question: "why two versions with this
   much conflict?")
@@ -98,3 +99,7 @@ network) and CoinGecko logos through the server
 coins with no bundled SVG — TON, SHIB, NEAR, AXS, EGLD, HBAR, APT, ARB, OP, PEPE
 — are covered by that second layer. So that deleting the call cannot go unnoticed,
 `test_the_dashboard_asks_for_online_coin_metadata` was added.
+
+## Implementation amendment — 2026-11-03
+
+The operator explicitly superseded this decision. Under [ADR-0058](../en/ADR-0058-one-responsive-html-source.md), `index.html` is the only responsive HTML source; `nobitex-mobile.html`, its builder and route, its freshness gate, parity tests, and the Release HTML attachment were removed. Responsive tests remain on that same `index.html`. This change has not been released or deployed.

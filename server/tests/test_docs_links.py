@@ -1,16 +1,15 @@
 """A living document may not point at a file that does not exist.
 
-Two such references were found by sweeping the docs: `docs/deploy-arvan.md`
-told the reader to run `preflight_arvan.sh` before buying a server, and
-ADR-0025 said new symbol mappings are resolved by `scripts/resolve_fa.py`.
-Neither script has ever existed in this repository — `git log --all` on both
-paths is empty. The first sends a reader looking for a tool that is not there;
-the second describes a workflow nobody can follow.
+The sweep originally caught two stale references: `docs/deploy-arvan.md` named
+`preflight_arvan.sh`, which is not part of this repository, and ADR-0025 named
+`scripts/resolve_fa.py`, which was subsequently implemented. This guard keeps
+future docs from sending readers to missing tools.
 
 This test reads every backticked path in the living documents and fails if the
-file is missing. Historical records are excluded on purpose: `CHANGELOG*.md`
-and `docs/reviews/` describe what was true when they were written, and a path
-that was correct then is not a defect now.
+file is missing. Historical records are excluded on purpose: `CHANGELOG*.md`,
+`docs/reviews/`, and ADRs explicitly marked superseded preserve paths that were
+valid when written; retaining that decision history is not a defect in current
+code.
 
 A small allowlist covers references that are legitimately absent:
 `server/.env` and friends are created by the operator, `paper_state.json` is
@@ -25,13 +24,27 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 
+def _is_superseded_adr(path: Path) -> bool:
+    """A superseded ADR preserves its old file references as decision history."""
+    if path.parent.parent.name != "adr" or not path.name.startswith("ADR-"):
+        return False
+    text = path.read_text(encoding="utf-8")
+    return bool(re.search(
+        r"^\s*-\s+\*\*(?:Current status|وضعیت کنونی):\*\*.*\bsuperseded\b",
+        text,
+        re.IGNORECASE | re.MULTILINE,
+    ))
+
+
 #: Documents that describe the repository as it is now.
 LIVING_DOCS = sorted(
     p for p in list(ROOT.glob("*.md"))
     + list(ROOT.glob("docs/*.md"))
     + list(ROOT.glob("docs/adr/**/*.md"))
     + [ROOT / "server" / "README.md"]
-    if "reviews" not in p.parts and not p.name.startswith("CHANGELOG")
+    if "reviews" not in p.parts
+    and not p.name.startswith("CHANGELOG")
+    and not _is_superseded_adr(p)
 )
 
 #: Paths that are legitimately absent from a checkout.
@@ -39,6 +52,7 @@ ALLOWED_ABSENT = {
     "server/.env",                  # the operator creates it
     "server/paper_state.json",      # written at runtime
     "nobi-installer.socket/.service",  # two unit names written as one shorthand
+    "scripts/build_standalone.py", # intentionally removed by ADR-0058
 }
 
 #: A backticked path with at least one directory component and a known extension.

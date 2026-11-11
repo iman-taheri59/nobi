@@ -9,7 +9,7 @@ const app=fs.readFileSync('nbx-app.js','utf8').replace('  window.NBX_APP = {',' 
 const bars=(fall=false)=>Array.from({length:12},(_,i)=>({t:1700000000+i*900,o:100,h:110,l:90,c:fall?110-i:100+i,v:1}));
 const record=(symbol,extra={})=>({symbol,composite:80,score:75,fa_score:60,fa:{score:60,profile:'live',fresh:true,vetoes:[]},direction:'LONG',regime:'TREND',liquidity_score:90,components:{trend:20,momentum:10},risk:{stopPct:1},...extra});
 (async()=>{
-for(const file of ['index.html','nobitex-mobile.html'])for(const lang of ['fa','en']){
+for(const file of ['index.html'])for(const lang of ['fa','en']){
  const html=fs.readFileSync(file,'utf8').replace(/<script id="nbx-inline-nbx-app-js">[\s\S]*?<\/script>/,'');
  const errors=[],vc=new VirtualConsole();vc.on('jsdomError',e=>errors.push(e.message));
  const dom=new JSDOM(html,{url:'https://dashboard.test/',runScripts:'dangerously',pretendToBeVisual:true,virtualConsole:vc,
@@ -119,5 +119,5 @@ for(const file of ['index.html','nobitex-mobile.html'])for(const lang of ['fa','
   ok(!errors.some(x=>/Uncaught|ReferenceError|SyntaxError/.test(x)),errors.join('\n'));
  }finally{dom.window.close();}
 }
-console.log(`Phase 8: ${checks} checks PASS (canonical/mobile × FA/EN; offline Signals renderers/read orchestration)`);
+console.log(`Phase 8: ${checks} checks PASS (canonical index.html × FA/EN; offline Signals renderers/read orchestration)`);
 })().catch(e=>{console.error(e);process.exit(1);});
