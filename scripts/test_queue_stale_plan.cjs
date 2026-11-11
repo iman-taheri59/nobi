@@ -150,5 +150,5 @@ async function verify(file) {
   } finally { w.close(); }
 }
 (async () => {
-  for (const file of ['index.html', 'nobitex-mobile.html']) await verify(file);
+  for (const file of ['index.html']) await verify(file);
 })().catch(e => { console.error(e); process.exitCode = 1; });

@@ -120,3 +120,7 @@ something to say, and the provenance chip may never collapse into a bare number.
 - **eslint checks syntax and names, not behaviour.** A panel that renders a
   wrong number passes lint; `probe_live.py` and the jsdom smoke test are what
   catch that.
+
+## Implementation amendment — 2026-11-03
+
+The reference above to `nobitex-mobile.html` describes the state at the time this ADR was written. Under ADR-0058, that file and its freshness gate have been removed; the compiled-CSS freshness gate remains, and responsive tests run against `index.html`.

@@ -5,7 +5,7 @@ The browser logs in through the real session forms and uses the real bell. The
 server uses scratch databases, a controlled exchange client, and a controlled
 Telegram sender. No test-only HTTP endpoint, real credential, external order,
 or production state is involved. A restart clears process caches and serves the
-standalone build to prove that history comes from SQLite rather than RAM.
+canonical page to prove that history comes from SQLite rather than RAM.
 
 Run: python scripts/price_alerts_e2e_test.py
 """
@@ -224,8 +224,7 @@ def run() -> int:
             "NBX_EXPORT_DIR": str(scratch / "exports"),
             "NBX_ALERT_TICK_S": "3600", "NBX_TICK_S": "3600",
             "NBX_AUTO_INTERVAL_S": "3600", "NBX_SCAN_LOOP_S": "0",
-            "NBX_DIGEST_HOURS": "0", "NBX_AUTOBUILD_PAGE": "0",
-            "NBX_SERVE_INLINE": "0", "NBX_WS_URL": "",
+            "NBX_DIGEST_HOURS": "0", "NBX_WS_URL": "",
             "NBX_API_TOKEN": "", "NBX_TRUSTED_PROXIES": "",
             "NBX_TELEGRAM_TOKEN": "", "NBX_TELEGRAM_CHAT_ID": "",
         })
@@ -488,23 +487,23 @@ def run() -> int:
         main._cached.update({"alert_universe": [], "universe": [], "universe_ts": 0,
                              "premium": None, "premium_pct": None})
         auth.reset_caches()
-        os.environ["NBX_SERVE_INLINE"] = "1"
         server.start()
         with sync_playwright() as playwright:
             browser = playwright.chromium.launch(**cast(Any, launch_args(args.channel, args.executable)))
             try:
                 owner = new_session(browser, server, "owner", report)
                 sessions.append(owner)
-                require(owner.page.locator("script#nbx-inline-nbx-alerts-js").count() == 1,
-                        "restart serves the exact standalone alert module", report)
+                require(owner.page.locator('script[src="nbx-alerts.js"]').count() == 1
+                        and owner.page.evaluate("typeof window.NBXAlerts === 'object'"),
+                        "restart serves the canonical alert module", report)
                 open_alerts(owner)
                 owner.page.wait_for_function(
                     "document.querySelector('#alertsRulesCount').textContent === '0' && "
                     "document.querySelector('#alertsEventsCount').textContent === '3'"
                 )
                 require("Deleted rule; retained history" in owner.page.locator("#alertsEvents").inner_text(),
-                        "standalone after cache-clearing restart reads retained history from SQLite", report)
-                require(not owner.errors, "standalone restart has no JavaScript errors", report)
+                        "canonical page after cache-clearing restart reads retained history from SQLite", report)
+                require(not owner.errors, "canonical restart has no JavaScript errors", report)
                 owner.close()
             finally:
                 browser.close()
@@ -524,7 +523,7 @@ def run() -> int:
                 "three controlled Telegram attempts and no real Telegram delivery", report)
         require(exchange_reads[0] > 0, "controlled scheduler consumed the canonical exchange loader", report)
         report.update({
-            "status": "PASS", "canonical_and_standalone": True,
+            "status": "PASS", "canonical_page": True,
             "roles": {"anonymous": 401, "viewer": 403, "mutations": "Owner/Operator session+CSRF"},
             "events": {"sent": 1, "failed": 1, "pending": 1},
             "replay_no_duplicate": True, "stale_disarm": True, "recovery_baseline": True,

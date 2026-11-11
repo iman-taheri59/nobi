@@ -117,3 +117,7 @@ exchange. KuCoin is the default because it answered from this sandbox; Binance r
 - **Cross-check (`/api/reference/cross-check`):** venue price against reference price. A
   wide gap means one of the two feeds is stale or mis-scaled, not that there is an
   arbitrage — a failure no other panel showed, because each feed looks healthy alone.
+
+## Implementation amendment — 2026-11-03
+
+The `source: "mock"` packaging clause referred to the generated output that existed when this ADR was written. Under ADR-0058, that standalone HTML output has been removed; the fixture remains development/test-only and none of its values enter the product page or data path. The data-honesty contract is unchanged.

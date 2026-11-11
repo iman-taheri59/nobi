@@ -114,3 +114,15 @@ a rule is dangerous, so the copies are **tested** rather than assumed equal:
   `MarketEngine.loadUniverse` talks to the exchange directly.
 - The local risk gate in the manual ticket was removed; the server decides and
   names the gate.
+
+---
+
+## Current-status amendment — 2026-11-03 (ADR-0058)
+
+The 2026-10-20 “standalone bundle” amendment above refers to the browser-local
+execution path and the server/client preflight parity contract, not to a required
+second HTML file. Under ADR-0058, `nobitex-mobile.html` and its builder have been
+removed; `index.html` is the only responsive HTML source. Browser-local fallback
+behavior in `nbx-core.js` and the server/client gate-parity tests remain. Opening
+`index.html` locally still requires its adjacent local assets, and server-backed
+data remains unavailable without a reachable backend.

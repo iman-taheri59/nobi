@@ -2,6 +2,8 @@
 
 [فارسی](upgrade-2.1.10.md) · **English**
 
+> **Historical note (ADR-0058):** This checklist describes only the 2.1.10 source tree; its file/hash references to `nobitex-mobile.html` belong to that old payload. The working 2.5.7 branch has no standalone HTML output. Do not use this checklist for a current release or deployment.
+
 This document prepares the local `2.1.10` checkpoint for a later, explicitly authorized deployment. It is **not** permission to deploy, push, tag, restart a production service, enable Live/Auto, or place an order.
 
 Target example: `https://capoy.ir` on an ArvanCloud Ubuntu VM with nginx + systemd. Adjust paths/domain to the real installation before running anything.

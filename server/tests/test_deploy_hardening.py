@@ -21,9 +21,8 @@ wait for `npm`:
 3. **An unguarded sign-in route.** The throttle in `auth.authenticate` is keyed
    by `(address, username)`, so cycling usernames pays for a scrypt comparison
    every time, and ten wrong guesses against one name lock that person out.
-4. **A page build inside a request.** `GET /` could run `npm run css` (60 s) and
-   `build_standalone.py` on the same event loop that serves everything else,
-   including `/api/health`.
+4. **Request-time page generation.** The dashboard is now served directly from
+   its canonical `index.html`; requests must never kick off a build.
 """
 
 from __future__ import annotations
@@ -277,9 +276,11 @@ def test_the_sign_in_budget_is_per_address(monkeypatch):
 # --------------------------------------------------------------------------- #
 # 4. The request path
 # --------------------------------------------------------------------------- #
-def test_the_root_page_never_runs_a_build(monkeypatch):
-    """`GET /` must not wait for `npm` — the health check shares this loop."""
+def test_the_root_page_serves_the_canonical_source_without_a_build(monkeypatch):
+    """GET / is a file response, not a request-time generation step."""
     import subprocess as sp
+
+    from fastapi.testclient import TestClient
 
     import main
 
@@ -287,37 +288,10 @@ def test_the_root_page_never_runs_a_build(monkeypatch):
         raise AssertionError("a build ran while answering a request")
 
     monkeypatch.setattr(sp, "run", explode)
-    page = main._self_contained_page()
-    assert page.name in ("nobitex-mobile.html", "index.html")
-
-
-def test_autobuild_is_off_unless_asked_for(monkeypatch):
-    """`NBX_AUTOBUILD_PAGE` is opt-in; a deployment should never build."""
-    import main
-
-    monkeypatch.delenv("NBX_AUTOBUILD_PAGE", raising=False)
-    monkeypatch.setattr(main, "_build_attempted", False)
-    main._build_page_once()
-    assert main._build_attempted is False
-
-
-def test_a_stale_page_is_served_complete(state, monkeypatch):
-    """Stale-but-complete beats fresh-but-empty, without a subprocess."""
-    import main
-
-    standalone = REPO_ROOT / "nobitex-mobile.html"
-    if not standalone.exists():                           # pragma: no cover
-        pytest.skip("the inlined build is not in this checkout")
-
-    src = REPO_ROOT / "nbx-app.js"
-    now = src.stat().st_mtime
-    try:
-        os.utime(src, (now + 5, now + 5))
-        page = main._self_contained_page()
-        assert page == standalone
-        assert 'href="assets/css/' not in page.read_text(encoding="utf-8")[:400_000]
-    finally:
-        os.utime(src, (now, now))
+    client = TestClient(main.app)
+    expected = (REPO_ROOT / "index.html").read_bytes()
+    assert client.get("/").content == expected
+    assert client.get("/index.html").content == expected
 
 
 # --------------------------------------------------------------------------- #

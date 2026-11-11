@@ -2,10 +2,10 @@
 
 **فارسی** · [English](README.en.md)
 
-نسخهٔ جاری: **2.5.6** · وضعیت انتشار را در [Releases](https://github.com/iman-taheri59/nobi/releases) بررسی کنید.
+نسخهٔ کاری: **2.5.7** (منتشر نشده؛ آخرین نسخهٔ مستقر 2.5.6) · وضعیت انتشار را در [Releases](https://github.com/iman-taheri59/nobi/releases) بررسی کنید.
 **مجوز:** MIT ([`LICENSE`](LICENSE)) · **گزارش آسیبپذیری:** [`SECURITY.md`](SECURITY.md) · **مشارکت:** [`CONTRIBUTING.md`](CONTRIBUTING.md)
 
-راهنمای [نسخه‌بندی و GitHub Release](docs/releases.md) شامل قواعد افزایش نسخه، تگ و انتشار فایل موبایل است. [تاریخچهٔ تغییرات](CHANGELOG.md) را نیز ببینید ([English](CHANGELOG.en.md)).
+راهنمای [نسخه‌بندی و GitHub Release](docs/releases.md) شامل قواعد افزایش نسخه، تگ و انتشار است. [تاریخچهٔ تغییرات](CHANGELOG.md) را نیز ببینید ([English](CHANGELOG.en.md)).
 
 داشبورد دوزبانه (فارسی/انگلیسی) با موتور تحلیل تکنیکال، موتور فاندامنتال،
 مدیریت ریسک، معاملات کاغذی، بک‌تست Walk-Forward، ژورنال سیگنال و بک‌اند
@@ -59,26 +59,24 @@ python -m venv ../.venv
 loopback مجاز است و از راه دور به `NBX_API_TOKEN` نیاز دارد. هیچ رازی از
 مرورگر نوشته نمی‌شود.
 
-### ۲) فایل تک‌صفحه‌ای روی گوشی
+### ۲) چیدمان گوشی
 
-`nobitex-mobile.html` همهٔ استایل، آیکون و موتورهای محاسباتی را در خود دارد و
-از `file://` هم باز می‌شود. **اما** دادهٔ بازار را از بک‌اند می‌گیرد: بدون
-دسترسی به سرور، پنل‌های بازار جملهٔ «سرور نوبیتکس در دسترس نیست» را نشان
-می‌دهند — نه عدد جای‌گزین. (ادعای قبلی README که «۱۰۰٪ قابلیت‌ها آفلاین
-اجرا می‌شود» درست نبود و حذف شد.)
+`index.html` تنها صفحهٔ داشبورد است و برای گوشی و دسکتاپ به‌صورت ریسپانسیو
+چیده شده است. گوشی همان آدرس سرور را باز می‌کند؛ CSS و JavaScript محلی از همان
+سرویس بارگیری می‌شوند. خروجی HTML مستقل و دانلود تک‌فایلی تولید یا منتشر نمی‌شود.
 
 ---
 
 ## ساخت
 
 ```bash
-npm install                 # tailwind + jsdom
-npm run css                 # assets/css/tailwind.css را می‌سازد
-python scripts/build_standalone.py   # nobitex-mobile.html
+npm ci                      # ابزارهای CSS و آزمون‌های jsdom
+npm run build                # آیکون‌های محلی + assets/css/tailwind.css
 ```
 
-باندل تک‌فایلی از `index.html` ساخته می‌شود؛ اگر بعد از تغییر استایل، `npm run
-css` را نزنی، `build_standalone.py` هشدار می‌دهد که CSS از markup عقب است.
+CSS کامپایل‌شده بخشی از مخزن است و CI تازگی آن را بررسی می‌کند. تغییرهای markup
+و JavaScript مستقیماً در `index.html` و `nbx-*.js` انجام می‌شوند؛ صفحهٔ HTML
+دومی برای بازسازی وجود ندارد.
 
 ---
 
@@ -118,7 +116,7 @@ npm run lint:dashboard           # بلوک درون‌خطی index.html
 آن معاف‌اند.
 
 CI چهار job دارد: `python` (ruff + mypy + pytest)، `js` (eslint + برابری بروکر و
-preflight + تازگی `nobitex-mobile.html`)، `ui` (۴۴ پنل روی فیکسچر صرافی +
+preflight + تازگی CSS کامپایل‌شده)، `ui` (۴۴ پنل روی فیکسچر صرافی +
 اسموک jsdom با ۷ سلول KPI، صداقت کارت MSI و صفر خطای JS)، و
 `windows (advisory)` — همان دروازهٔ پایتون روی پلتفرم مستندشدهٔ دیگر
 (`docs/run-windows.md`). مشورتی است: قرمزیاش گزارش میشود ولی چون
@@ -154,10 +152,9 @@ python scripts/probe_live.py --url http://127.0.0.1:8010
 ## ساختار
 
 ```
-index.html              داشبورد (تک‌صفحه، دوزبانه)
+index.html              داشبورد ریسپانسیو (تنها منبع HTML، دوزبانه)
 nbx-core.js             موتور TA/FA، API client، offline fallback
 nbx-app.js              اسکن، سیگنال، عملکرد، میز
-nobitex-mobile.html     باندل تک‌فایلی (ساخته می‌شود، دستی ویرایش نکن)
 assets/css/             tailwind (src + built) و استایل‌های پایه
 server/                 FastAPI: main, ta/fa/risk/portfolio/benchmark,
                         market_overview, paper, backtest, journal, errorlog,
@@ -228,7 +225,7 @@ python scripts/fetch_history.py --symbol BTCIRT --resolution 15 \
 ## مستندات
 
 - [`docs/README.md`](docs/README.md) — نقشهٔ مستندات (از کجا شروع کنم) · [English](docs/README.en.md)
-- [`docs/adr/`](docs/adr) — ۵۳ ADR دوزبانه؛ ADR-0019 توضیح می‌دهد چرا `nobitex-mobile.html` نسخهٔ دوم نیست و یک صفحهٔ ریسپانسیو بیشتر نداریم (قرارداد داده ADR-0014، مرز واحد ADR-0015)
+- [`docs/adr/`](docs/adr) — ADRهای دوزبانه؛ ADR-0058 تصمیم فعلیِ یک منبع HTML ریسپانسیو را ثبت می‌کند و ADR-0019 را supersede می‌کند (قرارداد داده ADR-0014، مرز واحد ADR-0015)
 - [`docs/adr/README.md`](docs/adr/README.md) — کدام ADR پیاده شده و شاهدش کجاست
 - [`docs/releases.en.md`](docs/releases.en.md) — نسخه‌بندی و انتشار (انگلیسی) · [`docs/releases.md`](docs/releases.md) (فارسی)
 - [`docs/reviews/2026-10-20-live-path-verification-fa.md`](docs/reviews/2026-10-20-live-path-verification-fa.md)
@@ -240,7 +237,7 @@ python scripts/fetch_history.py --symbol BTCIRT --resolution 15 \
 
 نام، نماد، شبکه‌ها و مشخصات معاملاتی از `/v2/options` نوبیتکس دریافت و کش می‌شوند. CoinGecko فقط لوگو و نامِ جایگزین را تأمین می‌کند؛ مرورگر تصاویر را از خود سرور می‌گیرد. منبع و زمان دریافت هر بخش در API مشخص است. نگاشت لوگوی ۵۰ ارز صریح است و نمادهای نامطابق خودکار جایگزین نمی‌شوند. [راهنما و تنظیمات](docs/coin-metadata.md).
 
-۴۰ لوگوی ارز نیز به‌صورت محلی و بدون درخواست به CDN همراه پروژه است؛ نسخهٔ تک‌فایلی موبایل هم تصاویر را داخل خودش دارد. برای نمادهای بدون لوگو، حروف کوتاه نام ارز نمایش داده می‌شود. منبع و مجوز تصاویر در `assets/coins/README.md` ثبت شده است.
+۴۰ لوگوی ارز نیز به‌صورت محلی و بدون درخواست به CDN همراه پروژه است و در بخش دادهٔ لوگو در `index.html` embed شده است. برای نمادهای بدون لوگو، حروف کوتاه نام ارز نمایش داده می‌شود. منبع و مجوز تصاویر در `assets/coins/README.md` ثبت شده است.
 
-- ساخت مجدد: `npm run build`
-- آزمون لوگوها (نسخهٔ وب و موبایل): `npm run test:icons`
+- ساخت مجدد آیکون‌ها و CSS: `npm run build`
+- آزمون لوگوها: `npm run test:icons`

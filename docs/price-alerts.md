@@ -13,7 +13,7 @@
 
 ## پنل مدیریت bell
 
-- دکمهٔ bell در `index.html` و فایل بازسازی‌شدهٔ `nobitex-mobile.html` به `nbx-alerts.js` متصل است. تعیین نقش یا بارگذاری صفحه هیچ درخواست هشداری نمی‌سازد؛ GET قواعد/رویدادها فقط با بازکردن پنل یا کلیک «به‌روزرسانی» توسط Owner/Operator انجام می‌شود و polling جداگانه‌ای وجود ندارد.
+- دکمهٔ bell در منبع canonical `index.html` به `nbx-alerts.js` متصل است. تعیین نقش یا بارگذاری صفحه هیچ درخواست هشداری نمی‌سازد؛ GET قواعد/رویدادها فقط با بازکردن پنل یا کلیک «به‌روزرسانی» توسط Owner/Operator انجام می‌شود و polling جداگانه‌ای وجود ندارد.
 - Viewer و کاربر ناشناس فقط توضیح دسترسی را می‌بینند و حتی با بازکردن پنل هیچ request به `/api/alerts/*` نمی‌فرستند. mutationها با session کوکی و هدر CSRF موجود انجام می‌شوند؛ تغییر نقش، cache و شمارش قبلی را باطل می‌کند و پاسخ دیررس پس از بستن پنل یا تعویض هویت دور ریخته می‌شود.
 - فرم قیمت/پرمیوم، فعال/غیرفعال‌کردن و حذف دومرحله‌ای دارد. انتخاب پرمیوم نماد را به USDTIRT قفل می‌کند. حذف rule فقط خود قاعده را حذف می‌کند و snapshot رویدادهای تاریخی در فهرست باقی می‌ماند.
 - وضعیت baseline/arm/disarm، آخرین مقدار و زمان مشاهده، عبور قبلی→جدید و تحویل `sent/failed/pending` جدا نمایش داده می‌شود. badge آبی فقط تعداد ruleهای enabled پس از یک خواندن موفق است، نه تعداد رویداد خوانده‌نشده یا اعلان تازه؛ به همین دلیل نقطهٔ قرمز ثابت قبلی حذف شده است.
@@ -58,9 +58,9 @@ python scripts/price_alerts_layout_test.py
 python scripts/price_alerts_e2e_test.py
 ```
 
-تست اول ۱۰۲ بررسی آفلاین DOM روی canonical و standalone انجام می‌دهد. تست دوم ۱۶ حالت Chromium با fixture محلی و شبکهٔ غیرfixture مسدودشده می‌سنجد؛ هیچ‌کدام session واقعی، Telegram یا مسیر سفارش را مصرف نمی‌کنند.
+تست اول بررسی آفلاین DOM را روی منبع canonical `index.html` انجام می‌دهد. تست دوم ۱۶ حالت Chromium را با fixture محلی و شبکهٔ غیرfixture مسدودشده می‌سنجد؛ هیچ‌کدام session واقعی، Telegram یا مسیر سفارش را مصرف نمی‌کنند.
 
-تست سوم یکپارچه‌سازی واقعی است: یک FastAPI موقت روی loopback با SQLiteهای موقت، client صرافی کنترل‌شده و sender تلگرام کنترل‌شده. Owner و Operator و Viewer از فرم واقعی وارد می‌شوند؛ 403 و صفر request هشدار برای Viewer اثبات می‌شود؛ ساخت، فعال/غیرفعال و حذف rule فقط از bell و با قرارداد واقعی CSRF انجام می‌شود؛ scheduler با timestampهای قطعی از مسیر `baseline → armed → crossing → دقیقاً یک event`، replay، crash فرستنده پس از commit رویداد (`pending`)، شواهد کهنه‌تر از `ALERT_MAX_AGE_S` و baseline تازه پس از قطعی عبور می‌کند. سپس سرور با پاک‌سازی cache پردازه restart و build standalone سرو می‌شود تا ثابت شود rules و history حفظ‌شده از SQLite می‌آیند. ۴۰ بررسی همچنین صفر mutation در Paper/Live/risk/execution/order و صفر درخواست سرور بیرون از loopback را تضمین می‌کنند. هیچ endpoint آزمایشی وجود ندارد؛ همه‌چیز از مسیر محصول است.
+تست سوم یکپارچه‌سازی واقعی است: یک FastAPI موقت روی loopback با SQLiteهای موقت، client صرافی کنترل‌شده و sender تلگرام کنترل‌شده. Owner و Operator و Viewer از فرم واقعی وارد می‌شوند؛ 403 و صفر request هشدار برای Viewer اثبات می‌شود؛ ساخت، فعال/غیرفعال و حذف rule فقط از bell و با قرارداد واقعی CSRF انجام می‌شود؛ scheduler با timestampهای قطعی از مسیر `baseline → armed → crossing → دقیقاً یک event`، replay، crash فرستنده پس از commit رویداد (`pending`)، شواهد کهنه‌تر از `ALERT_MAX_AGE_S` و baseline تازه پس از قطعی عبور می‌کند. سپس سرور با پاک‌سازی cache پردازه restart و صفحهٔ canonical را دوباره سرو می‌کند تا ثابت شود rules و history حفظ‌شده از SQLite می‌آیند. ۴۰ بررسی همچنین صفر mutation در Paper/Live/risk/execution/order و صفر درخواست سرور بیرون از loopback را تضمین می‌کنند. هیچ endpoint آزمایشی وجود ندارد؛ همه‌چیز از مسیر محصول است.
 
 ## تحویل و محدودیت‌ها
 

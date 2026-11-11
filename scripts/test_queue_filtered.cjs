@@ -168,7 +168,7 @@ async function run(file, lang) {
 }
 
 (async () => {
-  for (const file of ['index.html', 'nobitex-mobile.html']) {
+  for (const file of ['index.html']) {
     for (const lang of ['fa', 'en']) await run(file, lang);
   }
 })().catch(e => { console.error(e); process.exitCode = 1; });

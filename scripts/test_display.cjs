@@ -5,7 +5,7 @@ const {JSDOM, VirtualConsole} = require('jsdom');
 const strip = x => String(x).replace(/[\u2066-\u2069\u200e\u200f\u061c]/g,'');
 let assertions = 0;
 const check = (a,b) => { assert.equal(a,b); assertions++; };
-for (const file of ['index.html','nobitex-mobile.html']) {
+for (const file of ['index.html']) {
   const html = fs.readFileSync(file,'utf8');
   const helper = html.split('/* DISPLAY-FORMAT-START:')[1]?.split('/* DISPLAY-FORMAT-END */')[0];
   assert.ok(helper, `${file}: helper missing`);

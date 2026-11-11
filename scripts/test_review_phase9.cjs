@@ -10,7 +10,7 @@ function payload(extra={}){return {stage_read_only:true,kpi:{hit:null,exp:null,v
   {id:2,ts:1700000001,sym:'YUSDT',dir:'long',score:60,rank:2,h1:true,h2:true,h3:false,o1:{kind:'timeout',r:0.12},o2:{kind:'tp2',r:1.6},o3:{kind:'ambiguous',r:-1},r1:0.12,r:1.6,st:'resolved',source:'live',origin:'live'}],
  msi:{status:'insufficient',ratio:null,realized:{n:0,ic:null},baseline:{n:0,ic:null,source:'journal-history'}},generated_at:'2026-10-29T10:00:00Z',...extra};}
 (async()=>{
-for(const file of ['index.html','nobitex-mobile.html'])for(const lang of ['fa','en']){
+for(const file of ['index.html'])for(const lang of ['fa','en']){
  const html=fs.readFileSync(file,'utf8').replace(/<script id="nbx-inline-nbx-app-js">[\s\S]*?<\/script>/,'');
  const vc=new VirtualConsole(),errors=[];vc.on('jsdomError',e=>errors.push(e.message));
  let network=0;
@@ -100,5 +100,5 @@ for(const file of ['index.html','nobitex-mobile.html'])for(const lang of ['fa','
   eq(writes,0);eq(network,0);eq(errors.length,0,errors.join('\n'));
  }finally{dom.window.close();}
 }
-console.log(`Phase9 Performance: ${checks} checks PASS (canonical/mobile × fa/en; no network/writes).`);
+console.log(`Phase9 Performance: ${checks} checks PASS (canonical index.html × fa/en; no network/writes).`);
 })().catch(e=>{console.error(e);process.exitCode=1;});

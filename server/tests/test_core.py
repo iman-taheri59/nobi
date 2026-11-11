@@ -1173,28 +1173,6 @@ def test_notify_does_not_leak_the_token_through_exception_text(monkeypatch):
     assert 'last_error=str(e)' not in src
 
 
-def test_root_serves_a_self_contained_page():
-    """`/` must not depend on subresources.
-
-    A sandboxed preview iframe, a phone opening the file from a download
-    folder and an air-gapped host all block subresource requests. When `/`
-    served `index.html`, the browser received the markup and *nothing else*:
-    no stylesheet, no JavaScript, no charts. The page must arrive complete.
-    """
-    body = _client().get("/").text
-
-    assert "<!DOCTYPE html>" in body
-    # stylesheets are inlined, not linked
-    assert 'href="assets/css/' not in body, "a local stylesheet is still linked"
-    # scripts are inlined, not linked
-    assert 'src="nbx-core.js"' not in body and 'src="nbx-app.js"' not in body
-    # the compiled Tailwind utilities travel with the page (no CDN)
-    assert "@layer utilities" in body or ".flex{display:flex}" in body
-    assert "cdn.jsdelivr.net/npm/@tailwindcss" not in body
-    # enough to actually render something
-    assert len(body) > 200_000
-
-
 def test_root_page_needs_no_external_hosts():
     """External <script src> is a hard dependency; a *stylesheet* link is not.
 
@@ -1216,34 +1194,6 @@ def test_root_page_needs_no_external_hosts():
     for tag in re.findall(r'<script[^>]+src="https://unpkg[^"]+"[^>]*>', body):
         assert any(a in tag for a in allowed), f"unknown external script {tag[:80]}"
         assert "onerror=" in tag, "an external script must declare a fallback"
-
-
-def test_root_never_serves_the_un_inlined_page_when_the_build_cannot_run():
-    """Stale-but-complete beats fresh-but-empty.
-
-    `build_standalone.py` refuses to run when `tailwind.css` is older than the
-    markup (new classes would be missing). If that refusal fell back to
-    `index.html`, the browser would get markup with no CSS and no JS — the
-    exact failure this whole path exists to prevent. It must keep serving the
-    last good self-contained build.
-    """
-    import os
-
-    import main
-
-    page = main._self_contained_page()
-    assert page.name == "nobitex-mobile.html"
-
-    src = main.REPO_ROOT / "nbx-app.js"
-    now = src.stat().st_mtime
-    try:
-        os.utime(src, (now + 5, now + 5))          # makes the build refuse
-        page = main._self_contained_page()
-        assert page.name == "nobitex-mobile.html", "fell back to the un-inlined index.html"
-        body = page.read_text(encoding="utf-8")
-        assert 'href="assets/css/' not in body
-    finally:
-        os.utime(src, (now, now))
 
 
 # --------------------------------------------------------------------------- #
@@ -1840,19 +1790,6 @@ def test_premium_veto_can_actually_fire():
     assert "premium-stretched" not in calm.vetoes
     assert "premium-stretched" in hot.vetoes
     assert hot.macro < calm.macro, "a stretched premium must lower the macro score"
-
-
-def test_failed_build_reports_the_reason_not_just_the_exit_code():
-    """The runtime rebuild used to log "exit status 1" and nothing else."""
-    import subprocess
-
-    import main
-
-    exc = subprocess.CalledProcessError(1, ["python", "build.py"],
-                                        stderr=b"assets/css/tailwind.css is older than the markup it styles.\nRun: npm run css\n")
-    msg = main._short_proc_error(exc)
-    assert "npm run css" in msg
-    assert msg.startswith("Run:")
 
 
 def test_implausible_premium_is_treated_as_missing_data():

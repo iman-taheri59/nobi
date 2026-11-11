@@ -2,7 +2,7 @@
 
 [فارسی](README.md) · **English**
 
-Working version: **2.5.6**. See [versioning and GitHub releases](releases.en.md) and the
+Working version: **2.5.7** (unreleased; last deployed version: 2.5.6). See [versioning and GitHub releases](releases.en.md) and the
 [changelog](../CHANGELOG.en.md).
 
 ## Documentation map
@@ -14,7 +14,7 @@ This file is only a way to find things; the content lives in the folders beside 
 | You want to… | Go to |
 |---|---|
 | Get the project running | [`../README.en.md`](../README.en.md) |
-| Understand why the architecture is this way | [`adr/`](adr) — 52 ADRs, each in Persian and English |
+| Understand why the architecture is this way | [`adr/`](adr) — 58 bilingual ADRs; ADR-0058 records the current canonical responsive-page decision |
 | See which decision is actually implemented | [`adr/README.md`](adr/README.md) — status table with code evidence (Persian) |
 | Know what was last verified, and what was not | [`reviews/`](reviews) (Persian) |
 | Know what the analysis engines actually compute today | [`analysis/`](analysis) — catalogue plus an "implemented / catalogue only" table: [technical](analysis/technical-analysis-capabilities.en.md) · [fundamental](analysis/fundamental-analysis-capabilities.en.md) |

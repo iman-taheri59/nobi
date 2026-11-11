@@ -11,7 +11,7 @@ const paint = app.match(/  function paintUser\(state\) \{[\s\S]*?\n  \}/);
 const upstream = index.match(/function upShow\(on, detail\)\{[\s\S]*?\n\}/);
 assert(paint && upstream, 'production paintUser/upShow functions must remain extractable');
 
-for (const file of ['index.html', 'nobitex-mobile.html']) {
+for (const file of ['index.html']) {
   const html = fs.readFileSync(file, 'utf8');
   assert(html.includes('id="roleBanner"'), `${file}: missing independent role banner`);
   assert(html.includes('id="roleBannerMsg"'), `${file}: missing role message`);

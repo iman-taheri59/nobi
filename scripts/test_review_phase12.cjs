@@ -43,7 +43,7 @@ function validOverview(tf = '15m', overrides = {}) {
 }
 
 (async () => {
-  for (const file of ['index.html', 'nobitex-mobile.html']) {
+  for (const file of ['index.html']) {
     for (const lang of ['fa', 'en']) {
       const errors = [];
       const vc = new VirtualConsole();
@@ -65,12 +65,6 @@ function validOverview(tf = '15m', overrides = {}) {
       });
       const w = dom.window, d = w.document;
       try {
-        if (file === 'nobitex-mobile.html' && lang === 'fa') {
-          const raw = new JSDOM(fs.readFileSync(file, 'utf8'));
-          eq(raw.window.document.getElementById('nbx-inline-nbx-core-js').textContent.trim(), core.trim(), 'standalone core parity');
-          eq(raw.window.document.getElementById('nbx-inline-nbx-app-js').textContent.trim(), fs.readFileSync('nbx-app.js', 'utf8').trim(), 'standalone app parity');
-          raw.window.close();
-        }
         const ref = new JSDOM(head);
         for (const id of ['page-users', 'page-account']) {
           const raw = new JSDOM(fs.readFileSync(file, 'utf8'));
@@ -277,5 +271,5 @@ function validOverview(tf = '15m', overrides = {}) {
       }
     }
   }
-  console.log(`Phase12 Overview Market State & Allocation: ${checks} checks PASS (canonical/mobile × fa/en; offline mocked reads only).`);
+  console.log(`Phase12 Overview Market State & Allocation: ${checks} checks PASS (canonical index.html × fa/en; offline mocked reads only).`);
 })();

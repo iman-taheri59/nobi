@@ -1,6 +1,6 @@
 /* 2.5.5 — Orders table: retained events render as a readable timeline, not a
  * JSON dump. Known kinds/reasons get words; unknown ones stay verbatim; the raw
- * payload remains reachable. Canonical + mobile build, FA + EN. No network. */
+ * payload remains reachable. Canonical responsive page, FA + EN. No network. */
 const fs=require('node:fs'),assert=require('node:assert/strict');
 const {JSDOM,VirtualConsole}=require('jsdom');
 let checks=0;const ok=(a,m)=>{assert.ok(a,m);checks++;};const eq=(a,b,m)=>{assert.equal(a,b,m);checks++;};
@@ -15,7 +15,7 @@ const order={clientOrderId:'q-1234567890',symbol:'BTCUSDT',side:'buy',type:'mark
     {kind:'mystery-kind',ts:1762761601,qty:0,price:0,fee_quote:null,pnl_usd:null,reason:'weird-<b>reason</b>'},
   ]};
 (async()=>{
- for(const file of ['index.html','nobitex-mobile.html']) for(const lang of ['en','fa']){
+ for(const file of ['index.html']) for(const lang of ['en','fa']){
   const html=fs.readFileSync(file,'utf8').replace(/<script id="nbx-inline-nbx-app-js">[\s\S]*?<\/script>/,'');
   const errors=[],vc=new VirtualConsole();vc.on('jsdomError',e=>errors.push(e.message));
   const dom=new JSDOM(html,{url:'https://dashboard.test/',runScripts:'dangerously',pretendToBeVisual:true,virtualConsole:vc,

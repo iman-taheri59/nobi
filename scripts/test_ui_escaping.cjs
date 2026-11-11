@@ -33,11 +33,10 @@ function boot(file) {
   return { dom, w: dom.window, errors };
 }
 
-for (const file of ['index.html', 'nobitex-mobile.html']) {
+for (const file of ['index.html']) {
   const html = fs.readFileSync(file, 'utf8');
-  // index.html loads nbx-app.js as an external file; the standalone build has
-  // it inlined. Check the app layer in both cases.
-  const combined = file === 'index.html' ? html + '\n' + APP : html;
+  // Check markup and the exact external app module used by the canonical page.
+  const combined = html + '\n' + APP;
   // 1. The retry button used to call scanNow(), which only exists inside the
   //    nbx-app.js IIFE. An inline onclick could not see it (ReferenceError).
   ok(!combined.includes('onclick="scanNow('), `${file}: no IIFE-scoped inline handler`);
@@ -80,11 +79,8 @@ for (const file of ['index.html', 'nobitex-mobile.html']) {
   ok(!w.__pwned, `${file}: FA executed an inline handler`);
   ok(fa.textContent.includes('<img'), `${file}: FA payload must be escaped text`);
 
-  // 5. The retry scan entry point must actually be exported for the binding.
-  //    Only the standalone build boots the app layer as inline script.
-  if (file !== 'index.html') {
-    ok(typeof w.NBX_APP?.scanNow === 'function', `${file}: NBX_APP.scanNow is exported`);
-  }
+  // 5. The canonical page loads the application module as a separate script.
+  ok(html.includes('<script src="nbx-app.js"></script>'), `${file}: app module is linked`);
   dom.window.close();
 }
 

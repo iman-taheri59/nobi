@@ -1,8 +1,8 @@
 /* Tailwind v4 — built locally, not fetched from a CDN.
  *
  * Why: the dashboard used `@tailwindcss/browser@4` from jsDelivr. Any context
- * without internet (the sandboxed preview iframe, a phone with the standalone
- * file, an air-gapped host) lost every utility class at once — flex, width,
+ * without internet (a locally served dashboard on a phone or an air-gapped host)
+ * lost every utility class at once — flex, width,
  * gap, text sizes — and the page collapsed. That is not a cosmetic bug: the
  * "missing" element was simply outside the viewport because widths were gone.
  *

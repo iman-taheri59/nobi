@@ -10,9 +10,9 @@ fallback rather than a different coin's logo. Wrapped/renamed tokens are not
 silently mapped to another brand.
 
 Run `python scripts/build_coin_icons.py` after modifying the SVG set. It embeds
-the local images as data URIs in the marked block of index.html so both the web
-dashboard and generated standalone mobile file need no image CDN or requests.
-Then run `npm run css` and `python scripts/build_standalone.py`.
+the local images as data URIs in the marked block of the canonical `index.html`,
+so the responsive dashboard needs no image CDN or logo requests. Run `npm run css`
+to refresh the compiled utility stylesheet; `npm run build` runs both steps.
 
 The server can additionally download CoinGecko logos into a separate ignored
 runtime cache. Those downloaded images are NOT covered by this folder's CC0

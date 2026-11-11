@@ -143,7 +143,7 @@ implements is unchanged: **never guess during a scan**.
 | Searching for symbols at runtime | 15% ambiguity and a 429 wall; a guess instead of a mapping |
 | Synthesising an IRT/USDT pair for single-leg symbols | a number from two non-synchronous sources — the stale-quote trap again |
 | Weighting the pair premium now | ADR-0021: evidence first, weight later |
-| A new card for fundamental coverage | ADR-0019/0024: one page, one artifact; the number goes in the existing chip |
+| A new card for fundamental coverage | ADR-0024 and ADR-0058: keep one responsive dashboard page; the number goes in the existing chip |
 
 ## Acceptance
 

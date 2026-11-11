@@ -38,6 +38,6 @@ def test_every_named_icon_is_inline() -> None:
 
 
 def test_no_icon_script_is_loaded_from_a_cdn() -> None:
-    for name in ("index.html", "nobitex-mobile.html"):
+    for name in ("index.html",):
         html = (ROOT / name).read_text(encoding="utf-8")
         assert "unpkg.com/lucide" not in html and "lucide@" not in html, name

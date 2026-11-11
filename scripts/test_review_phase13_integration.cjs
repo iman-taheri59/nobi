@@ -1,5 +1,5 @@
 /* global console, process */
-/* Real-DOM audit UI integration for index.html and nobitex-mobile.html.
+/* Real-DOM audit UI integration for the canonical index.html.
  * Both languages, real page scripts evaluated in a JSDOM window, no network,
  * no real credentials. Verifies escaping, actor/client, loaded/total,
  * failure vs empty vs not-configured vs standalone, scope rejection,
@@ -79,19 +79,16 @@ function response(payload, status = 200) {
   return { ok: status === 200, status, json: async () => payload };
 }
 
-async function runCase({ file, lang }) {
-  // An http origin, not file://: a file URL is an opaque origin, where
-  // localStorage throws and the page silently falls back to 'fa' — which would
-  // make the English half of this suite assert against Persian strings.
-  // The server serves the mobile file over http too, and the one genuinely
-  // file-only behaviour (api.standaloneMobile) is driven explicitly below.
-  const url = file.endsWith('mobile.html') ? 'https://nobi-mobile.local/' : 'https://nobi.local/';
+async function runCase({ lang }) {
+  const file = 'index.html';
+  // An HTTP origin matches the served page; file:// is opaque and localStorage
+  // would make the English half silently fall back to Persian.
+  const url = 'https://nobi.local/';
   // `outside-only` keeps JSDOM from executing the page's own inline scripts
   // while parsing. They run from this loop instead, in a controlled order, so
   // that (a) localStorage already holds the language when `let LANG` is first
-  // evaluated and (b) NBX.core exists before any top-level statement that reads
-  // it — the inlined mobile app calls initTicket() at top level and would
-  // otherwise throw on NBX.core.engine before the test could intervene.
+  // evaluated and (b) NBX.core exists before startup statements that read it;
+  // evaluate the real page modules in a controlled order after core setup.
   const dom = new JSDOM(fs.readFileSync(file, 'utf8'), {
     url, runScripts: 'outside-only', pretendToBeVisual: true,
   });
@@ -104,8 +101,7 @@ async function runCase({ file, lang }) {
   // that eval's own scope, so splitting the scripts would leave `T`, `t` and
   // `LANG` invisible to the script that reads them. The core client is pulled
   // to the front so NBX.core can be built before any top-level statement that
-  // reads it — the inlined mobile app calls initTicket() at top level and would
-  // otherwise throw on NBX.core.engine.
+  // reads it — page startup expects NBX.core.engine to exist.
   const coreAt = bodies.findIndex(b => b.includes('NBX.createCore'));
   const core = coreAt >= 0 ? bodies.splice(coreAt, 1)[0] : null;
   const source = [
@@ -243,7 +239,7 @@ async function runCase({ file, lang }) {
 let windowOldResolve, windowOldResolve2, currentAudit, currentNotify;
 
 async function run() {
-  for (const file of ['index.html', 'nobitex-mobile.html']) {
+  for (const file of ['index.html']) {
     for (const lang of ['fa', 'en']) await runCase({ file, lang });
   }
   console.log(`phase13 integration UI: ${checks} checks passed`);

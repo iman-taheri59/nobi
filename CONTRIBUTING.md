@@ -32,11 +32,13 @@ npm run test:adaptive-card
 npm run test:icons
 npm run test:escaping
 python scripts/check_preflight_parity.py
-npm run build          # nobitex-mobile.html must not change afterwards
+npm run build          # local coin icons + compiled CSS
 ```
 
-`nobitex-mobile.html` فایل تولیدی است؛ **هرگز دستی ویرایشش نکنید**. بعد از تغییر
-`index.html`, `nbx-*.js` یا CSS حتماً `npm run build` بزنید.
+`index.html` تنها منبع HTML و صفحهٔ ریسپانسیو گوشی و دسکتاپ است. آزمون‌های
+layout روی همین فایل و در viewportهای مختلف اجرا می‌شوند؛ فایل HTML موبایل
+دومی تولید یا نگه‌داری نمی‌شود. بعد از تغییر آیکون‌های محلی یا CSS، `npm run build`
+را اجرا کنید.
 
 ## قواعد کد
 

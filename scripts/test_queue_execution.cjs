@@ -105,5 +105,5 @@ async function run(file) {
 }
 
 (async () => {
-  for (const file of ['index.html', 'nobitex-mobile.html']) await run(file);
+  for (const file of ['index.html']) await run(file);
 })().catch(e => { console.error(e); process.exitCode = 1; });

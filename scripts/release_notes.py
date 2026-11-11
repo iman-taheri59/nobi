@@ -39,13 +39,12 @@ def release_notes(root: Path, tag: str | None = None) -> str:
     lock = json.loads((root / "package-lock.json").read_text(encoding="utf-8"))
     if not package["version"] == lock["version"] == lock["packages"][""]["version"] == version:
         raise ValueError("Package versions do not match VERSION")
-    for name in ("index.html", "nobitex-mobile.html"):
-        badge = re.search(
-            r'<span id="buildChip"[^>]*>(.*?)</span>',
-            (root / name).read_text(encoding="utf-8"),
-        )
-        if not badge or badge.group(1) != f"v{version} · core":
-            raise ValueError(f"Stale version badge in {name}")
+    badge = re.search(
+        r'<span id="buildChip"[^>]*>(.*?)</span>',
+        (root / "index.html").read_text(encoding="utf-8"),
+    )
+    if not badge or badge.group(1) != f"v{version} · core":
+        raise ValueError("Stale version badge in index.html")
     return extract_notes((root / "CHANGELOG.md").read_text(encoding="utf-8"), version)
 
 

@@ -2,6 +2,12 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 2.5.7
+
+_Unreleased; not tagged or deployed._
+
+- **One responsive HTML source (ADR-0058):** `index.html` is the only page, and `/` plus `/index.html` serve that same file. Removed `nobitex-mobile.html`, its builder and route, the HTML freshness gate, and the Release attachment. Removed parity tests while retaining real responsive tests against `index.html`. Trading logic and WebSocket behavior are unchanged.
+
 ## 2.5.6
 
 _Tagged and deployed 10 Nov 2026 (soak day 2, evening); one server timing fix plus the dashboard freshness text. Scoring, gates, R:R, queue policy and the universe untouched (ADR-0057)._

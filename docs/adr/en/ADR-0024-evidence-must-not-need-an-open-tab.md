@@ -71,8 +71,8 @@ larger than `BOOK_GATE_TTL_S`, and a test pins that.
 
 The "gates (shadow)" chip on the Signals tab used to say only `would_block` of `rows`. It now carries
 `books`, `stale_books`, `oldest_usable_s` and `prefetch(ok/asked)` in its title. Deliberate: **no new
-chip, no new card.** One page, one artifact (ADR-0019); an operational number attaches to the existing
-chip rather than to a card nobody opens.
+chip, no new card.** The dashboard remains one responsive page (ADR-0058, which supersedes
+ADR-0019); an operational number attaches to the existing chip rather than to a card nobody opens.
 
 ### 4. The measurement tool lives in the repository
 
@@ -98,7 +98,7 @@ nothing. A measurement that lives outside the repository is not a measurement.
 | Scanning every 15 s "to fill faster" | one record per bar; faster than the bar close only burns rate budget and does not move `days` at all |
 | Writing verdicts for past bars (automatic backfill) | that is S2, and ADR-0023 forbids it without evidence; this ADR only makes *collection* independent |
 | Removing `oldest_book_s` and replacing it with `oldest_usable_s` | breaks an existing consumer; adding is not removing |
-| A new card for the evidence numbers | ADR-0019 and ADR-0017: one page, one artifact; operational numbers go in the existing chip's tooltip |
+| A new card for the evidence numbers | ADR-0058 and ADR-0017: one responsive dashboard page; operational numbers go in the existing chip's tooltip |
 
 ## Acceptance
 

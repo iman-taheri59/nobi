@@ -60,9 +60,9 @@ ruff check server scripts
 mypy
 ```
 
-The new test walks both the web and the standalone file across the Persian/English ×
-auto/fa/en matrix, covering units, zero/empty values, bidi, input/caret/composition,
-immediate re-rendering of the account when the language changes, and equality of the
-order payload in both languages. The tests are offline and jsdom-based; pixel layout
-evaluation in a real browser or a live exchange connection was not done at this stage.
-The fixture data exists only in the tests and was not added to the page or the server.
+The offline DOM test exercises the canonical responsive `index.html` across the
+Persian/English × auto/fa/en matrix, covering units, zero/empty values, bidi,
+input/caret/composition, immediate account re-rendering when the language changes,
+and equality of the order payload in both languages. Real-browser layout is checked
+separately by the Chromium UI gate. Fixture data exists only in tests and is not
+added to the page or server.

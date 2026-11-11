@@ -339,7 +339,7 @@ def selftest(_url: str | None = None, channel: str | None = None,
         return 2
 
     root = Path(__file__).resolve().parents[1]
-    target = (root / "nobitex-mobile.html").as_uri()
+    target = (root / "index.html").as_uri()
     cases = [
         ("—", "BLANK", "a bare em-dash — the exact bug that shipped for weeks"),
         ("", "BLANK", "a completely empty panel"),

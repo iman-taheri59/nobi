@@ -2,7 +2,7 @@
 """Offline browser regression for the authenticated mobile header.
 
 Run: python scripts/mobile_header_test.py
-Tests source + generated standalone, RTL/LTR and short/long account labels.
+Tests the canonical responsive page at mobile widths, RTL/LTR, and short/long account labels.
 The account controls are DOM fixtures, not authentication/API tests. All remote
 requests are blocked; the script never connects to a deployed trading server.
 """
@@ -68,7 +68,7 @@ def main() -> int:
             print(launch_failed_message(exc), file=sys.stderr)
             return 2
         try:
-            for source in ("index.html", "nobitex-mobile.html"):
+            for source in ("index.html",):
                 for direction in ("rtl", "ltr"):
                     for width in WIDTHS:
                         for name in ("ADMIN", "LONG_OWNER_USERNAME_123456789"):

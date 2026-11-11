@@ -64,7 +64,9 @@ def test_release_workflow_requires_validation_before_publishing():
     command = publish["steps"][-1]["run"]
     assert "--verify-tag" in command
     assert "--notes-file" in command
-    assert "nobitrader-mobile.html" in command
+    assert "gh release create" in command
+    assert "nobitrader-mobile.html" not in command
+    assert "gh release upload" not in command
 
 
 def test_current_version_is_documented():

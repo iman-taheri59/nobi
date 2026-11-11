@@ -2,14 +2,12 @@
 
 [English](HANDOFF.en.md) · **فارسی**
 
-> **وضعیت ۲۰۲۶-۱۱-۰۵ (این بلوک جایگزین «آخرین به‌روزرسانی» زیر است؛ مراحل ۳۰–۳۲ تاریخی‌اند):**
-> نسخهٔ منتشرشده **2.5.0** (`dcac952`) روی `capoy.ir`؛ `main` = `bc11fda`+docs. soak پایداری از `2026-11-05T07:19:52Z` تا دست‌کم `2026-11-10T07:19:52Z` — **هیچ deploy/restart تا پایان آن.**
-> نقطهٔ ورود مستندات: [`reviews/README.md`](reviews/README.md) (وضعیت یافته‌ها)، [`ops/fa/soak-2026-11.md`](ops/fa/soak-2026-11.md) (دفتر soak)، [`roadmap/fa/capability-roadmap.md`](roadmap/fa/capability-roadmap.md) (وضعیت نقشهٔ راه).
-> کار بعدی پیشنهادی: تشخیص IC منفی روی کپی `journal.db` (مرحلهٔ ۰)، سپس B3/B1 واقعی.
+> **وضعیت کاری کنونی — ۲۰۲۶-۱۱-۰۳ (جایگزین یادداشت‌های قدیمی نسخه/استقرار در ادامه):** شاخهٔ فعال `2.5.7/remove-standalone-artifact` و بر پایهٔ `v2.5.6` (`1c2556b`) است. `2.5.7` نسخهٔ کاری و منتشرنشده است؛ آخرین نسخهٔ مستقر `2.5.6` است. طبق ADR-0058، `index.html` تنها صفحهٔ HTML ریسپانسیو است و `/` و `/index.html` همان فایل را سرو می‌کنند؛ خروجی HTML مستقل و builder آن حذف شده‌اند. برای این تغییر push، tag، Release یا deploy انجام نشده است.
+> مراحل پایین‌تر سوابق پیاده‌سازی زمان‌مند هستند؛ جزئیات build و انتشارشان فقط به snapshot همان زمان مربوط است، نه شاخهٔ کنونی.
 
 
-**آخرین به‌روزرسانی:** ۲۰۲۶-۱۰-۲۵ — مرحله ۳۲ (سخت‌سازی زمان‌بند drift)
-**نسخه کاری:** ۱٫۸٫۰ (منتشرنشده؛ انتشار فقط پس از CI سبز)
+**snapshot تاریخی:** ۲۰۲۶-۱۰-۲۵ — مرحله ۳۲ (سخت‌سازی زمان‌بند drift)
+**نسخهٔ کاری در آن snapshot:** ۱٫۸٫۰ (آن زمان منتشرنشده؛ انتشار فقط پس از CI سبز)
 
 ### وضعیت مرحلهٔ ۳۲
 
@@ -120,7 +118,7 @@ mobile artifact: rebuilt for 1.6.0
 ## مرحله ۳۵ — رابط عملیاتی Drift
 - نمودار دوزبانه binهای PSI، جدول جمعیت cohort، خروجی CSV و کنترل‌های زمان‌بند افزوده شد.
 - mutation زمان‌بند از headerهای احراز هویت و CSRF استفاده می‌کند و در سرور فقط Owner مجاز است.
-- standalone دوباره تولید شد و gate کامل Python و UI محلی موفق بود (`983 passed`).
+- وضعیت تاریخیِ مرحلهٔ ۳۵، پیش از ADR-0058: standalone دوباره تولید شد و gate کامل Python و UI محلی موفق بود (`983 passed`).
 
 ## مرحله ۳۶ — شواهد آماری cohort
 - اجرای Drift حالت cohort مجاز می‌پذیرد و expectancy، win-rate و PSI هر cohort قابل مقایسه را ذخیره می‌کند.
@@ -134,8 +132,8 @@ mobile artifact: rebuilt for 1.6.0
 - Paper پیش‌فرض می‌ماند و انتشار به CI کاملاً سبز وابسته است.
 
 ## مرحله ۳۸ — پنل A5 روی bell (محلی، پس از tag ۲٫۴٫۰)
-- `nbx-alerts.js` مدیریت دوزبانهٔ rule/event را در canonical و standalone فراهم می‌کند؛ GET فقط با open/refresh توسط Owner/Operator و mutation فقط با session/CSRF انجام می‌شود. Viewer/ناشناس هیچ alert request ندارد. `scripts/price_alerts_e2e_test.py` (۴۰ بررسی، در CI) همین را با FastAPI و SQLite موقت، سه ورود واقعی، CRUD از bell، crossing/replay/stale، `sent/failed/pending`، restart و صفر mutation معاملاتی اثبات می‌کند؛ FastAPI اکنون `/nbx-alerts.js` را در حالت غیرinline هم سرو می‌کند.
+- در آن مقطع، `nbx-alerts.js` مدیریت دوزبانهٔ rule/event را در صفحهٔ canonical و HTML مستقلِ تولیدشده فراهم می‌کرد. طبق ADR-0058 آرتیفکت مستقل حذف شده و `index.html` تنها صفحهٔ ریسپانسیو است. GET فقط با open/refresh توسط Owner/Operator و mutation فقط با session/CSRF انجام می‌شود؛ Viewer/ناشناس هیچ alert request ندارد. `scripts/price_alerts_e2e_test.py` (۴۰ بررسی، در CI) همین را با FastAPI و SQLite موقت، سه ورود واقعی، CRUD از bell، crossing/replay/stale، `sent/failed/pending`، restart و صفر mutation معاملاتی اثبات می‌کند؛ FastAPI اکنون `/nbx-alerts.js` را در حالت غیرinline هم سرو می‌کند.
 - arming/freshness/crossing/delivery صریح است، badge صرفاً enabled-rule count است و حذف دومرحله‌ای تاریخچه را نگه می‌دارد. تغییر هویت و بستن پنل پاسخ قدیمی را بی‌اثر می‌کند.
-- تست DOM آفلاین ۱۰۲ بررسی و تست Chromium آفلاین ۱۶ layout را روی canonical/standalone و RTL/LTR پاس کرد؛ ۶۱ تست انتخاب‌شدهٔ قرارداد backend نیز سبز شد. هیچ شبکهٔ واقعی، سفارش، deploy یا ادعای production readiness انجام نشده است.
-- gate نهایی: `1808 passed, 1 warning`، Ruff/mypy روی 168 فایل، 25 suite JS/DOM و tick parity، 28×10 preflight parity، pip-audit پاک و layoutهای Chromium `80 + 56 + 16` سبز شدند. دو build متوالی standalone با SHA-256 `5e4e3c4d19b2f0bfc66dffb35cd7cce24dd6ec199120a5bcaf1b9d360bffc6f0` یکسان بود.
+- اعتبارسنجی تاریخیِ پیش از ADR-0058: تست DOM آفلاین ۱۰۲ بررسی و Chromium شانزده layout را روی canonical/standalone و RTL/LTR پاس کرد؛ ۶۱ تست منتخب قرارداد backend نیز سبز شد. این تست‌های دوصفحه‌ای دیگر جاری نیستند؛ طبق ADR-0058 آزمون‌های responsive فقط روی `index.html` اجرا می‌شوند. هیچ شبکهٔ واقعی، سفارش، deploy یا ادعای production readiness انجام نشده است.
+- gate نهایی تاریخیِ پیش از ADR-0058: `1808 passed, 1 warning`، Ruff/mypy روی 168 فایل، 25 suite JS/DOM و tick parity، 28×10 preflight parity، pip-audit پاک و layoutهای Chromium `80 + 56 + 16` سبز شدند. بررسی SHA-256 دو build مربوط به خروجی مستقلِ آن زمان بود و دیگر در CI وجود ندارد.
 - soak واقعی، contract test خصوصی و بازبینی امنیتی مستقل همچنان پیش‌نیازهای سرمایهٔ واقعی‌اند؛ push و انتشار جداگانه و با اجازه است.
