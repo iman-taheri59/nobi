@@ -58,7 +58,9 @@ scoring, R:R or the universe; what changes is whether what was displayed was tru
   and only a panel that will not open after several presses is a failure. The
   attempt count is reported so a shaky green is not invisible. Five tests.
 
-`pytest`: 1,911 -> 1,964. `ruff` and `mypy` clean. Each new test was run against the previous commit first and failed there.
+- **A manual deploy died in its first step:** the version check read `${GITHUB_REF_NAME#v}`, but this workflow runs on `workflow_dispatch`, where that variable holds the *branch* ("main"), not the tag. The 14 Nov `Deploy v2.5.8` run failed before SSH with `VERSION says 2.5.8 but the tag is main`, so no manual deploy could start at all. The tag now comes from the `tag` input, which is passed into that step's environment. One test.
+
+`pytest`: 1,911 -> 1,965. `ruff` and `mypy` clean. Each new test was run against the previous commit first and failed there.
 
 ## 2.5.7
 
