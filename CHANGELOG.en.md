@@ -49,9 +49,16 @@ scoring, R:R or the universe; what changes is whether what was displayed was tru
   replaced "which frame?" with "why did the click not open it?". The report now
   also prints the button's box, the element that actually receives the pointer
   (`elementFromPoint`), the viewport width and which side of the 1024 breakpoint
-  it is on. Four tests.
+  it is on. The next run (768 px) then showed exactly what that report was built
+  to see: the button in its normal box, the svg icon under the pointer (a working
+  hit), focus on the button, and the panel **exactly closed** — the press had no
+  effect, the layout was fine. `locator.click()` scrolls first, then presses; if
+  the class has changed when the press lands, the press does nothing. The test
+  now presses again the way a person would (up to three attempts, each printed),
+  and only a panel that will not open after several presses is a failure. The
+  attempt count is reported so a shaky green is not invisible. Five tests.
 
-`pytest`: 1,911 -> 1,963. `ruff` and `mypy` clean. Each new test was run against the previous commit first and failed there.
+`pytest`: 1,911 -> 1,964. `ruff` and `mypy` clean. Each new test was run against the previous commit first and failed there.
 
 ## 2.5.7
 
