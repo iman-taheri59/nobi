@@ -63,6 +63,13 @@ jobs:
           printf '%s\n' "$KH"  > ~/.ssh/known_hosts  && chmod 644 ~/.ssh/known_hosts
           printf 'Host prod\n  HostName %s\n  User deploy\n  IdentityFile ~/.ssh/id_ed25519\n  IdentitiesOnly yes\n  StrictHostKeyChecking yes\n  ConnectTimeout 15\n' "${{ secrets.DEPLOY_HOST }}" > ~/.ssh/config
 
+      - name: Remember the commit this deploy validated
+        # The post-deploy proof compares the box against this number, not against
+        # a version string alone. `workflow_dispatch` checks out the *tag*, so
+        # HEAD here is the commit the tag names.
+        id: tag
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
       - name: Reachability and current version
         run: |
           ssh prod 'hostname; cat /opt/nobi/VERSION; systemctl is-active nobi'
@@ -73,14 +80,45 @@ jobs:
 
       - name: Update
         if: ${{ !inputs.dry_run }}
+        # The script that runs is the one already on the box — an *older*
+        # version of it, by definition. The 2.5.8 workflow called it with --ref
+        # and --accept-unit-change, which v2.5.6's case-loop answers with
+        # `die "unknown argument"`; the update never started and the release
+        # looked like a code failure. A bootstrap problem cannot be solved by
+        # the new flags themselves, so the flag set is chosen by reading the
+        # installed file: if it knows the flags, use them; if it does not, say
+        # so in the log and fall back to the contract it does understand.
+        #
         # --ref is what makes the tag check above mean something: without it the
-        # script installed origin/main, which is not necessarily the commit the
-        # workflow just validated.
+        # script installs origin/main, which is not necessarily the commit the
+        # workflow just validated. That is why the post-deploy proof below also
+        # compares the checkout's commit, not just the version.
         # --accept-unit-change: a tag that changes deploy/nobi.service or the
         # root helpers is meant to install them. The flag exists so that an
         # *ordinary* update cannot, because the checkout is owned by the service
         # user and a file there is not evidence of what root should run.
-        run: ssh prod 'sudo -n bash /opt/nobi/scripts/update_arvan.sh --yes --backup --verify --accept-unit-change --ref ${{ inputs.tag }}'
+        env:
+          TAG: ${{ inputs.tag }}
+        # Written as one POSIX script with no GitHub expressions inside, so the
+        # quoting is the shell's problem and not a second quoting layer's.
+        run: |
+          ssh prod 'bash -s' <<'REMOTE'
+          set -eu
+          tag="$TAG"
+          flags="--yes --backup --verify"
+          # The case *arm*, not the word: a comment that mentions the flag is not
+          # an argument parser that accepts it.
+          if grep -q -- "--accept-unit-change)" /opt/nobi/scripts/update_arvan.sh; then
+            echo "the installed update script knows --ref and --accept-unit-change"
+            flags="$flags --accept-unit-change --ref $tag"
+          else
+            echo "::warning::the installed update script predates --ref; this run installs origin/main."
+            echo "the commit check in the next step still has to pass"
+          fi
+          echo "running: update_arvan.sh $flags"
+          # shellcheck disable=SC2086  # the flag list is built here on purpose
+          sudo -n bash /opt/nobi/scripts/update_arvan.sh $flags
+          REMOTE
 
       - name: Post-deploy proof
         # Runs even when --verify went red (9 Nov: a probe-only 403 hid the fact
@@ -93,3 +131,22 @@ jobs:
           want="${{ inputs.tag }}".lstrip("v")
           sys.exit(0 if h["version"]==want and h["ok"] else 1)'
           ssh prod 'systemctl show nobi -p ActiveEnterTimestamp -p NRestarts'
+
+      - name: The checkout is the commit this run validated
+        # The version string alone cannot tell a tagged commit from a merge that
+        # happens to carry the same VERSION. When the old-script fallback above
+        # ran, this is the only thing standing between "validated v2.5.8" and
+        # "installed whatever main was at that second".
+        if: ${{ !inputs.dry_run && !cancelled() }}
+        run: |
+          head="$(ssh prod 'git -C /opt/nobi rev-parse HEAD 2>/dev/null || true')"
+          want="${{ steps.tag.outputs.sha }}"
+          if [ -z "$head" ]; then
+            echo "::warning::could not read the checkout's commit on the box (ownership-safe git unavailable);"
+            echo "the version assertion in the previous step is the only proof this run has"
+          elif [ "$head" != "$want" ]; then
+            echo "::error::/opt/nobi is at $head but this run validated $want"
+            exit 1
+          else
+            echo "/opt/nobi is at $head, the commit ${{ inputs.tag }} names"
+          fi

@@ -13,6 +13,8 @@ import sys
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+
 from browser_launch import (
     add_arguments,
     launch_args,
@@ -32,7 +34,26 @@ WIDTHS = (320, 360, 375, 390, 480, 640, 768, 1023, 1024, 1440)
 #: so a wait that long means the click never reached `closeSide`, not that the
 #: box was slow. Raising the number only made the failure four times slower, so
 #: it is back near the default and the case is named in the log instead.
+#: The animation is judged by where it *ends*, not by the value it passes
+#: through. The fully-open matrix is only reached on the very last frame of a
+#: 300 ms curve, and `getComputedStyle` during the transition returns the
+#: interpolated matrix, so on a loaded runner the sample can land on any partial
+#: value. The wait therefore asks "is the panel open and in place?", which is true
+#: for the whole transition and stays true afterwards.
 SIDEBAR_TIMEOUT_MS = 30_000
+SETTLED = (
+    "(() => {"
+    "  const el = document.querySelector('#sidebar');"
+    "  if (!el || !el.classList.contains('side-open')) return false;"
+    "  const t = getComputedStyle(el).transform;"
+    "  if (t === 'none') return true;"
+    "  const m = t.match(/^matrix[(]([^)]+)[)]$/);"
+    "  if (!m) return false;"
+    "  const v = m[1].split(',').map(Number);"
+    "  return Math.abs(v[4]) < 1 && Math.abs(v[5]) < 1;"
+    "})()"
+)
+
 PROBE = """() => {
   const h = document.querySelector('body > header > div');
   return {width: document.documentElement.clientWidth,
@@ -115,11 +136,30 @@ def main() -> int:
                                           f"{name!r}: sidebar close via {close}",
                                           flush=True)
                                     page.locator("#menuBtn").click()
-                                    page.wait_for_function(
-                                        "getComputedStyle(document.querySelector('#sidebar')).transform"
-                                        " === 'matrix(1, 0, 0, 1, 0, 0)'",
-                                        timeout=SIDEBAR_TIMEOUT_MS,
-                                    )
+                                    try:
+                                        page.wait_for_function(SETTLED,
+                                                               timeout=SIDEBAR_TIMEOUT_MS)
+                                    except PlaywrightTimeoutError:
+                                        # Name the value it was stuck on. A bare
+                                        # timeout on a runner with no log access
+                                        # cost three red `ui` jobs before the
+                                        # number that was actually on screen
+                                        # could be seen at all.
+                                        stuck = page.evaluate(
+                                            "() => { const el = document.querySelector('#sidebar');"
+                                            " return [el ? getComputedStyle(el).transform : 'no #sidebar',"
+                                            " el ? el.classList.contains('side-open') : null,"
+                                            " document.documentElement.dir,"
+                                            " document.querySelector('#sidebar')"
+                                            "   ? getComputedStyle(document.querySelector('#sidebar'))"
+                                            "     .transitionDuration : null]; }"
+                                        )
+                                        raise AssertionError(
+                                            f"the sidebar never settled open: transform={stuck[0]!r} "
+                                            f"side-open={stuck[1]} dir={stuck[2]} "
+                                            f"transition={stuck[3]} ({source} {direction} {width}px "
+                                            f"{name!r})"
+                                        ) from None
                                     assert page.locator("#sidebar").evaluate(
                                         "e => e.classList.contains('side-open')"
                                     ), context
