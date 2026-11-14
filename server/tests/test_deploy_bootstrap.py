@@ -49,13 +49,40 @@ def _update_step() -> dict:
     return _step("Update")
 
 
+def _remote_command(name: str = "Update") -> str:
+    """The remote command line — what `ssh prod` actually asks the box to run.
+
+    Only the last non-heredoc line of the step is that command; earlier lines
+    are the runner's own shell (argument checks, quoting) and the heredoc that
+    follows is stdin. Skipping this distinction is how `$TAG` ended up *inside*
+    the heredoc: the step looked right and the box never received a value.
+    """
+    lines = [ln for ln in _step(name)["run"].rstrip("\n").split("\n") if ln.strip()]
+    assert lines[-1].strip() == "REMOTE", lines[-1]
+    start = max(i for i, ln in enumerate(lines) if ln.startswith("ssh prod"))
+    return lines[start]
+
+
 def _remote_script(name: str = "Update") -> str:
     """The heredoc body that runs on the box, without the ssh wrapper."""
-    run = _step(name)["run"]
-    lines = run.rstrip("\n").split("\n")
-    assert lines[0].startswith("ssh prod"), lines[0]
+    lines = [ln for ln in _step(name)["run"].rstrip("\n").split("\n") if ln.strip()]
     assert lines[-1].strip() == "REMOTE", lines[-1]
-    return "\n".join(lines[1:-1]) + "\n"
+    start = max(i for i, ln in enumerate(lines) if ln.startswith("ssh prod"))
+    return "\n".join(lines[start + 1:-1]) + "\n"
+
+
+def _tag_argument(name: str = "Update") -> str:
+    """What the ssh command sends as the remote script's `$1`.
+
+    `ssh prod "bash -s -- '$TAG'"` -> `'$TAG'`: the local shell expands it and
+    the remote shell receives one argument. The quotes are kept in the answer so
+    a call that would let the shell split or glob the tag is visible here.
+    """
+    command = _remote_command(name)
+    assert "-- " in command, command
+    sent = command.split("-- ", 1)[1]
+    assert sent.startswith("'"), sent
+    return sent[: sent.index("'", 1) + 1]
 
 
 def _dispatch(tmp_path: Path, installed_script: str, step: str = "Update") -> tuple[str, int, str]:
@@ -73,9 +100,11 @@ def _dispatch(tmp_path: Path, installed_script: str, step: str = "Update") -> tu
     script = _remote_script(step).replace(INSTALLED, str(installed))
     path = tmp_path / "remote.sh"
     path.write_text(script, encoding="utf-8")
-    env = {"PATH": f"{fake_bin}:/usr/bin:/bin", "TAG": "v2.5.8", "HOME": str(tmp_path)}
-    out = subprocess.run(["bash", str(path)], capture_output=True, text=True,
-                         env=env, encoding="utf-8")
+    # The box does not inherit the runner's environment: the only way the tag
+    # can arrive is the way the ssh command line sends it, as `$1`.
+    env = {"PATH": f"{fake_bin}:/usr/bin:/bin", "HOME": str(tmp_path)}
+    out = subprocess.run(["bash", str(path), "v2.5.8"], capture_output=True,
+                         text=True, env=env, encoding="utf-8")
     called = log.read_text(encoding="utf-8").strip() if log.exists() else ""
     return called, out.returncode, out.stdout + out.stderr
 
@@ -143,4 +172,36 @@ def test_the_tag_never_travels_through_the_shell_twice():
     assert step["env"] == {"TAG": "${{ inputs.tag }}"}
     run = step["run"]
     assert "${{" not in run, "a GitHub expression inside the remote heredoc is a quoting trap"
-    assert 'tag="$TAG"' in run
+    assert 'tag="$1"' in run
+
+
+@pytest.mark.skipif(os.name != "posix", reason="the remote side is a POSIX shell")
+def test_the_remote_script_never_reads_an_environment_variable_it_cannot_have():
+    """An `env:` block on the step does not cross the ssh boundary.
+
+    21:10Z on 14 Nov: the `Update` step ran
+    `ssh prod 'bash -s' <<'REMOTE'` with `set -eu` and `tag="$TAG"`, and died in
+    two seconds with `TAG: unbound variable`. The job never reached the update
+    script, the box was never touched, and the release read as broken because of
+    a quoting decision. The tag now travels as the remote script's first
+    argument — the one channel ssh really carries.
+    """
+    for name in ("Update", "Dry run"):
+        body = _remote_script(name)
+        assert "$1" in body, f"{name} never reads the argument the ssh line sends"
+        assert "$TAG" not in body, (
+            f"{name} reads an environment variable ssh does not forward; "
+            "that is the `TAG: unbound variable` failure"
+        )
+        # What is sent after `--` is quoted, so the remote shell receives one
+        # argument even if the tag ever contains something the shell likes.
+        assert _tag_argument(name) == "'$TAG'", _tag_argument(name)
+
+    # The old shape is reproduced, so this guard is not decoration: the same
+    # body with the tag taken from the environment dies before doing anything.
+    env = {k: v for k, v in os.environ.items() if k != "TAG"}
+    out = subprocess.run(["bash", "-c", 'set -eu\ntag="$TAG"\necho reached'],
+                         capture_output=True, text=True, encoding="utf-8", env=env)
+    assert out.returncode != 0, "the shape this test forbids was supposed to fail"
+    assert "TAG: unbound variable" in out.stderr, out.stderr
+    assert "reached" not in out.stdout

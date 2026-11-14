@@ -60,7 +60,9 @@ scoring, R:R or the universe; what changes is whether what was displayed was tru
 
 - **A manual deploy died in its first step:** the version check read `${GITHUB_REF_NAME#v}`, but this workflow runs on `workflow_dispatch`, where that variable holds the *branch* ("main"), not the tag. The 14 Nov `Deploy v2.5.8` run failed before SSH with `VERSION says 2.5.8 but the tag is main`, so no manual deploy could start at all. The tag now comes from the `tag` input, which is passed into that step's environment. One test.
 
-`pytest`: 1,911 -> 1,965. `ruff` and `mypy` clean. Each new test was run against the previous commit first and failed there.
+- **The `Update` step died with `TAG: unbound variable`:** the workflow handed the tag to the step through `env: TAG` and read `tag="$TAG"` inside the remote script. ssh starts a fresh environment on the host, so with `set -u` the second line killed the step; the update script never ran, the box was never touched, and the failure read as "the release is broken". The tag now travels as the remote script's **first argument** (`ssh prod "bash -s -- '$TAG'"`, `tag="$1"`), which is the one channel ssh actually carries, and it is validated against the release-tag shape before it is sent. `Dry run` got the same treatment. Five tests: they run the remote body with a stubbed `sudo` and **no** `TAG` in the environment, and reproduce the old shape so `TAG: unbound variable` really happens.
+
+`pytest`: 1,911 -> 1,966. `ruff` and `mypy` clean. Each new test was run against the previous commit first and failed there.
 
 ## 2.5.7
 

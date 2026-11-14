@@ -88,14 +88,29 @@ jobs:
         # This step carried the same `--ref` that the old script refuses, so a
         # dry run would have died exactly where the update did — and a dry run
         # exists to find that out before the update does.
+        # The tag is passed as the remote script's first *argument*. It used to
+        # be exported through `env:` and read as `$TAG`, and the box does not
+        # inherit the runner's environment over ssh: `set -u` then killed the
+        # step with `TAG: unbound variable` two lines in — before any check and
+        # before any change, which is the 21:10 run of 14 Nov.
         env:
           TAG: ${{ inputs.tag }}
         run: |
-          ssh prod 'bash -s' <<'REMOTE'
+          # `env:` sets TAG for this *runner* step; ssh starts a fresh
+          # environment on the box, so the value has to be carried as text. It
+          # is expanded here, quoted for the remote shell, and arrives as `$1`.
+          # Reading `$TAG` inside the heredoc is what made 2.5.8's deploy die
+          # with `TAG: unbound variable` (21:10Z, step 8).
+          case "$TAG" in
+            v[0-9]*.[0-9]*.[0-9]*) ;;
+            *) echo "::error::not a release tag: $TAG"; exit 1 ;;
+          esac
+          ssh prod "bash -s -- '$TAG'" <<'REMOTE'
           set -eu
+          tag="$1"
           flags="--check"
           if grep -q -- "--accept-unit-change)" /opt/nobi/scripts/update_arvan.sh; then
-            flags="$flags --ref $TAG"
+            flags="$flags --ref $tag"
           fi
           echo "running: update_arvan.sh $flags"
           sudo -n bash /opt/nobi/scripts/update_arvan.sh $flags
@@ -120,14 +135,17 @@ jobs:
         # root helpers is meant to install them. The flag exists so that an
         # *ordinary* update cannot, because the checkout is owned by the service
         # user and a file there is not evidence of what root should run.
+        # Written as one POSIX script with no GitHub expressions inside, so the
+        # quoting is the shell's problem and not a second quoting layer's. The
+        # tag arrives as `$1` because ssh hands the box a fresh environment:
+        # `env:` here only sets variables for the *local* ssh process, and the
+        # remote `bash -s` never saw them ("TAG: unbound variable", 21:10Z).
         env:
           TAG: ${{ inputs.tag }}
-        # Written as one POSIX script with no GitHub expressions inside, so the
-        # quoting is the shell's problem and not a second quoting layer's.
         run: |
-          ssh prod 'bash -s' <<'REMOTE'
+          ssh prod "bash -s -- '$TAG'" <<'REMOTE'
           set -eu
-          tag="$TAG"
+          tag="$1"
           flags="--yes --backup --verify"
           # The case *arm*, not the word: a comment that mentions the flag is not
           # an argument parser that accepts it.
