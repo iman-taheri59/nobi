@@ -51,7 +51,7 @@ scoring, R:R or the universe; what changes is whether what was displayed was tru
   (`elementFromPoint`), the viewport width and which side of the 1024 breakpoint
   it is on. Four tests.
 
-`pytest`: 1,911 -> 1,962. `ruff` and `mypy` clean. Each new test was run against the previous commit first and failed there.
+`pytest`: 1,911 -> 1,963. `ruff` and `mypy` clean. Each new test was run against the previous commit first and failed there.
 
 ## 2.5.7
 

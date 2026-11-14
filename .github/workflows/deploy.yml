@@ -76,7 +76,22 @@ jobs:
 
       - name: Dry run
         if: ${{ inputs.dry_run }}
-        run: ssh prod 'sudo -n bash /opt/nobi/scripts/update_arvan.sh --check --ref ${{ inputs.tag }}'
+        # Same dispatch as the real update, with `--check` instead of `--yes`.
+        # This step carried the same `--ref` that the old script refuses, so a
+        # dry run would have died exactly where the update did — and a dry run
+        # exists to find that out before the update does.
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          ssh prod 'bash -s' <<'REMOTE'
+          set -eu
+          flags="--check"
+          if grep -q -- "--accept-unit-change)" /opt/nobi/scripts/update_arvan.sh; then
+            flags="$flags --ref $TAG"
+          fi
+          echo "running: update_arvan.sh $flags"
+          sudo -n bash /opt/nobi/scripts/update_arvan.sh $flags
+          REMOTE
 
       - name: Update
         if: ${{ !inputs.dry_run }}

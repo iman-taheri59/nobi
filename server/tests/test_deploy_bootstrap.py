@@ -36,37 +36,41 @@ WORKFLOW = ROOT / ".github" / "workflows" / "deploy.yml"
 INSTALLED = "/opt/nobi/scripts/update_arvan.sh"
 
 
-def _update_step() -> dict:
+def _step(name: str) -> dict:
     yaml = pytest.importorskip("yaml")
     data = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
     steps = data["jobs"]["deploy"]["steps"]
-    found = [s for s in steps if s.get("name") == "Update"]
-    assert found, "the Update step is gone"
+    found = [s for s in steps if s.get("name") == name]
+    assert found, f"the {name} step is gone"
     return found[0]
 
 
-def _remote_script() -> str:
+def _update_step() -> dict:
+    return _step("Update")
+
+
+def _remote_script(name: str = "Update") -> str:
     """The heredoc body that runs on the box, without the ssh wrapper."""
-    run = _update_step()["run"]
+    run = _step(name)["run"]
     lines = run.rstrip("\n").split("\n")
     assert lines[0].startswith("ssh prod"), lines[0]
     assert lines[-1].strip() == "REMOTE", lines[-1]
     return "\n".join(lines[1:-1]) + "\n"
 
 
-def _dispatch(tmp_path: Path, installed_script: str) -> tuple[str, int, str]:
+def _dispatch(tmp_path: Path, installed_script: str, step: str = "Update") -> tuple[str, int, str]:
     """Run the remote script with `sudo` replaced by a recorder."""
     box = tmp_path / "box"
-    box.mkdir()
+    box.mkdir(exist_ok=True)
     installed = box / "update_arvan.sh"
     installed.write_text(installed_script, encoding="utf-8")
     fake_bin = tmp_path / "bin"
-    fake_bin.mkdir()
+    fake_bin.mkdir(exist_ok=True)
     log = tmp_path / "sudo.log"
     (fake_bin / "sudo").write_text(
         f'#!/bin/sh\necho "$*" >> {log}\nexit 0\n', encoding="utf-8")
     (fake_bin / "sudo").chmod(0o755)
-    script = _remote_script().replace(INSTALLED, str(installed))
+    script = _remote_script(step).replace(INSTALLED, str(installed))
     path = tmp_path / "remote.sh"
     path.write_text(script, encoding="utf-8")
     env = {"PATH": f"{fake_bin}:/usr/bin:/bin", "TAG": "v2.5.8", "HOME": str(tmp_path)}
@@ -118,6 +122,18 @@ def test_a_comment_mentioning_a_flag_is_not_an_argument_parser(tmp_path):
     assert "--accept-unit-change" not in called, (
         "the fallback was skipped because a comment looked like a parser"
     )
+
+
+@pytest.mark.skipif(os.name != "posix", reason="the remote side is a POSIX shell")
+def test_the_dry_run_does_not_die_where_the_update_would(tmp_path):
+    """A dry run that cannot run is worse than none: it reports nothing and looks
+    like a failure of the release. It carried the same `--ref`."""
+    called, code, log = _dispatch(tmp_path, OLD_SCRIPT, step="Dry run")
+    assert code == 0, log
+    assert called == f"-n bash {tmp_path / 'box' / 'update_arvan.sh'} --check", called
+    called, code, log = _dispatch(tmp_path, NEW_SCRIPT, step="Dry run")
+    assert code == 0, log
+    assert "--check --ref v2.5.8" in called, called
 
 
 def test_the_tag_never_travels_through_the_shell_twice():

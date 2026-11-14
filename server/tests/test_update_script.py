@@ -547,7 +547,9 @@ def test_a_version_mismatch_stops_the_deploy_workflow():
     wf = (ROOT / ".github" / "workflows" / "deploy.yml").read_text(encoding="utf-8")
     assert 'test "$(cat VERSION)" = "${GITHUB_REF_NAME#v}" || true' not in wf
     assert 'if [ "$have" != "$want" ]' in wf
-    assert "--ref ${{ inputs.tag }}" in wf
+    # The tag reaches the box through `env:` and a heredoc now, because the
+    # script on the box may predate `--ref` (see test_deploy_bootstrap.py).
+    assert "--ref $TAG" in wf
 
 
 def test_the_status_listing_matches_its_sudoers_rule():
