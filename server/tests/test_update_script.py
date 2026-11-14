@@ -547,7 +547,9 @@ def test_a_version_mismatch_stops_the_deploy_workflow():
     wf = (ROOT / ".github" / "workflows" / "deploy.yml").read_text(encoding="utf-8")
     assert 'test "$(cat VERSION)" = "${GITHUB_REF_NAME#v}" || true' not in wf
     assert 'if [ "$have" != "$want" ]' in wf
-    assert "--ref ${{ inputs.tag }}" in wf
+    # The tag reaches the box through `env:` and a heredoc now, because the
+    # script on the box may predate `--ref` (see test_deploy_bootstrap.py).
+    assert "--ref $TAG" in wf
 
 
 def test_the_status_listing_matches_its_sudoers_rule():
@@ -593,3 +595,41 @@ def test_a_host_without_an_installed_unit_can_still_be_installed():
     code = _code_without_comments()
     assert "there is no installed unit to overwrite" in _text()
     assert 'unit_differs" -eq 2' in code
+
+
+def test_the_deploy_workflow_does_not_hand_new_flags_to_an_old_script():
+    """A workflow cannot teach the box a flag that the box's script never had.
+
+    The 2.5.8 workflow called `/opt/nobi/scripts/update_arvan.sh` with `--ref`
+    and `--accept-unit-change` unconditionally. On a host still running 2.5.6
+    that file is the *old* script, and its case-loop answers an unknown argument
+    with `die "unknown argument: …"`: the update dies before it reads the tag,
+    and the only visible symptom is a failed Deploy run. This is the bootstrap
+    problem, and the fix has to live in the workflow, not in the flags.
+
+    Verified by simulation: the v2.5.6 argument loop, given
+    `--yes --backup --verify --accept-unit-change --ref v2.5.8`, exits 1 on
+    `--accept-unit-change`; given the old three flags it exits 0.
+    """
+    wf = (ROOT / ".github" / "workflows" / "deploy.yml").read_text(encoding="utf-8")
+    # The flag set is decided at run time, by looking at the installed script.
+    assert 'grep -q -- "--accept-unit-change)" /opt/nobi/scripts/update_arvan.sh' in wf
+    assert 'flags="--yes --backup --verify"' in wf
+    assert 'flags="$flags --accept-unit-change --ref $tag"' in wf
+    # The unconditional call is gone — that is the line that died on 2.5.6.
+    assert "update_arvan.sh --yes --backup --verify --accept-unit-change --ref ${{ inputs.tag }}" not in wf
+
+
+def test_the_fallback_still_proves_which_commit_landed():
+    """Without `--ref` the script installs origin/main, so the version string is
+    no longer proof: a merge that carries the same VERSION would pass.
+
+    The commit the run validated is recorded up front and compared with the
+    checkout on the box afterwards.
+    """
+    wf = (ROOT / ".github" / "workflows" / "deploy.yml").read_text(encoding="utf-8")
+    assert 'echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"' in wf
+    assert 'want="${{ steps.tag.outputs.sha }}"' in wf
+    assert "git -C /opt/nobi rev-parse HEAD" in wf
+    # An unreadable checkout must be a warning, not a green tick.
+    assert "could not read the checkout's commit" in wf

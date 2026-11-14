@@ -23,8 +23,35 @@ scoring, R:R or the universe; what changes is whether what was displayed was tru
 - **Operational gates:** `status.yml` moved from `ls | head -40` to `ls -lt | head -40 | tac` (an oldest-first listing truncated the newest files away, which is how a healthy nightly backup was read as a stalled one) and the sudoers rule was aligned to `-lt`, because sudo compares the whole argv. `journalctl -u nobi *` is pinned to `-n [0-9]*`. `immutable 7d` on non-hashed assets became `max-age=0, must-revalidate`.
 - **The chart library is self-hosted:** moved from unpkg on the parse path to `assets/js/` (v4.2.0, Apache-2.0). On a network that filters unpkg the dashboard silently degraded to a local shim; one third party is also gone.
 - **`is_outage` vs `_trip_circuit`:** one missing symbol opened the breaker for every market for two minutes. Only a real outage trips it now.
+- **The deploy workflow no longer hands a new flag to an old script.** `deploy.yml`
+  invoked `update_arvan.sh` with `--accept-unit-change` and `--ref`, but the script
+  that runs is the one **on the box** — the previous release's copy. v2.5.6 knows
+  neither flag and its argument loop answers with `die "unknown argument"`, so the
+  first release to add a flag could never deploy: the step died before it read the
+  tag. The flag set is now chosen at run time from the installed file itself
+  (`grep` for the `case` arm, not for the word in a comment), and the old path says
+  it fell back. Because that path cannot pass `--ref` and therefore installs
+  `origin/$BRANCH`, a new step compares the box's `git -C /opt/nobi rev-parse HEAD`
+  with the commit this run validated — a version string alone cannot tell a tagged
+  commit from a merge that carries the same `VERSION`. Four tests, which execute the
+  remote script for real with `sudo` stubbed out.
+- **The sidebar wait is no longer pinned to one frame.** The `ui` job went red four
+  times (9, 9, 10 and 14 November) on this same wait — 60–70 s inside a step whose
+  ceiling is 30 s, every time on `ltr … ADMIN … via button`, every time at a
+  different width (375, 390, 480 px). `matrix(1, 0, 0, 1, 0, 0)` exists only on the
+  final frame of a 300 ms transition, and `getComputedStyle` mid-transition returns
+  the interpolated matrix, so a sample on a loaded runner can keep landing between
+  frames. The predicate is now "open and in place", which holds throughout; and a
+  failure prints the matrix, class, direction and transition duration it was stuck
+  on — the thing three of those runs could not show, because the job log needed
+  admin rights to read. The rerun then made that report earn its keep: it showed
+  the panel **closed** (`matrix(1, 0, 0, 1, -288, 0)`, `side-open=False`), which
+  replaced "which frame?" with "why did the click not open it?". The report now
+  also prints the button's box, the element that actually receives the pointer
+  (`elementFromPoint`), the viewport width and which side of the 1024 breakpoint
+  it is on. Four tests.
 
-`pytest`: 1,911 -> 1,952. `ruff` and `mypy` clean. Each new test was run against the previous commit first and failed there.
+`pytest`: 1,911 -> 1,963. `ruff` and `mypy` clean. Each new test was run against the previous commit first and failed there.
 
 ## 2.5.7
 
