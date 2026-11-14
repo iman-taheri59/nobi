@@ -67,15 +67,23 @@ def test_the_wait_accepts_an_interpolated_but_settled_transform():
     assert "getComputedStyle" in predicate
 
 
-def test_the_value_it_waits_for_is_also_the_value_it_reports():
-    """A timeout must print the matrix, class, dir and duration it was stuck on.
+def test_a_failure_reports_what_is_on_screen_and_what_is_under_the_pointer():
+    """A timeout must print the state it was stuck in.
 
-    `--verify`-style evidence: without this line a red job can only say
-    "Timeout 30000ms exceeded", which is exactly what three of the runs said.
+    Evidence from the 14 November rerun, once the first version of this report
+    landed: `transform='matrix(1, 0, 0, 1, -288, 0)' side-open=False ltr` — the
+    panel was closed, not half-open. That one line moved the question from
+    "which animation frame?" to "why did the click not open it?", which no log
+    line had been able to ask before. The report therefore has to carry enough
+    to answer that too: where the button is, what element is actually under the
+    pointer, and whether the width is on the mobile side of the 1024 breakpoint.
     """
-    assert "the sidebar never settled open" in TEXT
-    assert "transition=" in TEXT
-    assert "side-open=" in TEXT
+    for probe in ("the sidebar never settled open", "the sidebar never closed via",
+                  "menuBtnCoveredBy", "innerWidth", "mediaMobile", "activeElement"):
+        assert probe in TEXT, probe
+    assert "def diagnose(" in TEXT
+    # And it is used by both waits, not just the open one.
+    assert TEXT.count("AssertionError(diagnose(") == 2
 
 
 def test_the_settle_window_is_a_number_someone_can_check():

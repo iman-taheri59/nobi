@@ -44,7 +44,12 @@ scoring, R:R or the universe; what changes is whether what was displayed was tru
   frames. The predicate is now "open and in place", which holds throughout; and a
   failure prints the matrix, class, direction and transition duration it was stuck
   on — the thing three of those runs could not show, because the job log needed
-  admin rights to read. Four tests.
+  admin rights to read. The rerun then made that report earn its keep: it showed
+  the panel **closed** (`matrix(1, 0, 0, 1, -288, 0)`, `side-open=False`), which
+  replaced "which frame?" with "why did the click not open it?". The report now
+  also prints the button's box, the element that actually receives the pointer
+  (`elementFromPoint`), the viewport width and which side of the 1024 breakpoint
+  it is on. Four tests.
 
 `pytest`: 1,911 -> 1,962. `ruff` and `mypy` clean. Each new test was run against the previous commit first and failed there.
 

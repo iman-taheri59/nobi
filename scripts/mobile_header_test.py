@@ -71,6 +71,57 @@ FIXTURE = """({direction, name}) => {
 }"""
 
 
+DIAGNOSE = """() => {
+  const sb = document.querySelector('#sidebar');
+  const btn = document.querySelector('#menuBtn');
+  const rect = el => { if (!el) return null; const b = el.getBoundingClientRect();
+    return [Math.round(b.x), Math.round(b.y), Math.round(b.width), Math.round(b.height)]; };
+  const covered = (el) => {
+    if (!el) return null;
+    const b = el.getBoundingClientRect();
+    const at = document.elementFromPoint(b.x + Math.min(8, b.width / 2), b.y + b.height / 2);
+    return at ? (at.id || at.tagName) : null;
+  };
+  return {
+    transform: sb ? getComputedStyle(sb).transform : 'no #sidebar',
+    sideOpen: sb ? sb.classList.contains('side-open') : null,
+    transition: sb ? getComputedStyle(sb).transitionDuration : null,
+    overlayHidden: document.querySelector('#sideOverlay')
+      ? document.querySelector('#sideOverlay').classList.contains('hidden') : null,
+    innerWidth: window.innerWidth,
+    clientWidth: document.documentElement.clientWidth,
+    scroll: [window.scrollX, window.scrollY],
+    mediaMobile: matchMedia('(max-width:1023px)').matches,
+    menuBtn: rect(btn), menuBtnCoveredBy: covered(btn),
+    menuClose: rect(document.querySelector('#menuClose')),
+    menuCloseCoveredBy: covered(document.querySelector('#menuClose')),
+    overlay: rect(document.querySelector('#sideOverlay')),
+    sidebar: rect(sb),
+    activeElement: document.activeElement ? (document.activeElement.id
+      || document.activeElement.tagName) : null,
+    bodyOverflow: document.body.style.overflow,
+    gateOpen: document.querySelector('#authGate')
+      ? !document.querySelector('#authGate').hidden : null,
+  };
+}"""
+
+
+def diagnose(page, what, source, direction, width, name):
+    """Everything a red run needs to explain itself without the runner's log.
+
+    `transform` alone was enough to see that the panel was closed; it is not
+    enough to say why a click produced nothing. The pointer is included because
+    a click can land on the wrong element at a boundary width, and the element
+    that actually receives it is the only way to tell.
+    """
+    try:
+        seen = page.evaluate(DIAGNOSE)
+    except Exception as exc:  # the page may already be gone
+        return f"{what} (the page could not be asked why: {exc})"
+    details = " ".join(f"{k}={v!r}" for k, v in seen.items())
+    return f"{what}: {details} ({source} {direction} {width}px {name!r})"
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     add_arguments(parser)
@@ -140,26 +191,14 @@ def main() -> int:
                                         page.wait_for_function(SETTLED,
                                                                timeout=SIDEBAR_TIMEOUT_MS)
                                     except PlaywrightTimeoutError:
-                                        # Name the value it was stuck on. A bare
-                                        # timeout on a runner with no log access
-                                        # cost three red `ui` jobs before the
-                                        # number that was actually on screen
-                                        # could be seen at all.
-                                        stuck = page.evaluate(
-                                            "() => { const el = document.querySelector('#sidebar');"
-                                            " return [el ? getComputedStyle(el).transform : 'no #sidebar',"
-                                            " el ? el.classList.contains('side-open') : null,"
-                                            " document.documentElement.dir,"
-                                            " document.querySelector('#sidebar')"
-                                            "   ? getComputedStyle(document.querySelector('#sidebar'))"
-                                            "     .transitionDuration : null]; }"
-                                        )
-                                        raise AssertionError(
-                                            f"the sidebar never settled open: transform={stuck[0]!r} "
-                                            f"side-open={stuck[1]} dir={stuck[2]} "
-                                            f"transition={stuck[3]} ({source} {direction} {width}px "
-                                            f"{name!r})"
-                                        ) from None
+                                        # Name what is on screen. A bare timeout
+                                        # on a runner whose log needed admin
+                                        # rights cost three red `ui` jobs before
+                                        # any of this could be seen.
+                                        raise AssertionError(diagnose(
+                                            page, "the sidebar never settled open",
+                                            source, direction, width, name,
+                                        )) from None
                                     assert page.locator("#sidebar").evaluate(
                                         "e => e.classList.contains('side-open')"
                                     ), context
@@ -170,10 +209,17 @@ def main() -> int:
                                             "x": 5 if direction == "rtl" else width - 5,
                                             "y": 300,
                                         })
-                                    page.wait_for_function(
-                                        "!document.querySelector('#sidebar').classList.contains('side-open')",
-                                        timeout=SIDEBAR_TIMEOUT_MS,
-                                    )
+                                    try:
+                                        page.wait_for_function(
+                                            "!document.querySelector('#sidebar')"
+                                            ".classList.contains('side-open')",
+                                            timeout=SIDEBAR_TIMEOUT_MS,
+                                        )
+                                    except PlaywrightTimeoutError:
+                                        raise AssertionError(diagnose(
+                                            page, f"the sidebar never closed via {close}",
+                                            source, direction, width, name,
+                                        )) from None
                                     assert page.locator("#sideOverlay").is_hidden(), context
                             cases += 1
                             page.close()
