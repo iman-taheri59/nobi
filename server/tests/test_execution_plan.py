@@ -20,8 +20,17 @@ def broker(tmp_path, monkeypatch):
     monkeypatch.setattr(paper_trading, "hot_mid_hook", None)
 
     class Feed:
+        """A locked book at 100, so a limit at 100 is genuinely marketable.
+
+        The old fixture quoted 99.99/100.01 and then filled a limit at 100
+        anyway, which is the bug the sibling test file pins: at 100 the order
+        rests in the book and nothing fills. The book here has to contain the
+        price the test orders at, or the test asserts a fill the market never
+        offered.
+        """
+
         async def get_orderbook(self, symbol):
-            return {"bids": [["99.99", "1000"]], "asks": [["100.01", "1000"]]}
+            return {"bids": [["100.0", "1000"]], "asks": [["100.0", "1000"]]}
 
         async def place_order(self, *args, **kwargs):
             pytest.fail("Paper must not call the exchange order endpoint")
@@ -169,7 +178,7 @@ def test_historical_default_levels_still_work_at_min_rr(broker):
 
 
 def test_market_slippage_can_invalidate_previously_valid_tp1(broker, monkeypatch):
-    async def execution(*args):
+    async def execution(*args, **kwargs):
         return 106, 1
 
     monkeypatch.setattr(broker, "_execution_price", execution)

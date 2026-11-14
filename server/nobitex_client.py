@@ -384,7 +384,11 @@ class NobitexClient:
                 return scale_stats(res)
             except ClientError as e:
                 log.warning("Nobitex /market/stats unreachable (%s)", e)
-                self._trip_circuit()
+                # Only a real outage opens the breaker. A refusal (a symbol the
+                # exchange does not serve, a 4xx) used to trip it too, so one
+                # bad symbol took every market down for two minutes.
+                if is_outage(e):
+                    self._trip_circuit()
                 raise UpstreamUnavailable(f"market stats unavailable: {e}", {"cause": str(e)}) from e
         raise UpstreamUnavailable("market stats unavailable: circuit breaker is open")
 
@@ -396,7 +400,8 @@ class NobitexClient:
                 return scale_orderbook(res, symbol)
             except ClientError as e:
                 log.warning("Nobitex orderbook %s unreachable (%s)", symbol, e)
-                self._trip_circuit()
+                if is_outage(e):
+                    self._trip_circuit()
                 raise UpstreamUnavailable(f"orderbook {symbol} unavailable: {e}") from e
         raise UpstreamUnavailable(f"orderbook {symbol} unavailable: circuit breaker is open")
 
@@ -405,7 +410,8 @@ class NobitexClient:
             try:
                 return await self.get("/v3/orderbook/all", attempts=1)
             except ClientError as e:
-                self._trip_circuit()
+                if is_outage(e):
+                    self._trip_circuit()
                 raise UpstreamUnavailable(f"orderbooks unavailable: {e}") from e
         raise UpstreamUnavailable("orderbooks unavailable: circuit breaker is open")
 

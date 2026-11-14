@@ -348,9 +348,14 @@ def _broker(tmp_path, monkeypatch, equity=100_000, price=73_040.0):
             self.usdt_irt = 100_805.0
 
         async def get_orderbook(self, symbol):
-            return {"bids": [[str(price * 0.999), "100"]],
-                    "asks": [[str(price * 1.001), "100"]],
-                    "lastTradePrice": str(price)}
+            # The fixture's `price` is the USDT book. Orders in this file are
+            # also placed on BTCIRT (two orders of magnitude larger, to prove
+            # the currency conversion), so the book has to answer per symbol or
+            # an IRT limit finds nothing to cross.
+            p = price if symbol.upper().endswith("USDT") else 498_500_000.0
+            return {"bids": [[str(p), "100"]],
+                    "asks": [[str(p), "100"]],
+                    "lastTradePrice": str(p)}
 
         async def get_market_stats(self):
             return {"stats": {"USDTIRT": {"latest": "100805"}}}
@@ -523,8 +528,11 @@ def test_orders_route_reports_a_real_order_with_its_id(tmp_path, monkeypatch):
     b = _broker(tmp_path, monkeypatch)
     monkeypatch.setattr(main, "get_broker", lambda *a, **k: b)
     monkeypatch.setattr(main, "client", b.client)
-    # A limit order names its price, so there is no mid to measure against:
-    # the column must stay null rather than print a zero nobody observed.
+    # A limit order fills at the book price, which the limit only caps. The
+    # limit itself is not a mid, and a limit below the market is not a fill at
+    # all — so the row reports the fill against the mid. The old expectation
+    # (slip always null for a limit) encoded the old behaviour, where a limit
+    # was a guaranteed fill at its own price and there was nothing to measure.
     pos = run(b.place_limit("BTCUSDT", "buy", 0.001, price=73_040, stop=70_000, tp2=80_000))
     assert pos is not None, b.last_error
     pos_mkt = run(b.place_limit("BTCUSDT", "buy", 0.001, price=None, stop=70_000, tp2=80_000))
@@ -538,7 +546,11 @@ def test_orders_route_reports_a_real_order_with_its_id(tmp_path, monkeypatch):
     row = by_id[pos.client_order_id]
     assert row["state"] == pos.state
     assert row["filled"] == pytest.approx(pos.filled_qty)
-    assert row["type"] == "limit" and row["slip_bps"] is None
+    assert row["type"] == "limit"
+    # Measured, not invented: the fill is at the book and the mid was recorded
+    # at submit, so a limit row now carries the (zero here, locked book) slip.
+    assert row["slip_bps"] is not None
+    assert row["slip_bps"] == pytest.approx(0.0, abs=1e-9)
 
     # A market order walked the book, so the mid was recorded and slippage is real.
     mkt = by_id[pos_mkt.client_order_id]

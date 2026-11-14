@@ -124,7 +124,16 @@ jobs:
       - name: State files
         continue-on-error: true
         run: |
-          ssh prod 'sudo -n -u nobi /usr/bin/ls -l --time-style=+%Y-%m-%dT%H:%M:%SZ /srv/nobi-data/ /srv/nobi-data/backup/ 2>&1 | grep -v "^total" | head -40; echo; sudo -n -u nobi /usr/bin/du -sh /srv/nobi-data 2>&1'
+          # `ls | head -40` truncated the NEWEST files off the end: the listing
+          # is oldest-first and the directory holds more than 40 entries, so a
+          # reader concluded the nightly backups had stopped on 9 Nov when they
+          # were simply below the cut. Newest-first, then reversed for reading,
+          # so what is cut is the oldest tail — and the count is printed.
+          # Both invocations use the *same* argv so one sudoers rule covers
+          # them: sudo matches the whole command line, so a second `ls` with a
+          # different flag would be refused, and the count would go missing
+          # quietly (the step is continue-on-error).
+          ssh prod 'L="sudo -n -u nobi /usr/bin/ls -lt --time-style=+%Y-%m-%dT%H:%M:%SZ /srv/nobi-data/ /srv/nobi-data/backup/"; $L 2>&1 | grep -v "^total" | head -40 | tac; echo "--- newest 40 shown; $($L 2>/dev/null | grep -v "^total" | wc -l) entries total"; echo; sudo -n -u nobi /usr/bin/du -sh /srv/nobi-data 2>&1'
 
       - name: Paper book
         continue-on-error: true

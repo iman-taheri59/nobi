@@ -38,8 +38,11 @@ class Wire:
         self.stat_calls = 0
 
     async def get_orderbook(self, symbol):
-        return {"bids": [[str(8_860_000_000), "10"]],
-                "asks": [[str(8_880_000_000), "10"]],
+        # The orders below are limits at the last trade price; a book quoted
+        # 8.86/8.88 G has no size at 8.87 G, so they would simply rest. Locked
+        # at the price the tests use, so they measure the rate, not the spread.
+        return {"bids": [[str(8_870_000_000), "10"]],
+                "asks": [[str(8_870_000_000), "10"]],
                 "lastTradePrice": str(8_870_000_000)}
 
     async def get_market_stats(self):

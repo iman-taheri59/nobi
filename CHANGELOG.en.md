@@ -2,6 +2,30 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 2.5.8
+
+_Unreleased; not tagged or deployed._
+
+A correction pass after the 12–13 November review. Most of it is about things the
+system **said** it had done and had not. None of it changes the strategy, the
+scoring, R:R or the universe; what changes is whether what was displayed was true.
+
+- **A limit order no longer fills at its own price:** `_execution_quote` set `fill_price = price` and `filled_qty = qty` for a limit without reading the book. A buy below the market and a sell above it filled instantly, completely, at the better price — the mechanism that manufactured the paper book's reported edge. Both paths now walk the same book, the fill is at the book price, a limit the market never reached returns `no-cross`, and size the book does not hold is left unfilled. The same rule went into `nbx-core.js` so the parity test cannot disagree. 8 new tests.
+- **The kill switch can be released:** risk triggers are recomputed from retained exit events, so `resume` cleared the latch and the next scan re-armed it from the same three closed stops. `resumed_at` now moves the daily/weekly/streak window forward and is persisted, so a restart is not a way around the button. `POST /api/paper/resume` returns it.
+- **`halt?flat=true` actually flattens:** the flag was audited and sent to Telegram and closed nothing. `PaperBroker.flatten()` returns `requested/closed/failed/still_open`. Switch first, then close; a thin exit book leaves the position open and says so; leaving uses the entry rate, not the live one.
+- **`/api/health` shows an outage:** added `process` (`uptime_s`, `started_at`) and `disk` (`free_gb`, `used_pct`, `ok`). The one-hour outage on 13 November left no trace in the API, so the machine could die and every panel still reported the exchange as fine.
+- **The candle cache prunes itself:** there was no eviction at all. Measured growth of 0.27–0.32 GB/day on a 25 GB disk fills it in 62–73 days. `prune()` enforces a byte budget and an age cap from inside `store()`, at most once a minute.
+- **Drawdown survives a restart:** the figure was derived from `equity_curve`, which `save()` truncates to 500 points (~67 minutes), so an account 20% down could report 2%. `peak_equity` and `max_drawdown_pct` are persisted, and `max_drawdown_curve_window` is published alongside so the difference is visible. Migrating an old state file never invents a 0% drawdown.
+- **`C_gate` is measured, not asserted:** section `3c` of `journal_diagnostic.py` compares each row's recorded regime against the engine's `BLOCKING_STATES` and gives five distinct verdicts (`NO EVIDENCE`, `NOT MEASURABLE`, `BROKEN`/`LEAKING`, `GATE HOLDS, SECOND FILTER ACTIVE`, `CONSISTENT`). A quiet day can no longer read as "the gate works". `shadow_arms` now uses `BLOCKING_STATES` instead of `== "risk-off"`, which blocked nothing during an `fx-shock`.
+- **The execution mode is configurable, but `auto` is not the default:** `NBX_EXEC_MODE` (`semi` by default) refuses an invalid value at startup. `/api/exec/mode` reports `default_source` and `built_in_default` and always keeps `executor: "paper"` and `sends_to_exchange: false`.
+- **Root installs from the service-writable checkout are closed:** `update_arvan.sh` copied the systemd unit out of `$APP_DIR` (owned by the service user) into `/etc` and immediately ran `daemon-reload` — the exact privilege escalation `deploy_arvan.sh` documents. It now prints the diff and refuses without `--accept-unit-change`; the same gate covers the installer templates and `nobi-privileged-helper`. A fresh host is not deadlocked.
+- **The deploy installs the tag, not `origin/main`:** the workflow validated tag `vX` and the script checked out `origin/$BRANCH`. Added `--ref` (detached checkout, verified with `NEW_SHA == REMOTE_SHA`) and removed the `|| true` from the `VERSION` check.
+- **Operational gates:** `status.yml` moved from `ls | head -40` to `ls -lt | head -40 | tac` (an oldest-first listing truncated the newest files away, which is how a healthy nightly backup was read as a stalled one) and the sudoers rule was aligned to `-lt`, because sudo compares the whole argv. `journalctl -u nobi *` is pinned to `-n [0-9]*`. `immutable 7d` on non-hashed assets became `max-age=0, must-revalidate`.
+- **The chart library is self-hosted:** moved from unpkg on the parse path to `assets/js/` (v4.2.0, Apache-2.0). On a network that filters unpkg the dashboard silently degraded to a local shim; one third party is also gone.
+- **`is_outage` vs `_trip_circuit`:** one missing symbol opened the breaker for every market for two minutes. Only a real outage trips it now.
+
+`pytest`: 1,911 -> 1,952. `ruff` and `mypy` clean. Each new test was run against the previous commit first and failed there.
+
 ## 2.5.7
 
 _Unreleased; not tagged or deployed._

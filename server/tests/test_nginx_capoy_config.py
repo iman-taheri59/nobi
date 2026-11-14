@@ -133,7 +133,11 @@ def test_cache_owning_locations_hide_upstream_and_repeat_security_headers():
             assert f"proxy_hide_header {header};" in body
             assert re.search(rf"add_header {header}\b", body)
     assert 'add_header Cache-Control "no-store" always;' in locs["= /"]
-    assert 'add_header Cache-Control "public, max-age=604800, immutable" always;' in locs["/assets/"]
+    # `immutable` on a filename with no content hash pins a stale asset in the
+    # browser for a week: the deploy is live and the user is still running the
+    # previous CSS. Revalidation is the only correct policy without hashes.
+    assert 'immutable' not in locs["/assets/"]
+    assert 'add_header Cache-Control "public, max-age=0, must-revalidate" always;' in locs["/assets/"]
     # expires plus add_header Cache-Control can emit two Cache-Control values.
     assert not re.search(r"^\s*expires\s+", locs["/assets/"], re.MULTILINE)
 

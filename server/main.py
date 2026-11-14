@@ -25,6 +25,7 @@ import json
 import logging
 import math
 import os
+import shutil
 import sqlite3
 import time
 from contextlib import asynccontextmanager, suppress
@@ -568,7 +569,7 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(
     title="nobiTrader",
-    version="2.5.7",
+    version="2.5.8",
     lifespan=lifespan,
 )
 
@@ -1174,6 +1175,56 @@ def _spawn(coro) -> asyncio.Task:
     return task
 
 
+#: When this process started. A monitor needs "how long has this been up" to
+#: tell a restart from a long outage; `NRestarts` lives in systemd, and a machine
+#: that is powered off cannot report its own gap.
+_PROCESS_STARTED_AT = time.time()
+
+#: Below this, `/api/health` says the disk is a problem. check_deploy uses 1 GB
+#: because a deploy needs room to unpack; this is an earlier warning line.
+DISK_WARN_GB = float(os.getenv("NBX_DISK_WARN_GB", "3"))
+
+
+def _process_snapshot() -> dict:
+    """Uptime of this process, in seconds and as an ISO instant."""
+    started = _PROCESS_STARTED_AT
+    return {
+        "started_at": datetime.fromtimestamp(started, UTC).isoformat(),
+        "uptime_s": round(max(0.0, time.time() - started), 1),
+        "started_ts": started,
+    }
+
+
+def _disk_snapshot() -> dict:
+    """Free space where the data actually lives.
+
+    An outage on this host was invisible in the API because nothing reported
+    free space while the cache grew ~0.18 GB a day. `ok` is the advisory line,
+    not a kill switch: the service keeps serving and says so.
+    """
+    path = Path(os.getenv("NBX_DATA_DIR") or ".").resolve()
+    # A data directory the service has not created yet is not a disk fault, and
+    # a monitor must not read `ok: null` because of one. Ask the nearest parent
+    # that exists — it is the same filesystem, which is the question.
+    probe = path
+    while not probe.exists() and probe.parent != probe:
+        probe = probe.parent
+    try:
+        usage = shutil.disk_usage(probe)
+    except OSError as exc:
+        return {"ok": None, "error": f"{type(exc).__name__}: {exc}", "path": str(path)}
+    free_gb = usage.free / (1024 ** 3)
+    total_gb = usage.total / (1024 ** 3)
+    return {
+        "ok": free_gb >= DISK_WARN_GB,
+        "path": str(path),
+        "total_gb": round(total_gb, 1),
+        "free_gb": round(free_gb, 1),
+        "used_pct": round((usage.used / usage.total) * 100, 1) if usage.total else None,
+        "warn_below_gb": DISK_WARN_GB,
+    }
+
+
 def _upstream_snapshot() -> dict:
     age = time.time() - _upstream["ts"] if _upstream["ts"] else None
     stale = _upstream["ok"] is None or age is None or age > UPSTREAM_TTL_S
@@ -1246,6 +1297,12 @@ async def health():
             "success_rate": round(client.stats.success_rate(), 1),
             "last_latency_ms": client.stats.last_latency_ms,
         },
+        # A one-hour outage left no trace anywhere. There was no field for "how
+        # long has this process been up" and none for "is the disk filling" — so
+        # the machine could die and every panel still said the exchange was
+        # fine. Both blocks are read from the process and the filesystem.
+        "process": _process_snapshot(),
+        "disk": _disk_snapshot(),
     }
 
 
@@ -4748,21 +4805,41 @@ async def paper_halt(request: Request, flat: bool = Query(False)):
     to claim both unconditionally.
     """
     broker = get_broker(EQUITY, client, risk)
+    # Order matters: arm the switch *first*, then close. If the flat came first,
+    # a scan landing between the two steps could open a new position into a
+    # book that was supposed to be empty.
     broker.halted = True
     risk.halted = True
     risk.trigger_reasons = sorted(set(getattr(risk, "trigger_reasons", []) or []) | {"manual-halt"})
     broker.save()  # the latch must outlive the process
-    log.warning("paper trading halted by API request (flat=%s)", flat)
-    audit_id = audit("paper.halt", detail={"flat": flat}, request=request)
+
+    # `flat` used to be reported and audited but never acted on: an operator was
+    # told the book had been flattened while every position stayed open.
+    flat_result = await broker.flatten(reason="manual-flat") if flat else None
     opened = sum(1 for p in broker.positions.values() if p.state != "CLOSED")
+    log.warning("paper trading halted by API request (flat=%s, closed=%s)",
+                flat, (flat_result or {}).get("closed", 0))
+    audit_id = audit(
+        "paper.halt",
+        detail={"flat": flat, "flat_result": flat_result, "open_after": opened},
+        request=request,
+    )
+    if flat_result is None:
+        summary = f"open positions {opened}"
+    elif flat_result["failed"]:
+        summary = (f"flat: closed {flat_result['closed']}/{flat_result['requested']}, "
+                   f"{flat_result['failed']} still open")
+    else:
+        summary = f"flat: closed {flat_result['closed']}/{flat_result['requested']}"
     tg = await notify.send(
-        f"🛑 Nobi: kill switch armed\nopen positions {opened}\nflat request {flat}\n"
-        f"audit #{audit_id}"
+        f"🛑 Nobi: kill switch armed\n{summary}\nflat request {flat}\naudit #{audit_id}"
     )
     return {
         "halted": broker.halted,
         "resumed": False,
         "open_positions": opened,
+        "flat_requested": bool(flat),
+        "flat_result": flat_result,
         "audit_id": audit_id,
         "telegram": tg,
     }
@@ -4780,12 +4857,27 @@ async def paper_resume(request: Request):
     broker.halted = False
     risk.halted = False
     risk.trigger_reasons = []
+    # Clearing the flag was not enough: the daily/weekly/streak inputs are
+    # recomputed from the retained exit events on every scan, so the same three
+    # closed stops that armed the switch re-armed it before the next order. The
+    # operator's decision now moves the window start forward.
+    risk.resumed_at = time.time()
     broker.last_error = None
     broker.save()
     log.warning("paper trading resumed by API request (was halted=%s)", was)
     audit_id = audit("paper.resume", detail={"was_halted": was}, request=request)
-    tg = await notify.send(f"✅ Nobi: kill switch cleared (was halted={was})\naudit #{audit_id}")
-    return {"halted": False, "resumed": was, "audit_id": audit_id, "telegram": tg}
+    tg = await notify.send(
+        f"✅ Nobi: kill switch cleared (was halted={was})\n"
+        f"risk windows restart from {datetime.fromtimestamp(risk.resumed_at, UTC).isoformat()}\n"
+        f"audit #{audit_id}"
+    )
+    return {
+        "halted": False,
+        "resumed": was,
+        "resumed_at": datetime.fromtimestamp(risk.resumed_at, UTC).isoformat(),
+        "audit_id": audit_id,
+        "telegram": tg,
+    }
 
 
 # ---------------- Execution mode: auto / semi / manual ----------------

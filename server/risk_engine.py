@@ -265,6 +265,13 @@ class RiskEngine:
         self.consecutive_sl: int = 0
         self.trigger_reasons: list[str] = []
         self.halted = False
+        #: When an operator last cleared the kill switch, as a unix timestamp.
+        #: The daily/weekly/streak windows restart here, because the trigger
+        #: inputs are *derived* from retained exit events rather than stored as
+        #: counters: clearing the latch alone left the three losing closed
+        #: positions in place, so `consecutive_sl >= 3` was true again on the
+        #: next scan and `resume` re-armed the halt within one cycle.
+        self.resumed_at: float = 0.0
 
     def _tp(self, entry: float, stop: float, side: str,
             rr_levels: tuple[float, ...] | None = None) -> tuple[float, float]:

@@ -28,6 +28,12 @@ ENV_FILE="${ENV_FILE:-/etc/nobi/nobi.env}"
 SERVICE_USER="${SERVICE_USER:-nobi}"
 SERVICE="${SERVICE:-nobi}"
 BRANCH="${BRANCH:-main}"
+#: The exact ref to install. Empty means "whatever origin/$BRANCH is now".
+#: The deploy workflow validates a tag and then this script used to check out
+#: origin/main regardless — so a release could ship code that was never the
+#: tagged commit, and the workflow's version assertion would only notice after
+#: the fact, if at all.
+REF=""
 # Where the installer puts the root-owned pieces. Overridable so a non-standard
 # install — and the test suite, which has no /etc to write to — can point elsewhere.
 UNIT_DIR="${UNIT_DIR:-/etc/systemd/system}"
@@ -37,6 +43,10 @@ HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:8000/api/health}"
 HEALTH_WAIT="${HEALTH_WAIT:-30}"
 PUBLIC_URL="${PUBLIC_URL:-}"
 
+#: Allow a unit/template in the checkout to be installed as root without the
+#: extra step. Off by default: the checkout is owned by the service user, so a
+#: file there is not evidence of what root should run.
+ACCEPT_UNIT_CHANGE=0
 DO_CHECK=0
 DO_RESET=0
 DO_BACKUP=0
@@ -59,7 +69,9 @@ while [ $# -gt 0 ]; do
     --verify)  DO_VERIFY=1; shift ;;
     --yes|-y)  ASSUME_YES=1; shift ;;
     --force)   ALLOW_DIRTY=1; shift ;;
+    --accept-unit-change) ACCEPT_UNIT_CHANGE=1; shift ;;
     --public)  PUBLIC_URL="${2:-}"; DO_VERIFY=1; shift 2 ;;
+    --ref)     REF="${2:-}"; shift 2 ;;
     -h|--help) sed -n '2,20p' "$0"; exit 0 ;;
     *) die "unknown argument: $1 (--help lists them)" ;;
   esac
@@ -145,7 +157,24 @@ runas git -C "$APP_DIR" fetch --quiet --tags origin "$BRANCH" \
     credentials: sudo -u $SERVICE_USER git -C $APP_DIR config credential.helper store
     then run one fetch by hand. Nothing was changed."
 
-REMOTE_SHA="$(runas git -C "$APP_DIR" rev-parse "origin/$BRANCH")"
+# `--ref v2.5.7` pins the checkout to the release that was validated. Without
+# it the fetch below resolves `origin/$BRANCH`, which can be minutes — or a
+# merge — ahead of the tag the workflow just proved. A tag is not a branch:
+# prefer the tag object, fall back to the peeled commit.
+if [ -n "$REF" ]; then
+  TARGET="${REF}^{commit}"
+  if ! runas git -C "$APP_DIR" rev-parse --verify --quiet "$TARGET" >/dev/null; then
+    runas git -C "$APP_DIR" fetch --quiet --tags origin "+refs/tags/$REF:refs/tags/$REF" \
+      || die "cannot fetch tag $REF. Nothing was changed."
+  fi
+  runas git -C "$APP_DIR" rev-parse --verify --quiet "$TARGET" >/dev/null \
+    || die "ref $REF does not exist in $APP_DIR after fetching it"
+  REMOTE_SHA="$(runas git -C "$APP_DIR" rev-parse "$TARGET")"
+  REF_LABEL="$REF"
+else
+  REMOTE_SHA="$(runas git -C "$APP_DIR" rev-parse "origin/$BRANCH")"
+  REF_LABEL="origin/$BRANCH"
+fi
 # A checkout at origin/main is not the same as a *service* at that version. On a
 # host that had been reset to a new commit without ever restarting, the process
 # was still serving 2.0.3 while the code on disk said 2.0.10 — and the script
@@ -316,7 +345,14 @@ fi
 # 6. The update itself
 # --------------------------------------------------------------------------- #
 step "updating the checkout"
-if [ "$DO_RESET" -eq 1 ]; then
+# `--ref` pins to a commit that may not be on $BRANCH at all, so the fast-forward
+# test does not apply to it: a detached checkout of the exact tag is the whole
+# point. Everything else keeps the branch behaviour it had.
+if [ -n "$REF" ]; then
+  runas git -C "$APP_DIR" checkout --quiet --detach "$REMOTE_SHA" \
+    || die "cannot check out $REF ($REMOTE_SHA). Nothing was changed past this point."
+  printf '    checked out %s at %s (detached)\n' "$REF" "${REMOTE_SHA:0:7}"
+elif [ "$DO_RESET" -eq 1 ]; then
   # The documented path for a fork or a branch deployment: `pull --ff-only`
   # cannot fast-forward a diverged history.
   runas git -C "$APP_DIR" reset --hard "origin/$BRANCH" >/dev/null
@@ -331,6 +367,10 @@ else
   printf '    fast-forwarded to %s\n' "$(runas git -C "$APP_DIR" rev-parse --short HEAD)"
 fi
 NEW_SHA="$(runas git -C "$APP_DIR" rev-parse HEAD)"
+# The pin is only worth anything if it held: say so, or stop.
+if [ -n "$REF" ] && [ "$NEW_SHA" != "$REMOTE_SHA" ]; then
+  die "checkout is at ${NEW_SHA:0:7} but $REF is ${REMOTE_SHA:0:7} — refusing to continue"
+fi
 
 step "installing python dependencies"
 # As the service user, not as root: a root-owned file in the venv breaks the
@@ -350,36 +390,78 @@ runas "$APP_DIR/.venv/bin/python" -c 'import fastapi, uvicorn, pandas; print("  
 # checkout. Without this step such a fix never reaches a deployed host.
 step "checking the installed systemd unit and helper files"
 refresh_unit=0
+# The checkout is chowned to the service user ($SERVICE_USER), and this script
+# runs as root. Installing a unit *from the checkout* therefore lets a
+# compromised service account choose what root executes on the next deploy:
+# write deploy/nobi.service, wait for the update, and daemon-reload runs it.
+# The installer already treats its own templates as untrusted for this reason
+# ("Templates MUST NOT be read from the checkout"). A unit change is now a
+# deliberate, separate step instead of a side effect of `git pull`.
+unit_differs=0
 if [ -f "$UNIT_DIR/$SERVICE.service" ]; then
   if ! cmp -s "$APP_DIR/deploy/$SERVICE.service" "$UNIT_DIR/$SERVICE.service"; then
-    refresh_unit=1
+    unit_differs=1
     printf '    the installed unit differs from deploy/%s.service\n' "$SERVICE"
   else
     printf '    unit unchanged\n'
   fi
 else
+  unit_differs=2
+  warn "no $UNIT_DIR/$SERVICE.service — one has to be installed"
+fi
+if [ "$unit_differs" -eq 1 ]; then
+  printf '\n  Proposed change to %s/%s.service (checkout -> /etc):\n' "$APP_DIR/deploy" "$SERVICE"
+  diff -u "$UNIT_DIR/$SERVICE.service" "$APP_DIR/deploy/$SERVICE.service" 2>/dev/null \
+    | sed 's/^/    /' | head -60 || true
+  printf '\n'
+  if [ "$ACCEPT_UNIT_CHANGE" -eq 1 ]; then
+    refresh_unit=1
+    warn "installing the new unit (--accept-unit-change was given)"
+  else
+    warn "NOT installing it. Review the diff above, then re-run with --accept-unit-change."
+    warn "the service keeps running the unit currently in $UNIT_DIR."
+  fi
+elif [ "$unit_differs" -eq 2 ]; then
+  # Nothing to protect: there is no installed unit to overwrite, and refusing
+  # here would leave a host that cannot be installed at all.
   refresh_unit=1
-  warn "no $UNIT_DIR/$SERVICE.service — will install one from the checkout"
+  printf '    installing the unit (no existing one to preserve)\n'
 fi
 
+# Same trust question for the other root-owned copies. A root helper taken from
+# a service-writable directory is the escalation this step exists to avoid, so
+# these follow the same gate as the unit rather than refreshing silently.
+root_pending=0
 if [ -d "$SHARE_DIR" ]; then
   for f in nobi.service nginx.conf; do
     [ -f "$APP_DIR/deploy/$f" ] || continue
-    # No `-o root -g root`: the script already refuses to run as anything but
-    # root, so install creates them root-owned anyway. Spelling it out only
-    # breaks the test run, which has no root to chown to.
-    cmp -s "$APP_DIR/deploy/$f" "$SHARE_DIR/$f" || {
+    cmp -s "$APP_DIR/deploy/$f" "$SHARE_DIR/$f" && continue
+    if [ "$ACCEPT_UNIT_CHANGE" -eq 1 ]; then
+      # No `-o root -g root`: this script already refuses to run as anything but
+      # root, so install creates them root-owned anyway. Spelling it out only
+      # breaks the test run, which has no root to chown to.
       install -m 0444 "$APP_DIR/deploy/$f" "$SHARE_DIR/$f"
       printf '    refreshed installer template %s\n' "$f"
-    }
+    else
+      root_pending=$((root_pending + 1))
+      warn "installer template $f differs; not refreshing without --accept-unit-change"
+    fi
   done
 fi
-if [ -f "$LIBEXEC_DIR/nobi-privileged-helper" ]; then
-  if ! cmp -s "$APP_DIR/deploy/nobi-privileged-helper" "$LIBEXEC_DIR/nobi-privileged-helper"; then
+if [ -f "$LIBEXEC_DIR/nobi-privileged-helper" ] \
+   && ! cmp -s "$APP_DIR/deploy/nobi-privileged-helper" "$LIBEXEC_DIR/nobi-privileged-helper"; then
+  if [ "$ACCEPT_UNIT_CHANGE" -eq 1 ]; then
     install -m 0755 "$APP_DIR/deploy/nobi-privileged-helper" \
       "$LIBEXEC_DIR/nobi-privileged-helper"
     printf '    refreshed the privileged helper\n'
+  else
+    root_pending=$((root_pending + 1))
+    warn "the privileged helper differs; not refreshing without --accept-unit-change"
   fi
+fi
+if [ "$root_pending" -gt 0 ]; then
+  warn "$root_pending root-owned file(s) left at their current version — the service is unaffected,"
+  warn "but a hardening change to them will not take effect until they are refreshed deliberately."
 fi
 
 if [ "$refresh_unit" -eq 1 ]; then

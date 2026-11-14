@@ -35,8 +35,11 @@ class Feed:
         self.exchange_calls = 0
 
     async def get_orderbook(self, symbol):
-        return {"bids": [[str(self.price * 0.999), "100"]],
-                "asks": [[str(self.price * 1.001), "100"]],
+        # A limit at `price` must be marketable, or it rests and fills nothing —
+        # which is the correct behaviour and would make every assertion below a
+        # test of the spread rather than of the route.
+        return {"bids": [[str(self.price), "100"]],
+                "asks": [[str(self.price), "100"]],
                 "lastTradePrice": str(self.price)}
 
     async def get_market_stats(self):

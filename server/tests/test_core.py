@@ -80,11 +80,14 @@ class FakeClient:
     async def get_orderbook(self, symbol):
         self.calls += 1
         p = self.price
+        # A locked book at `p`: a limit at `p` is marketable and fills at `p`,
+        # so these tests keep measuring the gate they name instead of the
+        # spread. (A limit inside the spread correctly fills nothing now.)
         return {
             "status": "ok",
             "lastTradePrice": str(p),
-            "bids": [[str(p * 0.999), "1000"]],
-            "asks": [[str(p * 1.001), "1000"]],
+            "bids": [[str(p), "1000"]],
+            "asks": [[str(p), "1000"]],
         }
 
     async def get_market_stats(self):
@@ -112,7 +115,9 @@ def test_paper_irt_order_consumes_usd_not_toman(tmp_path, monkeypatch):
     ~7.30 USD. Consuming 498,500 (Toman) or 4,985,000,000 (Rial) of a 100,000
     USD balance would have been the same bug with a different factor.
     """
-    broker, _ = make_broker(tmp_path, monkeypatch)
+    # The book has to quote the pair being traded: an IRT limit at 498,500,000
+    # does not cross a USD book quoted at 73,040.
+    broker, _ = make_broker(tmp_path, monkeypatch, price=498_500_000)
     pos = run(broker.place_limit(
         "BTCIRT", "buy", 0.001, price=498_500_000,
         stop=480_975_523, tp1=519_529_371, source="TEST",

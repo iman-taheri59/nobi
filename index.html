@@ -78,7 +78,14 @@
      library cannot load (no CDN, sandboxed preview, phone in airplane mode).
      Icons are the complete inline set below (OFFLINE_ICONS, lucide path data,
      ISC) — no icon script is loaded from a CDN; a test keeps the set complete. -->
-<script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js" onerror="window.__lwcCdnFailed=true"></script>
+<!-- The chart library is served from this host (assets/js/, vendored v4.2.0,
+     Apache-2.0, same bytes as the npm tarball). It used to be fetched from
+     unpkg on the critical path: a blocked or slow CDN stalled first paint
+     before any local script ran, and on a network where unpkg is filtered the
+     dashboard silently fell back to a line-drawing shim. A same-origin request
+     has neither failure mode, and it is one fewer third party that can see who
+     is looking at the dashboard. -->
+<script src="assets/js/lightweight-charts.standalone.production.js" onerror="window.__lwcCdnFailed=true"></script>
 <link rel="stylesheet" href="assets/css/base.css">
 <link rel="stylesheet" href="assets/css/components.css">
 <link rel="stylesheet" href="assets/css/dashboard.css">
@@ -295,7 +302,7 @@
       </button>
     </div>
     <span class="hidden 2xl:inline-flex chip shrink-0"><span class="dot bg-emerald-400"></span> <span data-i18n="hdr.kill"></span></span>
-    <span id="buildChip" class="hidden lg:inline-flex chip num text-violet-300 border-violet-400/30 shrink-0" title="نسخه واقعی از /api/health">v2.5.7 · core</span>
+    <span id="buildChip" class="hidden lg:inline-flex chip num text-violet-300 border-violet-400/30 shrink-0" title="نسخه واقعی از /api/health">v2.5.8 · core</span>
     <div class="ms-auto flex items-center gap-1.5 shrink-0">
       <span class="hidden xl:inline-flex chip num" id="clock">--:--:--</span>
       <span id="apiChip" class="hidden 2xl:inline-flex chip num text-zinc-400 border-white/10" title=""><i data-lucide="wifi-off" class="w-3.5 h-3.5"></i> <span>API: —</span></span>
