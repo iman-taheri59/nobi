@@ -78,12 +78,32 @@ def test_a_failure_reports_what_is_on_screen_and_what_is_under_the_pointer():
     to answer that too: where the button is, what element is actually under the
     pointer, and whether the width is on the mobile side of the 1024 breakpoint.
     """
-    for probe in ("the sidebar never settled open", "the sidebar never closed via",
+    for probe in ("the sidebar did not open", "the sidebar never closed via",
                   "menuBtnCoveredBy", "innerWidth", "mediaMobile", "activeElement"):
         assert probe in TEXT, probe
     assert "def diagnose(" in TEXT
     # And it is used by both waits, not just the open one.
-    assert TEXT.count("AssertionError(diagnose(") == 2
+    assert TEXT.count("diagnose(") >= 3  # the open path reports every attempt too
+
+
+def test_a_lost_click_is_retried_and_the_retry_is_reported():
+    """The 14 November 768 px failure was a press with no effect, not a layout.
+
+    Evidence printed by the report itself: the button at its normal box, the svg
+    icon under the pointer, focus on the button — and the panel exactly closed.
+    `locator.click()` scrolls and presses; if the class changed by the time the
+    press lands, the press opens nothing. Retrying models what a person does, and
+    the attempt number is printed so a flaky case is visible rather than silently
+    green. A panel that will not open after several presses is still a failure.
+    """
+    assert "OPEN_ATTEMPTS = 3" in TEXT
+    assert "for attempt in range(1, OPEN_ATTEMPTS + 1):" in TEXT
+    assert "opened on attempt" in TEXT
+    # The retry must not raise on the first miss — the raise is outside the loop.
+    assert "the sidebar never opened after" in TEXT
+    loop = TEXT.split("for attempt in range(1, OPEN_ATTEMPTS + 1):")[1].split("else:")[0]
+    assert "raise AssertionError" not in loop, (
+        "a raise inside the loop would make the retry pointless")
 
 
 def test_the_settle_window_is_a_number_someone_can_check():

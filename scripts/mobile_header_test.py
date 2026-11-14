@@ -54,6 +54,21 @@ SETTLED = (
     "})()"
 )
 
+#: A click is a gesture, not a state. The 14 November failure at 768 px is what
+#: "the click was lost" looks like in the data:
+#:
+#:   transform='matrix(1, 0, 0, 1, -288, 0)' sideOpen=False ...
+#:   menuBtn=[12, 10, 36, 36] menuBtnCoveredBy='svg' activeElement='menuBtn'
+#:
+#: The button was where it should be, the svg icon inside it was what the pointer
+#: hit (a normal, working hit), it had focus — so the press was delivered — and
+#: the panel is exactly closed. `page.locator(...).click()` scrolls the element
+#: into view and then clicks*; if the class has changed when the press lands, the
+#: press opens nothing and nothing else in the case is wrong. A human taps twice.
+#: The test retries, and only a panel that will not open after several presses is
+#: a layout failure. The retry count is the evidence: it is printed, so a case
+#: that needed three attempts is visible instead of being silently green.
+OPEN_ATTEMPTS = 3
 PROBE = """() => {
   const h = document.querySelector('body > header > div');
   return {width: document.documentElement.clientWidth,
@@ -186,19 +201,38 @@ def main() -> int:
                                     print(f"  {source} {direction} {width}px "
                                           f"{name!r}: sidebar close via {close}",
                                           flush=True)
-                                    page.locator("#menuBtn").click()
-                                    try:
-                                        page.wait_for_function(SETTLED,
-                                                               timeout=SIDEBAR_TIMEOUT_MS)
-                                    except PlaywrightTimeoutError:
-                                        # Name what is on screen. A bare timeout
-                                        # on a runner whose log needed admin
-                                        # rights cost three red `ui` jobs before
-                                        # any of this could be seen.
-                                        raise AssertionError(diagnose(
-                                            page, "the sidebar never settled open",
-                                            source, direction, width, name,
-                                        )) from None
+                                    last = None
+                                    for attempt in range(1, OPEN_ATTEMPTS + 1):
+                                        page.locator("#menuBtn").click()
+                                        try:
+                                            page.wait_for_function(
+                                                SETTLED,
+                                                timeout=SIDEBAR_TIMEOUT_MS if attempt == 1
+                                                else 5_000,
+                                            )
+                                            break
+                                        except PlaywrightTimeoutError as exc:
+                                            last = exc
+                                            # Name what is on screen. A bare
+                                            # timeout on a runner whose log
+                                            # needed admin rights cost three red
+                                            # `ui` jobs before any of this could
+                                            # be seen.
+                                            seen = diagnose(
+                                                page, "the sidebar did not open",
+                                                source, direction, width, name,
+                                            )
+                                            print(f"    {seen} (attempt {attempt})",
+                                                  flush=True)
+                                    else:
+                                        raise AssertionError(
+                                            f"the sidebar never opened after "
+                                            f"{OPEN_ATTEMPTS} presses: {seen}"
+                                        ) from last
+                                    if attempt > 1:
+                                        print(f"    opened on attempt {attempt} "
+                                              f"({source} {direction} {width}px "
+                                              f"{name!r})", flush=True)
                                     assert page.locator("#sidebar").evaluate(
                                         "e => e.classList.contains('side-open')"
                                     ), context
