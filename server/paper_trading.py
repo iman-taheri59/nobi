@@ -167,6 +167,19 @@ class PaperBroker:
         self.positions: dict[str, Position] = {}
         self.orders: list[OrderEvent] = []
         self.equity_curve: list[tuple[float, float]] = [(time.time(), equity)]
+        #: Highest equity ever seen, and the deepest drop from it.
+        #
+        # `metrics()` used to derive both by scanning `equity_curve`, and that
+        # list is truncated to 500 points in `save()`. With a mark every 8 s that
+        # is ~67 minutes of history, so after a restart `peak` became the first
+        # surviving point and `max_drawdown` silently forgot everything before
+        # it — a worse-than-10% drawdown could read as 2%. Two floats cost
+        # nothing and cannot be truncated away.
+        self.peak_equity: float = float(equity)
+        self.max_drawdown_pct: float = 0.0
+        #: How long the curve actually goes back, so a reader can tell a metric
+        #: that covers a month from one that covers an hour.
+        self.curve_started_at: float = float(self.equity_curve[0][0])
         self.concurrent_limit = 5
         #: Latest USDT/IRT rate in Toman, and when it was read. The rate used to
         #: be cached forever: `if not self.usdt_irt` meant "fetch once, keep for
@@ -230,17 +243,25 @@ class PaperBroker:
         equity = max(float(self.equity), 1e-9)
         daily_usd = 0.0
         weekly_usd = 0.0
+        # An operator resume restarts the windows. Without this, the streak was
+        # recomputed from the *whole* history on every scan, so `resume` cleared
+        # the latch and the next scan re-armed it from the same three closed
+        # stops — the kill switch could be pressed but never released.
+        floor = float(getattr(self.risk, "resumed_at", 0.0) or 0.0)
+        day_start_ts = max(day_start.timestamp(), floor)
+        week_start_ts = max(week_start.timestamp(), floor)
         for event in self.orders:
             if event.kind not in realized_kinds:
                 continue
-            stamp = datetime.fromtimestamp(float(event.ts), UTC)
+            stamp_ts = float(event.ts)
             pnl = float(event.extra.get("pnl", 0.0) or 0.0)
-            if stamp >= day_start:
+            if stamp_ts >= day_start_ts:
                 daily_usd += pnl
-            if stamp >= week_start:
+            if stamp_ts >= week_start_ts:
                 weekly_usd += pnl
         closed = sorted(
-            (p for p in self.positions.values() if p.state == "CLOSED" and p.closed_at),
+            (p for p in self.positions.values()
+             if p.state == "CLOSED" and p.closed_at and float(p.closed_at) >= floor),
             key=lambda p: float(p.closed_at or 0.0),
         )
         streak = 0
@@ -266,6 +287,28 @@ class PaperBroker:
         self.equity = raw.get("equity", self.equity)
         self.cash = raw.get("cash", self.cash)
         self.equity_curve = [tuple(x) for x in raw.get("equity_curve", [])]
+        # Older state files have no high-water mark. Reconstruct the best one
+        # available from what they do carry — never default to the current
+        # equity, which would report a 0% drawdown for an account that is down.
+        restored_peak = raw.get("peak_equity")
+        if restored_peak is None:
+            candidates = [float(self.start_equity), float(self.equity)]
+            candidates += [float(v) for _, v in self.equity_curve]
+            restored_peak = max(candidates) if candidates else float(self.equity)
+        self.peak_equity = float(restored_peak)
+        stored_dd = raw.get("max_drawdown_pct")
+        if stored_dd is None:
+            # Deepest drop implied by the surviving window, as a floor.
+            peak = float(restored_peak)
+            dd = 0.0
+            for _, v in self.equity_curve:
+                peak = max(peak, float(v))
+                dd = max(dd, (peak - float(v)) / max(peak, 1) * 100)
+            stored_dd = dd
+        self.max_drawdown_pct = float(stored_dd)
+        self.curve_started_at = float(
+            raw.get("curve_started_at")
+            or (self.equity_curve[0][0] if self.equity_curve else time.time()))
         self.positions = {k: Position(**v) for k, v in raw.get("positions", {}).items()}
         self.orders = [OrderEvent(**e) for e in raw.get("orders", [])]
         # The kill switch is a latch, and a latch that a restart releases is a
@@ -279,6 +322,9 @@ class PaperBroker:
             reasons = raw.get("halt_reasons") or []
             if isinstance(reasons, list) and hasattr(self.risk, "trigger_reasons"):
                 self.risk.trigger_reasons = sorted(set(self.risk.trigger_reasons) | {str(r) for r in reasons})
+        # The resume floor has to survive a restart too, or rebooting the box is
+        # a back door around the button.
+        self.risk.resumed_at = float(raw.get("resumed_at", 0.0) or 0.0)
         self._sync_open_heat()
 
     def load(self):
@@ -357,10 +403,15 @@ class PaperBroker:
             "equity": self.equity,
             "cash": self.cash,
             "equity_curve": [list(x) for x in self.equity_curve[-500:]],
+            # The curve above is truncated; these two are not.
+            "peak_equity": self.peak_equity,
+            "max_drawdown_pct": self.max_drawdown_pct,
+            "curve_started_at": self.curve_started_at,
             "positions": {k: v.__dict__ for k, v in self.positions.items()},
             "orders": [e.__dict__ for e in self.orders[-400:]],
             "halted": bool(self.halted or getattr(self.risk, "halted", False)),
             "halt_reasons": sorted(getattr(self.risk, "trigger_reasons", []) or []),
+            "resumed_at": float(getattr(self.risk, "resumed_at", 0.0) or 0.0),
         }, ensure_ascii=False, indent=1)
         tmp = STATE_FILE.with_suffix(STATE_FILE.suffix + ".tmp")
         tmp.parent.mkdir(parents=True, exist_ok=True)
@@ -417,6 +468,17 @@ class PaperBroker:
             return float(s)
         raise ValueError(f"no price for {symbol}")
 
+    async def _safe_mid(self, symbol: str) -> float:
+        """`_mid_price` that answers 0.0 instead of raising.
+
+        Used on rejection paths: a missing book must not turn "your limit does
+        not cross" into a traceback.
+        """
+        try:
+            return float(await self._mid_price(symbol))
+        except (ValueError, KeyError, TypeError, IndexError, OSError):
+            return 0.0
+
     async def _fx(self, *, force: bool = False) -> Rate | None:
         """The USDT/IRT rate, re-read when older than ``RATE_TTL_S``.
 
@@ -472,14 +534,33 @@ class PaperBroker:
         rate = await self._fx()
         return rate.toman_per_usdt if rate else 0.0
 
-    async def _execution_price(self, symbol: str, side: str, qty: float) -> tuple[float, float]:
-        """Return (avg_price, fill_quantity) walking the orderbook."""
+    async def _execution_price(self, symbol: str, side: str, qty: float,
+                               limit: float | None = None) -> tuple[float, float]:
+        """Return (avg_price, fill_quantity) walking the orderbook.
+
+        With ``limit``, only the levels the limit actually crosses are taken: a
+        buy at 100 fills against asks priced 100 or below, a sell at 100 against
+        bids at 100 or above. Whatever the book cannot fill inside the limit is
+        left unfilled (`filled_qty < qty`) instead of filled anyway.
+
+        Without that condition a limit order was filled at its own price, for
+        its full size, without reading the book at all. The paper account
+        therefore bought below the market and sold above it at any size — the
+        one behaviour that makes a paper result meaningless, because the
+        "profit" is the distance between the limit and the market.
+        """
         ob = await self.client.get_orderbook(symbol)
         levels = ob["asks"] if side == "buy" else ob["bids"]
         filled_qty = 0.0
         cost = 0.0
         for price, amount in levels:
             p, a = float(price), float(amount)
+            if limit is not None:
+                crosses = p <= limit if side == "buy" else p >= limit
+                if not crosses:
+                    # Sorted from the touch outwards, so once a level is
+                    # outside the limit every later level is too.
+                    break
             take = min(a, qty - filled_qty)
             cost += p * take
             filled_qty += take
@@ -502,19 +583,29 @@ class PaperBroker:
         """
         mid_at_submit = 0.0
         execution = "market" if price is None else "limit"
+        # Both branches walk the same book. A limit order is not a promise to
+        # fill: it fills against the levels at or inside its price, and only for
+        # the size those levels hold.
+        px, filled_qty = await self._execution_price(symbol, side, qty, limit=price)
+        if not px:
+            # Nothing in the book satisfies the limit (or the book is empty).
+            # The two are different answers for the queue: "wait" vs "no market".
+            return {"reason": "no-cross" if price is not None else "no-depth",
+                    "fill_price": 0.0, "filled_qty": 0.0,
+                    "mid_at_submit": await self._safe_mid(symbol),
+                    "execution": execution, "execution_rr": None,
+                    "stop": stop, "tp1": tp1, "tp2": tp2,
+                    "requested_qty": qty, "unfilled_qty": qty}
         if price is None:
-            mid = await self._mid_price(symbol)
-            mid_at_submit = float(mid)
-            px, filled_qty = await self._execution_price(symbol, side, qty)
-            if not px:
-                return {"reason": "no-depth", "fill_price": 0.0, "filled_qty": 0.0,
-                        "mid_at_submit": mid_at_submit, "execution": execution,
-                        "execution_rr": None, "stop": stop, "tp1": tp1, "tp2": tp2}
+            mid_at_submit = float(await self._mid_price(symbol))
             slip = px * SLIP_BPS / 10000
             fill_price = px + slip if side == "buy" else px - slip
         else:
-            fill_price = price
-            filled_qty = qty
+            # The fill happens at the *book* price, which the limit condition
+            # already guarantees is no worse than `price`. Filling at `price`
+            # would hand back the difference as profit on every order.
+            fill_price = px
+            mid_at_submit = float(await self._safe_mid(symbol))
 
         filled_qty = truncate_amount(filled_qty, symbol)
         fill_price = round_price(fill_price, symbol)
@@ -625,10 +716,17 @@ class PaperBroker:
         fill_price = float(quote.get("fill_price") or 0.0)
         filled_qty = float(quote.get("filled_qty") or 0.0)
         reason = quote.get("reason")
-        if reason == "no-depth":
-            self.last_error = "no-depth: orderbook has no liquidity"
+        if reason in ("no-depth", "no-cross"):
+            # "no-cross" is the honest answer to a limit the market never
+            # reached: the order is refused, not filled at the limit.
+            if reason == "no-cross":
+                self.last_error = (f"no-cross: book did not trade through the limit "
+                                   f"{price} for {side}; nothing filled")
+            else:
+                self.last_error = "no-depth: orderbook has no liquidity"
             self.orders.append(OrderEvent(time.time(), "reject", symbol, side, qty,
-                                          mid_at_submit, {"reason": "no-depth", "source": source}))
+                                          mid_at_submit, {"reason": reason, "source": source,
+                                                          "limit": price}))
             return None
         if reason == "precision":
             self.last_error = f"precision: {symbol} qty rounds to zero at the amount step"
@@ -770,6 +868,43 @@ class PaperBroker:
         self._mark_equity_minute()
         self.save()
         return pos
+
+    async def flatten(self, reason: str = "manual-flat") -> dict:
+        """Close every open position at the book, and say what happened.
+
+        `/api/paper/halt?flat=true` accepted the flag, audited it and sent it to
+        Telegram — and closed nothing. An operator arming the kill switch during
+        a drawdown was told the book had been flattened while every position was
+        still open and still exposed.
+
+        Returns `closed` / `failed` / `still_open` rather than a boolean, because
+        a thin exit book means "some of this did not work" and the caller has to
+        be able to say so.
+        """
+        open_ids = [pid for pid, p in self.positions.items() if p.state != "CLOSED"]
+        before = len(open_ids)
+        for pid in open_ids:
+            pos = self.positions.get(pid)
+            if pos is None or pos.state == "CLOSED":
+                continue
+            try:
+                await self._close(pid, reason)
+            except Exception as exc:  # one bad position must not abort the rest
+                log.warning("flatten %s failed: %s", pid, exc)
+        still = [pid for pid, p in self.positions.items() if p.state != "CLOSED"]
+        closed = before - len(still)
+        if closed:
+            self.save()
+        return {
+            "requested": before,
+            "closed": closed,
+            "failed": len(still),
+            "still_open": [
+                {"id": pid, "symbol": self.positions[pid].symbol,
+                 "remaining_qty": round(float(self.positions[pid].filled_qty), 8)}
+                for pid in still
+            ],
+        }
 
     async def _close(self, pos_id: str, reason: str):
         """Exit as much of the open leg as the book actually supports.
@@ -932,7 +1067,26 @@ class PaperBroker:
         current_eq = self.cash + open_val
         self.equity = current_eq
         self._sync_open_heat()
+        # One place updates the high-water mark, so every path that moves equity
+        # (fill, partial exit, close, tick) keeps the same numbers.
+        self._track_drawdown(current_eq)
         self.equity_curve.append((time.time(), current_eq))
+
+    def _track_drawdown(self, equity: float) -> None:
+        """Raise the high-water mark, or deepen the recorded drawdown.
+
+        `max_drawdown_pct` is the deepest point ever measured, not the deepest
+        point still visible in a truncated curve. It never decreases.
+        """
+        if not math.isfinite(equity):
+            return
+        if equity > self.peak_equity:
+            self.peak_equity = equity
+            return
+        if self.peak_equity > 0:
+            dd = (self.peak_equity - equity) / self.peak_equity * 100
+            if dd > self.max_drawdown_pct:
+                self.max_drawdown_pct = dd
 
     # --------- metrics ----------
     def metrics(self) -> dict:
@@ -951,12 +1105,19 @@ class PaperBroker:
         pf_defined = bool(pnl_list) and (bool(wins) or loss_total > 0)
         pf = min(float(pf), 99.99)
         expectancy = (sum(pnl_list) / len(pnl_list)) if pnl_list else 0
+        # The stored high-water mark, not the surviving window. `curve_dd` is
+        # kept alongside so the two can be compared: when the curve one is much
+        # smaller, that is the truncation, not a recovery.
         eq_vals = [v for _, v in self.equity_curve]
-        mdd = 0.0
+        curve_dd = 0.0
         peak = eq_vals[0] if eq_vals else self.equity
         for v in eq_vals:
             peak = max(peak, v)
-            mdd = max(mdd, (peak - v) / max(peak, 1) * 100)
+            curve_dd = max(curve_dd, (peak - v) / max(peak, 1) * 100)
+        # `getattr` because a broker can legitimately reach `metrics()` without
+        # `__init__` having run (tests build one that way, and a partially
+        # constructed object must not raise on a read-only route).
+        mdd = max(float(getattr(self, "max_drawdown_pct", 0.0) or 0.0), curve_dd)
         return {
             "trades": len(pnl_list),
             "exit_events": len(pnl_list),
@@ -980,6 +1141,14 @@ class PaperBroker:
             "expectancy": round(expectancy, 2),
             "expectancy_r": round(sum(r_mult) / len(r_mult), 3) if r_mult else 0.0,
             "max_drawdown": round(mdd, 1),
+            #: Same number as `max_drawdown` before this field existed, i.e. what
+            #: the 500-point window alone reports. Published so the difference is
+            #: visible rather than hidden inside one figure.
+            "max_drawdown_curve_window": round(curve_dd, 1),
+            "peak_equity": round(float(getattr(self, "peak_equity", self.equity) or 0.0), 2),
+            "curve_covers_s": round(max(0.0, time.time() - float(
+                getattr(self, "curve_started_at", time.time()) or time.time())), 0),
+            "drawdown_basis": "all-observed-marks",
             "daily_pnl": round(self.risk.daily_pnl, 2),
         }
 

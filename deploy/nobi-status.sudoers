@@ -3,7 +3,16 @@
 # Every command here only reads: journal tail, ls/du of the data directory, and the
 # analysis scripts run as the service user (they open journal.db read-only and
 # never write paper_state.json). No restart, no update, no shell.
-deploy ALL=(root) NOPASSWD: /usr/bin/journalctl -u nobi *
+# `journalctl -u nobi *` let the deploy account read any unit's journal as root
+# — the wildcard matches `nobi`, `nobi.service`, and also `nobi-anything`, plus
+# every option after it. The workflow only ever asks for `-u nobi -n N`, so the
+# rule is pinned to that shape: the unit, the line count, and the output mode.
+deploy ALL=(root) NOPASSWD: /usr/bin/journalctl -u nobi -n [0-9]*, /usr/bin/journalctl -u nobi -n [0-9]* --no-pager -o short-iso
+# `-l` became `-lt` in the Status workflow: an oldest-first listing
+# truncated by `head -40` hid the newest files, which is how a healthy
+# nightly backup was read as a stalled one. sudo matches the full argv,
+# so the rule has to name the flag that is actually used.
+deploy ALL=(nobi) NOPASSWD: /usr/bin/ls -lt --time-style=+%Y-%m-%dT%H\:%M\:%SZ /srv/nobi-data/ /srv/nobi-data/backup/
 deploy ALL=(nobi) NOPASSWD: /usr/bin/ls -l --time-style=+%Y-%m-%dT%H\:%M\:%SZ /srv/nobi-data/ /srv/nobi-data/backup/
 deploy ALL=(nobi) NOPASSWD: /usr/bin/du -sh /srv/nobi-data
 deploy ALL=(nobi) NOPASSWD: /opt/nobi/.venv/bin/python /opt/nobi/scripts/journal_diagnostic.py *

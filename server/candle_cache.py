@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import os
+import time
 from pathlib import Path
 
 import pandas as pd
@@ -22,6 +24,14 @@ log = logging.getLogger("candle-cache")
 #: deployment fail at import time (see `storage.py`).
 CACHE_ROOT = writable_dir("NBX_CANDLE_CACHE", Path(__file__).parent / "candle_cache",
                           label="candle-cache")
+
+#: Soft cap for the whole cache directory. 2 GB is roughly a week of growth at
+#: the measured rate, so a prune that stops running is noticed while there is
+#: still six weeks of disk left, not on the day the disk fills.
+CACHE_MAX_BYTES = int(float(os.getenv("NBX_CACHE_MAX_MB", "2048")) * 1024 * 1024)
+#: Files older than this are useless: TTL is 30 minutes and no caller asks for
+#: a range older than the scan window. A week is generous on purpose.
+CACHE_MAX_AGE_S = float(os.getenv("NBX_CACHE_MAX_AGE_S", str(7 * 24 * 3600)))
 
 
 def _key(symbol: str, resolution: str, from_ts: int, to_ts: int) -> Path:
@@ -80,6 +90,63 @@ class CandleCache:
             self.misses += 1
             return None
 
+    #: The cache had no eviction at all: every distinct (symbol, resolution,
+    #: range) key wrote a Parquet file plus a sidecar and nothing ever removed
+    #: either. Measured growth on production was ~0.27-0.32 GB/day against a
+    #: 25 GB disk, i.e. the volume fills in 62-73 days, and the failure mode is
+    #: "the service cannot write its own state file", which looks like a crash.
+    #: A cap in code is the only bound that survives a forgotten cron entry.
+    def prune(self, max_bytes: int | None = None, max_age_s: float | None = None) -> dict:
+        """Delete cached files, oldest first, until the cache fits the budget.
+
+        Returns what it did, because a silent prune is indistinguishable from a
+        cache that never filled. Never raises: a cache is optional, and a
+        read-only directory must not take the service down.
+        """
+        budget = CACHE_MAX_BYTES if max_bytes is None else max_bytes
+        age = CACHE_MAX_AGE_S if max_age_s is None else max_age_s
+        removed = 0
+        freed = 0
+        errors = 0
+        try:
+            files = [p for p in CACHE_ROOT.glob("*") if p.is_file()]
+        except OSError as exc:  # unreadable cache dir: nothing to prune
+            return {"removed": 0, "freed_bytes": 0, "errors": 1,
+                    "reason": f"{type(exc).__name__}: {exc}"}
+        entries = []
+        total = 0
+        now = time.time()
+        for path in files:
+            try:
+                st = path.stat()
+            except OSError:
+                errors += 1
+                continue
+            total += st.st_size
+            entries.append((st.st_mtime, st.st_size, path))
+        # Expired first, then oversized, both oldest-first: a file that is both
+        # old and large should go before a fresh small one either way.
+        entries.sort(key=lambda e: e[0])
+        for mtime, size, path in entries:
+            expired = age is not None and (now - mtime) > age
+            over = budget is not None and total > budget
+            if not expired and not over:
+                continue
+            try:
+                path.unlink()
+            except OSError:
+                errors += 1
+                continue
+            removed += 1
+            freed += size
+            total -= size
+        if removed:
+            log.info("candle cache pruned: %d file(s), %.2f MB, %d left",
+                     removed, freed / 1e6, len(entries) - removed)
+        return {"removed": removed, "freed_bytes": freed, "errors": errors,
+                "remaining_bytes": total, "budget_bytes": budget,
+                "max_age_s": age}
+
     def store(self, symbol: str, resolution: str, from_ts: int, to_ts: int, rows: list[dict],
               synthetic: bool = False):
         """Persist candles. Simulated rows are refused outright.
@@ -91,6 +158,10 @@ class CandleCache:
         if synthetic:
             self.synthetic_skipped = getattr(self, "synthetic_skipped", 0) + 1
             return
+        # Enforce the budget where the growth happens, at most once a minute.
+        # A cron entry would do it too, and did not exist; this cannot be
+        # forgotten by the next person who reinstalls the host.
+        self._maybe_prune()
         fp = _key(symbol, resolution, from_ts, to_ts)
         try:
             df = pd.DataFrame(rows)
@@ -103,9 +174,17 @@ class CandleCache:
         except Exception as e:
             log.warning("cache write fail %s: %s", fp, e)
 
+    def _maybe_prune(self) -> None:
+        last = getattr(self, "_pruned_at", 0.0)
+        if time.time() - last < 60:
+            return
+        self._pruned_at = time.time()
+        self.last_prune = self.prune()
+
     def stats(self) -> dict:
         return {
             "hits": self.hits,
+            "pruned": getattr(self, "last_prune", None),
             "misses": self.misses,
             "synthetic_skipped": getattr(self, "synthetic_skipped", 0),
             "synthetic_rejected": getattr(self, "synthetic_rejected", 0),

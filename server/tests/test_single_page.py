@@ -73,3 +73,26 @@ def test_tailwind_scans_only_product_sources() -> None:
     )
     compiled = (ROOT / "assets" / "css" / "tailwind.css").read_text(encoding="utf-8")
     assert compiled.startswith("/*! tailwindcss v4")
+
+
+def test_the_page_loads_no_executable_asset_from_a_third_party_host() -> None:
+    """Every script and stylesheet comes from this service.
+
+    The chart library used to load from unpkg on the parse path. On a network
+    that filters unpkg — which is the network most of this dashboard's users are
+    on — the dashboard silently degraded to a local shim, and a slow response
+    there delayed first paint for everyone else. Vendoring it (assets/js/,
+    Apache-2.0, v4.2.0) removes the dependency, the delay and the third party.
+    """
+    html = (ROOT / "index.html").read_text(encoding="utf-8")
+    scripts = re.findall(r'<script[^>]*\ssrc="([^"]+)"', html)
+    assert scripts, "no scripts found — did the regex stop matching?"
+    remote = [s for s in scripts if re.match(r"^(?:https?:)?//", s)]
+    assert remote == [], f"third-party script(s) on the parse path: {remote}"
+
+    local = [s for s in scripts if not s.startswith(("http", "//"))]
+    assert "assets/js/lightweight-charts.standalone.production.js" in local
+    response = CLIENT.get("/assets/js/lightweight-charts.standalone.production.js")
+    assert response.status_code == 200
+    assert len(response.content) > 100_000, "the vendored chart library looks truncated"
+    assert b"Lightweight Charts" in response.content[:400]

@@ -27,6 +27,7 @@ import statistics as st
 import sys
 from collections import Counter, defaultdict
 from datetime import UTC, datetime
+from pathlib import Path as _Path
 
 
 def spearman(xs: list[float], ys: list[float]) -> float | None:
@@ -317,6 +318,89 @@ def main() -> int:
         print(f"  {k:14s} n={len(v):4d} mean={st.mean(v):+.3f}%  win={sum(1 for x in v if x > 0) / len(v):.2f}")
     if set(by_regime) == {"not-recorded"}:
         print("  (rows predate the regime gate; nothing to split yet)")
+
+    # 3c. ADR-0051 C_gate audit: did the regime gate actually block the rows it
+    # claims? Section 5 prints arm averages but cannot answer this, because a
+    # blocked row produces no A_live row to compare against — the gate's whole
+    # effect is what it *removed*. So compare what the live engine emitted
+    # against what the blocking states should have removed.
+    print("\n3c) C_gate audit (ADR-0051): did the regime gate block what it claims?")
+    # The blocking states are the engine's definition, not a copy: a local list
+    # is how `shadow_arms` came to know only about `risk-off`. The script runs
+    # from the repo root, so `server/` has to be importable — but only for this
+    # check, so the rest of the diagnostic still runs against a bare copy of the
+    # database with no server modules on the path.
+    try:
+        from regime import BLOCKING_STATES
+    except ImportError:
+        sys.path.insert(0, str(_Path(__file__).resolve().parents[1] / "server"))
+        from regime import BLOCKING_STATES
+    gate_rows = conn.execute(
+        f"""SELECT s.id, s.direction, s.regime,
+                   COALESCE(s.regime, json_extract(s.features,'$.market_regime')) AS reg,
+                   json_extract(s.features,'$.shadow_arms."C_gate".direction') AS c_gate_dir,
+                   json_extract(s.features,'$.shadow_arms') IS NOT NULL AS has_arms
+            FROM signal_log s WHERE {sel.replace('timeframe', 's.timeframe')}
+              AND s.direction = 'LONG'""",
+        params).fetchall()
+    if not gate_rows:
+        print("  (no LONG rows in this window)")
+    else:
+        def _state(r) -> str:
+            return str(r["reg"] or "not-recorded")
+
+        by_state = Counter(_state(r) for r in gate_rows)
+        blockable = sum(n for k, n in by_state.items() if k in BLOCKING_STATES)
+        live_long = len(gate_rows)
+        arm_present = sum(1 for r in gate_rows if r["has_arms"])
+        survivors = sum(1 for r in gate_rows if r["c_gate_dir"] == "LONG")
+        c_gate_silent = sum(1 for r in gate_rows if r["c_gate_dir"] is None)
+
+        print(f"  live LONG rows          {live_long:5d}")
+        for k, n in sorted(by_state.items(), key=lambda kv: -kv[1]):
+            mark = "  <- blocking state" if k in BLOCKING_STATES else ""
+            print(f"    regime {k:14s} {n:5d}{mark}")
+        print(f"  rows a blocking state should have removed   {blockable:5d}")
+        print(f"  rows carrying a C_gate verdict             {arm_present:5d}")
+        if arm_present:
+            print(f"  ...of which C_gate said LONG               {survivors:5d}")
+            still = sum(1 for r in gate_rows
+                        if r["c_gate_dir"] == "LONG" and _state(r) in BLOCKING_STATES)
+            print(f"  C_gate said LONG inside a blocking state   {still:5d}  "
+                  f"(a non-zero here is the defect, not a measurement)")
+            evaded = sum(1 for r in gate_rows
+                         if r["c_gate_dir"] is not None and r["c_gate_dir"] != "LONG"
+                         and _state(r) not in BLOCKING_STATES)
+            print(f"  C_gate refused a row in a passing state    {evaded:5d}  "
+                  f"(a second filter — depth/spread — acting inside a passing regime)")
+            if c_gate_silent:
+                print(f"  rows with no C_gate verdict at all         {c_gate_silent:5d}")
+        else:
+            print("  every LIVE LONG row has the same direction as A_live, so the gate")
+            print("  cannot be distinguished from the reference here — this window has no")
+            print("  blocking-state rows to prove it on.")
+        # The verdict compares the rows the gate should have removed (`still`)
+        # against the rows it could have removed (`blockable`). `survivors` is
+        # deliberately not used: a C_gate LONG in a *passing* regime is correct
+        # behaviour, not a leak.
+        if blockable == 0:
+            print("  verdict: NO EVIDENCE in this window — the regime never entered a")
+            print("           blocking state, so the gate was never asked to act. That is")
+            print("           not the same as 'it works'. Re-run after an fx-shock/risk-off day.")
+        elif not arm_present:
+            print("  verdict: NOT MEASURABLE — the rows predate ADR-0051, so the gate's")
+            print("           decision was never recorded next to the live one.")
+        elif still == blockable:
+            print("  verdict: BROKEN — every row a blocking state should have removed is")
+            print("           still recorded as a C_gate LONG.")
+        elif still > 0:
+            print(f"  verdict: LEAKING — {still} of {blockable} blockable rows survived the gate.")
+        elif evaded > 0:
+            print("  verdict: GATE HOLDS, SECOND FILTER ACTIVE — nothing survived a blocking")
+            print("           state, but rows in passing states were refused too. Do not read")
+            print("           C_gate's result as 'the regime gate alone'.")
+        else:
+            print("  verdict: CONSISTENT — every blockable row was blocked and nothing else was.")
 
     # 4. symbols
     print("\n4) 1h return after LONG by symbol (n ≥ 15)")

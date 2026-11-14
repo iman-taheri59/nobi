@@ -81,9 +81,12 @@ def wired(tmp_path, monkeypatch):
         async def get_orderbook(self, symbol):
             if self.expire:
                 now[0] = BAR + 1800
+            # Locked at 100: the queue's limits sit at or above 100 on the buy
+            # side, and a limit inside a 99.99/100.01 spread rests instead of
+            # filling. The fixture has to offer the liquidity the test assumes.
             return {
-                "bids": [["99.99", "1000"]],
-                "asks": [["100.01", "1000"]],
+                "bids": [["100", "1000"]],
+                "asks": [["100", "1000"]],
                 "lastTradePrice": "100",
             }
 
@@ -268,7 +271,7 @@ def test_queue_market_fill_revalidates_unchanged_targets(wired, monkeypatch, boo
     body = payload()
     before = (broker.cash, broker.equity, broker.risk.open_heat)
 
-    async def execution(*args):
+    async def execution(*args, **kwargs):
         return book_price, 10
 
     monkeypatch.setattr(broker, "_execution_price", execution)

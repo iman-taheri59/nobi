@@ -2,7 +2,7 @@
 
 **فارسی** · [English](README.en.md)
 
-نسخهٔ کاری: **2.5.7** (منتشر نشده؛ آخرین نسخهٔ مستقر 2.5.6) · وضعیت انتشار را در [Releases](https://github.com/iman-taheri59/nobi/releases) بررسی کنید.
+نسخهٔ کاری: **2.5.8** (منتشر نشده؛ آخرین نسخهٔ مستقر 2.5.6) · وضعیت انتشار را در [Releases](https://github.com/iman-taheri59/nobi/releases) بررسی کنید.
 **مجوز:** MIT ([`LICENSE`](LICENSE)) · **گزارش آسیبپذیری:** [`SECURITY.md`](SECURITY.md) · **مشارکت:** [`CONTRIBUTING.md`](CONTRIBUTING.md)
 
 راهنمای [نسخه‌بندی و GitHub Release](docs/releases.md) شامل قواعد افزایش نسخه، تگ و انتشار است. [تاریخچهٔ تغییرات](CHANGELOG.md) را نیز ببینید ([English](CHANGELOG.en.md)).

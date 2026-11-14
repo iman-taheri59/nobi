@@ -2,7 +2,7 @@
 
 [فارسی](releases.md) · **English**
 
-The working version is **2.5.7** and is not released yet; the last deployed version is 2.5.6. Publish only after CI for that exact commit is green and explicit approval is obtained. Check Releases for actual publication status.
+The working version is **2.5.8** and is not released yet; the last deployed version is 2.5.6. Publish only after CI for that exact commit is green and explicit approval is obtained. Check Releases for actual publication status.
 `VERSION` is the source of truth for the release number; the tag name is exactly `v`
 plus that number.
 

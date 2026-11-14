@@ -28,11 +28,34 @@ same value, and a reload cannot disagree with a running engine.
 """
 from __future__ import annotations
 
+import os
 import time
 from dataclasses import dataclass, field
 
 MODES = ("auto", "semi", "manual")
-DEFAULT = "semi"
+
+#: The mode a fresh install starts in.
+#
+# `semi` stays the default: a system that can place orders on its own should be
+# switched to that behaviour, not shipped with it. But `semi` also means the
+# paper book only moves when a human clicks, which on a server nobody is
+# watching produces no evidence at all — and an empty book proves nothing about
+# the strategy.
+#
+# So the choice is configuration, not a code edit: set `NBX_EXEC_MODE=auto` on a
+# host you want to gather evidence on, or `semi`/`manual` anywhere a person
+# should be in the loop. An invalid value is refused loudly at startup rather
+# than silently becoming one of the two.
+_raw_default = (os.getenv("NBX_EXEC_MODE") or "semi").strip().lower()
+if _raw_default not in MODES:
+    raise SystemExit(
+        f"NBX_EXEC_MODE={_raw_default!r} is not one of {', '.join(MODES)}"
+    )
+DEFAULT = _raw_default
+
+#: Recorded in the snapshot so a reader can tell a deliberate `auto` host from
+#: one that was flipped from the UI.
+DEFAULT_SOURCE = "NBX_EXEC_MODE" if os.getenv("NBX_EXEC_MODE") else "built-in"
 
 
 class InvalidMode(ValueError):
@@ -90,6 +113,8 @@ class ModeStore:
     def snapshot(self) -> dict:
         return {
             "default": self.default,
+            "default_source": DEFAULT_SOURCE,
+            "built_in_default": DEFAULT,
             "symbols": dict(sorted(self.symbols.items())),
             "modes": list(MODES),
             "updated": self.updated or None,
@@ -124,4 +149,5 @@ class ModeStore:
 
 EXEC_MODE = ModeStore()
 
-__all__ = ["DEFAULT", "EXEC_MODE", "MODES", "InvalidMode", "ModeStore", "normalise"]
+__all__ = ["DEFAULT", "DEFAULT_SOURCE", "EXEC_MODE", "MODES", "InvalidMode",
+           "ModeStore", "normalise"]

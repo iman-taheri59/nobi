@@ -2,7 +2,7 @@
 
 [فارسی](README.md) · **English**
 
-Working version: **2.5.7** (unreleased; last deployed version: 2.5.6). See [versioning and GitHub releases](releases.en.md) and the
+Working version: **2.5.8** (unreleased; last deployed version: 2.5.6). See [versioning and GitHub releases](releases.en.md) and the
 [changelog](../CHANGELOG.en.md).
 
 ## Documentation map

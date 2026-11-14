@@ -524,3 +524,72 @@ def test_the_backup_is_the_documented_sqlite_backup_not_a_tar_of_live_files(tmp_
     result = _bash_snippet(prelude + backup, tmp_path)
     assert result.returncode != 0
     assert "stopping before the update" in result.stderr
+
+
+def test_the_release_tag_can_pin_the_checkout():
+    """A validated tag must be the thing installed, not whatever main is.
+
+    The workflow checked out `inputs.tag`, proved the tag sits on main and that
+    VERSION matched it — and then called this script, which fetched and moved
+    to `origin/$BRANCH`. Two releases landed while main moved, so the code that
+    reached production was not necessarily the commit that had been validated.
+    """
+    code = _code_without_comments()
+    assert "--ref)" in code, "no way to pin the checkout to a tag"
+    assert "REF" in code
+    assert "checkout --quiet --detach" in code, "the ref never changes HEAD"
+    assert 'if [ -n "$REF" ] && [ "$NEW_SHA" != "$REMOTE_SHA" ]' in code
+    assert 'git -C "$APP_DIR" fetch --quiet --tags origin "+refs/tags/$REF' in code
+
+
+def test_a_version_mismatch_stops_the_deploy_workflow():
+    """`|| true` made the VERSION check decorative in .github/workflows/deploy.yml."""
+    wf = (ROOT / ".github" / "workflows" / "deploy.yml").read_text(encoding="utf-8")
+    assert 'test "$(cat VERSION)" = "${GITHUB_REF_NAME#v}" || true' not in wf
+    assert 'if [ "$have" != "$want" ]' in wf
+    assert "--ref ${{ inputs.tag }}" in wf
+
+
+def test_the_status_listing_matches_its_sudoers_rule():
+    """sudo compares the whole argv: a flag the rule does not name is a refusal.
+
+    The listing changed to `-lt` so `head -40` stops cutting off the newest
+    files, but the sudoers rule still said `-l`. The step is
+    `continue-on-error`, so the failure would have looked like "the listing was
+    empty" — the same class of silent absence that started this.
+    """
+    wf = (ROOT / ".github" / "workflows" / "status.yml").read_text(encoding="utf-8")
+    rule = (ROOT / "deploy" / "nobi-status.sudoers").read_text(encoding="utf-8")
+    assert "-lt --time-style" in wf
+    assert "/usr/bin/ls -lt --time-style" in rule.replace("\\\\", "")
+    assert "head -40 | tac" in wf
+
+
+def test_a_unit_in_the_service_writable_checkout_is_not_installed_as_root_silently():
+    """The checkout is chowned to the service user; installing root files from it
+    is a privilege escalation, and the installer itself already says so.
+
+    `deploy_arvan.sh`: "Templates MUST NOT be read from the checkout: it is
+    chowned to the service user below. A service-writable systemd unit copied to
+    /etc as root is a root escalation." `update_arvan.sh` then did exactly that
+    on every deploy, from the same checkout.
+    """
+    code = _code_without_comments()
+    assert "--accept-unit-change" in code
+    assert "ACCEPT_UNIT_CHANGE" in code
+    # The gate must cover the unit AND the root helpers, or the helper is the
+    # way around it.
+    assert code.count("ACCEPT_UNIT_CHANGE") >= 3
+    # A diff is shown before the decision, not after.
+    assert "diff -u" in code
+    # And the deploy workflow has to opt in explicitly.
+    wf = (ROOT / ".github" / "workflows" / "deploy.yml").read_text(encoding="utf-8")
+    assert "--accept-unit-change" in wf
+
+
+def test_a_host_without_an_installed_unit_can_still_be_installed():
+    """The gate must not deadlock a fresh host: with nothing to overwrite there
+    is nothing to protect, so the unit is installed."""
+    code = _code_without_comments()
+    assert "there is no installed unit to overwrite" in _text()
+    assert 'unit_differs" -eq 2' in code

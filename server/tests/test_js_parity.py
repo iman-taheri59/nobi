@@ -62,8 +62,12 @@ def test_both_brokers_name_the_same_gate_for_the_same_order():
             usdt_irt = 100_805.0
 
             async def get_orderbook(self, symbol):
-                return {"status": "ok", "bids": [["498400000", "10"]],
-                        "asks": [["498600000", "10"]], "lastTradePrice": "498500000"}
+                # The order below is a limit at 498,500,000; a book quoted
+                # 400k/600k around it has nothing at that price, so it would
+                # rest (correctly) and the parity question would change from
+                # "which gate refuses this" to "why did nothing fill".
+                return {"status": "ok", "bids": [["498500000", "10"]],
+                        "asks": [["498500000", "10"]], "lastTradePrice": "498500000"}
 
             async def get_market_stats(self):
                 return {"stats": {"USDTIRT": {"latest": "100805"}}}

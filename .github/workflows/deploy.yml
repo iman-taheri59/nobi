@@ -39,7 +39,16 @@ jobs:
           if ! git merge-base --is-ancestor "${{ inputs.tag }}" origin/main; then
             echo "::error::${{ inputs.tag }} is not on main"; exit 1
           fi
-          test "$(cat VERSION)" = "${GITHUB_REF_NAME#v}" || true
+          # `|| true` made this line decorative: a tag that did not match the
+          # VERSION file deployed happily and the release notes then described
+          # a version the service was not running. The workflow waits for
+          # production, so a mismatch must stop the deploy, not be swallowed.
+          want="${GITHUB_REF_NAME#v}"
+          have="$(cat VERSION)"
+          if [ "$have" != "$want" ]; then
+            echo "::error::VERSION says $have but the tag is $want"
+            exit 1
+          fi
           echo "deploying $(git rev-parse --short HEAD) ($(cat VERSION))"
 
       - name: SSH setup
@@ -60,11 +69,18 @@ jobs:
 
       - name: Dry run
         if: ${{ inputs.dry_run }}
-        run: ssh prod 'sudo -n bash /opt/nobi/scripts/update_arvan.sh --check'
+        run: ssh prod 'sudo -n bash /opt/nobi/scripts/update_arvan.sh --check --ref ${{ inputs.tag }}'
 
       - name: Update
         if: ${{ !inputs.dry_run }}
-        run: ssh prod 'sudo -n bash /opt/nobi/scripts/update_arvan.sh --yes --backup --verify'
+        # --ref is what makes the tag check above mean something: without it the
+        # script installed origin/main, which is not necessarily the commit the
+        # workflow just validated.
+        # --accept-unit-change: a tag that changes deploy/nobi.service or the
+        # root helpers is meant to install them. The flag exists so that an
+        # *ordinary* update cannot, because the checkout is owned by the service
+        # user and a file there is not evidence of what root should run.
+        run: ssh prod 'sudo -n bash /opt/nobi/scripts/update_arvan.sh --yes --backup --verify --accept-unit-change --ref ${{ inputs.tag }}'
 
       - name: Post-deploy proof
         # Runs even when --verify went red (9 Nov: a probe-only 403 hid the fact

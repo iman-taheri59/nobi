@@ -852,6 +852,26 @@
         gates: [], blocked: true, blocked_by: null,
       };
       if (!(px > 0) || !(qty > 0)) return Object.assign({}, empty, { error: 'precision' });
+      /* A limit order is not a promise to fill. The standalone broker has no
+       * book, only the last traded price it is given, so the honest test is
+       * whether the given price is reachable at all: a buy limit above the
+       * last trade is marketable, a buy limit below it is not. This mirrors
+       * `PaperBroker._execution_price(..., limit=price)` on the server, which
+       * checks the same condition against real depth. Without it the browser
+       * accepted orders the server refuses, and the parity test said so. */
+      const last = +((NBX.core && NBX.core.engine && NBX.core.engine.universe || [])
+        .find((u) => u && u.symbol === sym) || {}).last || 0;
+      if (last > 0) {
+        const crosses = side === 'buy' ? px >= last : px <= last;
+        if (!crosses) {
+          return Object.assign({}, empty, {
+            error: 'no-cross',
+            blocked_by: 'no-cross',
+            message: 'no-cross: book did not trade through the limit ' + px +
+                     ' for ' + side + '; nothing filled',
+          });
+        }
+      }
       const exits = fallbackExits(px, side);
       const stop = +(payload.stop ?? exits.stop);
       const tp1 = +(payload.tp1 ?? exits.tp1), tp2 = +(payload.tp2 ?? exits.tp2);

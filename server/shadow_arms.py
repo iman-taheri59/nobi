@@ -31,6 +31,8 @@ from __future__ import annotations
 import os
 from typing import Any
 
+from regime import BLOCKING_STATES
+
 #: Promotion threshold shared with ta_engine / journal.
 LONG_MIN = 68.0
 
@@ -104,7 +106,12 @@ def score(snap: dict[str, Any], regime_state: str | None) -> dict[str, Any]:
             }
             continue
         if spec["rule"] == "live+regime":
-            blocked = live_dir == "LONG" and regime_state == "risk-off"
+            # `risk-off` was the only blocking state this arm knew about, so in
+            # an `fx-shock` regime it recorded "nothing blocks" while the live
+            # path was blocking. That is not an arm result, it is a
+            # disagreement about what the rule is. `BLOCKING_STATES` is the
+            # engine's own definition; use it rather than a copy.
+            blocked = live_dir == "LONG" and regime_state in BLOCKING_STATES
             out[name] = {
                 "composite": snap.get("composite"),
                 "direction": "NEUTRAL" if blocked else live_dir,

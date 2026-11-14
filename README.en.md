@@ -2,7 +2,7 @@
 
 [فارسی](README.md) · **English**
 
-Working version: **2.5.7** (unreleased; last deployed version: 2.5.6) · Check [Releases](https://github.com/iman-taheri59/nobi/releases) for publication status.
+Working version: **2.5.8** (unreleased; last deployed version: 2.5.6) · Check [Releases](https://github.com/iman-taheri59/nobi/releases) for publication status.
 **License:** MIT ([`LICENSE`](LICENSE)) · **Security reports:** [`SECURITY.md`](SECURITY.md) · **Contributing:** [`CONTRIBUTING.md`](CONTRIBUTING.md)
 
 See [versioning and GitHub releases](docs/releases.en.md) for the rules on bumping
