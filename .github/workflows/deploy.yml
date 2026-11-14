@@ -34,6 +34,8 @@ jobs:
           fetch-depth: 0
 
       - name: Tag must point at main
+        env:
+          TAG: ${{ inputs.tag }}
         run: |
           git fetch --no-tags origin main
           if ! git merge-base --is-ancestor "${{ inputs.tag }}" origin/main; then
@@ -43,7 +45,13 @@ jobs:
           # VERSION file deployed happily and the release notes then described
           # a version the service was not running. The workflow waits for
           # production, so a mismatch must stop the deploy, not be swallowed.
-          want="${GITHUB_REF_NAME#v}"
+          # `GITHUB_REF_NAME` was the wrong variable: a workflow_dispatch run
+          # has no tag to name, so it held the *branch* ("main") and the check
+          # compared 2.5.8 with main and failed — every manual deploy died here
+          # before SSH, including the 2.5.8 one on 14 Nov, which reported
+          # "VERSION says 2.5.8 but the tag is main". The tag is an input, not
+          # the ref this workflow was triggered on.
+          want="${TAG#v}"
           have="$(cat VERSION)"
           if [ "$have" != "$want" ]; then
             echo "::error::VERSION says $have but the tag is $want"

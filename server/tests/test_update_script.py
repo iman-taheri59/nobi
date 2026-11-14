@@ -633,3 +633,23 @@ def test_the_fallback_still_proves_which_commit_landed():
     assert "git -C /opt/nobi rev-parse HEAD" in wf
     # An unreadable checkout must be a warning, not a green tick.
     assert "could not read the checkout's commit" in wf
+
+
+def test_the_deploy_checks_the_tag_it_was_given_not_the_ref_it_was_triggered_on():
+    """`workflow_dispatch` has no tag: `GITHUB_REF_NAME` is the branch.
+
+    On 14 Nov the `Deploy v2.5.8` run died in its first step with
+    `VERSION says 2.5.8 but the tag is main` — the check compared the installed
+    version against the *branch* the workflow was dispatched from, so every
+    manual deploy failed before the SSH step ever ran, and the only thing the
+    failure proved was that the workflow could not start.
+    """
+    wf = (ROOT / ".github" / "workflows" / "deploy.yml").read_text(encoding="utf-8")
+    assert 'want="${GITHUB_REF_NAME#v}"' not in wf, (
+        "the tag version must come from the `tag` input, not from the ref"
+    )
+    assert 'want="${TAG#v}"' in wf
+    # The input has to reach the step that reads it.
+    step = wf[wf.index("- name: Tag must point at main"):wf.index("- name: SSH setup")]
+    assert "TAG: ${{ inputs.tag }}" in step
+    assert "if [ \"$have\" != \"$want\" ]" in step
