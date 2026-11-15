@@ -125,7 +125,8 @@ if not OLD_SCRIPT:  # a shallow clone has no history to show
 def test_a_new_flag_is_not_sent_to_an_old_script(tmp_path):
     called, code, log = _dispatch(tmp_path, OLD_SCRIPT)
     assert code == 0, log
-    assert called == f"-n bash {tmp_path / 'box' / 'update_arvan.sh'} --yes --backup --verify", log
+    assert called == (f"-n bash {tmp_path / 'box' / 'update_arvan.sh'} "
+                      "--yes --backup --verify --keep-local-edits"), log
     assert "predates --ref" in log, "the fallback has to say it fell back"
 
 
@@ -159,10 +160,10 @@ def test_the_dry_run_does_not_die_where_the_update_would(tmp_path):
     like a failure of the release. It carried the same `--ref`."""
     called, code, log = _dispatch(tmp_path, OLD_SCRIPT, step="Dry run")
     assert code == 0, log
-    assert called == f"-n bash {tmp_path / 'box' / 'update_arvan.sh'} --check", called
+    assert called == f"-n bash {tmp_path / 'box' / 'update_arvan.sh'} --check --keep-local-edits", called
     called, code, log = _dispatch(tmp_path, NEW_SCRIPT, step="Dry run")
     assert code == 0, log
-    assert "--check --ref v2.5.8" in called, called
+    assert "--check --keep-local-edits --ref v2.5.8" in called, called
 
 
 def test_the_tag_never_travels_through_the_shell_twice():
