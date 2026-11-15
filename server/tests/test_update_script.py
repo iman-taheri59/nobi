@@ -616,11 +616,19 @@ def test_the_deploy_workflow_does_not_hand_new_flags_to_an_old_script():
     """
     wf = (ROOT / ".github" / "workflows" / "deploy.yml").read_text(encoding="utf-8")
     # The flag set is decided at run time, by looking at the installed script.
-    assert 'grep -q -- "--accept-unit-change)" /opt/nobi/scripts/update_arvan.sh' in wf
-    # The base flag set is the contract even the 2.5.6 parser understands;
-    # `--keep-local-edits` is added to it only when the installed script knows
-    # that arm too, which is what the `case` above decides.
-    assert 'flags="--yes --backup --verify --keep-local-edits"' in wf
+    # The path now lives in a variable so every flag is decided against the same
+    # file; the check itself is still the `case` arm, not the word.
+    assert 'installed=/opt/nobi/scripts/update_arvan.sh' in wf
+    assert 'grep -q -- "--accept-unit-change)" "$installed"' in wf
+    # The base flag set is the contract even the 2.5.6 parser understands, and
+    # nothing is appended to it before a check has said the parser has that arm
+    # — `--keep-local-edits` in the base list is exactly the "unknown argument"
+    # that killed 2.5.8's step 8 one flag later than --ref did.
+    assert 'flags="--yes --backup --verify"' in wf
+    keep = wf.index('grep -q -- "--keep-local-edits)"')
+    assert keep < wf.index("flags=\"$flags --keep-local-edits\""), (
+        "the flag must be appended only after the parser was asked about it"
+    )
     assert 'flags="$flags --accept-unit-change --ref $tag"' in wf
     # The unconditional call is gone — that is the line that died on 2.5.6.
     assert "update_arvan.sh --yes --backup --verify --accept-unit-change --ref ${{ inputs.tag }}" not in wf

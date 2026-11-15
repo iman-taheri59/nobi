@@ -85,17 +85,34 @@ def _tag_argument(name: str = "Update") -> str:
     return sent[: sent.index("'", 1) + 1]
 
 
-def _dispatch(tmp_path: Path, installed_script: str, step: str = "Update") -> tuple[str, int, str]:
-    """Run the remote script with `sudo` replaced by a recorder."""
+def _dispatch(tmp_path: Path, installed_script: str, step: str = "Update",
+              *, readable: bool = True) -> tuple[str, int, str]:
+    """Run the remote script with `sudo` replaced by a recorder.
+
+    `sudo -u nobi cat` is part of the real step (the checkout belongs to the
+    service user, so the deploy account may not be able to read it), so the stub
+    answers it the way `sudo` would: the file's contents when it is allowed,
+    nothing and a non-zero status when `readable=False`.
+    """
     box = tmp_path / "box"
     box.mkdir(exist_ok=True)
     installed = box / "update_arvan.sh"
     installed.write_text(installed_script, encoding="utf-8")
+    if not readable:
+        installed.chmod(0o600)  # the deploy account is not the owner
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir(exist_ok=True)
     log = tmp_path / "sudo.log"
     (fake_bin / "sudo").write_text(
-        f'#!/bin/sh\necho "$*" >> {log}\nexit 0\n', encoding="utf-8")
+        "#!/bin/sh\n"
+        # `sudo -n -u nobi cat FILE` -> the contents (or a refusal)
+        'if [ "$4" = "cat" ]; then\n'
+        f'  if [ {1 if readable else 0} -eq 1 ]; then cat "$5"; exit 0; fi\n'
+        '  echo "sudo: a password is required" >&2; exit 1\n'
+        'fi\n'
+        f'echo "$*" >> {log}\n'
+        "exit 0\n",
+        encoding="utf-8")
     (fake_bin / "sudo").chmod(0o755)
     script = _remote_script(step).replace(INSTALLED, str(installed))
     path = tmp_path / "remote.sh"
@@ -125,8 +142,10 @@ if not OLD_SCRIPT:  # a shallow clone has no history to show
 def test_a_new_flag_is_not_sent_to_an_old_script(tmp_path):
     called, code, log = _dispatch(tmp_path, OLD_SCRIPT)
     assert code == 0, log
-    assert called == (f"-n bash {tmp_path / 'box' / 'update_arvan.sh'} "
-                      "--yes --backup --verify --keep-local-edits"), log
+    # The old parser gets only what it understands — a run that adds a flag to
+    # the list before checking for it is exactly how `unknown argument:
+    # --keep-local-edits` happened on 2.5.8's step 8.
+    assert called == f"-n bash {tmp_path / 'box' / 'update_arvan.sh'} --yes --backup --verify", log
     assert "predates --ref" in log, "the fallback has to say it fell back"
 
 
@@ -160,7 +179,7 @@ def test_the_dry_run_does_not_die_where_the_update_would(tmp_path):
     like a failure of the release. It carried the same `--ref`."""
     called, code, log = _dispatch(tmp_path, OLD_SCRIPT, step="Dry run")
     assert code == 0, log
-    assert called == f"-n bash {tmp_path / 'box' / 'update_arvan.sh'} --check --keep-local-edits", called
+    assert called == f"-n bash {tmp_path / 'box' / 'update_arvan.sh'} --check", called
     called, code, log = _dispatch(tmp_path, NEW_SCRIPT, step="Dry run")
     assert code == 0, log
     assert "--check --keep-local-edits --ref v2.5.8" in called, called
@@ -206,3 +225,52 @@ def test_the_remote_script_never_reads_an_environment_variable_it_cannot_have():
     assert out.returncode != 0, "the shape this test forbids was supposed to fail"
     assert "TAG: unbound variable" in out.stderr, out.stderr
     assert "reached" not in out.stdout
+
+
+@pytest.mark.skipif(os.name != "posix", reason="the remote side is a POSIX shell")
+def test_the_command_line_and_the_warning_never_disagree(tmp_path):
+    """The flag list is built from the checks, never from optimism.
+
+    14 Nov, 03:1x: step 8 printed
+
+        Warning: the installed update script predates --ref; this run installs
+        origin/main.
+        running: update_arvan.sh --yes --backup --verify --keep-local-edits
+        x  unknown argument: --keep-local-edits (--help lists them)
+
+    The warning said the run had fallen back to the contract the old script
+    understands; the command line had `--keep-local-edits` on it anyway, because
+    it was appended to the base list *before* the one check the step ran. The
+    release then died in the old script's case loop, two lines in — the same
+    failure as --ref, one flag later.
+    """
+    # The 2.5.6 parser, verbatim: it must reject every flag it does not know.
+    old = _dispatch(tmp_path, OLD_SCRIPT)[0]
+    assert "--keep-local-edits" not in old, old
+    assert "--ref" not in old, old
+    assert "--accept-unit-change" not in old, old
+
+    # A script that knows everything gets everything, in one place.
+    new = _dispatch(tmp_path, NEW_SCRIPT)[0]
+    assert "--keep-local-edits" in new and "--ref v2.5.8" in new, new
+
+
+@pytest.mark.skipif(os.name != "posix", reason="the remote side is a POSIX shell")
+def test_a_checkout_the_deploy_account_cannot_read_is_asked_through_sudo(tmp_path):
+    """The detector must not answer "old script" because it was not allowed to look.
+
+    `/opt/nobi` is chowned to the service user by `deploy_arvan.sh`, and the
+    workflow's account is `deploy`. A bare `grep` on a file it cannot read exits
+    non-zero, which the step used to read as "the script is old" — a decision
+    made from a permissions error. The file is read as the service user
+    (`sudo -u nobi cat`), and only if that is refused does the plain read get a
+    turn.
+    """
+    body = _remote_script("Update")
+    assert "sudo -n -u nobi cat" in body, (
+        "the installed script has to be read as its owner, or the answer is a"
+        " permissions error dressed up as an old script"
+    )
+    called, code, log = _dispatch(tmp_path, NEW_SCRIPT, readable=False)
+    assert code == 0, log
+    assert "--accept-unit-change --ref v2.5.8" in called, called

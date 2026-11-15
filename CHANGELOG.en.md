@@ -64,7 +64,9 @@ scoring, R:R or the universe; what changes is whether what was displayed was tru
 
 - **A hand edit on the server blocks a deploy — but only when it is really at risk:** on 14 Nov `/opt/nobi` held `M server/paper_trading.py`, and the old guard refused any modified tracked file; that same box was accumulating `server/backtest_reports/*.json`, which under the same rule would have blocked every future deploy for nothing. The guard now asks the incoming diff: a file that is edited here **and** rewritten by this update blocks (named, with the way out); a modified file the update does not touch is only reported. `--keep-local-edits` is the unattended path: it writes the diff to `/srv/nobi-data/local-edits-<stamp>.patch`, prints it into the deploy log, and stashes it — so nothing is discarded and the deploy is not stopped. `deploy.yml` adds that flag only when the installed script has the `case` arm for it (the bootstrap question). Two new tests run against a real clone: one blocks a product edit the update rewrites and then checks the patch and the stash, the other proves a committed backtest report stops nothing.
 
-`pytest`: 1,911 -> 1,968. `ruff` and `mypy` clean. Each new test was run against the previous commit first and failed there.
+- **`--keep-local-edits` was sent to the old script too:** the `Update` step built its flag list as `--yes --backup --verify --keep-local-edits` and only *then* ran a single check. On a host with the older script the log said "predates --ref" while the command line still carried the new flag, and the old parser died on `unknown argument: --keep-local-edits` — the same failure as `--ref`, one flag later. Each flag is now decided on its own from the `case` arm of the installed file, and the warning and the command line cannot disagree. The installed file is read with `sudo -n -u nobi cat`, because the checkout belongs to the service user and a bare `grep` can answer a permissions error as "old script". Two tests.
+
+`pytest`: 1,911 -> 1,970. `ruff` and `mypy` clean. Each new test was run against the previous commit first and failed there.
 
 ## 2.5.7
 
