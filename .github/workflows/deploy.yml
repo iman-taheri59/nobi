@@ -108,8 +108,14 @@ jobs:
           ssh prod "bash -s -- '$TAG'" <<'REMOTE'
           set -eu
           tag="$1"
-          flags="--check --keep-local-edits"
-          if grep -q -- "--accept-unit-change)" /opt/nobi/scripts/update_arvan.sh; then
+          flags="--check"
+          installed=/opt/nobi/scripts/update_arvan.sh
+          # Same question, same answer as the Update step: the dry run must send
+          # exactly the flags the real run sends, or it is not a dry run of it.
+          if grep -q -- "--keep-local-edits)" "$installed" 2>/dev/null; then
+            flags="$flags --keep-local-edits"
+          fi
+          if grep -q -- "--accept-unit-change)" "$installed" 2>/dev/null; then
             flags="$flags --ref $tag"
           fi
           echo "running: update_arvan.sh $flags"
@@ -151,15 +157,39 @@ jobs:
           # patch under /srv/nobi-data, prints it into this log and stashes it,
           # instead of refusing — which is what happened on 14 Nov when
           # /opt/nobi held a modified server/paper_trading.py and step 8 stopped.
-          flags="--yes --backup --verify --keep-local-edits"
-          # The case *arm*, not the word: a comment that mentions the flag is not
+          flags="--yes --backup --verify"
+          # Every flag is asked for the same way: does the parser on the box have
+          # the `case` arm for it? A separate check per flag is not pedantry —
+          # 2.5.8's step 8 died on `unknown argument: --keep-local-edits`, which
+          # this step itself added to the list *before* the one check it ran,
+          # while the warning it printed said the run was falling back to the old
+          # contract. The warning and the command line disagreed, and the command
+          # line won.
+          #
+          # The `case` *arm*, not the word: a comment that mentions a flag is not
           # an argument parser that accepts it.
-          if grep -q -- "--accept-unit-change)" /opt/nobi/scripts/update_arvan.sh; then
+          installed=/opt/nobi/scripts/update_arvan.sh
+          if sudo -n -u nobi cat "$installed" 2>/dev/null | grep -q -- "--accept-unit-change)"; then
             echo "the installed update script knows --ref and --accept-unit-change"
             flags="$flags --accept-unit-change --ref $tag"
           else
-            echo "::warning::the installed update script predates --ref; this run installs origin/main."
-            echo "the commit check in the next step still has to pass"
+            # Two ways to read this file, because this is the run that stops: the
+            # checkout belongs to the service user (safe.directory), and the
+            # deploy account may not be able to read it at all.
+            if grep -q -- "--accept-unit-change)" "$installed" 2>/dev/null; then
+              echo "the installed update script knows --ref and --accept-unit-change"
+              flags="$flags --accept-unit-change --ref $tag"
+            else
+              echo "::warning::the installed update script predates --ref; this run installs origin/main."
+              echo "the commit check in the next step still has to pass"
+            fi
+          fi
+          if grep -q -- "--keep-local-edits)" "$installed" 2>/dev/null \
+             || sudo -n -u nobi cat "$installed" 2>/dev/null | grep -q -- "--keep-local-edits)"; then
+            flags="$flags --keep-local-edits"
+          else
+            echo "::warning::the installed script has no --keep-local-edits; if the checkout is dirty this run will stop"
+            echo "and the edit stays where it is, which is the safe answer for one run"
           fi
           echo "running: update_arvan.sh $flags"
           # shellcheck disable=SC2086  # the flag list is built here on purpose
