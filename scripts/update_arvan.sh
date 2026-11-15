@@ -14,6 +14,7 @@
 #   sudo bash scripts/update_arvan.sh --backup     # state_backup.py snapshot of the 3 databases first
 #   sudo bash scripts/update_arvan.sh --verify     # then run check_deploy.py
 #   sudo bash scripts/update_arvan.sh --public https://nobi.example.ir   # same, with a URL
+#   sudo bash scripts/update_arvan.sh --keep-local-edits   # save+stash an edit the update rewrites
 #
 # It never touches /etc/nobi/nobi.env, the data directory, or the firewall. The
 # service is restarted, so plan a minute of downtime.
@@ -47,6 +48,10 @@ PUBLIC_URL="${PUBLIC_URL:-}"
 #: extra step. Off by default: the checkout is owned by the service user, so a
 #: file there is not evidence of what root should run.
 ACCEPT_UNIT_CHANGE=0
+#: Save a local edit to a patch and stash it, instead of refusing the update.
+#: The deploy workflow passes this: an unattended run cannot answer a prompt, and
+#: the box is the only place that edit exists.
+STASH_EDITS=0
 DO_CHECK=0
 DO_RESET=0
 DO_BACKUP=0
@@ -70,6 +75,7 @@ while [ $# -gt 0 ]; do
     --yes|-y)  ASSUME_YES=1; shift ;;
     --force)   ALLOW_DIRTY=1; shift ;;
     --accept-unit-change) ACCEPT_UNIT_CHANGE=1; shift ;;
+    --keep-local-edits) STASH_EDITS=1; shift ;;
     --public)  PUBLIC_URL="${2:-}"; DO_VERIFY=1; shift 2 ;;
     --ref)     REF="${2:-}"; shift 2 ;;
     -h|--help) sed -n '2,20p' "$0"; exit 0 ;;
@@ -235,22 +241,81 @@ for path in $(runas git -C "$APP_DIR" ls-files --others --exclude-standard 2>/de
 "
   fi
 done
-if [ -n "$BLOCKING" ] || [ -n "$COLLIDE" ]; then
-  printf '\n    the checkout has local changes:\n'
-  if [ -n "$BLOCKING" ]; then
-    printf '%s\n' "$BLOCKING" | sed 's/^/      /'
+# What is actually at risk is not "a modified file" — it is a modified file that
+# the incoming change also writes. Measured on capoy.ir, 14 Nov: the checkout
+# held `M server/paper_trading.py` while `server/backtest_reports/*.json` was
+# accumulating from the Backtest page. Refusing on any of them blocks a deploy
+# for nothing; ignoring them overwrites a hand edit to the file that monitors
+# open positions. So the question is asked of the diff, not of the file name.
+INCOMING="$(runas git -C "$APP_DIR" diff --name-only "$OLD_SHA" "$REMOTE_SHA" 2>/dev/null || true)"
+AT_RISK=""
+for path in $(printf '%s\n' "$BLOCKING" | awk '{print $2}'); do
+  [ -n "$path" ] || continue
+  # One grep, no early exit: `grep -q` inside a pipeline under `pipefail` turns
+  # SIGPIPE into 141 and reports a match as a miss.
+  if printf '%s\n' "$INCOMING" | grep -xF "$path" >/dev/null 2>&1; then
+    AT_RISK="${AT_RISK}${path}
+"
   fi
-  if [ -n "$COLLIDE" ]; then
-    printf '%s\n' "$COLLIDE" | sed 's/^/      ?? (origin would overwrite) /'
-  fi
+done
+if [ -n "$AT_RISK" ]; then
+  printf '\n    the checkout has local changes to files this update rewrites:\n'
+  printf '%s\n' "$AT_RISK" | sed 's/^/      /'
   if [ "$DO_RESET" -eq 1 ]; then
     warn "--reset will DESTROY the changes listed above"
+  elif [ "$STASH_EDITS" -eq 1 ]; then
+    # Saved where the service can lose it only on purpose: a patch outside the
+    # checkout, plus a stash inside it. Nothing is discarded, and the log says
+    # where to find both.
+    STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+    PATCH="${DATA_DIR%/}/local-edits-${STAMP}.patch"
+    # `--` then the paths, one argument each: `$(\"$AT_RISK" | tr ...)` word-split
+    # the list, and a path with a space would have been read as two pathspecs.
+    # The whole diff is written, not only the paths at risk: a partial patch is
+    # worse than none when it is the record of somebody's edit.
+    runas git -C "$APP_DIR" diff > "$PATCH"
+    chmod 640 "$PATCH" 2>/dev/null || true
+    chown "$SERVICE_USER:$SERVICE_USER" "$PATCH" 2>/dev/null || true
+    printf '    the edit is saved to %s\n' "$PATCH"
+    printf '    and previewed here, so the deploy log carries it too:\n'
+    head -60 "$PATCH" | sed 's/^/      | /'
+    runas git -C "$APP_DIR" stash push --quiet -m "nobi update $STAMP (--keep-local-edits)" -- \
+      $(printf '%s' "$AT_RISK") \
+      || die "could not stash the edits above. Nothing was changed."
+    warn "stashed. Read it back with: sudo -u $SERVICE_USER git -C $APP_DIR stash show -p stash@{0}"
+  elif [ "$ALLOW_DIRTY" -eq 1 ]; then
+    warn "--force was given over product code the incoming change also edits"
+    printf '%s\n' "$AT_RISK" | sed 's/^/      /'
   else
-    die "refusing to update a dirty checkout. 'git pull --ff-only' would fail here
-    anyway. Commit the changes, or stash them (git -C $APP_DIR stash), or pass
-    --reset to discard them deliberately (that is the fork/branch path)."
+    warn "save them: sudo -u $SERVICE_USER git -C $APP_DIR diff > ~/server-edits.patch"
+    die "refusing to update a dirty checkout: the files above are edited here AND
+    rewritten by this update, so a fast-forward cannot keep them. Save the diff,
+    stash it, or re-run with --keep-local-edits to have this script save and
+    stash it for you, or with --reset to discard it deliberately."
   fi
-  [ "$ALLOW_DIRTY" -eq 1 ] || [ "$ASSUME_YES" -eq 1 ] || die "pass --force to discard them anyway"
+elif [ -n "$BLOCKING" ]; then
+  # Not at risk, and still not silently accepted: an unattended run must not be
+  # the thing that decided an unexplained edit was fine. The incoming change
+  # does not rewrite these, so nothing is lost either way — but the run says
+  # what it found and stops for a human unless --force says otherwise.
+  printf '\n    the checkout has local changes this update does not rewrite:\n'
+  printf '%s\n' "$BLOCKING" | sed 's/^/      /'
+  if [ "$ALLOW_DIRTY" -eq 1 ]; then
+    warn "--force was given: a fast-forward keeps them; carrying on"
+  else
+    die "refusing to update a checkout with local changes to tracked files.
+    The incoming change does not touch the files listed above, so nothing of
+    yours would be lost — but this script does not carry on over an edit it
+    cannot explain. Re-run with --force to proceed, or stash them first."
+  fi
+fi
+if [ -n "$COLLIDE" ]; then
+  printf '\n    untracked files that this update would write over:\n'
+  printf '%s\n' "$COLLIDE" | sed 's/^/      ?? /'
+  if [ "$DO_RESET" -ne 1 ] && [ "$ALLOW_DIRTY" -ne 1 ]; then
+    die "refusing to overwrite untracked paths. Move them aside, or pass --reset/--force."
+  fi
+  warn "moving them aside is the safer choice; --reset/--force was given"
 fi
 # Untracked leftovers are not work and not a merge conflict; say they are there
 # so an operator is not surprised by them later, and move on.

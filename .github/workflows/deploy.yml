@@ -108,7 +108,7 @@ jobs:
           ssh prod "bash -s -- '$TAG'" <<'REMOTE'
           set -eu
           tag="$1"
-          flags="--check"
+          flags="--check --keep-local-edits"
           if grep -q -- "--accept-unit-change)" /opt/nobi/scripts/update_arvan.sh; then
             flags="$flags --ref $tag"
           fi
@@ -146,7 +146,12 @@ jobs:
           ssh prod "bash -s -- '$TAG'" <<'REMOTE'
           set -eu
           tag="$1"
-          flags="--yes --backup --verify"
+          # --keep-local-edits: the box is the only place a hand edit exists, and
+          # an unattended run cannot answer a prompt. The script saves it to a
+          # patch under /srv/nobi-data, prints it into this log and stashes it,
+          # instead of refusing — which is what happened on 14 Nov when
+          # /opt/nobi held a modified server/paper_trading.py and step 8 stopped.
+          flags="--yes --backup --verify --keep-local-edits"
           # The case *arm*, not the word: a comment that mentions the flag is not
           # an argument parser that accepts it.
           if grep -q -- "--accept-unit-change)" /opt/nobi/scripts/update_arvan.sh; then

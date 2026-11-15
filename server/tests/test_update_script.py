@@ -251,7 +251,7 @@ def test_a_real_install_with_only_a_cache_directory_still_updates(tmp_path):
     _git(clone, "reset", "--hard", "--quiet", "HEAD")
     (clone / "keep.txt").write_text("edited by hand\n", encoding="utf-8")
     second = run_guard()
-    assert "refusing to update a dirty checkout" in second, second
+    assert "refusing to update a checkout with local changes" in second, second
     assert "keep.txt" in second, "the refusal must name the file it is protecting"
 
     # and an untracked path that origin would overwrite is the third case
@@ -264,7 +264,7 @@ def test_a_real_install_with_only_a_cache_directory_still_updates(tmp_path):
     _git(clone, "fetch", "--quiet", "origin")
     (clone / "landing.txt").write_text("mine\n", encoding="utf-8")
     third = run_guard()
-    assert "refusing to update a dirty checkout" in third, third
+    assert "refusing to overwrite untracked paths" in third, third
     assert "landing.txt" in third, "a path origin would overwrite must block too"
 
 
@@ -617,7 +617,10 @@ def test_the_deploy_workflow_does_not_hand_new_flags_to_an_old_script():
     wf = (ROOT / ".github" / "workflows" / "deploy.yml").read_text(encoding="utf-8")
     # The flag set is decided at run time, by looking at the installed script.
     assert 'grep -q -- "--accept-unit-change)" /opt/nobi/scripts/update_arvan.sh' in wf
-    assert 'flags="--yes --backup --verify"' in wf
+    # The base flag set is the contract even the 2.5.6 parser understands;
+    # `--keep-local-edits` is added to it only when the installed script knows
+    # that arm too, which is what the `case` above decides.
+    assert 'flags="--yes --backup --verify --keep-local-edits"' in wf
     assert 'flags="$flags --accept-unit-change --ref $tag"' in wf
     # The unconditional call is gone — that is the line that died on 2.5.6.
     assert "update_arvan.sh --yes --backup --verify --accept-unit-change --ref ${{ inputs.tag }}" not in wf
@@ -656,3 +659,168 @@ def test_the_deploy_checks_the_tag_it_was_given_not_the_ref_it_was_triggered_on(
     step = wf[wf.index("- name: Tag must point at main"):wf.index("- name: SSH setup")]
     assert "TAG: ${{ inputs.tag }}" in step
     assert "if [ \"$have\" != \"$want\" ]" in step
+
+
+def test_product_code_the_incoming_change_touches_blocks_even_with_yes(tmp_path):
+    """A deploy must not overwrite an edit to the code it is deploying.
+
+    Measured on capoy.ir, 14 Nov: `/opt/nobi` held `M server/paper_trading.py`.
+    Nobody knows whether that was a hand fix that never made it upstream or a
+    leftover; the checkout belongs to the service user and the file monitors
+    open positions. The old guard refused the update for *any* modified file —
+    and that same box was accumulating `server/backtest_reports/*.json`, which
+    would have blocked every deploy with nothing at risk. So the question is
+    asked of the incoming diff: a file edited here *and* rewritten by the update
+    blocks, and the run says how to save it.
+    """
+    if os.name != "posix" or shutil.which("bash") is None:
+        pytest.skip("the update script is bash; running it needs a POSIX shell")
+
+    text = _text()
+    start = text.index('STATUS="$(runas git -C "$APP_DIR" status --porcelain')
+    end = text.index("\nfi\n", text.index("LEFTOVER=", start)) + len("\nfi\n")
+    guard = text[start:end]
+    assert "AT_RISK" in guard
+    assert 'diff --name-only "$OLD_SHA" "$REMOTE_SHA"' in guard, (
+        "what is at risk is decided by the incoming change, not by the file name"
+    )
+    assert "--keep-local-edits" in _code_without_comments(), (
+        "an unattended run needs a way to save the edit instead of dying on it"
+    )
+
+    upstream = tmp_path / "upstream"
+    upstream.mkdir()
+    _git(upstream, "-c", "init.defaultBranch=main", "init", "--quiet", ".")
+    (upstream / "server").mkdir()
+    (upstream / "server" / "paper_trading.py").write_text("equity = 1\n", encoding="utf-8")
+    (upstream / "VERSION").write_text("2.1.3\n", encoding="utf-8")
+    _git(upstream, "add", "-A")
+    _git(upstream, "-c", "user.email=t@e.st", "-c", "user.name=t", "commit", "--quiet", "-m", "one")
+    _git(upstream, "update-ref", "refs/remotes/origin/main", "HEAD")
+    old_sha = subprocess.run(["git", "-C", str(upstream), "rev-parse", "HEAD"],
+                             capture_output=True, text=True, encoding="utf-8").stdout.strip()
+
+    clone = tmp_path / "clone"
+    subprocess.run(["git", "clone", "--quiet", str(upstream), str(clone)],
+                   check=True, capture_output=True)
+    (clone / "server" / "paper_trading.py").write_text("equity = 1  # hand edit\n", encoding="utf-8")
+    # the incoming commit touches exactly that file
+    (upstream / "server" / "paper_trading.py").write_text("equity = 2\n", encoding="utf-8")
+    _git(upstream, "add", "-A")
+    _git(upstream, "-c", "user.email=t@e.st", "-c", "user.name=t", "commit", "--quiet", "-m", "two")
+    _git(upstream, "update-ref", "refs/remotes/origin/main", "HEAD")
+    _git(clone, "fetch", "--quiet", "origin")
+    new_sha = subprocess.run(["git", "-C", str(upstream), "rev-parse", "HEAD"],
+                             capture_output=True, text=True, encoding="utf-8").stdout.strip()
+
+    data = tmp_path / "data"
+    data.mkdir()
+
+    def run_guard(*, reset: int = 0, force: int = 0, keep: int = 0) -> str:
+        harness = (
+            'runas() { "$@"; }\n'
+            'warn() { printf "WARN %s\\n" "$*"; }\n'
+            'die() { printf "DIE %s\\n" "$*" >&2; exit 1; }\n'
+            f'APP_DIR={str(clone)!r}\nBRANCH=main\nDO_RESET={reset}\n'
+            f'ALLOW_DIRTY={force}\nASSUME_YES=1\nSTASH_EDITS={keep}\n'
+            f'DATA_DIR={str(data)!r}\nSERVICE_USER={os.environ.get("USER", "user")!r}\n'
+            f'OLD_SHA={old_sha}\nREMOTE_SHA={new_sha}\n' + guard
+        )
+        proc = subprocess.run(["bash", "-c", harness], capture_output=True, text=True,
+                              encoding="utf-8", timeout=120)
+        return proc.stdout + proc.stderr
+
+    # `--yes` is not consent to overwrite product code: this must stop.
+    refused = run_guard()
+    assert "DIE" in refused, refused
+    assert "paper_trading.py" in refused
+    assert "keep-local-edits" in refused, "the refusal has to offer the way out"
+
+    # --keep-local-edits saves the edit to a patch, previews it, and stashes it.
+    kept = run_guard(keep=1)
+    assert "DIE" not in kept, kept
+    patches = list(data.glob("local-edits-*.patch"))
+    assert patches, kept
+    assert "hand edit" in patches[0].read_text(encoding="utf-8")
+    assert "hand edit" in kept, "the diff belongs in the deploy log, not only on disk"
+    status = subprocess.run(["git", "-C", str(clone), "status", "--porcelain"],
+                            capture_output=True, text=True, encoding="utf-8").stdout
+    assert "paper_trading.py" not in status, "the edit is stashed, not still in the way"
+    # put the checkout back the way it was for the two paths below
+    subprocess.run(["git", "-C", str(clone), "checkout", "--", "server/paper_trading.py"],
+                   capture_output=True)
+    subprocess.run(["git", "-C", str(clone), "stash", "drop", "--quiet"],
+                   capture_output=True)
+
+    # --force is informed consent, and it says what it is doing.
+    (clone / "server" / "paper_trading.py").write_text("equity = 1  # hand edit\n", encoding="utf-8")
+    forced = run_guard(force=1)
+    assert "DIE" not in forced, forced
+    assert "--force was given" in forced, forced
+
+    # --reset is the fork/branch path: it destroys, and has to say so.
+    reset = run_guard(reset=1)
+    assert "DIE" not in reset, reset
+    assert "DESTROY" in reset, reset
+
+
+def test_a_backtest_report_does_not_block_a_deploy(tmp_path):
+    """Artefacts a running install writes are not "local work".
+
+    `server/backtest_reports/*.json` is written by the Backtest page. The
+    checkout is the service user's, so the web process can create them any time
+    — and on capoy.ir they were there next to the hand edit that actually
+    mattered. A guard that cannot tell them apart either blocks every deploy or
+    overwrites a fix; this one asks the incoming diff which files are at risk.
+    """
+    if os.name != "posix" or shutil.which("bash") is None:
+        pytest.skip("the update script is bash; running it needs a POSIX shell")
+
+    text = _text()
+    start = text.index('STATUS="$(runas git -C "$APP_DIR" status --porcelain')
+    end = text.index("\nfi\n", text.index("LEFTOVER=", start)) + len("\nfi\n")
+    guard = text[start:end]
+
+    upstream = tmp_path / "upstream"
+    upstream.mkdir()
+    _git(upstream, "-c", "init.defaultBranch=main", "init", "--quiet", ".")
+    (upstream / "server").mkdir()
+    (upstream / "server" / "paper_trading.py").write_text("equity = 1\n", encoding="utf-8")
+    (upstream / "server" / "backtest_reports").mkdir()
+    (upstream / "server" / "backtest_reports" / "old.json").write_text("{}\n", encoding="utf-8")
+    _git(upstream, "add", "-A")
+    _git(upstream, "-c", "user.email=t@e.st", "-c", "user.name=t", "commit", "--quiet", "-m", "one")
+    _git(upstream, "update-ref", "refs/remotes/origin/main", "HEAD")
+    old_sha = subprocess.run(["git", "-C", str(upstream), "rev-parse", "HEAD"],
+                             capture_output=True, text=True, encoding="utf-8").stdout.strip()
+
+    clone = tmp_path / "clone"
+    subprocess.run(["git", "clone", "--quiet", str(upstream), str(clone)],
+                   check=True, capture_output=True)
+    report = clone / "server" / "backtest_reports" / "RUNUSDT-1h-123.json"
+    report.write_text('{"trades": []}\n', encoding="utf-8")
+    _git(clone, "add", "-A")
+    _git(clone, "-c", "user.email=t@e.st", "-c", "user.name=t", "commit", "--quiet", "-m", "report")
+
+    # the incoming change touches nothing the box changed
+    (upstream / "server" / "paper_trading.py").write_text("equity = 2\n", encoding="utf-8")
+    _git(upstream, "add", "-A")
+    _git(upstream, "-c", "user.email=t@e.st", "-c", "user.name=t", "commit", "--quiet", "-m", "two")
+    _git(upstream, "update-ref", "refs/remotes/origin/main", "HEAD")
+    _git(clone, "fetch", "--quiet", "origin")
+    new_sha = subprocess.run(["git", "-C", str(upstream), "rev-parse", "HEAD"],
+                             capture_output=True, text=True, encoding="utf-8").stdout.strip()
+
+    harness = (
+        'runas() { "$@"; }\n'
+        'warn() { printf "WARN %s\\n" "$*"; }\n'
+        'die() { printf "DIE %s\\n" "$*" >&2; exit 1; }\n'
+        f'APP_DIR={str(clone)!r}\nBRANCH=main\nDO_RESET=0\nALLOW_DIRTY=0\nASSUME_YES=1\n'
+        f'OLD_SHA={old_sha}\nREMOTE_SHA={new_sha}\n' + guard
+    )
+    proc = subprocess.run(["bash", "-c", harness], capture_output=True, text=True,
+                          encoding="utf-8", timeout=120)
+    out = proc.stdout + proc.stderr
+    assert "DIE" not in out, out
+    # A committed report is not an edit at all, so the run says nothing about it.
+    assert "backtest_reports" not in out, out
