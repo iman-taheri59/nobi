@@ -720,48 +720,53 @@ def test_a_host_without_an_installed_unit_can_still_be_installed():
 def test_the_deploy_workflow_does_not_hand_new_flags_to_an_old_script():
     """The flag list is a consequence of a question asked on the box.
 
-    Three failures, one shape: the workflow assembled a command line from what it
-    *believed* about the installed script. `--ref` (14 Nov) and
-    `--keep-local-edits` (first 2.5.8 attempt) were both sent to a parser that
-    answers `unknown argument`, and the release read as broken code. The third
-    version put `--keep-local-edits` in the base list before the single check it
-    ran, so its own warning and its own command line disagreed.
+    Three released failures, one shape: the step assembled a command line from
+    what it *believed* about the script that would run.
 
-    Now the step asks the box which `case` arms the file has (one `ssh`, its
-    output captured), turns the answer into `CAP_*`, and passes those to the
-    remote script as arguments. Nothing is added to the command line that the
-    probe did not say `yes` to.
+      * `--ref` (14 Nov) and `--keep-local-edits` (first 2.5.8 attempt) were sent
+        to a parser that answers `unknown argument`, and the release read as
+        broken code;
+      * then `--keep-local-edits` was put in the base list *before* the single
+        check, so the step's warning and its command line disagreed;
+      * then the check itself was a `grep -q` in a pipe (141 on a match under
+        `pipefail`), and a heredoc — which is stdin, readable once — could not
+        both inspect and run;
+      * and the script being checked was `/opt/nobi/scripts/…`, the *previous*
+        release's, because only a successful deploy replaces it. Four red runs
+        were spent editing a file the box never read.
+
+    So the step now: stages this run's script where the deploy account can write,
+    asks that file which `case` arms it has (one ssh, output captured), and gives
+    the answers to the remote script as arguments. Nothing reaches the command
+    line that the probe did not say `yes` to.
     """
     wf = (ROOT / ".github" / "workflows" / "deploy.yml").read_text(encoding="utf-8")
-    installed = "/opt/nobi/scripts/update_arvan.sh"
 
-    # The probe: one ssh call whose output is captured, then parsed.
+    # staged where the account may write; never installed over the root-owned file
+    assert "~/nobi-deploy/scripts/update_arvan.sh" in wf
+    assert "install -o root -g root" not in wf, (
+        "the deploy account cannot rewrite /opt/nobi; that produces"
+        " 'sudo: a password is required' and a red run"
+    )
+    # asked of the staged script, with the answer captured on the runner
     assert 'caps="$(ssh prod' in wf
-    assert f"installed={installed}" in wf
     assert "for arm in ref accept-unit-change keep-local-edits; do" in wf
-    assert 'grep -q -- "--$arm)"' in wf, "the arm is detected, not the word"
+    assert 'grep -q -- "--$arm)"' in wf, "the `case` arm is detected, not the word"
     assert "CAP_KEEP=yes" in wf and "CAP_REF=yes" in wf and "CAP_UNIT=yes" in wf
-
-    # The answer travels to the box as arguments, because `env:` does not cross ssh.
-    # No backslash before `$CAP_*`: a heredoc inside `$(...)` cannot be escaped,
-    # so a backslash there is a literal one and the answers arrive as one
-    # argument ("bash: line 2: $2: unbound variable", 17 Nov).
-    assert "ssh prod \"bash -s -- '$TAG' $CAP_REF $CAP_UNIT $CAP_KEEP\"" in wf
-    assert "\\$CAP_REF" not in wf
-    assert 'cap_keep="$4"' in wf
-
-    # And the command line only ever grows from that answer.
+    # and passed to the box as arguments, because `env:` does not cross ssh and a
+    # backslash inside `$(...)` is a literal backslash (three answers, one arg)
+    assert "ssh prod \"bash -s -- '$TAG' $CAP_REF $CAP_UNIT $CAP_KEEP '$RUN_SCRIPT'\"" in wf
+    assert 'cap_keep="$4"' in wf and 'script="$5"' in wf
+    # the command line only ever grows from that answer
     assert 'flags="--yes --backup --verify"' in wf
     assert 'flags="--check"' in wf
     assert wf.index('if [ "$cap_keep" = yes ]') < wf.index('flags="$flags --keep-local-edits"')
     assert wf.index('if [ "$cap_ref" = yes ]') < wf.index('flags="$flags --ref $tag"')
-    # --reset is the destructive path and has no business in a workflow.
+    # --reset is the destructive path and has no business in a workflow
     assert "--reset" not in wf
-    # The probe itself must not be a `grep -q` inside a pipe: under pipefail a
-    # match becomes 141 and a "yes" a "no" (the repo has a test for that shape).
-    first = wf.index("caps=\"$(ssh prod")
-    probe = wf[first:wf.index('          PROBE\n', first)]
-    assert 'if printf \'%s\' "$body" | grep -q -- "--$arm)"' in probe, probe
+    # The probe's own pipeline must not be `grep -q` on the *deciding* side; the
+    # runner parses its answer with `case`.
+    assert 'while IFS= read -r line; do' in wf
 
 
 def test_the_fallback_still_proves_which_commit_landed():

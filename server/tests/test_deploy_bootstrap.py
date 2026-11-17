@@ -97,8 +97,9 @@ def _run_probe(tmp_path: Path, installed_script: str, *, readable: bool = True) 
         "fi\nexit 0\n", encoding="utf-8")
     (fake_bin / "sudo").chmod(0o755)
     path = tmp_path / "probe.sh"
-    path.write_text(_probe_script().replace(INSTALLED, str(installed)), encoding="utf-8")
-    out = subprocess.run(["bash", str(path)], capture_output=True, text=True,
+    # the step passes the script to inspect as the probe's first argument
+    path.write_text(_probe_script(), encoding="utf-8")
+    out = subprocess.run(["bash", str(path), str(installed)], capture_output=True, text=True,
                          encoding="utf-8", env={"PATH": f"{fake_bin}:/usr/bin:/bin",
                                                 "HOME": str(tmp_path)})
     return out.stdout + out.stderr
@@ -160,6 +161,7 @@ def _dispatch(tmp_path: Path, installed_script: str, step: str = "Update",
     installed.write_text(installed_script, encoding="utf-8")
     if not readable:
         installed.chmod(0o600)  # the deploy account is not the owner
+    script_path = str(installed)
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir(parents=True, exist_ok=True)
     log = tmp_path / "sudo.log"
@@ -169,6 +171,14 @@ def _dispatch(tmp_path: Path, installed_script: str, step: str = "Update",
         'if [ "$4" = "cat" ]; then\n'
         f'  if [ {1 if readable else 0} -eq 1 ]; then cat "$5"; exit 0; fi\n'
         '  echo "sudo: a password is required" >&2; exit 1\n'
+        'fi\n'
+        # `sudo -n bash -c "bash <script> <flags>"` -> record the script and the
+        # flags, which is the command line this release is being judged on.
+        # `sudo -n bash -c "<command>"`: the command string is $5 and starts at
+        # the third argument of `sudo`'s own argv, which is `bash`.
+        'if [ "$3" = "bash" ] && [ "$4" = "-c" ]; then\n'
+        f'  shift 4; echo "$*" >> {log}\n'
+        '  exit 0\n'
         'fi\n'
         f'echo "$*" >> {log}\n'
         "exit 0\n",
@@ -180,7 +190,7 @@ def _dispatch(tmp_path: Path, installed_script: str, step: str = "Update",
     # The box does not inherit the runner's environment: the only way the tag
     # can arrive is the way the ssh command line sends it, as `$1`.
     env = {"PATH": f"{fake_bin}:/usr/bin:/bin", "HOME": str(tmp_path)}
-    out = subprocess.run(["bash", str(path), "v2.5.8", ref, unit, keep],
+    out = subprocess.run(["bash", str(path), "v2.5.8", ref, unit, keep, script_path],
                          capture_output=True, text=True, env=env, encoding="utf-8")
     called = log.read_text(encoding="utf-8").strip() if log.exists() else ""
     return called, out.returncode, out.stdout + out.stderr
@@ -205,8 +215,10 @@ def test_a_new_flag_is_not_sent_to_an_old_script(tmp_path):
     # The old parser gets only what it understands — a run that adds a flag to
     # the list before checking for it is exactly how `unknown argument:
     # --keep-local-edits` happened on 2.5.8's step 8.
-    assert called == f"-n bash {tmp_path / 'box' / 'update_arvan.sh'} --yes --backup --verify", log
-    assert "predates --ref" in log, "the fallback has to say it fell back"
+    # `sudo -n bash -c "bash <script> <flags>"` — the stub records the inner
+    # command line, which is what the release is judged on.
+    assert called.endswith(f"bash {tmp_path / 'box' / 'update_arvan.sh'} --yes --backup --verify"), log
+    assert "the script has no --ref" in log, "the fallback has to say it fell back"
 
 
 @pytest.mark.skipif(os.name != "posix", reason="the remote side is a POSIX shell")
@@ -239,7 +251,7 @@ def test_the_dry_run_does_not_die_where_the_update_would(tmp_path):
     like a failure of the release. It carried the same `--ref`."""
     called, code, log = _dispatch(tmp_path, OLD_SCRIPT, step="Dry run")
     assert code == 0, log
-    assert called == f"-n bash {tmp_path / 'box' / 'update_arvan.sh'} --check", called
+    assert called.endswith(f"bash {tmp_path / 'box' / 'update_arvan.sh'} --check"), called
     called, code, log = _dispatch(tmp_path, NEW_SCRIPT, step="Dry run")
     assert code == 0, log
     assert "--check --keep-local-edits --ref v2.5.8" in called, called
@@ -372,20 +384,31 @@ def test_the_whole_step_runs_with_the_capability_answers_expanded(tmp_path):
     (fake_bin / "sudo").write_text(
         "#!/bin/sh\n"
         'if [ "$4" = "cat" ]; then cat "$5"; exit 0; fi\n'
+        'if [ "$3" = "bash" ] && [ "$4" = "-c" ]; then echo "$5" >> ' + str(log) + '; exit 0; fi\n'
         f'echo "$*" >> {log}\n',
         encoding="utf-8")
     for script in (fake_bin / "ssh", fake_bin / "sudo"):
         script.chmod(0o755)
 
+    # The step stages the script *out of this run's checkout*, so the test gives
+    # it one: `scripts/update_arvan.sh` in a scratch tree that the step will find,
+    # and an ssh that lands on a HOME the step can write into.
+    fake_home = tmp_path / "deploy-home"
+    (fake_home / "nobi-deploy").mkdir(parents=True)
+    (fake_home / "nobi-deploy" / "scripts").mkdir()
+    checkout = tmp_path / "checkout"
+    (checkout / "scripts").mkdir(parents=True)
+    (checkout / "scripts" / "update_arvan.sh").write_text(NEW_SCRIPT, encoding="utf-8")
+
     for step in ("Update", "Dry run"):
         text = _step(step)["run"].replace(INSTALLED, str(installed))
         path = tmp_path / f"{step.replace(' ', '_')}.sh"
         path.write_text(text, encoding="utf-8")
-        env = {"PATH": f"{fake_bin}:/usr/bin:/bin", "HOME": str(tmp_path),
+        env = {"PATH": f"{fake_bin}:/usr/bin:/bin", "HOME": str(fake_home),
                "TAG": "v2.5.8"}
         log.write_text("", encoding="utf-8")
-        out = subprocess.run(["bash", str(path)], capture_output=True, text=True,
-                             encoding="utf-8", env=env)
+        out = subprocess.run(["bash", "-c", f"cd {checkout} && bash {path}"],
+                             capture_output=True, text=True, encoding="utf-8", env=env)
         assert out.returncode == 0, out.stdout + out.stderr
         assert "unbound variable" not in out.stderr, out.stderr
         called = log.read_text(encoding="utf-8").strip()
@@ -411,9 +434,12 @@ def test_the_runner_installs_the_script_it_validated() -> None:
     """
     for name in ("Update", "Dry run"):
         run = _step(name)["run"]
-        assert "scripts/update_arvan.sh" in run, f"{name} does not install the validated script"
-        assert "install -o root -g root -m 755" in run
-        assert "update_arvan.sh.bak" in run, "the file it replaces has to be recoverable"
-        assert "sha256sum" in run, "say what was written, so the log proves which copy ran"
-        # a failed copy is a warning on a run that continues, not a new way to fail
-        assert "::warning::could not install this run's update script" in run
+        assert "scripts/update_arvan.sh" in run, f"{name} does not stage the validated script"
+        # Staged where the deploy account can write: rewriting a root-owned file
+        # there answers "sudo: a password is required", which is the boundary the
+        # 17 Nov run hit. Nothing in the step may try to install as root.
+        assert "~/nobi-deploy/scripts/update_arvan.sh" in run
+        assert "install -o root -g root" not in run
+        assert "sha256sum" in run, "say what was staged, so the log proves which copy ran"
+        assert "::warning::could not stage this run's update script" in run
+        assert "previous-update_arvan.sh" in run, "the old script is kept for the record"
