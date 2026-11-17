@@ -294,6 +294,7 @@ def test_a_real_install_with_only_a_cache_directory_still_updates(tmp_path):
     assert "landing.txt" in third, third
 
 
+@pytest.mark.skipif(os.name != "posix", reason="the update script is bash")
 def test_a_repointed_tag_is_named_as_the_reason_a_fetch_failed(tmp_path):
     """A failed fetch has causes that need different answers; do not guess.
 
@@ -340,11 +341,21 @@ def test_a_repointed_tag_is_named_as_the_reason_a_fetch_failed(tmp_path):
     assert "--tags --force" in clobber, "the fix has to be the one that applies"
     assert "credentials" not in clobber, "the repository was never private"
 
+    # Authentication is *not* the same answer as unreachable, and the old message
+    # treated them as one. Measured on capoy.ir: the box could not reach
+    # github.com at all (the ordinary state of an Iranian host), and the log said
+    # "if the repository is private, the service user needs credentials" — advice
+    # for a case that was not the one that failed.
+    timeout = classify("fatal: unable to access 'https://github.com/x': Failed to connect to github.com port 443: Connection timed out")
+    assert "network problem" in timeout, timeout
+    assert "credentials" not in timeout, timeout
+
     auth = classify("fatal: Authentication failed for 'https://example/nobi.git/'")
-    assert "cannot reach the remote" in auth, auth
+    assert "refused this host's credentials" in auth, auth
+    assert "network problem" not in auth, auth
 
     other = classify("fatal: something nobody predicted")
-    assert "git fetch failed, for the reason printed above" in other, other
+    assert "not one this" in other, other
     assert "| fatal: something nobody predicted" in other, (
         "git's own words belong in the log either way"
     )
@@ -943,3 +954,53 @@ def test_a_backtest_report_does_not_block_a_deploy(tmp_path):
     assert "DIE" not in out, out
     # A committed report is not an edit at all, so the run says nothing about it.
     assert "backtest_reports" not in out, out
+
+
+@pytest.mark.skipif(os.name != "posix", reason="the gate is run by a bash step on Linux")
+def test_the_npm_gate_fails_on_an_undocumented_high_advisory(tmp_path) -> None:
+    """A gate that cannot pass is a gate people learn to ignore.
+
+    17 Nov: `picomatch <=4.0.7` was high in CI, `npm audit fix` moved the tree to
+    `picomatch@4.0.7` — the newest published version — and the advisory was
+    widened to `picomatch *` in the same window. The old step (`npm audit
+    --audit-level=high`) could then only be satisfied by uninstalling the
+    toolchain, so the release was red for a reason no commit could fix.
+
+    The gate now allows an advisory that is *written down* as unfixable, with a
+    reason and a version to re-check, and nothing else. This runs both ways.
+    """
+    import json
+    import shutil
+
+    gate = ROOT / "scripts" / "audit_gate.py"
+    assert gate.exists()
+    if shutil.which("python3") is None:
+        pytest.skip("needs python3 on PATH")
+
+    advisory = "GHSA-fc5q-39xc-vjpf"
+    report: dict[str, dict] = {"vulnerabilities": {
+        "picomatch": {"severity": "high", "via": [
+            {"source": 1, "name": "picomatch",
+             "url": f"https://github.com/advisories/{advisory}"}]},
+        "@parcel/watcher": {"severity": "high", "via": ["picomatch"]},
+        "eslint": {"severity": "low", "via": ["junk"]},
+    }}
+    path = tmp_path / "audit.json"
+    path.write_text(json.dumps(report), encoding="utf-8")
+
+    def run() -> subprocess.CompletedProcess:
+        return subprocess.run([sys.executable, str(gate), str(path)],
+                              capture_output=True, text=True, encoding="utf-8")
+
+    ok = run()
+    assert ok.returncode == 0, ok.stdout + ok.stderr
+    assert advisory in ok.stdout, "the exception has to be visible in the log"
+    # an indirect package inherits the advisory: the report is per package
+    assert "@parcel/watcher" in ok.stdout
+
+    report["vulnerabilities"]["picomatch"]["via"][0]["url"] = (
+        "https://github.com/advisories/GHSA-aaaa-bbbb-cccc")
+    path.write_text(json.dumps(report), encoding="utf-8")
+    bad = run()
+    assert bad.returncode == 1, bad.stdout
+    assert "GHSA-aaaa-bbbb-cccc" in bad.stdout
