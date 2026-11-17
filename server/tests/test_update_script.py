@@ -953,3 +953,52 @@ def test_a_backtest_report_does_not_block_a_deploy(tmp_path):
     assert "DIE" not in out, out
     # A committed report is not an edit at all, so the run says nothing about it.
     assert "backtest_reports" not in out, out
+
+
+def test_the_npm_gate_fails_on_an_undocumented_high_advisory(tmp_path) -> None:
+    """A gate that cannot pass is a gate people learn to ignore.
+
+    17 Nov: `picomatch <=4.0.7` was high in CI, `npm audit fix` moved the tree to
+    `picomatch@4.0.7` — the newest published version — and the advisory was
+    widened to `picomatch *` in the same window. The old step (`npm audit
+    --audit-level=high`) could then only be satisfied by uninstalling the
+    toolchain, so the release was red for a reason no commit could fix.
+
+    The gate now allows an advisory that is *written down* as unfixable, with a
+    reason and a version to re-check, and nothing else. This runs both ways.
+    """
+    import json
+    import shutil
+
+    gate = ROOT / "scripts" / "audit_gate.py"
+    assert gate.exists()
+    if shutil.which("python3") is None:
+        pytest.skip("needs python3 on PATH")
+
+    advisory = "GHSA-fc5q-39xc-vjpf"
+    report: dict[str, dict] = {"vulnerabilities": {
+        "picomatch": {"severity": "high", "via": [
+            {"source": 1, "name": "picomatch",
+             "url": f"https://github.com/advisories/{advisory}"}]},
+        "@parcel/watcher": {"severity": "high", "via": ["picomatch"]},
+        "eslint": {"severity": "low", "via": ["junk"]},
+    }}
+    path = tmp_path / "audit.json"
+    path.write_text(json.dumps(report), encoding="utf-8")
+
+    def run() -> subprocess.CompletedProcess:
+        return subprocess.run([sys.executable, str(gate), str(path)],
+                              capture_output=True, text=True, encoding="utf-8")
+
+    ok = run()
+    assert ok.returncode == 0, ok.stdout + ok.stderr
+    assert advisory in ok.stdout, "the exception has to be visible in the log"
+    # an indirect package inherits the advisory: the report is per package
+    assert "@parcel/watcher" in ok.stdout
+
+    report["vulnerabilities"]["picomatch"]["via"][0]["url"] = (
+        "https://github.com/advisories/GHSA-aaaa-bbbb-cccc")
+    path.write_text(json.dumps(report), encoding="utf-8")
+    bad = run()
+    assert bad.returncode == 1, bad.stdout
+    assert "GHSA-aaaa-bbbb-cccc" in bad.stdout

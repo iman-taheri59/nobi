@@ -101,7 +101,25 @@ jobs:
           python-version: "3.12"
       - run: npm ci --no-fund
       - name: npm advisories
-        run: npm audit --audit-level=high
+        # The lockfile is newer than the advisory database, and 17 Nov produced
+        # this: `picomatch <=4.0.7` (GHSA-fc5q-39xc-vjpf) was flagged in the gate,
+        # `npm audit fix` moved the tree to `picomatch@4.0.7` — the newest
+        # published version — and the advisory was **widened** to `picomatch *` in
+        # the same window. At that point the only "fix" left is to uninstall the
+        # toolchain, and a gate that cannot pass teaches people to ignore it.
+        #
+        # So: the full report always goes in the log, and only an advisory that is
+        # high *and* not knowingly-unfixable fails the run. The exceptions live in
+        # the file below, with the reason and the version to re-check them at.
+        # `npm audit fix` is still the first thing to try; it is what produced the
+        # upgrade that got us from five advisories to this one.
+        run: |
+          npm audit || true
+          if npm audit --audit-level=high --json > /tmp/audit.json; then
+            echo "no unexcepted high advisory"
+          else
+            python3 scripts/audit_gate.py /tmp/audit.json
+          fi
       - run: pip install -r server/requirements.txt
       - name: eslint (bundles and scripts)
         run: npm run lint
