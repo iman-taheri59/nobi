@@ -340,11 +340,21 @@ def test_a_repointed_tag_is_named_as_the_reason_a_fetch_failed(tmp_path):
     assert "--tags --force" in clobber, "the fix has to be the one that applies"
     assert "credentials" not in clobber, "the repository was never private"
 
+    # Authentication is *not* the same answer as unreachable, and the old message
+    # treated them as one. Measured on capoy.ir: the box could not reach
+    # github.com at all (the ordinary state of an Iranian host), and the log said
+    # "if the repository is private, the service user needs credentials" — advice
+    # for a case that was not the one that failed.
+    timeout = classify("fatal: unable to access 'https://github.com/x': Failed to connect to github.com port 443: Connection timed out")
+    assert "network problem" in timeout, timeout
+    assert "credentials" not in timeout, timeout
+
     auth = classify("fatal: Authentication failed for 'https://example/nobi.git/'")
-    assert "cannot reach the remote" in auth, auth
+    assert "refused this host's credentials" in auth, auth
+    assert "network problem" not in auth, auth
 
     other = classify("fatal: something nobody predicted")
-    assert "git fetch failed, for the reason printed above" in other, other
+    assert "not one this" in other, other
     assert "| fatal: something nobody predicted" in other, (
         "git's own words belong in the log either way"
     )

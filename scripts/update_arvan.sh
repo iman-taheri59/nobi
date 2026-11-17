@@ -180,10 +180,16 @@ step "fetching from origin"
 # old message guessed at one of them ("if the repository is private, add
 # credentials"); measured on capoy.ir, 17 Nov, the cause was a tag that had been
 # re-pointed on the remote, and the guess sent the operator to the wrong place.
-# So: run it again out loud, keep git's own words, and name the cause that fits.
+#
+# So: run it again out loud, and let the classification start with what git said.
+# Each pattern below is a message git actually prints (checked against the
+# binaries on a 24.04 box); the catch-all is not "something went wrong" but the
+# most common real cause — github.com not being reachable from the box, which is
+# the normal state of an Iranian host and has nothing to do with a dirty tag or a
+# private repository.
 fetch_or_die() {
   FETCH_OUT="$(runas git -C "$APP_DIR" "$@" 2>&1)" && return 0
-  printf '    git said:\n'
+  printf '    from %s, git said:\n' "$(runas git -C "$APP_DIR" remote get-url "$REMOTE" 2>/dev/null || echo "$REMOTE")"
   printf '%s\n' "$FETCH_OUT" | sed 's/^/      | /'
   case "$FETCH_OUT" in
     *"would clobber existing tag"*|*"rejected"*"tag"*|*"already exists"*)
@@ -193,13 +199,34 @@ fetch_or_die() {
         sudo -u $SERVICE_USER git -C $APP_DIR fetch --tags --force origin
     or tell the service user to stop keeping local tags:
         sudo -u $SERVICE_USER git -C $APP_DIR config remote.origin.tagOpt --no-tags" ;;
-    *"Could not resolve host"*|*"Connection timed out"*|*"Network is unreachable"*|\
-    *"Could not read from remote repository"*|*"Permission denied"*|*"Authentication failed"*)
-      die "cannot reach the remote. Nothing was changed. Check the service user's
-    network and credentials:
+    *"timed out"*|*"Could not resolve host"*|*"Network is unreachable"*|\
+    *"Connection refused"*|*"Connection reset"*|*"Temporary failure in name resolution"*|\
+    *"Connection closed"*|*"early EOF"*|*"RPC failed"*|*"unable to access"*|*"gnutls"*|\
+    *"OpenSSL"*|*"SSL"*|*"The requested URL returned error: 5"*)
+      die "cannot reach $REMOTE from this host, and that is a network problem, not
+    a git one. Nothing was changed. github.com is routinely unreachable from an
+    Iranian server; the ordinary fix is to fetch through a route that works and
+    let this script install what is already fetched:
+        sudo -u $SERVICE_USER git -C $APP_DIR remote -v          # what it fetches from
+        sudo -u $SERVICE_USER git -C $APP_DIR fetch --dry-run origin # is it reachable
+        # if it is not, fetch on a host that can reach github, then either
+        #   * point the remote at a mirror/over SSH tunnel for one run:
+        #       sudo -u $SERVICE_USER git -C $APP_DIR remote set-url origin <mirror>
+        #   * or bring the objects across from the runner:
+        #       rsync -a --exclude objects/ /opt/nobi/.git/ deploy@host:/opt/nobi/.git/
+        #       rsync -a /opt/nobi/.git/objects/ deploy@host:/opt/nobi/.git/objects/
+        # The update needs no fetch at all once origin/$BRANCH is current: --ref
+        # resolves against what is already in .git." ;;
+    *"Authentication failed"*|*"Permission denied"*|*"could not read Username"*|\
+    *"terminal prompts disabled"*|*"Repository not found"*)
+      die "the remote refused this host's credentials — a different problem from
+    the network, and the only case that has an authentication answer. Nothing was
+    changed:
         sudo -u $SERVICE_USER git -C $APP_DIR fetch origin $BRANCH" ;;
     *)
-      die "git fetch failed, for the reason printed above. Nothing was changed." ;;
+      die "git fetch failed, for the reason printed above — and it is not one this
+    script can name. Nothing was changed. The repo may be unreachable from this
+    host; check with: sudo -u $SERVICE_USER git -C $APP_DIR fetch --dry-run origin" ;;
   esac
 }
 fetch_or_die fetch --quiet --tags origin "$BRANCH"

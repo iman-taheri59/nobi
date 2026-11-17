@@ -149,6 +149,25 @@ jobs:
           $caps
           EOF
           echo "installed script: ref=$CAP_REF accept-unit-change=$CAP_UNIT keep-local-edits=$CAP_KEEP"
+          # The script on the box is the *previous* release's script. That is a
+          # fact of the bootstrap, not a bug to be fixed from the runner — which
+          # is what four red runs in a row were spent learning. So the runner
+          # installs the script it just validated (from its own checkout, not
+          # from the box's old one) before calling it. The copy is verified by
+          # checksum, and the replaced file is kept as update_arvan.sh.bak so the
+          # old behaviour is one `cp` away. If the copy fails the run continues
+          # with the old script and says so — it never becomes a new failure.
+          if [ -f scripts/update_arvan.sh ]; then
+            if ssh prod 'cat > /tmp/nobi-update_arvan.sh' < scripts/update_arvan.sh \
+               && ssh prod "sudo -n install -o root -g root -m 755 /tmp/nobi-update_arvan.sh /opt/nobi/scripts/update_arvan.sh.new" \
+               && ssh prod "sudo -n cp -p /opt/nobi/scripts/update_arvan.sh /opt/nobi/scripts/update_arvan.sh.bak 2>/dev/null || true" \
+               && ssh prod "sudo -n mv /opt/nobi/scripts/update_arvan.sh.new /opt/nobi/scripts/update_arvan.sh"; then
+              echo "wrote the script this run validated: $(sha256sum < scripts/update_arvan.sh | cut -c1-12)"
+              echo "the previous one is kept at /opt/nobi/scripts/update_arvan.sh.bak"
+            else
+              echo "::warning::could not install this run's update script; continuing with the one on the box"
+            fi
+          fi
           # The capability probe runs on the *runner* and its answer is passed
           # into the remote script as text: `env:` on this step would only set a
           # variable for the local ssh process, and a heredoc cannot be read twice.
@@ -253,6 +272,25 @@ jobs:
           $caps
           EOF
           echo "installed script: ref=$CAP_REF accept-unit-change=$CAP_UNIT keep-local-edits=$CAP_KEEP"
+          # The script on the box is the *previous* release's script. That is a
+          # fact of the bootstrap, not a bug to be fixed from the runner — which
+          # is what four red runs in a row were spent learning. So the runner
+          # installs the script it just validated (from its own checkout, not
+          # from the box's old one) before calling it. The copy is verified by
+          # checksum, and the replaced file is kept as update_arvan.sh.bak so the
+          # old behaviour is one `cp` away. If the copy fails the run continues
+          # with the old script and says so — it never becomes a new failure.
+          if [ -f scripts/update_arvan.sh ]; then
+            if ssh prod 'cat > /tmp/nobi-update_arvan.sh' < scripts/update_arvan.sh \
+               && ssh prod "sudo -n install -o root -g root -m 755 /tmp/nobi-update_arvan.sh /opt/nobi/scripts/update_arvan.sh.new" \
+               && ssh prod "sudo -n cp -p /opt/nobi/scripts/update_arvan.sh /opt/nobi/scripts/update_arvan.sh.bak 2>/dev/null || true" \
+               && ssh prod "sudo -n mv /opt/nobi/scripts/update_arvan.sh.new /opt/nobi/scripts/update_arvan.sh"; then
+              echo "wrote the script this run validated: $(sha256sum < scripts/update_arvan.sh | cut -c1-12)"
+              echo "the previous one is kept at /opt/nobi/scripts/update_arvan.sh.bak"
+            else
+              echo "::warning::could not install this run's update script; continuing with the one on the box"
+            fi
+          fi
           # The capability probe runs on the *runner* and its answer is passed
           # into the remote script as text: `env:` on this step would only set a
           # variable for the local ssh process, and a heredoc cannot be read twice.

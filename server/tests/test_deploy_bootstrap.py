@@ -395,3 +395,25 @@ def test_the_whole_step_runs_with_the_capability_answers_expanded(tmp_path):
         assert "--keep-local-edits" in called, called
         assert "--ref v2.5.8" in called, called
         assert "unknown argument" not in out.stdout + out.stderr
+
+
+def test_the_runner_installs_the_script_it_validated() -> None:
+    """The box runs the *previous* release's script. That is the bootstrap.
+
+    Four red runs were spent patching `deploy.yml` for a script that was never on
+    the box: `deploy.yml` comes from `main` on every run, `update_arvan.sh` comes
+    from `/opt/nobi`, and only a successful deploy changes the second one. Each
+    fix was real and none of it could take effect.
+
+    So both steps copy the script from the runner's checkout — the one this run
+    validated — and keep the old file as `.bak`. The copy is verified by checksum
+    and can fail without failing the run: the release must not depend on it.
+    """
+    for name in ("Update", "Dry run"):
+        run = _step(name)["run"]
+        assert "scripts/update_arvan.sh" in run, f"{name} does not install the validated script"
+        assert "install -o root -g root -m 755" in run
+        assert "update_arvan.sh.bak" in run, "the file it replaces has to be recoverable"
+        assert "sha256sum" in run, "say what was written, so the log proves which copy ran"
+        # a failed copy is a warning on a run that continues, not a new way to fail
+        assert "::warning::could not install this run's update script" in run
