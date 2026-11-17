@@ -68,7 +68,9 @@ scoring, R:R or the universe; what changes is whether what was displayed was tru
 
 - **The dirty-checkout guard guessed from a diff instead of asking git:** it diffed `origin/main` against `HEAD` and called every changed path a path this update rewrites. On capoy.ir that turned a single modified file into a 760-file list (the whole 2.5.6..2.5.8 range) — a message that sends the operator to a file nobody touched. It now runs `git merge --ff-only --no-commit --no-stat` (the operation the update performs) followed by `merge --abort`; the decision and the file names come from git, and `--check` can no longer move HEAD while claiming nothing changed. The hand-written untracked/collision scan is gone: git already answers that. Three tests rewritten.
 
-`pytest`: 1,911 -> 1,970. `ruff` and `mypy` clean. Each new test was run against the previous commit first and failed there.
+- **A re-pointed tag broke the deploy, and the error named the wrong cause:** the script ran `git fetch --tags`. On capoy.ir the remote's `v2.5.8` had been re-pointed, so git refused with `would clobber existing tag` — and the script's message said "if the repository is private, add credentials", sending the operator to fix the one thing that was already fine. `fetch_or_die` now keeps git's own output, prints it, and names the cause (diverged tag / network and credentials / anything else) with the command that actually applies. The tag is also fetched by name instead of with `--tags`. Separately, `git describe --always` answers `v2.5.8-8-ga5d559b` where no tag is reachable, and comparing that string with the service version called a healthy install "half-applied"; a `-N-g<sha>` suffix is now recognised as a commit, not a version. Two tests.
+
+`pytest`: 1,911 -> 1,972. `ruff` and `mypy` clean. Each new test was run against the previous commit first and failed there.
 
 ## 2.5.7
 

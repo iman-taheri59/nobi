@@ -294,6 +294,77 @@ def test_a_real_install_with_only_a_cache_directory_still_updates(tmp_path):
     assert "landing.txt" in third, third
 
 
+def test_a_repointed_tag_is_named_as_the_reason_a_fetch_failed(tmp_path):
+    """A failed fetch has causes that need different answers; do not guess.
+
+    Measured on capoy.ir, 17 Nov: the dry run died in `git fetch` and the message
+    offered credentials for a private repository. The repository is not private —
+    the tag `v2.5.8` had been re-pointed on the remote, and git refuses to
+    overwrite an existing tag in the clone. The operator was sent to fix the one
+    thing that was already fine.
+
+    The helper below is lifted out of the script and run against a fake `git`
+    that prints each failure mode, so the classification is executed, not grepped.
+    """
+    if os.name != "posix" or shutil.which("bash") is None:
+        pytest.skip("the update script is bash; running it needs a POSIX shell")
+
+    text = _text()
+    assert "fetch_or_die()" in text
+    assert 'FETCH_OUT="$(runas git -C "$APP_DIR" "$@" 2>&1)"' in text, (
+        "the failure has to be classified from git's own output, not from a guess"
+    )
+    helper = text[text.index("fetch_or_die() {"):text.index('fetch_or_die fetch --quiet')]
+
+    def classify(message: str) -> str:
+        fake = tmp_path / "bin"
+        fake.mkdir(exist_ok=True)
+        (fake / "git").write_text(
+            "#!/bin/sh\nprintf '%s\\n' " + repr(message).replace("'", '"') + " >&2\nexit 1\n",
+            encoding="utf-8")
+        (fake / "git").chmod(0o755)
+        harness = (
+            'runas() { "$@"; }\n'
+            'warn() { printf "WARN %s\\n" "$*"; }\n'
+            'die() { printf "DIE %s\\n" "$*" >&2; exit 1; }\n'
+            "APP_DIR=/tmp\nSERVICE_USER=nobi\nBRANCH=main\n" + helper
+            + '\nfetch_or_die fetch --tags origin main\n'
+        )
+        proc = subprocess.run(["bash", "-c", harness], capture_output=True, text=True,
+                              encoding="utf-8", timeout=60,
+                              env={**os.environ, "PATH": f"{fake}:{os.environ['PATH']}"})
+        return proc.stdout + proc.stderr
+
+    clobber = classify("! [rejected]        v2.5.8     -> v2.5.8  (would clobber existing tag)")
+    assert "re-pointed" in clobber or "no longer matches" in clobber, clobber
+    assert "--tags --force" in clobber, "the fix has to be the one that applies"
+    assert "credentials" not in clobber, "the repository was never private"
+
+    auth = classify("fatal: Authentication failed for 'https://example/nobi.git/'")
+    assert "cannot reach the remote" in auth, auth
+
+    other = classify("fatal: something nobody predicted")
+    assert "git fetch failed, for the reason printed above" in other, other
+    assert "| fatal: something nobody predicted" in other, (
+        "git's own words belong in the log either way"
+    )
+
+
+def test_a_describe_suffix_is_not_a_version() -> None:
+    """`--always` answers a commit id where no tag is reachable.
+
+    On capoy.ir the checkout was exactly the running release and the log said
+    "the service runs 2.5.8 but the checkout is at v2.5.8-8-ga5d559b — a
+    previous update may have half-applied": the string comparison treated a
+    commit id as a version. A non-tag describe ends in `-N-g<sha>`.
+    """
+    text = _text()
+    assert '*-g[0-9a-f]*) DESCRIBED=""' in text, (
+        "a `-N-g<sha>` describe is a commit id and must not be compared to a version"
+    )
+    assert "may have half-applied" in text, "the real mismatch must still be reported"
+
+
 def _git(cwd: Path, *args: str) -> None:
     subprocess.run(["git", "-C", str(cwd), *args], check=True, capture_output=True)
 
@@ -570,7 +641,11 @@ def test_the_release_tag_can_pin_the_checkout():
     assert "REF" in code
     assert "checkout --quiet --detach" in code, "the ref never changes HEAD"
     assert 'if [ -n "$REF" ] && [ "$NEW_SHA" != "$REMOTE_SHA" ]' in code
-    assert 'git -C "$APP_DIR" fetch --quiet --tags origin "+refs/tags/$REF' in code
+    # The tag is fetched by name; the extra `--tags` came off, because on a host
+    # whose tags have been re-pointed it fails with "would clobber existing tag"
+    # and takes the release down with it.
+    assert '"+refs/tags/$REF:refs/tags/$REF"' in code
+    assert "fetch_or_die" in code, "a failed fetch has to be classified, not guessed at"
 
 
 def test_a_version_mismatch_stops_the_deploy_workflow():

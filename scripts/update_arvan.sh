@@ -147,12 +147,27 @@ printf '    commit  %s\n' "$OLD_SHA"
 printf '    tag     %s\n' "$OLD_VER"
 printf '    /api/health reports version %s\n' "$RUNNING_VER"
 if [ "$RUNNING_VER" != "(service not answering)" ] && [ "$RUNNING_VER" != "?" ]; then
-  # `git describe` says `v2.3.2`; /api/health says `2.3.2`. Compare without
-  # the prefix on either side, or every healthy install is warned about.
-  case "${RUNNING_VER#v}" in
-    "${OLD_VER#v}") printf '    (the running service matches the checkout)\n' ;;
-    *) warn "the service runs $RUNNING_VER but the checkout is at $OLD_VER — a previous update may have half-applied" ;;
+  # `git describe` says `v2.3.2`; /api/health says `2.3.2`. Compare without the
+  # prefix on either side, or every healthy install is warned about.
+  #
+  # `--always` is a trap for this comparison: where no tag is reachable,
+  # `describe` answers `v2.5.8-8-ga5d559b` — a *commit id*, not a version — and
+  # string-comparing that with `2.5.8` accuses a perfectly healthy install of
+  # having half-applied. Measured on capoy.ir, 17 Nov: the checkout was exactly
+  # the running release, and the log said so wrongly. Non-tag describes end in
+  # `-N-g<sha>`; those are commits, and a commit is not a version.
+  DESCRIBED="${OLD_VER#v}"
+  case "$DESCRIBED" in
+    *-g[0-9a-f]*) DESCRIBED="" ;;
   esac
+  if [ -z "$DESCRIBED" ]; then
+    printf '    (the checkout is not a tagged commit; the version above is what the service reports)\n'
+  else
+    case "${RUNNING_VER#v}" in
+      "$DESCRIBED") printf '    (the running service matches the checkout)\n' ;;
+      *) warn "the service runs $RUNNING_VER but the checkout is at $OLD_VER — a previous update may have half-applied" ;;
+    esac
+  fi
 fi
 
 # --------------------------------------------------------------------------- #
@@ -161,10 +176,33 @@ fi
 step "fetching from origin"
 # Fetching only writes refs under .git; the checkout is untouched. It is the one
 # thing --check also does, because you cannot see what is incoming without it.
-runas git -C "$APP_DIR" fetch --quiet --tags origin "$BRANCH" \
-  || die "git fetch failed. If the repository is private, the service user needs
-    credentials: sudo -u $SERVICE_USER git -C $APP_DIR config credential.helper store
-    then run one fetch by hand. Nothing was changed."
+# A failed fetch has a handful of causes and they need different answers. The
+# old message guessed at one of them ("if the repository is private, add
+# credentials"); measured on capoy.ir, 17 Nov, the cause was a tag that had been
+# re-pointed on the remote, and the guess sent the operator to the wrong place.
+# So: run it again out loud, keep git's own words, and name the cause that fits.
+fetch_or_die() {
+  FETCH_OUT="$(runas git -C "$APP_DIR" "$@" 2>&1)" && return 0
+  printf '    git said:\n'
+  printf '%s\n' "$FETCH_OUT" | sed 's/^/      | /'
+  case "$FETCH_OUT" in
+    *"would clobber existing tag"*|*"rejected"*"tag"*|*"already exists"*)
+      die "a tag on the remote no longer matches the tag in $APP_DIR, so git
+    refuses to overwrite it. Nothing was changed. Either bring that tag in line
+    by hand:
+        sudo -u $SERVICE_USER git -C $APP_DIR fetch --tags --force origin
+    or tell the service user to stop keeping local tags:
+        sudo -u $SERVICE_USER git -C $APP_DIR config remote.origin.tagOpt --no-tags" ;;
+    *"Could not resolve host"*|*"Connection timed out"*|*"Network is unreachable"*|\
+    *"Could not read from remote repository"*|*"Permission denied"*|*"Authentication failed"*)
+      die "cannot reach the remote. Nothing was changed. Check the service user's
+    network and credentials:
+        sudo -u $SERVICE_USER git -C $APP_DIR fetch origin $BRANCH" ;;
+    *)
+      die "git fetch failed, for the reason printed above. Nothing was changed." ;;
+  esac
+}
+fetch_or_die fetch --quiet --tags origin "$BRANCH"
 
 # `--ref v2.5.7` pins the checkout to the release that was validated. Without
 # it the fetch below resolves `origin/$BRANCH`, which can be minutes — or a
@@ -173,8 +211,7 @@ runas git -C "$APP_DIR" fetch --quiet --tags origin "$BRANCH" \
 if [ -n "$REF" ]; then
   TARGET="${REF}^{commit}"
   if ! runas git -C "$APP_DIR" rev-parse --verify --quiet "$TARGET" >/dev/null; then
-    runas git -C "$APP_DIR" fetch --quiet --tags origin "+refs/tags/$REF:refs/tags/$REF" \
-      || die "cannot fetch tag $REF. Nothing was changed."
+    fetch_or_die fetch --quiet origin "+refs/tags/$REF:refs/tags/$REF"
   fi
   runas git -C "$APP_DIR" rev-parse --verify --quiet "$TARGET" >/dev/null \
     || die "ref $REF does not exist in $APP_DIR after fetching it"
