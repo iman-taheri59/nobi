@@ -13,6 +13,9 @@
 #   sudo bash scripts/update_arvan.sh --force      # with --reset, also discard uncommitted edits
 #   sudo bash scripts/update_arvan.sh --backup     # state_backup.py snapshot of the 3 databases first
 #   sudo bash scripts/update_arvan.sh --verify     # then run check_deploy.py
+#   sudo bash scripts/update_arvan.sh --verify --public https://capoy.ir
+#       # the public check only means something if it is pointed at the public
+#       # URL; without it `readonly`/`reads`/`tls` are skipped, not passed
 #   sudo bash scripts/update_arvan.sh --public https://nobi.example.ir   # same, with a URL
 #   sudo bash scripts/update_arvan.sh --keep-local-edits   # save+stash an edit the update rewrites
 #
@@ -222,45 +225,43 @@ fi
 # --------------------------------------------------------------------------- #
 # 3. A dirty checkout is the one thing that can lose work
 # --------------------------------------------------------------------------- #
-# `git status --porcelain` prints untracked files with `??`, and `git pull
-# --ff-only` does not care about those unless the incoming commit would
-# overwrite them. Measured on a scratch clone: a checkout holding `.cache/` and
+# `git status --porcelain` prints untracked files with `??`, and a fast-forward
+# does not care about those unless the incoming commit would overwrite them. Measured on a scratch clone: a checkout holding `.cache/` and
 # `untracked.txt` fast-forwards cleanly, while a *modified tracked* file aborts
 # the merge with "Please commit your changes or stash them". A working install
 # grows a pip or pytest cache within hours of booting, so refusing to update over
 # one is a guard that blocks the thing it is meant to protect.
 #
-# So: tracked changes always block (they are the work that would be lost), and
-# an untracked path blocks only when origin's tree already contains it.
+# So the list of changed files is printed either way, and the decision belongs to
+# `git merge --ff-only`: it is the operation that will run, and it is the only
+# thing that knows which edits it would overwrite.
 STATUS="$(runas git -C "$APP_DIR" status --porcelain 2>/dev/null || true)"
 BLOCKING="$(printf '%s\n' "$STATUS" | grep -v '^?? ' || true)"
-COLLIDE=""
-for path in $(runas git -C "$APP_DIR" ls-files --others --exclude-standard 2>/dev/null || true); do
-  if runas git -C "$APP_DIR" cat-file -e "origin/$BRANCH:$path" 2>/dev/null; then
-    COLLIDE="${COLLIDE}${path}
-"
-  fi
-done
-# What is actually at risk is not "a modified file" — it is a modified file that
-# the incoming change also writes. Measured on capoy.ir, 14 Nov: the checkout
-# held `M server/paper_trading.py` while `server/backtest_reports/*.json` was
-# accumulating from the Backtest page. Refusing on any of them blocks a deploy
-# for nothing; ignoring them overwrites a hand edit to the file that monitors
-# open positions. So the question is asked of the diff, not of the file name.
-INCOMING="$(runas git -C "$APP_DIR" diff --name-only "$OLD_SHA" "$REMOTE_SHA" 2>/dev/null || true)"
-AT_RISK=""
-for path in $(printf '%s\n' "$BLOCKING" | awk '{print $2}'); do
-  [ -n "$path" ] || continue
-  # One grep, no early exit: `grep -q` inside a pipeline under `pipefail` turns
-  # SIGPIPE into 141 and reports a match as a miss.
-  if printf '%s\n' "$INCOMING" | grep -xF "$path" >/dev/null 2>&1; then
-    AT_RISK="${AT_RISK}${path}
-"
-  fi
-done
-if [ -n "$AT_RISK" ]; then
-  printf '\n    the checkout has local changes to files this update rewrites:\n'
-  printf '%s\n' "$AT_RISK" | sed 's/^/      /'
+# The question is "would the fast-forward be refused?", and only git answers it.
+# The first version of this guard guessed: it diffed `origin/$BRANCH` against
+# `HEAD` and called every path that changed a path this update rewrites. Measured
+# on capoy.ir, 17 Nov: the checkout held `M server/paper_trading.py`, and the log
+# announced "an edit on the box" over 760 files between 2.5.6 and 2.5.8 because
+# *everything* changed in that range. A guess that names the wrong files is worse
+# than no message: it sends the operator to protect a file nobody touched.
+#
+# So `git merge --ff-only --no-commit` is run — git's own code path for the
+# operation, and the same working-tree checks — and then `--abort`, which takes
+# HEAD and the index back. `--no-commit` matters: without it a clean checkout is
+# fast-forwarded right here, and `--check` would have moved HEAD before it printed
+# "nothing was changed". It refuses for the reasons git refuses (an edit the merge
+# would overwrite), and it does not care about untracked files or warm caches,
+# which this script has no business blocking a deploy over.
+GUARD_DIRTY=0
+GUARD="$(runas git -C "$APP_DIR" merge --ff-only --no-commit --no-stat "$REMOTE/$BRANCH" 2>&1)" \
+  || GUARD_DIRTY=1
+runas git -C "$APP_DIR" merge --abort >/dev/null 2>&1 || true
+if [ -n "$BLOCKING" ] && [ "$GUARD_DIRTY" -eq 1 ]; then
+  printf '\n    the fast-forward is refused: the checkout has local changes to\n'
+  printf '    files this update would overwrite:\n'
+  printf '%s\n' "$BLOCKING" | sed 's/^/      /'
+  printf '    git said:\n'
+  printf '%s\n' "$GUARD" | sed 's/^/      | /'
   if [ "$DO_RESET" -eq 1 ]; then
     warn "--reset will DESTROY the changes listed above"
   elif [ "$STASH_EDITS" -eq 1 ]; then
@@ -269,9 +270,7 @@ if [ -n "$AT_RISK" ]; then
     # where to find both.
     STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
     PATCH="${DATA_DIR%/}/local-edits-${STAMP}.patch"
-    # `--` then the paths, one argument each: `$(\"$AT_RISK" | tr ...)` word-split
-    # the list, and a path with a space would have been read as two pathspecs.
-    # The whole diff is written, not only the paths at risk: a partial patch is
+    # The whole diff, not only the paths git complained about: a partial patch is
     # worse than none when it is the record of somebody's edit.
     runas git -C "$APP_DIR" diff > "$PATCH"
     chmod 640 "$PATCH" 2>/dev/null || true
@@ -279,46 +278,30 @@ if [ -n "$AT_RISK" ]; then
     printf '    the edit is saved to %s\n' "$PATCH"
     printf '    and previewed here, so the deploy log carries it too:\n'
     head -60 "$PATCH" | sed 's/^/      | /'
-    runas git -C "$APP_DIR" stash push --quiet -m "nobi update $STAMP (--keep-local-edits)" -- \
-      $(printf '%s' "$AT_RISK") \
+    runas git -C "$APP_DIR" stash push --quiet -m "nobi update $STAMP (--keep-local-edits)" \
       || die "could not stash the edits above. Nothing was changed."
     warn "stashed. Read it back with: sudo -u $SERVICE_USER git -C $APP_DIR stash show -p stash@{0}"
   elif [ "$ALLOW_DIRTY" -eq 1 ]; then
-    warn "--force was given over product code the incoming change also edits"
-    printf '%s\n' "$AT_RISK" | sed 's/^/      /'
+    warn "--force was given over a checkout git will not fast-forward"
   else
     warn "save them: sudo -u $SERVICE_USER git -C $APP_DIR diff > ~/server-edits.patch"
-    die "refusing to update a dirty checkout: the files above are edited here AND
-    rewritten by this update, so a fast-forward cannot keep them. Save the diff,
-    stash it, or re-run with --keep-local-edits to have this script save and
-    stash it for you, or with --reset to discard it deliberately."
-  fi
-elif [ -n "$BLOCKING" ]; then
-  # Not at risk, and still not silently accepted: an unattended run must not be
-  # the thing that decided an unexplained edit was fine. The incoming change
-  # does not rewrite these, so nothing is lost either way — but the run says
-  # what it found and stops for a human unless --force says otherwise.
-  printf '\n    the checkout has local changes this update does not rewrite:\n'
-  printf '%s\n' "$BLOCKING" | sed 's/^/      /'
-  if [ "$ALLOW_DIRTY" -eq 1 ]; then
-    warn "--force was given: a fast-forward keeps them; carrying on"
-  else
-    die "refusing to update a checkout with local changes to tracked files.
-    The incoming change does not touch the files listed above, so nothing of
-    yours would be lost — but this script does not carry on over an edit it
-    cannot explain. Re-run with --force to proceed, or stash them first."
+    die "refusing to update a checkout with local changes: git will not fast-forward
+    over the files above. Save the diff, stash it, or re-run with
+    --keep-local-edits to have this script save and stash it for you, or with
+    --reset to discard it deliberately."
   fi
 fi
-if [ -n "$COLLIDE" ]; then
-  printf '\n    untracked files that this update would write over:\n'
-  printf '%s\n' "$COLLIDE" | sed 's/^/      ?? /'
-  if [ "$DO_RESET" -ne 1 ] && [ "$ALLOW_DIRTY" -ne 1 ]; then
-    die "refusing to overwrite untracked paths. Move them aside, or pass --reset/--force."
-  fi
-  warn "moving them aside is the safer choice; --reset/--force was given"
+if [ -n "$BLOCKING" ] && [ "$GUARD_DIRTY" -eq 0 ]; then
+  # git took the dry run: those edits are in files this update does not rewrite,
+  # so the fast-forward keeps them. Blocking here is what stopped the 14 Nov
+  # release over a checkout whose only "change" was a warm cache.
+  printf '    local changes in files this update does not rewrite (kept):\n'
+  printf '%s\n' "$BLOCKING" | sed 's/^/      /'
 fi
 # Untracked leftovers are not work and not a merge conflict; say they are there
-# so an operator is not surprised by them later, and move on.
+# so an operator is not surprised by them later, and move on. git itself refuses
+# only the untracked paths the incoming tree would overwrite, and that refusal
+# arrives as a non-zero dry run above.
 LEFTOVER="$(printf '%s\n' "$STATUS" | grep '^?? ' || true)"
 if [ -n "$LEFTOVER" ]; then
   printf '    untracked and harmless (not tracked, not in origin):\n'

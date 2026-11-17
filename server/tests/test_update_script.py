@@ -158,13 +158,23 @@ def test_a_dirty_checkout_is_refused_not_warned_about() -> None:
     """`git merge --ff-only` fails on a dirty tree, so the update dies anyway.
 
     Saying why — and offering stash, commit, or --reset — turns a confusing
-    fatal into a decision the operator can make.
+    fatal into a decision the operator can make. The decision itself is git's:
+    the guard runs the very merge the update would run and reads its answer,
+    instead of guessing from a file list. Measured on capoy.ir, 17 Nov: the
+    guess diffed the whole 2.5.6..2.5.8 range and announced 760 files as "an
+    edit on the box" over a single modified file.
     """
     text = _text()
     assert 'status --porcelain' in text
-    assert "refusing to update a dirty checkout" in text
-    # The refusal must come before the merge, not after it.
-    assert text.find("refusing to update a dirty checkout") < text.find("merge --ff-only")
+    assert "refusing to update a checkout with local changes" in text
+    # The question is asked of git, and the answer is variable, not a file list.
+    assert 'merge --ff-only --no-commit --no-stat "$REMOTE/$BRANCH"' in text
+    assert "GUARD_DIRTY=1" in text
+    # A guess that only names files this update rewrites must not come back.
+    assert "INCOMING=" not in text and "AT_RISK=" not in text
+    # The refusal must come before the merge that does the work.
+    assert text.find("refusing to update a checkout with local changes") < \
+        text.find('merge --ff-only "origin/$BRANCH" >/dev/null')
 
 
 def test_untracked_files_are_not_mistaken_for_a_dirty_checkout() -> None:
@@ -178,44 +188,37 @@ def test_untracked_files_are_not_mistaken_for_a_dirty_checkout() -> None:
     """
     code = _code_without_comments()
     assert "grep -v '^?? '" in code, "tracked changes must be told from untracked ones"
-    assert "ls-files --others --exclude-standard" in code
-    # The collision test is the one case an untracked path *does* block: when
-    # origin's tree already holds that path, the merge cannot write it.
-    assert "cat-file -e" in code
     assert "untracked and harmless" in code
+    # The collision case (an untracked path the incoming tree would write) needs
+    # no separate scan any more: git refuses that merge itself, and its answer is
+    # what the guard reads.
+    assert "merge --ff-only --no-commit --no-stat" in code
+    assert "cat-file -e" not in code, (
+        "re-implementing git's overwrite rules is how the guard grew a second, "
+        "wrong opinion about which files are at risk"
+    )
 
 
 def test_a_real_install_with_only_a_cache_directory_still_updates(tmp_path):
     """Behavioural, against a real clone: `.cache/` alone must not stop the run.
 
-    The source assertions above describe the guard; this one runs the guard's
-    **own text**, lifted out of the script, against an actual repository holding
-    an untracked `.cache/` and then a modified tracked file, and checks which of
-    the two it refuses. The script itself demands root, so `runas` is stubbed to
-    a plain exec — which is exact here, because the test already runs as the
-    user it would be asking for.
+    The script itself demands root, so its guard is lifted out and run against a
+    real repository: once with an untracked cache directory (the state a live
+    install is in within hours of booting), then with a modified tracked file,
+    then with an untracked path origin would write over.
     """
     if os.name != "posix" or shutil.which("bash") is None:
         pytest.skip("the update script is bash; running it needs a POSIX shell")
 
     text = _text()
     marker = 'STATUS="$(runas git -C "$APP_DIR" status --porcelain'
-    assert marker in text, (
-        "the dirty guard must read `git status --porcelain` into its own variable "
-        "and split the `??` lines out of it; without that split an untracked cache "
-        "directory is reported as work"
-    )
+    assert marker in text
     start = text.index(marker)
-    end_marker = "\nfi\n"
-    leftover = text.index("LEFTOVER=", start)
-    end = text.index(end_marker, leftover) + len(end_marker)
+    end = text.index("\nfi\n", text.index('LEFTOVER="$(', start)) + len("\nfi\n")
     guard = text[start:end]
 
     upstream = tmp_path / "upstream"
     upstream.mkdir()
-    # the guard asks for `origin/$BRANCH`, so the upstream's default branch has to
-    # actually be `main` — a scratch repo otherwise starts on `master` and the
-    # collision test would silently test nothing.
     _git(upstream, "-c", "init.defaultBranch=main", "init", "--quiet", ".")
     (upstream / "VERSION").write_text("2.1.3\n", encoding="utf-8")
     (upstream / "keep.txt").write_text("original\n", encoding="utf-8")
@@ -228,13 +231,17 @@ def test_a_real_install_with_only_a_cache_directory_still_updates(tmp_path):
     subprocess.run(["git", "clone", "--quiet", str(upstream), str(clone)],
                    check=True, capture_output=True)
 
+    def head() -> str:
+        return subprocess.run(["git", "-C", str(clone), "rev-parse", "HEAD"],
+                              capture_output=True, text=True, encoding="utf-8").stdout.strip()
+
     def run_guard() -> str:
         harness = (
             'runas() { "$@"; }\n'
             'warn() { printf "WARN %s\\n" "$*"; }\n'
             'die() { printf "DIE %s\\n" "$*" >&2; exit 1; }\n'
-            f'APP_DIR={str(clone)!r}\nBRANCH=main\nDO_RESET=0\n'
-            "ALLOW_DIRTY=0\nASSUME_YES=1\n" + guard
+            f'APP_DIR={str(clone)!r}\nBRANCH=main\nREMOTE=origin\nDO_RESET=0\n'
+            "ALLOW_DIRTY=0\nASSUME_YES=1\nSTASH_EDITS=0\n" + guard
         )
         proc = subprocess.run(["bash", "-c", harness], capture_output=True, text=True,
                               encoding="utf-8", timeout=120)
@@ -247,25 +254,44 @@ def test_a_real_install_with_only_a_cache_directory_still_updates(tmp_path):
     assert "DIE" not in first, first
     assert "untracked and harmless" in first, first
 
-    # the same clone with a *tracked* modification must still be refused
-    _git(clone, "reset", "--hard", "--quiet", "HEAD")
+    # the same clone with a *tracked* modification must still be refused —
+    # unless the incoming change leaves that file alone, in which case git
+    # fast-forwards and keeping the edit is correct.
     (clone / "keep.txt").write_text("edited by hand\n", encoding="utf-8")
     second = run_guard()
-    assert "refusing to update a checkout with local changes" in second, second
-    assert "keep.txt" in second, "the refusal must name the file it is protecting"
+    assert "DIE" not in second, second
+    assert "does not rewrite (kept)" in second, second
+    assert "keep.txt" in second, "the run still has to say what it found"
+    assert head() == subprocess.run(
+        ["git", "-C", str(upstream), "rev-parse", "HEAD"], capture_output=True,
+        text=True, encoding="utf-8").stdout.strip(), (
+        "the guard asked git a question; it must not have answered it by moving HEAD"
+    )
 
-    # and an untracked path that origin would overwrite is the third case
-    _git(clone, "reset", "--hard", "--quiet", "HEAD")
-    (upstream / "landing.txt").write_text("from origin\n", encoding="utf-8")
+    # the same edit, now to a file origin rewrites: this is the case that blocks
+    (upstream / "keep.txt").write_text("from origin\n", encoding="utf-8")
     _git(upstream, "add", "-A")
     _git(upstream, "-c", "user.email=t@e.st", "-c", "user.name=t",
          "commit", "--quiet", "-m", "two")
     _git(upstream, "update-ref", "refs/remotes/origin/main", "HEAD")
     _git(clone, "fetch", "--quiet", "origin")
+    blocked = run_guard()
+    assert "refusing to update a checkout with local changes" in blocked, blocked
+    assert "keep.txt" in blocked, "the refusal must name the file it is protecting"
+    assert "git said:" in blocked, "the operator needs git's own words, not mine"
+
+    # an untracked path that origin would write is refused by git itself, and the
+    # operator is told which path — from git, not from a second opinion
+    _git(clone, "checkout", "--", "keep.txt")
+    (upstream / "landing.txt").write_text("from origin\n", encoding="utf-8")
+    _git(upstream, "add", "-A")
+    _git(upstream, "-c", "user.email=t@e.st", "-c", "user.name=t",
+         "commit", "--quiet", "-m", "three")
+    _git(upstream, "update-ref", "refs/remotes/origin/main", "HEAD")
+    _git(clone, "fetch", "--quiet", "origin")
     (clone / "landing.txt").write_text("mine\n", encoding="utf-8")
     third = run_guard()
-    assert "refusing to overwrite untracked paths" in third, third
-    assert "landing.txt" in third, "a path origin would overwrite must block too"
+    assert "landing.txt" in third, third
 
 
 def _git(cwd: Path, *args: str) -> None:
@@ -338,8 +364,13 @@ def test_check_shows_what_would_land_and_changes_nothing() -> None:
     text = _text()
     assert "--check" in text
     assert "nothing was changed" in text
-    # The checkout is only moved after the --check exit.
-    assert text.find("--check: nothing was changed") < text.find("merge --ff-only")
+    # The checkout is only moved after the --check exit — and the guard's own
+    # merge is `--no-commit` + `--abort`, so the question can be asked without
+    # answering it. A plain `merge --ff-only` there fast-forwarded a clean
+    # checkout before `--check` printed "nothing was changed".
+    assert text.find("--check: nothing was changed") < text.find('merge --ff-only "origin/$BRANCH"')
+    assert "merge --ff-only --no-commit" in text
+    assert "merge --abort" in text
 
 
 def test_an_already_current_install_is_a_noop() -> None:
@@ -669,29 +700,28 @@ def test_the_deploy_checks_the_tag_it_was_given_not_the_ref_it_was_triggered_on(
     assert "if [ \"$have\" != \"$want\" ]" in step
 
 
-def test_product_code_the_incoming_change_touches_blocks_even_with_yes(tmp_path):
+def test_product_code_the_update_rewrites_is_not_overwritten_even_with_yes(tmp_path):
     """A deploy must not overwrite an edit to the code it is deploying.
 
-    Measured on capoy.ir, 14 Nov: `/opt/nobi` held `M server/paper_trading.py`.
-    Nobody knows whether that was a hand fix that never made it upstream or a
-    leftover; the checkout belongs to the service user and the file monitors
-    open positions. The old guard refused the update for *any* modified file —
-    and that same box was accumulating `server/backtest_reports/*.json`, which
-    would have blocked every deploy with nothing at risk. So the question is
-    asked of the incoming diff: a file edited here *and* rewritten by the update
-    blocks, and the run says how to save it.
+    Measured on capoy.ir, 14 Nov: `/opt/nobi` held `M server/paper_trading.py` —
+    the file that monitors open positions — while the incoming release rewrote
+    it. `--yes` is consent to run unattended, not consent to lose that.
+
+    The question "would this fast-forward lose the edit?" is asked of git, not
+    inferred from a diff: on 17 Nov the inferred version announced 760 files as
+    "an edit on the box" because 2.5.6..2.5.8 rewrote most of the tree, which is
+    a message that sends the operator to the wrong file. git's answer, and the
+    file it names, are what this pins.
     """
     if os.name != "posix" or shutil.which("bash") is None:
         pytest.skip("the update script is bash; running it needs a POSIX shell")
 
     text = _text()
     start = text.index('STATUS="$(runas git -C "$APP_DIR" status --porcelain')
-    end = text.index("\nfi\n", text.index("LEFTOVER=", start)) + len("\nfi\n")
+    end = text.index("\nfi\n", text.index('LEFTOVER="$(', start)) + len("\nfi\n")
     guard = text[start:end]
-    assert "AT_RISK" in guard
-    assert 'diff --name-only "$OLD_SHA" "$REMOTE_SHA"' in guard, (
-        "what is at risk is decided by the incoming change, not by the file name"
-    )
+    assert "GUARD_DIRTY=1" in guard
+    assert 'merge --ff-only --no-commit --no-stat "$REMOTE/$BRANCH"' in guard
     assert "--keep-local-edits" in _code_without_comments(), (
         "an unattended run needs a way to save the edit instead of dying on it"
     )
@@ -705,21 +735,17 @@ def test_product_code_the_incoming_change_touches_blocks_even_with_yes(tmp_path)
     _git(upstream, "add", "-A")
     _git(upstream, "-c", "user.email=t@e.st", "-c", "user.name=t", "commit", "--quiet", "-m", "one")
     _git(upstream, "update-ref", "refs/remotes/origin/main", "HEAD")
-    old_sha = subprocess.run(["git", "-C", str(upstream), "rev-parse", "HEAD"],
-                             capture_output=True, text=True, encoding="utf-8").stdout.strip()
 
     clone = tmp_path / "clone"
     subprocess.run(["git", "clone", "--quiet", str(upstream), str(clone)],
                    check=True, capture_output=True)
-    (clone / "server" / "paper_trading.py").write_text("equity = 1  # hand edit\n", encoding="utf-8")
-    # the incoming commit touches exactly that file
+    # the incoming commit touches exactly the file somebody edited here
     (upstream / "server" / "paper_trading.py").write_text("equity = 2\n", encoding="utf-8")
     _git(upstream, "add", "-A")
     _git(upstream, "-c", "user.email=t@e.st", "-c", "user.name=t", "commit", "--quiet", "-m", "two")
     _git(upstream, "update-ref", "refs/remotes/origin/main", "HEAD")
     _git(clone, "fetch", "--quiet", "origin")
-    new_sha = subprocess.run(["git", "-C", str(upstream), "rev-parse", "HEAD"],
-                             capture_output=True, text=True, encoding="utf-8").stdout.strip()
+    (clone / "server" / "paper_trading.py").write_text("equity = 1  # hand edit\n", encoding="utf-8")
 
     data = tmp_path / "data"
     data.mkdir()
@@ -729,16 +755,16 @@ def test_product_code_the_incoming_change_touches_blocks_even_with_yes(tmp_path)
             'runas() { "$@"; }\n'
             'warn() { printf "WARN %s\\n" "$*"; }\n'
             'die() { printf "DIE %s\\n" "$*" >&2; exit 1; }\n'
-            f'APP_DIR={str(clone)!r}\nBRANCH=main\nDO_RESET={reset}\n'
+            f'APP_DIR={str(clone)!r}\nBRANCH=main\nREMOTE=origin\nDO_RESET={reset}\n'
             f'ALLOW_DIRTY={force}\nASSUME_YES=1\nSTASH_EDITS={keep}\n'
-            f'DATA_DIR={str(data)!r}\nSERVICE_USER={os.environ.get("USER", "user")!r}\n'
-            f'OLD_SHA={old_sha}\nREMOTE_SHA={new_sha}\n' + guard
+            f'DATA_DIR={str(data)!r}\nSERVICE_USER={os.environ.get("USER", "user")!r}\n' + guard
         )
         proc = subprocess.run(["bash", "-c", harness], capture_output=True, text=True,
                               encoding="utf-8", timeout=120)
         return proc.stdout + proc.stderr
 
-    # `--yes` is not consent to overwrite product code: this must stop.
+    # `--yes` is not consent to overwrite product code: this must stop, and name
+    # the file it stopped for.
     refused = run_guard()
     assert "DIE" in refused, refused
     assert "paper_trading.py" in refused
@@ -755,13 +781,10 @@ def test_product_code_the_incoming_change_touches_blocks_even_with_yes(tmp_path)
                             capture_output=True, text=True, encoding="utf-8").stdout
     assert "paper_trading.py" not in status, "the edit is stashed, not still in the way"
     # put the checkout back the way it was for the two paths below
-    subprocess.run(["git", "-C", str(clone), "checkout", "--", "server/paper_trading.py"],
-                   capture_output=True)
-    subprocess.run(["git", "-C", str(clone), "stash", "drop", "--quiet"],
-                   capture_output=True)
+    subprocess.run(["git", "-C", str(clone), "stash", "drop", "--quiet"], capture_output=True)
+    (clone / "server" / "paper_trading.py").write_text("equity = 1  # hand edit\n", encoding="utf-8")
 
     # --force is informed consent, and it says what it is doing.
-    (clone / "server" / "paper_trading.py").write_text("equity = 1  # hand edit\n", encoding="utf-8")
     forced = run_guard(force=1)
     assert "DIE" not in forced, forced
     assert "--force was given" in forced, forced
