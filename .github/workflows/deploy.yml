@@ -84,13 +84,13 @@ jobs:
 
       - name: Dry run
         if: ${{ inputs.dry_run }}
-        # Same dispatch as the real update, with `--check` instead of `--yes`, so
-        # a dry run dies exactly where the update would.
+        # The update's rehearsal, with --check instead of --yes, so it dies
+        # exactly where the update would — before touching anything.
         env:
           TAG: ${{ inputs.tag }}
         run: |
           # `env:` sets TAG for this *runner* step; ssh starts a fresh environment
-          # on the box, so the value travels as text -- expanded here, quoted for
+          # on the box, so the value travels as text — expanded here, quoted for
           # the remote shell, and read there as `$1`. Reading `$TAG` inside the
           # heredoc is what made 2.5.8's deploy die with `TAG: unbound variable`.
           case "$TAG" in
@@ -98,47 +98,28 @@ jobs:
             *) echo "::error::not a release tag: $TAG"; exit 1 ;;
           esac
           # ------------------------------------------------------------------ #
-          # Which script runs, and which flags it gets
+          # What runs on the box, and with whose privilege
           # ------------------------------------------------------------------ #
-          # 1. The script on the box is the PREVIOUS release's: deploy.yml is read
-          #    from main on every run, update_arvan.sh from /opt/nobi, and only a
-          #    successful deploy changes the second. Four red runs were spent
-          #    fixing a file the box never read.
-          # 2. The deploy account cannot rewrite /opt/nobi: `sudo install` there
-          #    answers "a password is required" (17 Nov). That boundary stays --
-          #    a deploy key that can overwrite root-owned files is the bigger
-          #    risk -- so this run's script is staged in a directory the account
-          #    owns and run from there, with the old one kept beside it.
-          # 3. Which flags it accepts is asked of that file, on the box, with its
-          #    answer captured here. It cannot be computed inside the heredoc
-          #    below: a heredoc is stdin, and stdin is read once.
-          if [ -f scripts/update_arvan.sh ]; then
-            if ssh prod 'mkdir -p ~/nobi-deploy/scripts' \
-               && ssh prod 'cat > ~/nobi-deploy/scripts/update_arvan.sh' < scripts/update_arvan.sh \
-               && ssh prod 'chmod 755 ~/nobi-deploy/scripts/update_arvan.sh' \
-               && ssh prod 'cp /opt/nobi/scripts/update_arvan.sh ~/nobi-deploy/previous-update_arvan.sh 2>/dev/null || true'
-            then
-              echo "this run's script: $(sha256sum < scripts/update_arvan.sh | cut -c1-12) staged at ~/nobi-deploy/scripts/update_arvan.sh"
-              # Single quotes: the runner must NOT expand this. The remote shell
-              # expands $HOME, which is the deploy account's home on the box.
-              RUN_SCRIPT='$HOME/nobi-deploy/scripts/update_arvan.sh'
-            else
-              echo "::warning::could not stage this run's update script; using the one on the box"
-              RUN_SCRIPT=/opt/nobi/scripts/update_arvan.sh
-            fi
-          else
-            RUN_SCRIPT=/opt/nobi/scripts/update_arvan.sh
-          fi
-          # `printf %q` of a literal `$HOME/...` yields `\$HOME/...`: the outer
-          # double quotes expand `\$` to a plain `$`, the remote shell expands it
-          # once. Passing the *staged* path unexpanded is what keeps the runner
-          # from looking for the deploy account's home on its own disk.
-          caps="$(ssh prod "bash -s -- $RUN_SCRIPT" <<'PROBE'
+          # `update_arvan.sh` demands uid 0 (it says so itself). The GitHub
+          # runner reaches the box as `deploy`, which is deliberately NOT root;
+          # the one thing `deploy` may do as root is run this one script, and
+          # only in the two shapes below, via `deploy/nobi-deploy.sudoers`
+          # (installed on the box once, root-side — see that file).
+          #
+          # That is also why this run's copy of the script is NOT executed:
+          # a deploy account that can stage a file and then have root run it
+          # is a root install path, which is exactly what 17 Nov's
+          # "sudo: a password is required" refused. So the probe below reads
+          # the SYSTEM script, and the flags sent are the ones that script
+          # accepts. If the system script is too old to know --ref, the run
+          # installs origin/main and the post-deploy commit check fails the
+          # run — by design, loudly, instead of silently installing a commit
+          # nobody validated.
+          BOX_SCRIPT=/opt/nobi/scripts/update_arvan.sh
+          caps="$(ssh prod "bash -s -- $BOX_SCRIPT" <<'PROBE'
           set -eu
           installed="$1"
-          if body="$(sudo -n -u nobi cat "$installed" 2>/dev/null)" && [ -n "$body" ]; then
-            echo "reading $installed as nobi" >&2
-          elif body="$(cat "$installed" 2>/dev/null)" && [ -n "$body" ]; then
+          if body="$(cat "$installed" 2>/dev/null)" && [ -n "$body" ]; then
             echo "reading $installed as $(id -un)" >&2
           else
             echo "::warning::cannot read $installed; every flag is treated as missing" >&2
@@ -165,13 +146,15 @@ jobs:
           done <<CAPS
           $caps
           CAPS
-          echo "script under test: $RUN_SCRIPT"
+          echo "script under test: $BOX_SCRIPT"
           echo "flags it accepts: ref=$CAP_REF accept-unit-change=$CAP_UNIT keep-local-edits=$CAP_KEEP"
-          ssh prod "bash -s -- '$TAG' $CAP_REF $CAP_UNIT $CAP_KEEP '$RUN_SCRIPT'" <<'REMOTE'
+          ssh prod "bash -s -- '$TAG' $CAP_REF $CAP_UNIT $CAP_KEEP" <<'REMOTE'
           set -eu
-          tag="$1"; cap_ref="$2"; cap_unit="$3"; cap_keep="$4"; script="$5"
+          tag="$1"; cap_ref="$2"; cap_unit="$3"; cap_keep="$4"
+          script=/opt/nobi/scripts/update_arvan.sh
           flags="--check"
           # No flag reaches the command line that the parser did not admit to.
+          # The order is fixed: keep-local-edits, ref, accept-unit-change.
           if [ "$cap_keep" = yes ]; then
             flags="$flags --keep-local-edits"
           else
@@ -188,7 +171,10 @@ jobs:
             echo "::warning::the script has no --accept-unit-change; a unit change will not be installed"
           fi
           echo "running: $(basename "$script") $flags"
-          sudo -n bash -c "bash $script $flags"
+          # As root, via the one sudoers rule that covers this script — the
+          # rule pins the command path and the leading flags, so the
+          # destructive reset/force paths are not reachable from here.
+          sudo -n "$script" $flags
           REMOTE
 
       - name: Update
@@ -198,7 +184,7 @@ jobs:
           TAG: ${{ inputs.tag }}
         run: |
           # `env:` sets TAG for this *runner* step; ssh starts a fresh environment
-          # on the box, so the value travels as text -- expanded here, quoted for
+          # on the box, so the value travels as text — expanded here, quoted for
           # the remote shell, and read there as `$1`. Reading `$TAG` inside the
           # heredoc is what made 2.5.8's deploy die with `TAG: unbound variable`.
           case "$TAG" in
@@ -206,47 +192,28 @@ jobs:
             *) echo "::error::not a release tag: $TAG"; exit 1 ;;
           esac
           # ------------------------------------------------------------------ #
-          # Which script runs, and which flags it gets
+          # What runs on the box, and with whose privilege
           # ------------------------------------------------------------------ #
-          # 1. The script on the box is the PREVIOUS release's: deploy.yml is read
-          #    from main on every run, update_arvan.sh from /opt/nobi, and only a
-          #    successful deploy changes the second. Four red runs were spent
-          #    fixing a file the box never read.
-          # 2. The deploy account cannot rewrite /opt/nobi: `sudo install` there
-          #    answers "a password is required" (17 Nov). That boundary stays --
-          #    a deploy key that can overwrite root-owned files is the bigger
-          #    risk -- so this run's script is staged in a directory the account
-          #    owns and run from there, with the old one kept beside it.
-          # 3. Which flags it accepts is asked of that file, on the box, with its
-          #    answer captured here. It cannot be computed inside the heredoc
-          #    below: a heredoc is stdin, and stdin is read once.
-          if [ -f scripts/update_arvan.sh ]; then
-            if ssh prod 'mkdir -p ~/nobi-deploy/scripts' \
-               && ssh prod 'cat > ~/nobi-deploy/scripts/update_arvan.sh' < scripts/update_arvan.sh \
-               && ssh prod 'chmod 755 ~/nobi-deploy/scripts/update_arvan.sh' \
-               && ssh prod 'cp /opt/nobi/scripts/update_arvan.sh ~/nobi-deploy/previous-update_arvan.sh 2>/dev/null || true'
-            then
-              echo "this run's script: $(sha256sum < scripts/update_arvan.sh | cut -c1-12) staged at ~/nobi-deploy/scripts/update_arvan.sh"
-              # Single quotes: the runner must NOT expand this. The remote shell
-              # expands $HOME, which is the deploy account's home on the box.
-              RUN_SCRIPT='$HOME/nobi-deploy/scripts/update_arvan.sh'
-            else
-              echo "::warning::could not stage this run's update script; using the one on the box"
-              RUN_SCRIPT=/opt/nobi/scripts/update_arvan.sh
-            fi
-          else
-            RUN_SCRIPT=/opt/nobi/scripts/update_arvan.sh
-          fi
-          # `printf %q` of a literal `$HOME/...` yields `\$HOME/...`: the outer
-          # double quotes expand `\$` to a plain `$`, the remote shell expands it
-          # once. Passing the *staged* path unexpanded is what keeps the runner
-          # from looking for the deploy account's home on its own disk.
-          caps="$(ssh prod "bash -s -- $RUN_SCRIPT" <<'PROBE'
+          # `update_arvan.sh` demands uid 0 (it says so itself). The GitHub
+          # runner reaches the box as `deploy`, which is deliberately NOT root;
+          # the one thing `deploy` may do as root is run this one script, and
+          # only in the two shapes below, via `deploy/nobi-deploy.sudoers`
+          # (installed on the box once, root-side — see that file).
+          #
+          # That is also why this run's copy of the script is NOT executed:
+          # a deploy account that can stage a file and then have root run it
+          # is a root install path, which is exactly what 17 Nov's
+          # "sudo: a password is required" refused. So the probe below reads
+          # the SYSTEM script, and the flags sent are the ones that script
+          # accepts. If the system script is too old to know --ref, the run
+          # installs origin/main and the post-deploy commit check fails the
+          # run — by design, loudly, instead of silently installing a commit
+          # nobody validated.
+          BOX_SCRIPT=/opt/nobi/scripts/update_arvan.sh
+          caps="$(ssh prod "bash -s -- $BOX_SCRIPT" <<'PROBE'
           set -eu
           installed="$1"
-          if body="$(sudo -n -u nobi cat "$installed" 2>/dev/null)" && [ -n "$body" ]; then
-            echo "reading $installed as nobi" >&2
-          elif body="$(cat "$installed" 2>/dev/null)" && [ -n "$body" ]; then
+          if body="$(cat "$installed" 2>/dev/null)" && [ -n "$body" ]; then
             echo "reading $installed as $(id -un)" >&2
           else
             echo "::warning::cannot read $installed; every flag is treated as missing" >&2
@@ -273,13 +240,15 @@ jobs:
           done <<CAPS
           $caps
           CAPS
-          echo "script under test: $RUN_SCRIPT"
+          echo "script under test: $BOX_SCRIPT"
           echo "flags it accepts: ref=$CAP_REF accept-unit-change=$CAP_UNIT keep-local-edits=$CAP_KEEP"
-          ssh prod "bash -s -- '$TAG' $CAP_REF $CAP_UNIT $CAP_KEEP '$RUN_SCRIPT'" <<'REMOTE'
+          ssh prod "bash -s -- '$TAG' $CAP_REF $CAP_UNIT $CAP_KEEP" <<'REMOTE'
           set -eu
-          tag="$1"; cap_ref="$2"; cap_unit="$3"; cap_keep="$4"; script="$5"
+          tag="$1"; cap_ref="$2"; cap_unit="$3"; cap_keep="$4"
+          script=/opt/nobi/scripts/update_arvan.sh
           flags="--yes --backup --verify"
           # No flag reaches the command line that the parser did not admit to.
+          # The order is fixed: keep-local-edits, ref, accept-unit-change.
           if [ "$cap_keep" = yes ]; then
             flags="$flags --keep-local-edits"
           else
@@ -296,9 +265,11 @@ jobs:
             echo "::warning::the script has no --accept-unit-change; a unit change will not be installed"
           fi
           echo "running: $(basename "$script") $flags"
-          sudo -n bash -c "bash $script $flags"
+          # As root, via the one sudoers rule that covers this script — the
+          # rule pins the command path and the leading flags, so the
+          # destructive reset/force paths are not reachable from here.
+          sudo -n "$script" $flags
           REMOTE
-
       - name: Post-deploy proof
         # Runs even when --verify went red (9 Nov: a probe-only 403 hid the fact
         # that the update had completed and the new version was serving).
