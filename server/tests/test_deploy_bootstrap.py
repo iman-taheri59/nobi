@@ -71,6 +71,39 @@ def _remote_script(name: str = "Update") -> str:
     return "\n".join(lines[start + 1:-1]) + "\n"
 
 
+def _probe_script(name: str = "Update") -> str:
+    """The heredoc body of the capability probe (`ssh prod 'bash -s' <<'PROBE'`)."""
+    lines = [ln for ln in _step(name)["run"].rstrip("\n").split("\n") if ln.strip()]
+    end = max(i for i, ln in enumerate(lines) if ln.strip() == "PROBE")
+    start = max(i for i, ln in enumerate(lines) if ln.startswith("caps=\"$(ssh prod"))
+    return "\n".join(lines[start + 1:end]) + "\n"
+
+
+def _run_probe(tmp_path: Path, installed_script: str, *, readable: bool = True) -> str:
+    """Execute the probe on a path the deploy account may or may not read."""
+    box = tmp_path / "probe-box"
+    box.mkdir(parents=True, exist_ok=True)
+    installed = box / "update_arvan.sh"
+    installed.write_text(installed_script, encoding="utf-8")
+    if not readable:
+        installed.chmod(0o600)
+    fake_bin = tmp_path / "probe-bin"
+    fake_bin.mkdir(parents=True, exist_ok=True)
+    (fake_bin / "sudo").write_text(
+        "#!/bin/sh\n"
+        'if [ "$4" = "cat" ]; then\n'
+        f'  if [ {1 if readable else 0} -eq 1 ]; then cat "$5"; exit 0; fi\n'
+        '  echo "sudo: a password is required" >&2; exit 1\n'
+        "fi\nexit 0\n", encoding="utf-8")
+    (fake_bin / "sudo").chmod(0o755)
+    path = tmp_path / "probe.sh"
+    path.write_text(_probe_script().replace(INSTALLED, str(installed)), encoding="utf-8")
+    out = subprocess.run(["bash", str(path)], capture_output=True, text=True,
+                         encoding="utf-8", env={"PATH": f"{fake_bin}:/usr/bin:/bin",
+                                                "HOME": str(tmp_path)})
+    return out.stdout + out.stderr
+
+
 def _tag_argument(name: str = "Update") -> str:
     """What the ssh command sends as the remote script's `$1`.
 
@@ -85,8 +118,27 @@ def _tag_argument(name: str = "Update") -> str:
     return sent[: sent.index("'", 1) + 1]
 
 
+def _names(script: str, *arms: str) -> dict[str, str]:
+    """Which of these `case` arms the given script text has: `yes` / `no`."""
+    return {arm: ("yes" if f"--{arm})" in script else "no") for arm in arms}
+
+
+def _probe_answer(script: str) -> str:
+    """The probe step's output for a script, exactly as the runner reads it.
+
+    The probe is a separate ssh call that answers `has <arm>` / `missing <arm>`;
+    the runner turns those lines into `CAP_*`. Building that answer here means
+    the tests exercise the same text the workflow does, not a shortcut.
+    """
+    return "".join(
+        f"has {arm}\n" if f"--{arm})" in script else f"missing {arm}\n"
+        for arm in ("ref", "accept-unit-change", "keep-local-edits")
+    )
+
+
 def _dispatch(tmp_path: Path, installed_script: str, step: str = "Update",
-              *, readable: bool = True) -> tuple[str, int, str]:
+              *, readable: bool = True,
+              caps: tuple[str, str, str] | None = None) -> tuple[str, int, str]:
     """Run the remote script with `sudo` replaced by a recorder.
 
     `sudo -u nobi cat` is part of the real step (the checkout belongs to the
@@ -94,14 +146,22 @@ def _dispatch(tmp_path: Path, installed_script: str, step: str = "Update",
     answers it the way `sudo` would: the file's contents when it is allowed,
     nothing and a non-zero status when `readable=False`.
     """
+    if caps is None:
+        probe = _probe_answer(installed_script)
+        caps = (
+            "yes" if "has ref" in probe else "no",
+            "yes" if "has accept-unit-change" in probe else "no",
+            "yes" if "has keep-local-edits" in probe else "no",
+        )
+    ref, unit, keep = caps
     box = tmp_path / "box"
-    box.mkdir(exist_ok=True)
+    box.mkdir(parents=True, exist_ok=True)
     installed = box / "update_arvan.sh"
     installed.write_text(installed_script, encoding="utf-8")
     if not readable:
         installed.chmod(0o600)  # the deploy account is not the owner
     fake_bin = tmp_path / "bin"
-    fake_bin.mkdir(exist_ok=True)
+    fake_bin.mkdir(parents=True, exist_ok=True)
     log = tmp_path / "sudo.log"
     (fake_bin / "sudo").write_text(
         "#!/bin/sh\n"
@@ -120,8 +180,8 @@ def _dispatch(tmp_path: Path, installed_script: str, step: str = "Update",
     # The box does not inherit the runner's environment: the only way the tag
     # can arrive is the way the ssh command line sends it, as `$1`.
     env = {"PATH": f"{fake_bin}:/usr/bin:/bin", "HOME": str(tmp_path)}
-    out = subprocess.run(["bash", str(path), "v2.5.8"], capture_output=True,
-                         text=True, env=env, encoding="utf-8")
+    out = subprocess.run(["bash", str(path), "v2.5.8", ref, unit, keep],
+                         capture_output=True, text=True, env=env, encoding="utf-8")
     called = log.read_text(encoding="utf-8").strip() if log.exists() else ""
     return called, out.returncode, out.stdout + out.stderr
 
@@ -153,7 +213,7 @@ def test_a_new_flag_is_not_sent_to_an_old_script(tmp_path):
 def test_a_script_that_knows_the_flags_gets_them(tmp_path):
     called, code, log = _dispatch(tmp_path, NEW_SCRIPT)
     assert code == 0, log
-    assert "--accept-unit-change --ref v2.5.8" in called, called
+    assert "--accept-unit-change" in called and "--ref v2.5.8" in called, called
 
 
 @pytest.mark.skipif(os.name != "posix", reason="the remote side is a POSIX shell")
@@ -251,7 +311,7 @@ def test_the_command_line_and_the_warning_never_disagree(tmp_path):
     assert "--accept-unit-change" not in old, old
 
     # A script that knows everything gets everything, in one place.
-    new = _dispatch(tmp_path, NEW_SCRIPT)[0]
+    new = _dispatch(tmp_path / "new", NEW_SCRIPT)[0]
     assert "--keep-local-edits" in new and "--ref v2.5.8" in new, new
 
 
@@ -266,11 +326,18 @@ def test_a_checkout_the_deploy_account_cannot_read_is_asked_through_sudo(tmp_pat
     (`sudo -u nobi cat`), and only if that is refused does the plain read get a
     turn.
     """
-    body = _remote_script("Update")
-    assert "sudo -n -u nobi cat" in body, (
+    probe = _probe_script("Update")
+    assert "sudo -n -u nobi cat" in probe, (
         "the installed script has to be read as its owner, or the answer is a"
         " permissions error dressed up as an old script"
     )
-    called, code, log = _dispatch(tmp_path, NEW_SCRIPT, readable=False)
+    # A file only the service user can read, and a file anybody can read: both
+    # must classify the same way, and neither may answer "old script".
+    for readable in (False, True):
+        answer = _run_probe(tmp_path / f"r{int(readable)}", NEW_SCRIPT, readable=readable)
+        assert "has keep-local-edits" in answer, answer
+        assert "has ref" in answer, answer
+
+    called, code, log = _dispatch(tmp_path / "d", NEW_SCRIPT, readable=False)
     assert code == 0, log
-    assert "--accept-unit-change --ref v2.5.8" in called, called
+    assert "--accept-unit-change" in called and "--ref v2.5.8" in called, called

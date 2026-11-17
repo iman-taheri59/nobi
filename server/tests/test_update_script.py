@@ -707,37 +707,46 @@ def test_a_host_without_an_installed_unit_can_still_be_installed():
 
 
 def test_the_deploy_workflow_does_not_hand_new_flags_to_an_old_script():
-    """A workflow cannot teach the box a flag that the box's script never had.
+    """The flag list is a consequence of a question asked on the box.
 
-    The 2.5.8 workflow called `/opt/nobi/scripts/update_arvan.sh` with `--ref`
-    and `--accept-unit-change` unconditionally. On a host still running 2.5.6
-    that file is the *old* script, and its case-loop answers an unknown argument
-    with `die "unknown argument: …"`: the update dies before it reads the tag,
-    and the only visible symptom is a failed Deploy run. This is the bootstrap
-    problem, and the fix has to live in the workflow, not in the flags.
+    Three failures, one shape: the workflow assembled a command line from what it
+    *believed* about the installed script. `--ref` (14 Nov) and
+    `--keep-local-edits` (first 2.5.8 attempt) were both sent to a parser that
+    answers `unknown argument`, and the release read as broken code. The third
+    version put `--keep-local-edits` in the base list before the single check it
+    ran, so its own warning and its own command line disagreed.
 
-    Verified by simulation: the v2.5.6 argument loop, given
-    `--yes --backup --verify --accept-unit-change --ref v2.5.8`, exits 1 on
-    `--accept-unit-change`; given the old three flags it exits 0.
+    Now the step asks the box which `case` arms the file has (one `ssh`, its
+    output captured), turns the answer into `CAP_*`, and passes those to the
+    remote script as arguments. Nothing is added to the command line that the
+    probe did not say `yes` to.
     """
     wf = (ROOT / ".github" / "workflows" / "deploy.yml").read_text(encoding="utf-8")
-    # The flag set is decided at run time, by looking at the installed script.
-    # The path now lives in a variable so every flag is decided against the same
-    # file; the check itself is still the `case` arm, not the word.
-    assert 'installed=/opt/nobi/scripts/update_arvan.sh' in wf
-    assert 'grep -q -- "--accept-unit-change)" "$installed"' in wf
-    # The base flag set is the contract even the 2.5.6 parser understands, and
-    # nothing is appended to it before a check has said the parser has that arm
-    # — `--keep-local-edits` in the base list is exactly the "unknown argument"
-    # that killed 2.5.8's step 8 one flag later than --ref did.
+    installed = "/opt/nobi/scripts/update_arvan.sh"
+
+    # The probe: one ssh call whose output is captured, then parsed.
+    assert 'caps="$(ssh prod' in wf
+    assert f"installed={installed}" in wf
+    assert "for arm in ref accept-unit-change keep-local-edits; do" in wf
+    assert 'grep -q -- "--$arm)"' in wf, "the arm is detected, not the word"
+    assert "CAP_KEEP=yes" in wf and "CAP_REF=yes" in wf and "CAP_UNIT=yes" in wf
+
+    # The answer travels to the box as arguments, because `env:` does not cross ssh.
+    assert "ssh prod \"bash -s -- '$TAG' \\$CAP_REF \\$CAP_UNIT \\$CAP_KEEP\"" in wf
+    assert 'cap_keep="$4"' in wf
+
+    # And the command line only ever grows from that answer.
     assert 'flags="--yes --backup --verify"' in wf
-    keep = wf.index('grep -q -- "--keep-local-edits)"')
-    assert keep < wf.index("flags=\"$flags --keep-local-edits\""), (
-        "the flag must be appended only after the parser was asked about it"
-    )
-    assert 'flags="$flags --accept-unit-change --ref $tag"' in wf
-    # The unconditional call is gone — that is the line that died on 2.5.6.
-    assert "update_arvan.sh --yes --backup --verify --accept-unit-change --ref ${{ inputs.tag }}" not in wf
+    assert 'flags="--check"' in wf
+    assert wf.index('if [ "$cap_keep" = yes ]') < wf.index('flags="$flags --keep-local-edits"')
+    assert wf.index('if [ "$cap_ref" = yes ]') < wf.index('flags="$flags --ref $tag"')
+    # --reset is the destructive path and has no business in a workflow.
+    assert "--reset" not in wf
+    # The probe itself must not be a `grep -q` inside a pipe: under pipefail a
+    # match becomes 141 and a "yes" a "no" (the repo has a test for that shape).
+    first = wf.index("caps=\"$(ssh prod")
+    probe = wf[first:wf.index('          PROBE\n', first)]
+    assert 'if printf \'%s\' "$body" | grep -q -- "--$arm)"' in probe, probe
 
 
 def test_the_fallback_still_proves_which_commit_landed():
