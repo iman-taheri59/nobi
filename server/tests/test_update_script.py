@@ -294,6 +294,7 @@ def test_a_real_install_with_only_a_cache_directory_still_updates(tmp_path):
     assert "landing.txt" in third, third
 
 
+@pytest.mark.skipif(os.name != "posix", reason="the update script is bash")
 def test_a_repointed_tag_is_named_as_the_reason_a_fetch_failed(tmp_path):
     """A failed fetch has causes that need different answers; do not guess.
 
@@ -955,6 +956,7 @@ def test_a_backtest_report_does_not_block_a_deploy(tmp_path):
     assert "backtest_reports" not in out, out
 
 
+@pytest.mark.skipif(os.name != "posix", reason="the gate is run by a bash step on Linux")
 def test_the_npm_gate_fails_on_an_undocumented_high_advisory(tmp_path) -> None:
     """A gate that cannot pass is a gate people learn to ignore.
 
