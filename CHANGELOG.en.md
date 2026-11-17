@@ -66,6 +66,8 @@ scoring, R:R or the universe; what changes is whether what was displayed was tru
 
 - **`--keep-local-edits` was sent to the old script too:** the `Update` step built its flag list as `--yes --backup --verify --keep-local-edits` and only *then* ran a single check. On a host with the older script the log said "predates --ref" while the command line still carried the new flag, and the old parser died on `unknown argument: --keep-local-edits` — the same failure as `--ref`, one flag later. Each flag is now decided on its own from the `case` arm of the installed file, and the warning and the command line cannot disagree. The installed file is read with `sudo -n -u nobi cat`, because the checkout belongs to the service user and a bare `grep` can answer a permissions error as "old script". Two tests.
 
+- **The dirty-checkout guard guessed from a diff instead of asking git:** it diffed `origin/main` against `HEAD` and called every changed path a path this update rewrites. On capoy.ir that turned a single modified file into a 760-file list (the whole 2.5.6..2.5.8 range) — a message that sends the operator to a file nobody touched. It now runs `git merge --ff-only --no-commit --no-stat` (the operation the update performs) followed by `merge --abort`; the decision and the file names come from git, and `--check` can no longer move HEAD while claiming nothing changed. The hand-written untracked/collision scan is gone: git already answers that. Three tests rewritten.
+
 `pytest`: 1,911 -> 1,970. `ruff` and `mypy` clean. Each new test was run against the previous commit first and failed there.
 
 ## 2.5.7
