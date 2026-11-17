@@ -105,20 +105,76 @@ jobs:
             v[0-9]*.[0-9]*.[0-9]*) ;;
             *) echo "::error::not a release tag: $TAG"; exit 1 ;;
           esac
-          ssh prod "bash -s -- '$TAG'" <<'REMOTE'
+          caps="$(ssh prod 'bash -s' <<'PROBE'
           set -eu
-          tag="$1"
-          flags="--check"
+          # Which script is on the box *right now*, and which flags its parser
+          # actually accepts? The answer decides the command below, and a wrong
+          # answer is what killed two releases: `--ref` (14 Nov) and
+          # `--keep-local-edits` (first 2.5.8 attempt) were both sent to a parser
+          # that would `die "unknown argument"` on them, and the run looked like a
+          # code failure.
+          #
+          # Read as the file's owner (`sudo -u nobi cat`), then plainly: the
+          # checkout belongs to the service user, and a bare `grep` that fails on
+          # permissions must not be read as "old script".
           installed=/opt/nobi/scripts/update_arvan.sh
-          # Same question, same answer as the Update step: the dry run must send
-          # exactly the flags the real run sends, or it is not a dry run of it.
-          if grep -q -- "--keep-local-edits)" "$installed" 2>/dev/null; then
-            flags="$flags --keep-local-edits"
+          if body="$(sudo -n -u nobi cat "$installed" 2>/dev/null)"; then
+            echo "reading $installed as nobi"
+          elif body="$(cat "$installed" 2>/dev/null)"; then
+            echo "reading $installed as $(id -un)"
+          else
+            echo "::warning::cannot read $installed at all; every flag is treated as missing"
+            body=""
           fi
-          if grep -q -- "--accept-unit-change)" "$installed" 2>/dev/null; then
+          for arm in ref accept-unit-change keep-local-edits; do
+            if printf '%s' "$body" | grep -q -- "--$arm)"; then
+              echo "has $arm"
+            else
+              echo "missing $arm"
+            fi
+          done
+          PROBE
+          )"
+          # The probe's answer, turned into three variables. Read with `case`, not
+          # `grep -q` in a pipe: under `pipefail` SIGPIPE turns a match into 141
+          # and a "yes" into a "no".
+          CAP_REF=no; CAP_UNIT=no; CAP_KEEP=no
+          while IFS= read -r line; do
+            case "$line" in
+              "has ref") CAP_REF=yes ;;
+              "has accept-unit-change") CAP_UNIT=yes ;;
+              "has keep-local-edits") CAP_KEEP=yes ;;
+            esac
+          done <<EOF
+          $caps
+          EOF
+          echo "installed script: ref=$CAP_REF accept-unit-change=$CAP_UNIT keep-local-edits=$CAP_KEEP"
+          # The capability probe runs on the *runner* and its answer is passed
+          # into the remote script as text: `env:` on this step would only set a
+          # variable for the local ssh process, and a heredoc cannot be read twice.
+          ssh prod "bash -s -- '$TAG' \$CAP_REF \$CAP_UNIT \$CAP_KEEP" <<'REMOTE'
+          set -eu
+          tag="$1"; cap_ref="$2"; cap_unit="$3"; cap_keep="$4"
+          flags="--check"
+          # A flag is added only when the parser on the box said it has that
+          # `case` arm — never before, and never on the strength of a comment.
+          if [ "$cap_keep" = yes ]; then
+            flags="$flags --keep-local-edits"
+          else
+            echo "::warning::the installed script has no --keep-local-edits; if the checkout is dirty this run will stop"
+            echo "and the edit stays where it is, which is the safe answer for one run"
+          fi
+          if [ "$cap_ref" = yes ]; then
             flags="$flags --ref $tag"
           fi
+          if [ "$cap_unit" = yes ]; then
+            flags="$flags --accept-unit-change"
+          else
+            echo "::warning::the installed script predates --ref; this run installs origin/main."
+            echo "the commit check in the next step still has to pass"
+          fi
           echo "running: update_arvan.sh $flags"
+          # shellcheck disable=SC2086
           sudo -n bash /opt/nobi/scripts/update_arvan.sh $flags
           REMOTE
 
@@ -149,47 +205,78 @@ jobs:
         env:
           TAG: ${{ inputs.tag }}
         run: |
-          ssh prod "bash -s -- '$TAG'" <<'REMOTE'
+          caps="$(ssh prod 'bash -s' <<'PROBE'
           set -eu
-          tag="$1"
+          # Which script is on the box *right now*, and which flags its parser
+          # actually accepts? The answer decides the command below, and a wrong
+          # answer is what killed two releases: `--ref` (14 Nov) and
+          # `--keep-local-edits` (first 2.5.8 attempt) were both sent to a parser
+          # that would `die "unknown argument"` on them, and the run looked like a
+          # code failure.
+          #
+          # Read as the file's owner (`sudo -u nobi cat`), then plainly: the
+          # checkout belongs to the service user, and a bare `grep` that fails on
+          # permissions must not be read as "old script".
+          installed=/opt/nobi/scripts/update_arvan.sh
+          if body="$(sudo -n -u nobi cat "$installed" 2>/dev/null)"; then
+            echo "reading $installed as nobi"
+          elif body="$(cat "$installed" 2>/dev/null)"; then
+            echo "reading $installed as $(id -un)"
+          else
+            echo "::warning::cannot read $installed at all; every flag is treated as missing"
+            body=""
+          fi
+          for arm in ref accept-unit-change keep-local-edits; do
+            if printf '%s' "$body" | grep -q -- "--$arm)"; then
+              echo "has $arm"
+            else
+              echo "missing $arm"
+            fi
+          done
+          PROBE
+          )"
+          # The probe's answer, turned into three variables. Read with `case`, not
+          # `grep -q` in a pipe: under `pipefail` SIGPIPE turns a match into 141
+          # and a "yes" into a "no".
+          CAP_REF=no; CAP_UNIT=no; CAP_KEEP=no
+          while IFS= read -r line; do
+            case "$line" in
+              "has ref") CAP_REF=yes ;;
+              "has accept-unit-change") CAP_UNIT=yes ;;
+              "has keep-local-edits") CAP_KEEP=yes ;;
+            esac
+          done <<EOF
+          $caps
+          EOF
+          echo "installed script: ref=$CAP_REF accept-unit-change=$CAP_UNIT keep-local-edits=$CAP_KEEP"
+          # The capability probe runs on the *runner* and its answer is passed
+          # into the remote script as text: `env:` on this step would only set a
+          # variable for the local ssh process, and a heredoc cannot be read twice.
+          ssh prod "bash -s -- '$TAG' \$CAP_REF \$CAP_UNIT \$CAP_KEEP" <<'REMOTE'
+          set -eu
+          tag="$1"; cap_ref="$2"; cap_unit="$3"; cap_keep="$4"
           # --keep-local-edits: the box is the only place a hand edit exists, and
           # an unattended run cannot answer a prompt. The script saves it to a
           # patch under /srv/nobi-data, prints it into this log and stashes it,
-          # instead of refusing — which is what happened on 14 Nov when
-          # /opt/nobi held a modified server/paper_trading.py and step 8 stopped.
+          # instead of refusing — which is what happened on 14 Nov when /opt/nobi
+          # held a modified server/paper_trading.py and step 8 stopped.
           flags="--yes --backup --verify"
-          # Every flag is asked for the same way: does the parser on the box have
-          # the `case` arm for it? A separate check per flag is not pedantry —
-          # 2.5.8's step 8 died on `unknown argument: --keep-local-edits`, which
-          # this step itself added to the list *before* the one check it ran,
-          # while the warning it printed said the run was falling back to the old
-          # contract. The warning and the command line disagreed, and the command
-          # line won.
-          #
-          # The `case` *arm*, not the word: a comment that mentions a flag is not
-          # an argument parser that accepts it.
-          installed=/opt/nobi/scripts/update_arvan.sh
-          if sudo -n -u nobi cat "$installed" 2>/dev/null | grep -q -- "--accept-unit-change)"; then
-            echo "the installed update script knows --ref and --accept-unit-change"
-            flags="$flags --accept-unit-change --ref $tag"
-          else
-            # Two ways to read this file, because this is the run that stops: the
-            # checkout belongs to the service user (safe.directory), and the
-            # deploy account may not be able to read it at all.
-            if grep -q -- "--accept-unit-change)" "$installed" 2>/dev/null; then
-              echo "the installed update script knows --ref and --accept-unit-change"
-              flags="$flags --accept-unit-change --ref $tag"
-            else
-              echo "::warning::the installed update script predates --ref; this run installs origin/main."
-              echo "the commit check in the next step still has to pass"
-            fi
-          fi
-          if grep -q -- "--keep-local-edits)" "$installed" 2>/dev/null \
-             || sudo -n -u nobi cat "$installed" 2>/dev/null | grep -q -- "--keep-local-edits)"; then
+          # A flag is added only when the parser on the box said it has that
+          # `case` arm — never before, and never on the strength of a comment.
+          if [ "$cap_keep" = yes ]; then
             flags="$flags --keep-local-edits"
           else
             echo "::warning::the installed script has no --keep-local-edits; if the checkout is dirty this run will stop"
             echo "and the edit stays where it is, which is the safe answer for one run"
+          fi
+          if [ "$cap_ref" = yes ]; then
+            flags="$flags --ref $tag"
+          fi
+          if [ "$cap_unit" = yes ]; then
+            flags="$flags --accept-unit-change"
+          else
+            echo "::warning::the installed script predates --ref; this run installs origin/main."
+            echo "the commit check in the next step still has to pass"
           fi
           echo "running: update_arvan.sh $flags"
           # shellcheck disable=SC2086  # the flag list is built here on purpose

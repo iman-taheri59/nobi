@@ -70,7 +70,9 @@ scoring, R:R or the universe; what changes is whether what was displayed was tru
 
 - **A re-pointed tag broke the deploy, and the error named the wrong cause:** the script ran `git fetch --tags`. On capoy.ir the remote's `v2.5.8` had been re-pointed, so git refused with `would clobber existing tag` — and the script's message said "if the repository is private, add credentials", sending the operator to fix the one thing that was already fine. `fetch_or_die` now keeps git's own output, prints it, and names the cause (diverged tag / network and credentials / anything else) with the command that actually applies. The tag is also fetched by name instead of with `--tags`. Separately, `git describe --always` answers `v2.5.8-8-ga5d559b` where no tag is reachable, and comparing that string with the service version called a healthy install "half-applied"; a `-N-g<sha>` suffix is now recognised as a commit, not a version. Two tests.
 
-`pytest`: 1,911 -> 1,972. `ruff` and `mypy` clean. Each new test was run against the previous commit first and failed there.
+- **`deploy.yml` assembled the flag list before asking the script on the box:** the same shape failed three times. A separate one-line `ssh` now asks only "which `case` arms does this file have?", the runner turns the answer into `CAP_REF`/`CAP_UNIT`/`CAP_KEEP`, and passes them to the remote script as arguments. No flag reaches the command line that the probe did not say `yes` to. It also exposed a real bug: `--keep-local-edits` was appended *after* `--ref` in the `Update` step, so it became `--ref`'s argument. `--ref` is last now. The eight behavioural tests were reworked around a real probe run (readable and unreadable file).
+
+`pytest`: 1,911 -> 1,972 (unchanged). `ruff` and `mypy` clean. Each new test was run against the previous commit first and failed there.
 
 ## 2.5.7
 
