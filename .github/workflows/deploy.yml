@@ -152,7 +152,11 @@ jobs:
           # The capability probe runs on the *runner* and its answer is passed
           # into the remote script as text: `env:` on this step would only set a
           # variable for the local ssh process, and a heredoc cannot be read twice.
-          ssh prod "bash -s -- '$TAG' \$CAP_REF \$CAP_UNIT \$CAP_KEEP" <<'REMOTE'
+          # No backslashes: a heredoc inside `$(...)` cannot be escaped, and a
+          # backslash here is a literal backslash. `$CAP_*` are meant to be
+          # expanded by this runner's shell; everything after `--` is sent as an
+          # argument, and the single quotes around the tag are for the remote.
+          ssh prod "bash -s -- '$TAG' $CAP_REF $CAP_UNIT $CAP_KEEP" <<'REMOTE'
           set -eu
           tag="$1"; cap_ref="$2"; cap_unit="$3"; cap_keep="$4"
           flags="--check"
@@ -252,7 +256,11 @@ jobs:
           # The capability probe runs on the *runner* and its answer is passed
           # into the remote script as text: `env:` on this step would only set a
           # variable for the local ssh process, and a heredoc cannot be read twice.
-          ssh prod "bash -s -- '$TAG' \$CAP_REF \$CAP_UNIT \$CAP_KEEP" <<'REMOTE'
+          # No backslashes: a heredoc inside `$(...)` cannot be escaped, and a
+          # backslash here is a literal backslash. `$CAP_*` are meant to be
+          # expanded by this runner's shell; everything after `--` is sent as an
+          # argument, and the single quotes around the tag are for the remote.
+          ssh prod "bash -s -- '$TAG' $CAP_REF $CAP_UNIT $CAP_KEEP" <<'REMOTE'
           set -eu
           tag="$1"; cap_ref="$2"; cap_unit="$3"; cap_keep="$4"
           # --keep-local-edits: the box is the only place a hand edit exists, and

@@ -341,3 +341,57 @@ def test_a_checkout_the_deploy_account_cannot_read_is_asked_through_sudo(tmp_pat
     called, code, log = _dispatch(tmp_path / "d", NEW_SCRIPT, readable=False)
     assert code == 0, log
     assert "--accept-unit-change" in called and "--ref v2.5.8" in called, called
+
+
+@pytest.mark.skipif(os.name != "posix", reason="the runner side is a shell")
+def test_the_whole_step_runs_with_the_capability_answers_expanded(tmp_path):
+    """Run the step *as the runner runs it*, with `ssh` and `sudo` stubbed.
+
+    The two tests above call the remote body directly, which is exactly how a
+    quoting bug survives them: on 17 Nov the step read
+
+        ssh prod "bash -s -- '$TAG' \\$CAP_REF \\$CAP_UNIT \\$CAP_KEEP"
+
+    and the box answered `bash: line 2: $2: unbound variable` — a backslash there
+    is a literal backslash, so all three answers arrived as one argument. The
+    probe had said `yes yes yes`, the command line said the opposite, and the
+    release died two lines in. Only running the text of the step can catch that.
+    """
+    box = tmp_path / "box"
+    box.mkdir(parents=True)
+    installed = box / "update_arvan.sh"
+    installed.write_text(NEW_SCRIPT, encoding="utf-8")
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    # `ssh prod <cmd...>` with a heredoc on stdin: the fake simply runs the
+    # command locally, stdin included. `sudo` records what it was asked to run.
+    # `ssh prod "<command string>"` hands one argument to the remote shell, so the
+    # fake does the same: shift past the host and run the rest as a command line.
+    (fake_bin / "ssh").write_text('#!/bin/sh\nshift\nexec sh -c "$*"\n', encoding="utf-8")
+    log = tmp_path / "sudo.log"
+    (fake_bin / "sudo").write_text(
+        "#!/bin/sh\n"
+        'if [ "$4" = "cat" ]; then cat "$5"; exit 0; fi\n'
+        f'echo "$*" >> {log}\n',
+        encoding="utf-8")
+    for script in (fake_bin / "ssh", fake_bin / "sudo"):
+        script.chmod(0o755)
+
+    for step in ("Update", "Dry run"):
+        text = _step(step)["run"].replace(INSTALLED, str(installed))
+        path = tmp_path / f"{step.replace(' ', '_')}.sh"
+        path.write_text(text, encoding="utf-8")
+        env = {"PATH": f"{fake_bin}:/usr/bin:/bin", "HOME": str(tmp_path),
+               "TAG": "v2.5.8"}
+        log.write_text("", encoding="utf-8")
+        out = subprocess.run(["bash", str(path)], capture_output=True, text=True,
+                             encoding="utf-8", env=env)
+        assert out.returncode == 0, out.stdout + out.stderr
+        assert "unbound variable" not in out.stderr, out.stderr
+        called = log.read_text(encoding="utf-8").strip()
+        # The script on the box knows every flag, so the run must use them — and
+        # `--ref` must be followed by its tag, or the tag becomes somebody else's
+        # argument. (The order inside the list is otherwise the script's problem.)
+        assert "--keep-local-edits" in called, called
+        assert "--ref v2.5.8" in called, called
+        assert "unknown argument" not in out.stdout + out.stderr

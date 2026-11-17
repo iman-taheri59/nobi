@@ -732,7 +732,11 @@ def test_the_deploy_workflow_does_not_hand_new_flags_to_an_old_script():
     assert "CAP_KEEP=yes" in wf and "CAP_REF=yes" in wf and "CAP_UNIT=yes" in wf
 
     # The answer travels to the box as arguments, because `env:` does not cross ssh.
-    assert "ssh prod \"bash -s -- '$TAG' \\$CAP_REF \\$CAP_UNIT \\$CAP_KEEP\"" in wf
+    # No backslash before `$CAP_*`: a heredoc inside `$(...)` cannot be escaped,
+    # so a backslash there is a literal one and the answers arrive as one
+    # argument ("bash: line 2: $2: unbound variable", 17 Nov).
+    assert "ssh prod \"bash -s -- '$TAG' $CAP_REF $CAP_UNIT $CAP_KEEP\"" in wf
+    assert "\\$CAP_REF" not in wf
     assert 'cap_keep="$4"' in wf
 
     # And the command line only ever grows from that answer.
