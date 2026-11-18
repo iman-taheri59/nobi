@@ -732,31 +732,35 @@ def test_the_deploy_workflow_does_not_hand_new_flags_to_an_old_script():
         `pipefail`), and a heredoc — which is stdin, readable once — could not
         both inspect and run;
       * and the script being checked was `/opt/nobi/scripts/…`, the *previous*
-        release's, because only a successful deploy replaces it. Four red runs
-        were spent editing a file the box never read.
+        release's — or a copy the deploy account staged itself, which no sudoers
+        rule could ever cover (17 Nov: `sudo: a password is required`, twice the
+        same day, on both sides of that line).
 
-    So the step now: stages this run's script where the deploy account can write,
-    asks that file which `case` arms it has (one ssh, output captured), and gives
-    the answers to the remote script as arguments. Nothing reaches the command
-    line that the probe did not say `yes` to.
+    So the step probes the SYSTEM script with a plain `cat`, captures the answer
+    on the runner, and hands the flag decision to the remote shell as arguments.
+    The privileged call is pinned to the sudoers rule (`deploy/nobi-deploy.sudoers`):
+    `sudo -n` on the system path, 16 argv shapes, never `--reset`/`--force`.
     """
     wf = (ROOT / ".github" / "workflows" / "deploy.yml").read_text(encoding="utf-8")
 
-    # staged where the account may write; never installed over the root-owned file
-    assert "~/nobi-deploy/scripts/update_arvan.sh" in wf
-    assert "install -o root -g root" not in wf, (
-        "the deploy account cannot rewrite /opt/nobi; that produces"
-        " 'sudo: a password is required' and a red run"
+    # the privileged call is the SYSTEM script through the pinned rule
+    assert 'sudo -n "$script" $flags' in wf
+    assert "/opt/nobi/scripts/update_arvan.sh" in wf
+    # nothing the deploy account can stage or rewrite is on a root command line
+    assert "~/nobi-deploy" not in wf, (
+        "a deploy-writable root target needs the very sudoers rule that does "
+        "not exist; 'sudo: a password is required' is the correct refusal"
     )
-    # asked of the staged script, with the answer captured on the runner
+    assert "install -o root" not in wf
+    # asked of the script that will run, with the answer captured on the runner
     assert 'caps="$(ssh prod' in wf
     assert "for arm in ref accept-unit-change keep-local-edits; do" in wf
     assert 'grep -q -- "--$arm)"' in wf, "the `case` arm is detected, not the word"
     assert "CAP_KEEP=yes" in wf and "CAP_REF=yes" in wf and "CAP_UNIT=yes" in wf
     # and passed to the box as arguments, because `env:` does not cross ssh and a
     # backslash inside `$(...)` is a literal backslash (three answers, one arg)
-    assert "ssh prod \"bash -s -- '$TAG' $CAP_REF $CAP_UNIT $CAP_KEEP '$RUN_SCRIPT'\"" in wf
-    assert 'cap_keep="$4"' in wf and 'script="$5"' in wf
+    assert "ssh prod \"bash -s -- '$TAG' $CAP_REF $CAP_UNIT $CAP_KEEP\"" in wf
+    assert 'cap_keep="$4"' in wf
     # the command line only ever grows from that answer
     assert 'flags="--yes --backup --verify"' in wf
     assert 'flags="--check"' in wf
@@ -767,7 +771,6 @@ def test_the_deploy_workflow_does_not_hand_new_flags_to_an_old_script():
     # The probe's own pipeline must not be `grep -q` on the *deciding* side; the
     # runner parses its answer with `case`.
     assert 'while IFS= read -r line; do' in wf
-
 
 def test_the_fallback_still_proves_which_commit_landed():
     """Without `--ref` the script installs origin/main, so the version string is

@@ -1,26 +1,26 @@
 # mypy: check_untyped_defs = False
-"""The deploy workflow must not hand a flag to the script that the script refuses.
+"""The deploy workflow and the script on the box must agree, or the run dies.
 
-`deploy.yml` runs `update_arvan.sh` **from the box**, and on the day a release is
-deployed that file is whatever the *previous* release left there. So a workflow
-cannot introduce a flag by using it: the 2.5.8 workflow called
+`deploy.yml` is read from `main` on every dispatch; `/opt/nobi/scripts/update_arvan.sh`
+is whatever the last successful deploy (or the original install) left there. The
+script *demands uid 0* and, past that, does its privileged work as the service
+user. The runner reaches the box as `deploy`, which is not root — by design.
 
-    update_arvan.sh --yes --backup --verify --accept-unit-change --ref v2.5.8
+So the workflow may not hand the script a flag its parser rejects, and it may not
+have root run a file `deploy` can write (17 Nov 2026: `sudo: a password is
+required` — the passwordless rule covers the SYSTEM script only, not a copy
+staged by the deploy account; that boundary is deliberate). Both halves are
+pinned here: the flag list is built from the script's own case arms (probed on
+the box and parsed with `case`), and the root call is exactly
 
-and on a host still running 2.5.6 that is the old case-loop, which ends in
+    sudo -n /opt/nobi/scripts/update_arvan.sh <the two shapes the sudoers rule allows>
 
-    *) die "unknown argument: $1 (--help lists them)" ;;
-
-Measured, with the argument loop lifted verbatim out of `1c2556b`'s script:
-
-    [--yes --backup --verify]                                   -> exit 0
-    [--yes --backup --verify --accept-unit-change --ref v2.5.8] -> exit 1
-        die: unknown argument: --accept-unit-change (--help lists them)
-
-So the *deploy* step of the first release that adds a flag always fails, and it
-fails before reading the tag. The tests below pin the run-time choice of flag set
-and execute it for real with `sudo` stubbed, because the failure mode is a shell
-one: a branch that is never taken cannot be caught by grepping for it.
+`deploy/nobi-deploy.sudoers` lists the 16 argv shapes the workflow can produce —
+a `--check` (dry run) or `--yes --backup --verify` (update) plus any subsequence
+of `--keep-local-edits [--ref v*] [--accept-unit-change]` in that fixed order.
+`--reset` and `--force` are not in any rule, so a compromised deploy key cannot
+hard-reset the checkout from CI. The tests below execute the remote body with
+`ssh`/`sudo` stubbed, because the failure modes are shell ones.
 """
 
 from __future__ import annotations
@@ -86,21 +86,12 @@ def _run_probe(tmp_path: Path, installed_script: str, *, readable: bool = True) 
     installed = box / "update_arvan.sh"
     installed.write_text(installed_script, encoding="utf-8")
     if not readable:
-        installed.chmod(0o600)
-    fake_bin = tmp_path / "probe-bin"
-    fake_bin.mkdir(parents=True, exist_ok=True)
-    (fake_bin / "sudo").write_text(
-        "#!/bin/sh\n"
-        'if [ "$4" = "cat" ]; then\n'
-        f'  if [ {1 if readable else 0} -eq 1 ]; then cat "$5"; exit 0; fi\n'
-        '  echo "sudo: a password is required" >&2; exit 1\n'
-        "fi\nexit 0\n", encoding="utf-8")
-    (fake_bin / "sudo").chmod(0o755)
+        installed.chmod(0o000)
     path = tmp_path / "probe.sh"
     # the step passes the script to inspect as the probe's first argument
     path.write_text(_probe_script(), encoding="utf-8")
     out = subprocess.run(["bash", str(path), str(installed)], capture_output=True, text=True,
-                         encoding="utf-8", env={"PATH": f"{fake_bin}:/usr/bin:/bin",
+                         encoding="utf-8", env={"PATH": "/usr/bin:/bin",
                                                 "HOME": str(tmp_path)})
     return out.stdout + out.stderr
 
@@ -124,31 +115,23 @@ def _names(script: str, *arms: str) -> dict[str, str]:
     return {arm: ("yes" if f"--{arm})" in script else "no") for arm in arms}
 
 
-def _probe_answer(script: str) -> str:
-    """The probe step's output for a script, exactly as the runner reads it.
-
-    The probe is a separate ssh call that answers `has <arm>` / `missing <arm>`;
-    the runner turns those lines into `CAP_*`. Building that answer here means
-    the tests exercise the same text the workflow does, not a shortcut.
-    """
-    return "".join(
-        f"has {arm}\n" if f"--{arm})" in script else f"missing {arm}\n"
-        for arm in ("ref", "accept-unit-change", "keep-local-edits")
-    )
-
 
 def _dispatch(tmp_path: Path, installed_script: str, step: str = "Update",
               *, readable: bool = True,
               caps: tuple[str, str, str] | None = None) -> tuple[str, int, str]:
     """Run the remote script with `sudo` replaced by a recorder.
 
-    `sudo -u nobi cat` is part of the real step (the checkout belongs to the
-    service user, so the deploy account may not be able to read it), so the stub
-    answers it the way `sudo` would: the file's contents when it is allowed,
-    nothing and a non-zero status when `readable=False`.
+    The probe reads the script with a plain `cat`; the update path calls
+    `sudo -n <script> <flags>`. The stub strips the `-n` and records the
+    command line, which is what the release is being judged on. An unreadable
+    script (`readable=False`, mode 000) must degrade to "every flag is
+    missing", never to a crash in the probe.
     """
     if caps is None:
-        probe = _probe_answer(installed_script)
+        # Derive the caps by running the real probe on the script, exactly as
+        # the runner does over ssh — so `readable=False` (mode 000) answers
+        # "every flag is missing" instead of greping the text behind its back.
+        probe = _run_probe(tmp_path / "probe", installed_script, readable=readable)
         caps = (
             "yes" if "has ref" in probe else "no",
             "yes" if "has accept-unit-change" in probe else "no",
@@ -160,26 +143,17 @@ def _dispatch(tmp_path: Path, installed_script: str, step: str = "Update",
     installed = box / "update_arvan.sh"
     installed.write_text(installed_script, encoding="utf-8")
     if not readable:
-        installed.chmod(0o600)  # the deploy account is not the owner
-    script_path = str(installed)
+        # 000, not 600: the file is owned by the test process, and only the
+        # missing read bit makes `cat` fail for it.
+        installed.chmod(0o000)
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir(parents=True, exist_ok=True)
     log = tmp_path / "sudo.log"
     (fake_bin / "sudo").write_text(
         "#!/bin/sh\n"
-        # `sudo -n -u nobi cat FILE` -> the contents (or a refusal)
-        'if [ "$4" = "cat" ]; then\n'
-        f'  if [ {1 if readable else 0} -eq 1 ]; then cat "$5"; exit 0; fi\n'
-        '  echo "sudo: a password is required" >&2; exit 1\n'
-        'fi\n'
-        # `sudo -n bash -c "bash <script> <flags>"` -> record the script and the
-        # flags, which is the command line this release is being judged on.
-        # `sudo -n bash -c "<command>"`: the command string is $5 and starts at
-        # the third argument of `sudo`'s own argv, which is `bash`.
-        'if [ "$3" = "bash" ] && [ "$4" = "-c" ]; then\n'
-        f'  shift 4; echo "$*" >> {log}\n'
-        '  exit 0\n'
-        'fi\n'
+        # `sudo -n <script> <flags>` -> strip the -n, record the command line,
+        # which is what the release is being judged on.
+        'if [ "$1" = "-n" ]; then shift; fi\n'
         f'echo "$*" >> {log}\n'
         "exit 0\n",
         encoding="utf-8")
@@ -190,7 +164,7 @@ def _dispatch(tmp_path: Path, installed_script: str, step: str = "Update",
     # The box does not inherit the runner's environment: the only way the tag
     # can arrive is the way the ssh command line sends it, as `$1`.
     env = {"PATH": f"{fake_bin}:/usr/bin:/bin", "HOME": str(tmp_path)}
-    out = subprocess.run(["bash", str(path), "v2.5.8", ref, unit, keep, script_path],
+    out = subprocess.run(["bash", str(path), "v2.5.8", ref, unit, keep],
                          capture_output=True, text=True, env=env, encoding="utf-8")
     called = log.read_text(encoding="utf-8").strip() if log.exists() else ""
     return called, out.returncode, out.stdout + out.stderr
@@ -217,7 +191,7 @@ def test_a_new_flag_is_not_sent_to_an_old_script(tmp_path):
     # --keep-local-edits` happened on 2.5.8's step 8.
     # `sudo -n bash -c "bash <script> <flags>"` — the stub records the inner
     # command line, which is what the release is judged on.
-    assert called.endswith(f"bash {tmp_path / 'box' / 'update_arvan.sh'} --yes --backup --verify"), log
+    assert called == f"{tmp_path / 'box' / 'update_arvan.sh'} --yes --backup --verify", log
     assert "the script has no --ref" in log, "the fallback has to say it fell back"
 
 
@@ -251,7 +225,7 @@ def test_the_dry_run_does_not_die_where_the_update_would(tmp_path):
     like a failure of the release. It carried the same `--ref`."""
     called, code, log = _dispatch(tmp_path, OLD_SCRIPT, step="Dry run")
     assert code == 0, log
-    assert called.endswith(f"bash {tmp_path / 'box' / 'update_arvan.sh'} --check"), called
+    assert called == f"{tmp_path / 'box' / 'update_arvan.sh'} --check", called
     called, code, log = _dispatch(tmp_path, NEW_SCRIPT, step="Dry run")
     assert code == 0, log
     assert "--check --keep-local-edits --ref v2.5.8" in called, called
@@ -328,31 +302,29 @@ def test_the_command_line_and_the_warning_never_disagree(tmp_path):
 
 
 @pytest.mark.skipif(os.name != "posix", reason="the remote side is a POSIX shell")
-def test_a_checkout_the_deploy_account_cannot_read_is_asked_through_sudo(tmp_path):
+def test_a_checkout_the_deploy_account_cannot_read_degrades_to_missing_flags(tmp_path):
     """The detector must not answer "old script" because it was not allowed to look.
 
-    `/opt/nobi` is chowned to the service user by `deploy_arvan.sh`, and the
-    workflow's account is `deploy`. A bare `grep` on a file it cannot read exits
-    non-zero, which the step used to read as "the script is old" — a decision
-    made from a permissions error. The file is read as the service user
-    (`sudo -u nobi cat`), and only if that is refused does the plain read get a
-    turn.
+    A bare `grep` on a file it cannot read exits non-zero, which the step used
+    to read as "the script is old" — a decision made from a permissions error.
+    The probe now reads with a plain `cat` and treats a failure as "every flag
+    is missing": the run then uses the two argv shapes that are safe against
+    any parser, says so in a warning, and the post-deploy commit check is the
+    backstop. This test pins those three answers.
     """
     probe = _probe_script("Update")
-    assert "sudo -n -u nobi cat" in probe, (
-        "the installed script has to be read as its owner, or the answer is a"
-        " permissions error dressed up as an old script"
+    assert "sudo -n -u nobi cat" not in probe, (
+        "the probe must not need a sudoers rule that does not exist; a plain "
+        "read is the only one the deploy account can be assumed to have"
     )
-    # A file only the service user can read, and a file anybody can read: both
-    # must classify the same way, and neither may answer "old script".
-    for readable in (False, True):
-        answer = _run_probe(tmp_path / f"r{int(readable)}", NEW_SCRIPT, readable=readable)
-        assert "has keep-local-edits" in answer, answer
-        assert "has ref" in answer, answer
+    unreadable = _run_probe(tmp_path / "r0", NEW_SCRIPT, readable=False)
+    assert "every flag is treated as missing" in unreadable, unreadable
+    assert "has ref" not in unreadable, unreadable
 
     called, code, log = _dispatch(tmp_path / "d", NEW_SCRIPT, readable=False)
     assert code == 0, log
-    assert "--accept-unit-change" in called and "--ref v2.5.8" in called, called
+    assert called.endswith("update_arvan.sh --yes --backup --verify"), called
+    assert "--ref" not in called, called
 
 
 @pytest.mark.skipif(os.name != "posix", reason="the runner side is a shell")
@@ -375,30 +347,22 @@ def test_the_whole_step_runs_with_the_capability_answers_expanded(tmp_path):
     installed.write_text(NEW_SCRIPT, encoding="utf-8")
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
-    # `ssh prod <cmd...>` with a heredoc on stdin: the fake simply runs the
-    # command locally, stdin included. `sudo` records what it was asked to run.
     # `ssh prod "<command string>"` hands one argument to the remote shell, so the
     # fake does the same: shift past the host and run the rest as a command line.
     (fake_bin / "ssh").write_text('#!/bin/sh\nshift\nexec sh -c "$*"\n', encoding="utf-8")
+    # The update path is `sudo -n <script> <flags>`; the stub strips -n and
+    # records the command line. The script is never executed here.
     log = tmp_path / "sudo.log"
     (fake_bin / "sudo").write_text(
         "#!/bin/sh\n"
-        'if [ "$4" = "cat" ]; then cat "$5"; exit 0; fi\n'
-        'if [ "$3" = "bash" ] && [ "$4" = "-c" ]; then echo "$5" >> ' + str(log) + '; exit 0; fi\n'
-        f'echo "$*" >> {log}\n',
-        encoding="utf-8")
-    for script in (fake_bin / "ssh", fake_bin / "sudo"):
-        script.chmod(0o755)
+        'if [ "$1" = "-n" ]; then shift; fi\n'
+        f'echo "$*" >> {log}\n'
+        "exit 0\n", encoding="utf-8")
+    for stub in (fake_bin / "ssh", fake_bin / "sudo"):
+        stub.chmod(0o755)
 
-    # The step stages the script *out of this run's checkout*, so the test gives
-    # it one: `scripts/update_arvan.sh` in a scratch tree that the step will find,
-    # and an ssh that lands on a HOME the step can write into.
     fake_home = tmp_path / "deploy-home"
-    (fake_home / "nobi-deploy").mkdir(parents=True)
-    (fake_home / "nobi-deploy" / "scripts").mkdir()
-    checkout = tmp_path / "checkout"
-    (checkout / "scripts").mkdir(parents=True)
-    (checkout / "scripts" / "update_arvan.sh").write_text(NEW_SCRIPT, encoding="utf-8")
+    fake_home.mkdir()
 
     for step in ("Update", "Dry run"):
         text = _step(step)["run"].replace(INSTALLED, str(installed))
@@ -407,39 +371,51 @@ def test_the_whole_step_runs_with_the_capability_answers_expanded(tmp_path):
         env = {"PATH": f"{fake_bin}:/usr/bin:/bin", "HOME": str(fake_home),
                "TAG": "v2.5.8"}
         log.write_text("", encoding="utf-8")
-        out = subprocess.run(["bash", "-c", f"cd {checkout} && bash {path}"],
+        out = subprocess.run(["/bin/bash", "-c", f"cd {tmp_path} && /bin/bash {path}"],
                              capture_output=True, text=True, encoding="utf-8", env=env)
         assert out.returncode == 0, out.stdout + out.stderr
         assert "unbound variable" not in out.stderr, out.stderr
         called = log.read_text(encoding="utf-8").strip()
         # The script on the box knows every flag, so the run must use them — and
         # `--ref` must be followed by its tag, or the tag becomes somebody else's
-        # argument. (The order inside the list is otherwise the script's problem.)
+        # argument. The call must be the SYSTEM script via sudo, not a staged copy.
+        assert str(installed) in called, called
         assert "--keep-local-edits" in called, called
         assert "--ref v2.5.8" in called, called
         assert "unknown argument" not in out.stdout + out.stderr
 
 
-def test_the_runner_installs_the_script_it_validated() -> None:
-    """The box runs the *previous* release's script. That is the bootstrap.
+def test_the_root_call_is_the_sudoers_pinned_one() -> None:
+    """The privilege boundary is the point of the design; pin it exactly.
 
-    Four red runs were spent patching `deploy.yml` for a script that was never on
-    the box: `deploy.yml` comes from `main` on every run, `update_arvan.sh` comes
-    from `/opt/nobi`, and only a successful deploy changes the second one. Each
-    fix was real and none of it could take effect.
-
-    So both steps copy the script from the runner's checkout — the one this run
-    validated — and keep the old file as `.bak`. The copy is verified by checksum
-    and can fail without failing the run: the release must not depend on it.
+    `deploy` reaches the box and may not become root except for the one script
+    the sudoers rule names — 17 Nov's `sudo: a password is required` is that
+    boundary working. So the workflow must call `sudo -n` on the SYSTEM path,
+    and any file the deploy account can write must never be on a root command
+    line. `deploy/nobi-deploy.sudoers` enumerates the argv shapes; this test
+    keeps the workflow and the rule agreeing.
     """
+    sudoers = (ROOT / "deploy" / "nobi-deploy.sudoers").read_text(encoding="utf-8")
     for name in ("Update", "Dry run"):
         run = _step(name)["run"]
-        assert "scripts/update_arvan.sh" in run, f"{name} does not stage the validated script"
-        # Staged where the deploy account can write: rewriting a root-owned file
-        # there answers "sudo: a password is required", which is the boundary the
-        # 17 Nov run hit. Nothing in the step may try to install as root.
-        assert "~/nobi-deploy/scripts/update_arvan.sh" in run
-        assert "install -o root -g root" not in run
-        assert "sha256sum" in run, "say what was staged, so the log proves which copy ran"
-        assert "::warning::could not stage this run's update script" in run
-        assert "previous-update_arvan.sh" in run, "the old script is kept for the record"
+        assert 'sudo -n "$script" $flags' in run, f"{name} does not use the pinned sudo call"
+        assert "/opt/nobi/scripts/update_arvan.sh" in run
+        # nothing the deploy account can stage or rewrite may be root-run
+        assert "~/nobi-deploy" not in run, f"{name} stages a deploy-writable root target"
+        assert "install -o root" not in run
+    # the rule covers exactly the two base shapes, and never --reset/--force
+    base = [ln for ln in sudoers.splitlines() if ln.startswith("deploy ALL=")]
+    assert len(base) == 16, base
+    for line in base:
+        assert "--reset" not in line and "--force" not in line, line
+    assert "/opt/nobi/scripts/update_arvan.sh --check" in sudoers
+    assert "/opt/nobi/scripts/update_arvan.sh --yes --backup --verify" in sudoers
+    # both base shapes plus every subsequence of the three trailing flags,
+    # in the fixed order the workflow builds them
+    subsets = ["", " --keep-local-edits", " --ref v*", " --keep-local-edits --ref v*",
+               " --accept-unit-change", " --keep-local-edits --accept-unit-change",
+               " --ref v* --accept-unit-change",
+               " --keep-local-edits --ref v* --accept-unit-change"]
+    for suffix in subsets:
+        assert f"update_arvan.sh --check{suffix}\n" in sudoers + "\n", suffix
+        assert f"update_arvan.sh --yes --backup --verify{suffix}\n" in sudoers + "\n", suffix

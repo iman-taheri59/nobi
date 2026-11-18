@@ -1,0 +1,38 @@
+# /etc/sudoers.d/nobi-deploy — the manual deploy workflow (.github/workflows/deploy.yml)
+# may run exactly ONE script as root, and only in the two shapes it can produce:
+#
+#   Dry run:  /opt/nobi/scripts/update_arvan.sh --check [flags…]
+#   Update:   /opt/nobi/scripts/update_arvan.sh --yes --backup --verify [flags…]
+#
+# [flags…] is any (possibly empty) subsequence of
+#   --keep-local-edits   --ref v*   --accept-unit-change    (in this fixed order)
+# — the workflow only ever appends them in that order, and only those the
+# script on the box admits to. All 16 argv shapes are listed explicitly, so
+# nothing else parses: --reset and --force are unreachable from CI by design.
+#
+# The script itself must be the SYSTEM path. A copy staged by the deploy account
+# is deliberately NOT covered: a rule that let `deploy` stage and then root-run a
+# script is a root-install path, which is what "sudo: a password is required"
+# (17 Nov) correctly refused.
+#
+# Install:
+#   sudo install -m 440 deploy/nobi-deploy.sudoers /etc/sudoers.d/nobi-deploy
+#   sudo visudo -cf /etc/sudoers.d/nobi-deploy
+# (the release's update script never installs this file; it is an OS admin act,
+# like nobi-status.sudoers and the helper units.)
+deploy ALL=(root) NOPASSWD: /opt/nobi/scripts/update_arvan.sh --check
+deploy ALL=(root) NOPASSWD: /opt/nobi/scripts/update_arvan.sh --check --keep-local-edits
+deploy ALL=(root) NOPASSWD: /opt/nobi/scripts/update_arvan.sh --check --ref v*
+deploy ALL=(root) NOPASSWD: /opt/nobi/scripts/update_arvan.sh --check --keep-local-edits --ref v*
+deploy ALL=(root) NOPASSWD: /opt/nobi/scripts/update_arvan.sh --check --accept-unit-change
+deploy ALL=(root) NOPASSWD: /opt/nobi/scripts/update_arvan.sh --check --keep-local-edits --accept-unit-change
+deploy ALL=(root) NOPASSWD: /opt/nobi/scripts/update_arvan.sh --check --ref v* --accept-unit-change
+deploy ALL=(root) NOPASSWD: /opt/nobi/scripts/update_arvan.sh --check --keep-local-edits --ref v* --accept-unit-change
+deploy ALL=(root) NOPASSWD: /opt/nobi/scripts/update_arvan.sh --yes --backup --verify
+deploy ALL=(root) NOPASSWD: /opt/nobi/scripts/update_arvan.sh --yes --backup --verify --keep-local-edits
+deploy ALL=(root) NOPASSWD: /opt/nobi/scripts/update_arvan.sh --yes --backup --verify --ref v*
+deploy ALL=(root) NOPASSWD: /opt/nobi/scripts/update_arvan.sh --yes --backup --verify --keep-local-edits --ref v*
+deploy ALL=(root) NOPASSWD: /opt/nobi/scripts/update_arvan.sh --yes --backup --verify --accept-unit-change
+deploy ALL=(root) NOPASSWD: /opt/nobi/scripts/update_arvan.sh --yes --backup --verify --keep-local-edits --accept-unit-change
+deploy ALL=(root) NOPASSWD: /opt/nobi/scripts/update_arvan.sh --yes --backup --verify --ref v* --accept-unit-change
+deploy ALL=(root) NOPASSWD: /opt/nobi/scripts/update_arvan.sh --yes --backup --verify --keep-local-edits --ref v* --accept-unit-change
