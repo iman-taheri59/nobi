@@ -5,21 +5,18 @@ name: Status
 # and (optionally) the daily journal diagnostic as an artifact. Uses the same
 # `production` environment as Deploy, so the same approval gate applies — no
 # workflow reaches the server without a human pressing the button.
+# Every sudo call here is an EXACT argv pinned in deploy/nobi-status.sudoers
+# (sudo-rs has no wildcards in command arguments) — deploy/nobi-status.sudoers
+# and the invocations below change together, or the step is refused.
 on:
   workflow_dispatch:
     inputs:
-      log_lines:
-        description: "journalctl lines to show"
-        default: "80"
       diagnostic:
         description: "Also run scripts/journal_diagnostic.py (last 24h, with paper rejects + stop slip) and upload it"
         type: boolean
         default: true
-      since:
-        description: "Window start for the backfill reports (ISO, e.g. 2026-11-09T07:28:00Z). Empty = since the 2.5.2 deploy"
-        default: ""
       backfills:
-        description: "Also run shadow_backfill (arms + stop slip) and pump_chase_backfill over the window, as markdown artifacts"
+        description: "Also run shadow_backfill (arms + stop slip) and pump_chase_backfill over the last 17 days, as markdown artifacts"
         type: boolean
         default: true
 
@@ -96,28 +93,28 @@ jobs:
       - name: Last log lines (without httpx request noise)
         continue-on-error: true
         run: |
-          ssh prod "sudo -n journalctl -u nobi -n 2000 --no-pager -o short-iso 2>&1 | grep -v 'INFO:httpx:HTTP Request' | grep -v '\"GET /api/' | tail -n ${{ inputs.log_lines }}"
+          ssh prod "sudo -n journalctl -u nobi -n 2000 --no-pager -o short-iso 2>&1 | grep -v 'INFO:httpx:HTTP Request' | grep -v '\"GET /api/' | tail -n 80"
 
       - name: Last log lines (raw)
         continue-on-error: true
         run: |
           # An unprivileged user gets "-- No entries --" for a system unit, not an
-          # error, so sudo goes first and plain journalctl is the fallback.
-          ssh prod "sudo -n journalctl -u nobi -n ${{ inputs.log_lines }} --no-pager -o short-iso 2>&1 || journalctl -u nobi -n ${{ inputs.log_lines }} --no-pager -o short-iso 2>&1 || true"
+          # error, so sudo goes first and plain journalctl is the fallback. Both
+          # shapes are exact pins in deploy/nobi-status.sudoers.
+          ssh prod "sudo -n journalctl -u nobi -n 200 --no-pager -o short-iso 2>&1 || sudo -n journalctl -u nobi -n 200 --no-pager 2>&1 || true"
 
       - name: Daily diagnostic
         continue-on-error: true
         if: ${{ inputs.diagnostic }}
         run: |
-          SINCE="$(date -u -d '24 hours ago' +%Y-%m-%dT%H:%M:%SZ)"
           # Read-only: the script opens the journal with sqlite in read mode and
           # only reads paper_state.json. Try the service user first (stderr kept,
           # so a script error is not mistaken for a permission problem).
-          # Invoked as an explicit path (no bash -c wrapper) so it matches a narrow
-          # sudoers rule: deploy ALL=(nobi) NOPASSWD: /opt/nobi/.venv/bin/python /opt/nobi/scripts/journal_diagnostic.py *
+          # Exact pinned argv (sudo-rs: no wildcards in command arguments) —
+          # journal_diagnostic.py /srv/nobi-data/journal.db --last-hours 24 --paper /srv/nobi-data/paper_state.json
           ssh prod "PY=/opt/nobi/.venv/bin/python; S=/opt/nobi/scripts/journal_diagnostic.py; DB=/srv/nobi-data/journal.db; PS=/srv/nobi-data/paper_state.json;
-                    if sudo -n -u nobi \$PY \$S \$DB --since $SINCE --paper \$PS 2>&1; then :;
-                    elif [ -r \$DB ]; then \$PY \$S \$DB --since $SINCE --paper \$PS 2>&1;
+                    if sudo -n -u nobi \$PY \$S \$DB --last-hours 24 --paper \$PS 2>&1; then :;
+                    elif [ -r \$DB ]; then \$PY \$S \$DB --last-hours 24 --paper \$PS 2>&1;
                     else echo 'journal.db not readable by deploy and sudo -u nobi refused:'; ls -l \$DB \$PS; id; sudo -n -l 2>&1 | tail -5; fi" \
             | tee diagnostic.txt
 
@@ -133,7 +130,7 @@ jobs:
           # them: sudo matches the whole command line, so a second `ls` with a
           # different flag would be refused, and the count would go missing
           # quietly (the step is continue-on-error).
-          ssh prod 'L="sudo -n -u nobi /usr/bin/ls -lt --time-style=+%Y-%m-%dT%H:%M:%SZ /srv/nobi-data/ /srv/nobi-data/backup/"; $L 2>&1 | grep -v "^total" | head -40 | tac; echo "--- newest 40 shown; $($L 2>/dev/null | grep -v "^total" | wc -l) entries total"; echo; sudo -n -u nobi /usr/bin/du -sh /srv/nobi-data 2>&1'
+          ssh prod 'L="sudo -n -u nobi /usr/bin/ls -lt /srv/nobi-data/ /srv/nobi-data/backup/"; $L 2>&1 | grep -v "^total" | head -40 | tac; echo "--- newest 40 shown; $($L 2>/dev/null | grep -v "^total" | wc -l) entries total"; echo; sudo -n -u nobi /usr/bin/du -sh /srv/nobi-data 2>&1'
 
       - name: Paper book
         continue-on-error: true
@@ -143,22 +140,22 @@ jobs:
       - name: Holdout cutoff (ADR-0052)
         run: |
           # `show` exits 1 while the cutoff is not frozen; that is information, not a failure.
-          ssh prod 'cd /opt/nobi && sudo -n -u nobi /opt/nobi/.venv/bin/python /opt/nobi/scripts/journal_holdout.py show --db /srv/nobi-data/journal.db 2>&1' || echo "::warning::holdout cutoff is not frozen (ADR-0052 cutoff: 2026-11-10T07:20:00Z)"
+          # Exact pinned argv (sudo-rs): journal_holdout.py show --db /srv/nobi-data/journal.db
+          ssh prod 'sudo -n -u nobi /opt/nobi/.venv/bin/python /opt/nobi/scripts/journal_holdout.py show --db /srv/nobi-data/journal.db 2>&1' || echo "::warning::holdout cutoff is not frozen (ADR-0052 cutoff: 2026-11-10T07:20:00Z)"
 
-      - name: Shadow arms + stop slip over the window (shadow_backfill)
+      - name: Shadow arms + stop slip over the last 17 days (shadow_backfill)
         continue-on-error: true
         if: ${{ inputs.backfills }}
         run: |
-          SINCE="${{ inputs.since }}"; SINCE="${SINCE:-2026-11-09T07:28:00Z}"
-          echo "window since $SINCE"
-          ssh prod "cd /opt/nobi && sudo -n -u nobi /opt/nobi/.venv/bin/python /opt/nobi/scripts/shadow_backfill.py /srv/nobi-data/journal.db --since $SINCE --paper /srv/nobi-data/paper_state.json 2>&1" | tee shadow_backfill.md
+          # Exact pinned argv (sudo-rs): shadow_backfill.py /srv/nobi-data/journal.db --last-days 17 --paper /srv/nobi-data/paper_state.json
+          ssh prod "sudo -n -u nobi /opt/nobi/.venv/bin/python /opt/nobi/scripts/shadow_backfill.py /srv/nobi-data/journal.db --last-days 17 --paper /srv/nobi-data/paper_state.json 2>&1" | tee shadow_backfill.md
 
-      - name: Chase-the-pump / depth over the window (pump_chase_backfill)
+      - name: Chase-the-pump / depth over the last 17 days (pump_chase_backfill)
         continue-on-error: true
         if: ${{ inputs.backfills }}
         run: |
-          SINCE="${{ inputs.since }}"; SINCE="${SINCE:-2026-11-09T07:28:00Z}"
-          ssh prod "cd /opt/nobi && sudo -n -u nobi /opt/nobi/.venv/bin/python /opt/nobi/scripts/pump_chase_backfill.py /srv/nobi-data/journal.db --since $SINCE 2>&1" | tee pump_chase.md
+          # Exact pinned argv (sudo-rs): pump_chase_backfill.py /srv/nobi-data/journal.db --last-days 17
+          ssh prod "sudo -n -u nobi /opt/nobi/.venv/bin/python /opt/nobi/scripts/pump_chase_backfill.py /srv/nobi-data/journal.db --last-days 17 2>&1" | tee pump_chase.md
 
       - name: Upload report
         if: ${{ always() }}

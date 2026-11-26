@@ -40,7 +40,7 @@ from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "server"))
-from datetime import UTC
+from datetime import UTC, datetime
 
 import shadow_arms
 
@@ -346,16 +346,22 @@ def main() -> int:
     ap.add_argument("--json", action="store_true", help="print JSON instead of Markdown")
     ap.add_argument("--since", help="ISO-8601 UTC lower bound on signal ts, e.g. 2026-11-05T07:19:52Z")
     ap.add_argument("--until", help="ISO-8601 UTC upper bound (exclusive)")
+    ap.add_argument("--last-days", type=float, metavar="N",
+                    help="window of the last N days (combines with --since: the later of the two wins)")
     add_day_args(ap)
     ap.add_argument("--paper", help="copy of paper_state.json: adds the realised stop-slippage block (2.5.2, item 9)")
     a = ap.parse_args()
-    rows = load(a.db, a.tf, since=_epoch(a.since) if a.since else 0, until=_epoch(a.until) if a.until else None)
+    since = _epoch(a.since) if a.since else 0
+    if a.last_days is not None:
+        since = max(since, int(datetime.now(UTC).timestamp() - a.last_days * 86400))
+    until = _epoch(a.until) if a.until else None
+    rows = load(a.db, a.tf, since=since, until=until)
     rows, day_label = day_filter(rows, a)
     attach_forward_returns(rows)
     rep = evaluate(rows)
     rep["day_filter"] = day_label
     if a.paper:
-        rep["stop_slip"] = paper_stop_slip(a.paper, _epoch(a.since) if a.since else None)
+        rep["stop_slip"] = paper_stop_slip(a.paper, since if since else None)
     md = to_markdown(rep, a.db.name)
     if a.md:
         a.md.write_text(md, encoding="utf-8")

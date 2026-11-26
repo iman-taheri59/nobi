@@ -201,6 +201,8 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("db")
     ap.add_argument("--since", help="ISO time; ignore signals before it")
+    ap.add_argument("--last-hours", type=float, metavar="N",
+                    help="ignore signals before now - N hours (combines with --since: the later of the two wins)")
     ap.add_argument("--hash", action="append", default=[], help="config_hash to include (repeatable)")
     ap.add_argument("--tf", default="15m")
     ap.add_argument("--paper", help="copy of paper_state.json: adds section 6, rejects by reason × source (2.5.2, item 7)")
@@ -209,6 +211,9 @@ def main() -> int:
     conn = sqlite3.connect(f"file:{args.db}?mode=ro", uri=True)
     conn.row_factory = sqlite3.Row
     since = parse_since(args.since)
+    if args.last_hours is not None:
+        horizon = int(datetime.now(UTC).timestamp() - args.last_hours * 3600)
+        since = max(since or 0, horizon) or None
 
     where = ["timeframe = ?", "entry > 0"]
     params: list[object] = [args.tf]
