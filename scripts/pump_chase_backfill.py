@@ -30,7 +30,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import contextlib
-from datetime import UTC
+from datetime import UTC, datetime
 
 from shadow_backfill import _epoch, attach_forward_returns, load, mean
 
@@ -166,11 +166,15 @@ def main() -> int:
     ap.add_argument("db", type=Path)
     ap.add_argument("--tf", default="15m")
     ap.add_argument("--since")
+    ap.add_argument("--last-days", type=float, metavar="N",
+                    help="window of the last N days (combines with --since: the later of the two wins)")
     ap.add_argument("--md", type=Path)
     ap.add_argument("--exclude", default="", help="comma-separated symbols to drop (e.g. a single pump that dominates 24h)")
     add_day_args(ap)
     a = ap.parse_args()
     since = _epoch(a.since) if a.since else 0
+    if a.last_days is not None:
+        since = max(since, int(datetime.now(UTC).timestamp() - a.last_days * 86400))
 
     rows = load(a.db, a.tf, since=since)
     rows, day_label = day_filter(rows, a)

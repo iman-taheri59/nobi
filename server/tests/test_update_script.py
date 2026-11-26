@@ -676,14 +676,16 @@ def test_the_status_listing_matches_its_sudoers_rule():
     """sudo compares the whole argv: a flag the rule does not name is a refusal.
 
     The listing changed to `-lt` so `head -40` stops cutting off the newest
-    files, but the sudoers rule still said `-l`. The step is
-    `continue-on-error`, so the failure would have looked like "the listing was
-    empty" — the same class of silent absence that started this.
+    files, and the `--time-style` flag was dropped rather than escaped (sudo-rs
+    refuses wildcards in command arguments, and the colon-escapes were one
+    typo away from the same whole-file rejection). The rule and the workflow
+    now pin the plain argv, and the step is `continue-on-error`, so a drift
+    between the two would look like "the listing was empty".
     """
     wf = (ROOT / ".github" / "workflows" / "status.yml").read_text(encoding="utf-8")
     rule = (ROOT / "deploy" / "nobi-status.sudoers").read_text(encoding="utf-8")
-    assert "-lt --time-style" in wf
-    assert "/usr/bin/ls -lt --time-style" in rule.replace("\\\\", "")
+    assert "/usr/bin/ls -lt /srv/nobi-data/ /srv/nobi-data/backup/" in wf
+    assert "/usr/bin/ls -lt /srv/nobi-data/ /srv/nobi-data/backup/" in rule
     assert "head -40 | tac" in wf
 
 

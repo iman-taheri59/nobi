@@ -3,20 +3,26 @@
 # Every command here only reads: journal tail, ls/du of the data directory, and the
 # analysis scripts run as the service user (they open journal.db read-only and
 # never write paper_state.json). No restart, no update, no shell.
-# `journalctl -u nobi *` let the deploy account read any unit's journal as root
-# — the wildcard matches `nobi`, `nobi.service`, and also `nobi-anything`, plus
-# every option after it. The workflow only ever asks for `-u nobi -n N`, so the
-# rule is pinned to that shape: the unit, the line count, and the output mode.
-deploy ALL=(root) NOPASSWD: /usr/bin/journalctl -u nobi -n [0-9]*, /usr/bin/journalctl -u nobi -n [0-9]* --no-pager -o short-iso
-# `-l` became `-lt` in the Status workflow: an oldest-first listing
-# truncated by `head -40` hid the newest files, which is how a healthy
-# nightly backup was read as a stalled one. sudo matches the full argv,
-# so the rule has to name the flag that is actually used.
-deploy ALL=(nobi) NOPASSWD: /usr/bin/ls -lt --time-style=+%Y-%m-%dT%H\:%M\:%SZ /srv/nobi-data/ /srv/nobi-data/backup/
-deploy ALL=(nobi) NOPASSWD: /usr/bin/ls -l --time-style=+%Y-%m-%dT%H\:%M\:%SZ /srv/nobi-data/ /srv/nobi-data/backup/
+#
+# Ubuntu 26.04+ ships sudo-rs, whose parser refuses wildcards in command
+# arguments ("wildcards are not allowed in command arguments", seen live on
+# 2026-11-24). A glob anywhere in this file makes `visudo -cf` reject the WHOLE
+# file and none of these rules becomes available — which is why the previously
+# used `journalctl -u nobi -n [0-9]*` and `script.py *` rules silently granted
+# nothing (every Status-run sudo call was refused until this was pinned).
+#
+# So every rule below is an EXACT argv, and the variable time windows
+# (--last-hours 24 / --last-days 17) are baked into the scripts as flags. Change
+# them in both places together: the workflow (.github/workflows/status.yml) and
+# these pins. test_status_sudoers.py holds the line.
+deploy ALL=(root) NOPASSWD: /usr/bin/journalctl -u nobi -n 2000 --no-pager -o short-iso
+deploy ALL=(root) NOPASSWD: /usr/bin/journalctl -u nobi -n 200 --no-pager -o short-iso
+deploy ALL=(root) NOPASSWD: /usr/bin/journalctl -u nobi -n 200 --no-pager
+deploy ALL=(nobi) NOPASSWD: /usr/bin/ls -lt /srv/nobi-data/ /srv/nobi-data/backup/
+deploy ALL=(nobi) NOPASSWD: /usr/bin/ls -l /srv/nobi-data/ /srv/nobi-data/backup/
 deploy ALL=(nobi) NOPASSWD: /usr/bin/du -sh /srv/nobi-data
-deploy ALL=(nobi) NOPASSWD: /opt/nobi/.venv/bin/python /opt/nobi/scripts/journal_diagnostic.py *
-deploy ALL=(nobi) NOPASSWD: /opt/nobi/.venv/bin/python /opt/nobi/scripts/paper_state_summary.py *
-deploy ALL=(nobi) NOPASSWD: /opt/nobi/.venv/bin/python /opt/nobi/scripts/journal_holdout.py show *
-deploy ALL=(nobi) NOPASSWD: /opt/nobi/.venv/bin/python /opt/nobi/scripts/shadow_backfill.py *
-deploy ALL=(nobi) NOPASSWD: /opt/nobi/.venv/bin/python /opt/nobi/scripts/pump_chase_backfill.py *
+deploy ALL=(nobi) NOPASSWD: /opt/nobi/.venv/bin/python /opt/nobi/scripts/journal_diagnostic.py /srv/nobi-data/journal.db --last-hours 24 --paper /srv/nobi-data/paper_state.json
+deploy ALL=(nobi) NOPASSWD: /opt/nobi/.venv/bin/python /opt/nobi/scripts/paper_state_summary.py /srv/nobi-data/paper_state.json --events 20
+deploy ALL=(nobi) NOPASSWD: /opt/nobi/.venv/bin/python /opt/nobi/scripts/journal_holdout.py show --db /srv/nobi-data/journal.db
+deploy ALL=(nobi) NOPASSWD: /opt/nobi/.venv/bin/python /opt/nobi/scripts/shadow_backfill.py /srv/nobi-data/journal.db --last-days 17 --paper /srv/nobi-data/paper_state.json
+deploy ALL=(nobi) NOPASSWD: /opt/nobi/.venv/bin/python /opt/nobi/scripts/pump_chase_backfill.py /srv/nobi-data/journal.db --last-days 17
