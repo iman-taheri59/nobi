@@ -17,7 +17,12 @@ the box and parsed with `case`), and the root call is exactly
 
 `deploy/nobi-deploy.sudoers` lists the 16 argv shapes the workflow can produce —
 a `--check` (dry run) or `--yes --backup --verify` (update) plus any subsequence
-of `--keep-local-edits [--ref v*] [--accept-unit-change]` in that fixed order.
+of `--keep-local-edits [--ref <exact-tag>] [--accept-unit-change]` in that fixed
+order. Ubuntu 26.04+ ships sudo-rs, whose parser refuses wildcards in command
+arguments ("wildcards are not allowed in command arguments", seen live on
+2026-11-24), so the `--ref` pins the exact tag production serves instead of the
+former `v*` glob (`test_sudoers_has_no_argument_globs` and
+`test_sudoers_has_ref_rules_for_current_version` hold that line).
 `--reset` and `--force` are not in any rule, so a compromised deploy key cannot
 hard-reset the checkout from CI. The tests below execute the remote body with
 `ssh`/`sudo` stubbed, because the failure modes are shell ones.
@@ -412,10 +417,49 @@ def test_the_root_call_is_the_sudoers_pinned_one() -> None:
     assert "/opt/nobi/scripts/update_arvan.sh --yes --backup --verify" in sudoers
     # both base shapes plus every subsequence of the three trailing flags,
     # in the fixed order the workflow builds them
-    subsets = ["", " --keep-local-edits", " --ref v*", " --keep-local-edits --ref v*",
+    subsets = ["", " --keep-local-edits", " --ref v2.5.8", " --keep-local-edits --ref v2.5.8",
                " --accept-unit-change", " --keep-local-edits --accept-unit-change",
-               " --ref v* --accept-unit-change",
-               " --keep-local-edits --ref v* --accept-unit-change"]
+               " --ref v2.5.8 --accept-unit-change",
+               " --keep-local-edits --ref v2.5.8 --accept-unit-change"]
     for suffix in subsets:
         assert f"update_arvan.sh --check{suffix}\n" in sudoers + "\n", suffix
         assert f"update_arvan.sh --yes --backup --verify{suffix}\n" in sudoers + "\n", suffix
+
+
+# --------------------------------------------------------------------------- #
+# sudo-rs compatibility (Ubuntu 26.04+)
+# --------------------------------------------------------------------------- #
+SUDOERS = ROOT / "deploy" / "nobi-deploy.sudoers"
+
+
+def _cmnd_argvs():
+    """Argument token lists of every effective (non-comment) NOPASSWD rule."""
+    for raw in SUDOERS.read_text(encoding="utf-8").splitlines():
+        line = raw.split("#", 1)[0].strip()
+        if not line or "NOPASSWD:" not in line:
+            continue
+        path = next((tok for tok in line.split() if tok.startswith("/")), None)
+        assert path, f"no absolute command path in sudoers line: {raw!r}"
+        yield path, line.split(path, 1)[1].split()
+
+
+def test_sudoers_has_no_argument_globs():
+    """sudo-rs (Ubuntu 26.04+): `visudo -cf` rejects wildcards in command
+    arguments ("wildcards are not allowed in command arguments", seen live on
+    2026-11-24). A glob here means the file never installs — and every CI sudo
+    call dies at the dry-run step, before anything touches the checkout."""
+    bad = [tok for _path, args in _cmnd_argvs() for tok in args
+           if any(ch in tok for ch in "*?[]")]
+    assert not bad, f"sudo-rs refuses argv globs in deploy/nobi-deploy.sudoers: {bad}"
+
+
+def test_sudoers_has_ref_rules_for_current_version():
+    """The exact-tag pins must cover the VERSION this tree ships, or the next
+    `--check --ref vX.Y.Z` on a 26.04 box dies on the pin, never on the script."""
+    version = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
+    argvs = [args for _path, args in _cmnd_argvs()]
+    exact = [a for a in argvs if "--ref" in a and f"v{version}" in a]
+    assert exact, (
+        f"no sudoers rule admits --ref v{version}: add the eight v{version} lines "
+        "before cutting the release (sudo-rs has no argv globs)"
+    )

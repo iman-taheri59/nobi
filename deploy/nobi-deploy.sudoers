@@ -1,14 +1,25 @@
-# /etc/sudoers.d/nobi-deploy — the manual deploy workflow (.github/workflows/deploy.yml)
-# may run exactly ONE script as root, and only in the two shapes it can produce:
+# /etc/sudoers.d/nobi-deploy - the manual deploy workflow (.github/workflows/deploy.yml)
+# may run exactly ONE script as root, and only in the pinned argv shapes:
 #
-#   Dry run:  /opt/nobi/scripts/update_arvan.sh --check [flags…]
-#   Update:   /opt/nobi/scripts/update_arvan.sh --yes --backup --verify [flags…]
+#   Dry run:  /opt/nobi/scripts/update_arvan.sh --check [flags...]
+#   Update:   /opt/nobi/scripts/update_arvan.sh --yes --backup --verify [flags...]
 #
-# [flags…] is any (possibly empty) subsequence of
-#   --keep-local-edits   --ref v*   --accept-unit-change    (in this fixed order)
-# — the workflow only ever appends them in that order, and only those the
-# script on the box admits to. All 16 argv shapes are listed explicitly, so
-# nothing else parses: --reset and --force are unreachable from CI by design.
+# [flags...] is a subsequence of --keep-local-edits --ref <exact-tag>
+# --accept-unit-change, in that fixed order.
+#
+# Ubuntu 26.04+ ships sudo-rs, whose sudoers parser refuses wildcards in
+# command arguments outright: the 2026-11-24 Pars Pack install ran
+# `visudo -cf` on this file and every `--ref v*` rule failed with
+# "wildcards are not allowed in command arguments" (lines 6,7,10,11,14,15,
+# 18,19 in the former file). The rules therefore pin the exact tag
+# production serves - v2.5.8. The argv-pinned design is unchanged; only the
+# tag glob became an exact tag.
+#
+# Cutting a release? Add the matching "--ref vX.Y.Z" rules (the eight lines
+# with --ref) for the new tag BEFORE pressing "Run workflow", or bump the
+# pinned tag here. A missing rule stops the run loudly
+# ("sudo: a password is required") before anything touches the checkout -
+# never silently.
 #
 # The script itself must be the SYSTEM path. A copy staged by the deploy account
 # is deliberately NOT covered: a rule that let `deploy` stage and then root-run a
@@ -22,17 +33,17 @@
 # like nobi-status.sudoers and the helper units.)
 deploy ALL=(root) NOPASSWD: /opt/nobi/scripts/update_arvan.sh --check
 deploy ALL=(root) NOPASSWD: /opt/nobi/scripts/update_arvan.sh --check --keep-local-edits
-deploy ALL=(root) NOPASSWD: /opt/nobi/scripts/update_arvan.sh --check --ref v*
-deploy ALL=(root) NOPASSWD: /opt/nobi/scripts/update_arvan.sh --check --keep-local-edits --ref v*
 deploy ALL=(root) NOPASSWD: /opt/nobi/scripts/update_arvan.sh --check --accept-unit-change
 deploy ALL=(root) NOPASSWD: /opt/nobi/scripts/update_arvan.sh --check --keep-local-edits --accept-unit-change
-deploy ALL=(root) NOPASSWD: /opt/nobi/scripts/update_arvan.sh --check --ref v* --accept-unit-change
-deploy ALL=(root) NOPASSWD: /opt/nobi/scripts/update_arvan.sh --check --keep-local-edits --ref v* --accept-unit-change
+deploy ALL=(root) NOPASSWD: /opt/nobi/scripts/update_arvan.sh --check --ref v2.5.8
+deploy ALL=(root) NOPASSWD: /opt/nobi/scripts/update_arvan.sh --check --keep-local-edits --ref v2.5.8
+deploy ALL=(root) NOPASSWD: /opt/nobi/scripts/update_arvan.sh --check --ref v2.5.8 --accept-unit-change
+deploy ALL=(root) NOPASSWD: /opt/nobi/scripts/update_arvan.sh --check --keep-local-edits --ref v2.5.8 --accept-unit-change
 deploy ALL=(root) NOPASSWD: /opt/nobi/scripts/update_arvan.sh --yes --backup --verify
 deploy ALL=(root) NOPASSWD: /opt/nobi/scripts/update_arvan.sh --yes --backup --verify --keep-local-edits
-deploy ALL=(root) NOPASSWD: /opt/nobi/scripts/update_arvan.sh --yes --backup --verify --ref v*
-deploy ALL=(root) NOPASSWD: /opt/nobi/scripts/update_arvan.sh --yes --backup --verify --keep-local-edits --ref v*
 deploy ALL=(root) NOPASSWD: /opt/nobi/scripts/update_arvan.sh --yes --backup --verify --accept-unit-change
 deploy ALL=(root) NOPASSWD: /opt/nobi/scripts/update_arvan.sh --yes --backup --verify --keep-local-edits --accept-unit-change
-deploy ALL=(root) NOPASSWD: /opt/nobi/scripts/update_arvan.sh --yes --backup --verify --ref v* --accept-unit-change
-deploy ALL=(root) NOPASSWD: /opt/nobi/scripts/update_arvan.sh --yes --backup --verify --keep-local-edits --ref v* --accept-unit-change
+deploy ALL=(root) NOPASSWD: /opt/nobi/scripts/update_arvan.sh --yes --backup --verify --ref v2.5.8
+deploy ALL=(root) NOPASSWD: /opt/nobi/scripts/update_arvan.sh --yes --backup --verify --keep-local-edits --ref v2.5.8
+deploy ALL=(root) NOPASSWD: /opt/nobi/scripts/update_arvan.sh --yes --backup --verify --ref v2.5.8 --accept-unit-change
+deploy ALL=(root) NOPASSWD: /opt/nobi/scripts/update_arvan.sh --yes --backup --verify --keep-local-edits --ref v2.5.8 --accept-unit-change
