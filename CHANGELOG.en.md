@@ -2,9 +2,16 @@
 
 [فارسی](CHANGELOG.md) · **English**
 
+## 2.5.9
+
+_This release only updates deployment and reporting tooling — no change to the trading logic, scoring, gates, universe or the UI._
+
+- **The deploy sudoers moved to exact pins (PR #103):** the `--ref` rule accepted a `v*` wildcard; sudo-rs rejected it during install on 2026-11-24 ("wildcards are not allowed in command arguments"). The pins are exact now, and two new tests (`test_sudoers_has_no_argument_globs`, `test_sudoers_has_ref_rules_for_current_version`) hold the line permanently.
+- **The Status workflow reports again (PR #104):** the green 2026-11-26 run carried nothing but /api/health — every sudo step answered "I'm sorry deploy" because `nobi-status.sudoers` used argv globs, which sudo-rs refuses for the whole file (same failure class, now in the reporting path). Every rule is an exact argv; the time windows moved into the scripts as flags (`--last-hours 24` for `journal_diagnostic.py`, `--last-days 17` for both backfills); the `log_lines` and `since` workflow inputs were removed so no argv widens after the pin; `test_status_sudoers.py` pins workflow↔sudoers agreement. The box must install `nobi-status.sudoers` once (`sudo install -m 440 ... && sudo visudo -cf ...`) or a green Status still only proves liveness.
+
 ## 2.5.8
 
-_Unreleased; not tagged or deployed._
+_Deployed 14 Nov 2026._
 
 A correction pass after the 12–13 November review. Most of it is about things the
 system **said** it had done and had not. None of it changes the strategy, the
@@ -82,7 +89,7 @@ scoring, R:R or the universe; what changes is whether what was displayed was tru
 
 ## 2.5.7
 
-_Unreleased; not tagged or deployed._
+_Tag `v2.5.7` (11 Nov 2026)._
 
 - **One responsive HTML source (ADR-0058):** `index.html` is the only page, and `/` plus `/index.html` serve that same file. Removed `nobitex-mobile.html`, its builder and route, the HTML freshness gate, and the Release attachment. Removed parity tests while retaining real responsive tests against `index.html`. Trading logic and WebSocket behavior are unchanged.
 
