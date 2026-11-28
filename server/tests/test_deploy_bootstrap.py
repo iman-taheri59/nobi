@@ -31,6 +31,7 @@ hard-reset the checkout from CI. The tests below execute the remote body with
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 from pathlib import Path
 
@@ -410,17 +411,24 @@ def test_the_root_call_is_the_sudoers_pinned_one() -> None:
         assert "install -o root" not in run
     # the rule covers exactly the two base shapes, and never --reset/--force
     base = [ln for ln in sudoers.splitlines() if ln.startswith("deploy ALL=")]
-    assert len(base) == 16, base
+    ref_tags = sorted({m.group(1) for ln in base
+                       for m in [re.search(r"--ref (v\d+\.\d+\.\d+)", ln)] if m})
+    # 8 unpinned base shapes + 8 exact-tag pins per shipped release, which
+    # accumulate (a deploy never drops the previous release's pins).
+    assert len(base) == 8 + 8 * len(ref_tags), base
+    version = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
+    assert f"v{version}" in ref_tags, f"no --ref v{version} pins for the version this tree ships"
     for line in base:
         assert "--reset" not in line and "--force" not in line, line
     assert "/opt/nobi/scripts/update_arvan.sh --check" in sudoers
     assert "/opt/nobi/scripts/update_arvan.sh --yes --backup --verify" in sudoers
     # both base shapes plus every subsequence of the three trailing flags,
-    # in the fixed order the workflow builds them
-    subsets = ["", " --keep-local-edits", " --ref v2.5.8", " --keep-local-edits --ref v2.5.8",
-               " --accept-unit-change", " --keep-local-edits --accept-unit-change",
-               " --ref v2.5.8 --accept-unit-change",
-               " --keep-local-edits --ref v2.5.8 --accept-unit-change"]
+    # in the fixed order the workflow builds them — for every pinned tag
+    subsets = ["", " --keep-local-edits", " --accept-unit-change", " --keep-local-edits --accept-unit-change"]
+    for tag in ref_tags:
+        subsets += [f" --ref {tag}", f" --keep-local-edits --ref {tag}",
+                    f" --ref {tag} --accept-unit-change",
+                    f" --keep-local-edits --ref {tag} --accept-unit-change"]
     for suffix in subsets:
         assert f"update_arvan.sh --check{suffix}\n" in sudoers + "\n", suffix
         assert f"update_arvan.sh --yes --backup --verify{suffix}\n" in sudoers + "\n", suffix
